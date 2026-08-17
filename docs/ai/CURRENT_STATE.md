@@ -4,17 +4,18 @@
 
 ## Fase atual
 
-Fase 8 — Autenticação real e runtime Supabase — implementada pelo PR #23.
+Fase 9 — estoque transacional completo no Supabase — Issue #24 em andamento.
 
-A próxima frente é a Issue #24 — Fase 9 — estoque transacional completo no Supabase. Ela só deve ser iniciada depois do merge do PR #23 / fechamento da Issue #21.
+A primeira entrega, Fase 9A, está no PR #25: retirada persistente com FEFO, lote preferido, idempotência, locks, política configurável de estoque negativo e auditoria.
 
 ## Estado do GitHub
 
 - Repositório: `synapselab-ia/sistema-lojasaph`
 - Branch principal: `main`
-- PR de conclusão da Fase 8: #23 — `agent/auth-runtime` → `main`
-- Issue da Fase 8: #21
-- Próxima Issue/backlog: #24 — estoque transacional completo no Supabase
+- Issue atual: #24 — Fase 9 — estoque transacional completo no Supabase
+- Branch atual: `agent/stock-transactional-runtime`
+- PR atual: #25 — Fase 9A — retirada transacional com FEFO
+- A Issue #24 deve permanecer aberta após o PR #25; a próxima entrega é transferência transacional.
 
 ## Fases concluídas
 
@@ -25,132 +26,125 @@ A próxima frente é a Issue #24 — Fase 9 — estoque transacional completo no
 - Fase 4: cadastros base e fornecedores in-memory.
 - Fase 5: ledger de estoque, entrada, retirada, transferência e custo médio no domínio/in-memory.
 - Fase 6: lotes, validades, FEFO e inventário físico no domínio/in-memory.
-- Fase 7: PostgreSQL/Supabase, migrations, RLS, projeto remoto, adapters reais e primeiro RPC transacional de entrada.
-- Fase 8: Auth SSR, membership/Organization e workspace persistente para os fluxos já seguros.
+- Fase 7: PostgreSQL/Supabase, migrations, RLS, projeto remoto, adapters reais e entrada transacional.
+- Fase 8: Auth SSR, membership/Organization e workspace persistente.
 
-## Fase 8 — runtime autenticado
-
-### Sessão SSR
-
-- dependência `@supabase/ssr` pinada em `0.12.4` com lockfile;
-- browser client com publishable key;
-- server client por request usando cookies;
-- admin client continua `server-only` com secret key;
-- Proxy renova sessão com `getClaims()`;
-- cookies renovados e headers anti-cache do SSR são propagados na resposta;
-- páginas protegidas não usam sessão bruta como decisão de autorização.
-
-### Fluxos Auth
-
-Implementados:
-
-- login e logout;
-- recuperação de senha;
-- callback PKCE por `exchangeCodeForSession`;
-- callback OTP/token hash compatível com template server-side;
-- atualização de senha após sessão válida;
-- sanitização de redirects internos contra open redirect.
-
-Cadastro público não foi aberto. Contas continuam sendo provisionadas administrativamente até existir um fluxo de convite formal.
-
-### Membership / Organization
-
-`resolveMembershipContext()` valida claims, consulta memberships ativos via RLS e resolve Organizations disponíveis.
-
-- sem sessão → login;
-- sessão sem membership → estado `/sem-acesso`;
-- uma Organization → seleção implícita;
-- múltiplas Organizations → seleção explícita;
-- Organization selecionada fica em cookie `httpOnly`, mas é revalidada contra os memberships em cada carregamento protegido;
-- roles vêm de `organization_memberships`, nunca de `user_metadata`.
-
-### Bootstrap inicial
-
-`/bootstrap` cria somente o primeiro vínculo owner:
-
-- exige e-mail allowlisted em `LOJASAPH_BOOTSTRAP_OWNER_EMAIL`;
-- usa admin client somente server-side;
-- exige Organization explícita quando houver múltiplas;
-- recusa bootstrap se outro owner ativo já existir;
-- registra audit log;
-- se a auditoria falhar, remove o membership recém-criado como compensação;
-- variáveis de bootstrap devem ser removidas após a inicialização.
-
-Não existe regra “primeiro usuário vira admin”.
-
-## Workspace real
-
-`/workspace` usa Supabase real + JWT/RLS e está separado de `/cadastros`, que permanece demonstração in-memory.
+## Workspace persistente
 
 Persistente hoje:
 
-- produtos — leitura/manutenção por `SupabaseStockItemRepository`;
-- fornecedores/contatos — leitura/manutenção por `SupabaseSupplierRepository`;
-- categorias, unidades de medida, locais e saldos — leitura RLS;
-- entrada de estoque — `SupabaseStockEntryGateway` → `record_stock_entry` transacional/idempotente.
+- produtos;
+- fornecedores/contatos;
+- categorias, unidades de medida, locais e saldos;
+- lotes ativos para seleção operacional;
+- entrada de estoque via `record_stock_entry`;
+- retirada via `record_stock_withdrawal` após integração do PR #25.
 
-Ainda demo/in-memory:
+Ainda não persistente no workspace:
 
-- retirada/FEFO;
-- transferência;
+- transferência/recebimento;
 - inventário físico;
-- operações avançadas de lotes/validade.
+- demais ajustes específicos ainda sem command RPC.
 
-Essa separação é intencional: não apresentar como persistente um fluxo que ainda grava somente em memória.
+`/cadastros` continua disponível como demonstração in-memory para esses fluxos até haver paridade transacional real.
 
-## Segurança e testes
+## Fase 9A — retirada transacional
 
-CI da Fase 8 cobre:
+### RPC
+
+`record_stock_withdrawal(...)`:
+
+- exige `auth.uid()`;
+- papéis: `owner`, `admin`, `manager`, `inventory`;
+- command ID idempotente;
+- advisory transaction lock serializa retries concorrentes do mesmo command ID;
+- idempotência compara Organization, item, local, quantidade, lote preferido e observação;
+- saldo é bloqueado com `FOR UPDATE`;
+- lotes candidatos são bloqueados em ordem determinística;
+- lote preferido, quando informado, é consumido primeiro;
+- restante usa FEFO: validade mais próxima, depois recebimento mais antigo;
+- saída preserva custo médio vigente no `unit_cost_snapshot`;
+- saldo, movimento, item, alocações de lote e audit log ficam na mesma transação;
+- lote com saldo zero vira `depleted`;
+- cliente continua sem escrita direta nas tabelas do ledger.
+
+### Estoque negativo
+
+O antigo `CHECK quantity_on_hand >= 0` tornava `StockLocation.allow_negative_stock` inoperante. A migration substitui o check global por integridade orientada ao local:
+
+- saldo negativo somente se o local estiver explicitamente configurado;
+- itens rastreados por lote/validade continuam sem saída acima do estoque físico disponível;
+- não é possível desativar `allow_negative_stock` enquanto houver qualquer saldo negativo no local.
 
 ### Aplicação
 
-- `npm ci`;
+- `SupabaseStockWithdrawalGateway`;
+- leitura persistente de lotes ativos;
+- provider autenticado expõe `recordWithdrawal` somente aos papéis permitidos;
+- `/workspace/estoque` possui retirada real;
+- ausência de lote preferido significa FEFO automático;
+- a ordem de lotes mostrada ao usuário segue FEFO.
+
+## Validação
+
+PR #25 teve CI verde:
+
+### Aplicação
+
+- npm ci;
 - lint;
 - typecheck;
-- Vitest;
+- testes unitários;
 - production build.
 
 ### Banco
 
-- PostgreSQL 17 efêmero;
-- bootstrap Auth;
+- PostgreSQL 17 limpo;
 - todas as migrations;
-- seed anonimizado;
-- smoke tests de schema/RLS/RPC;
-- matriz adicional de roles e isolamento.
+- seed demo;
+- smoke tests de schema/RLS;
+- matriz de roles/Organization;
+- suíte `stock_withdrawal.sql`.
 
-Casos validados:
+A suíte de retirada valida:
 
-- `inventory` pode manter catálogo e registrar entrada;
-- `viewer` não altera catálogo nem executa entrada;
-- `purchases` altera fornecedores, mas não catálogo/entrada;
-- outsider sem membership não vê Organization;
-- membro de outra Organization não vê dados da Organization seed;
-- anon não acessa tabelas operacionais/RPC;
-- ledger continua sem escrita direta de cliente autenticado;
-- redirect externo/protocol-relative é rejeitado pelo runtime.
+- FEFO;
+- lote preferido;
+- retry idempotente sem duplicação;
+- conflito quando command ID é reutilizado com payload diferente;
+- estoque insuficiente com rollback atômico;
+- viewer sem permissão;
+- membro de outra Organization sem permissão;
+- anon sem EXECUTE;
+- estoque negativo bloqueado por default;
+- negativo permitido somente quando o local autoriza;
+- bloqueio de desativação da política com saldo negativo existente.
 
-O primeiro run do PR #23 encontrou apenas um narrow de TypeScript em claims opcionais; foi corrigido sem relaxar tipos. O run subsequente passou lint, typecheck, testes, build e banco.
+## Supabase remoto
 
-## Configuração de ambiente
+A migration `transactional_stock_withdrawal` foi aplicada ao projeto homologado em `sa-east-1`.
 
-`.env.example` documenta:
+Teste remoto executado dentro de transação com `ROLLBACK`:
 
-- `NEXT_PUBLIC_APP_URL`;
-- `NEXT_PUBLIC_SUPABASE_URL`;
-- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`;
-- `SUPABASE_SECRET_KEY`;
-- `LOJASAPH_BOOTSTRAP_OWNER_EMAIL`;
-- `LOJASAPH_BOOTSTRAP_ORGANIZATION_ID`.
+- saldo inicial do item demo: 100;
+- retirada teste: 10;
+- saldo/lote dentro da transação: 90;
+- repetição do mesmo command ID não duplicou movimento/audit;
+- após rollback: saldo 100, lote 100, zero movimentos de teste e zero usuários de teste residuais.
 
-Nenhum valor real é versionado. Para recuperação de senha em ambiente hospedado, o callback da aplicação também precisa estar autorizado na configuração de redirect URLs do Supabase.
+Security Advisor mostra dois warnings conhecidos/intencionais para `record_stock_entry` e `record_stock_withdrawal` por serem `SECURITY DEFINER` executáveis por `authenticated`. Ambos validam identidade, papel, inputs e referências, e `PUBLIC`/`anon` não têm EXECUTE.
 
-## Projeto remoto
-
-O projeto Supabase homologado em `sa-east-1` continua com migrations e seed demo aplicados. Nenhum dado real do cliente foi migrado nesta fase.
+Os avisos de performance remanescentes são informativos e majoritariamente pré-existentes; nenhuma regressão específica da retirada foi identificada.
 
 ## Próxima ação
 
-Iniciar a Issue #24 somente após o PR #23 estar integrado. A primeira entrega da Fase 9 deve ser retirada persistente com FEFO/idempotência/locks; depois transferência e inventário físico.
+Depois de integrar o PR #25, manter a Issue #24 aberta e iniciar uma nova branch a partir da `main` para transferência transacional em duas etapas:
 
-Consulte `docs/ai/NEXT_ACTION.md`, `docs/modules/inventory.md`, `docs/modules/supabase-runtime.md`, ADR-002, ADR-003 e ADR-006.
+1. dispatch/expedição;
+2. receive/recebimento parcial ou total;
+3. preservação de custo, lote e validade;
+4. locks/idempotência/auditoria;
+5. testes SQL/RLS;
+6. somente então integrar transferência ao workspace real.
+
+Consulte `docs/ai/NEXT_ACTION.md`, `docs/modules/inventory.md`, ADR-002, ADR-003 e ADR-006.
