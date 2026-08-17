@@ -1,132 +1,119 @@
 # Runtime Supabase — persistência, Auth e RLS
 
-Status: Fase 8 — runtime autenticado implementado no PR #23.
+Status: Fase 9 em andamento. Runtime autenticado está estável; entrada e retirada de estoque já possuem commands PostgreSQL reais.
 
 ## Princípio
 
-O domínio não depende diretamente do SDK do Supabase. A integração entra por factories, repositories/adapters e gateways. A UI persistente usa a sessão do usuário e RLS; credenciais privilegiadas não são um atalho para operações normais.
+O domínio não depende diretamente do SDK do Supabase. A integração entra por factories, repositories/adapters e gateways. Operações normais usam sessão/JWT do usuário + RLS; secret/admin client permanece restrito a rotinas administrativas explícitas.
 
-## Factories e sessão SSR
+## Sessão SSR
 
-- `createBrowserSupabaseClient()` usa `@supabase/ssr` com URL + publishable key.
-- `createServerSupabaseClient()` cria um cliente por request com cookies da sessão.
-- `createServerRlsSupabaseClient(accessToken)` permanece disponível para cenários server-side bearer explícitos, mas o runtime Next.js normal usa cookies SSR.
-- `createServerAdminSupabaseClient()` usa `SUPABASE_SECRET_KEY`, importa `server-only` e é reservado a rotinas administrativas explícitas.
-- `src/proxy.ts` delega a renovação de sessão para `src/lib/supabase/proxy.ts`.
-- o Proxy chama `getClaims()` e propaga tanto cookies renovados quanto headers anti-cache produzidos por `@supabase/ssr`.
+- `createBrowserSupabaseClient()` usa `@supabase/ssr` com publishable key.
+- `createServerSupabaseClient()` usa cookies por request.
+- `createServerAdminSupabaseClient()` importa `server-only` e usa `SUPABASE_SECRET_KEY` somente quando necessário.
+- Proxy renova/verifica sessão com `getClaims()` e propaga cookies + headers anti-cache.
+- páginas protegidas resolvem acesso por claims verificadas + memberships, não por cookie bruto.
 
-Páginas protegidas não tratam `getSession()`/cookie bruto como prova de identidade. A resolução de acesso começa por claims verificadas.
-
-## Fluxos de autenticação
+## Auth e Organization
 
 Implementados:
 
-- login por e-mail/senha;
-- logout server-side;
-- recuperação de senha;
-- callback PKCE por `exchangeCodeForSession`;
-- suporte a callback `token_hash`/OTP quando usado por template server-side;
-- atualização de senha somente após sessão de recuperação válida;
-- redirects internos sanitizados para impedir open redirect.
+- login/logout;
+- recuperação/callback PKCE/OTP;
+- atualização de senha;
+- redirects internos sanitizados;
+- membership por `organization_memberships`;
+- seleção multi-Organization em cookie httpOnly revalidado;
+- estado sem membership;
+- bootstrap inicial de owner allowlisted e auditado.
 
-Não existe cadastro público aberto nesta fase. Contas são provisionadas de forma administrativa até existir um fluxo de convite formal.
+Não existe cadastro público automático nem autorização por `user_metadata`.
 
-A recuperação exige `NEXT_PUBLIC_APP_URL` e que o URL/callback correspondente esteja permitido na configuração de redirects do Supabase do ambiente hospedado.
+## Workspace persistente
 
-## Membership e Organization
+`/workspace` usa Supabase real e RLS.
 
-`resolveMembershipContext()`:
+Persistente:
 
-1. valida a identidade com `getClaims()`;
-2. consulta somente memberships ativos visíveis ao próprio usuário por RLS;
-3. carrega Organizations ativas acessíveis;
-4. agrega os papéis do usuário por Organization;
-5. para múltiplas Organizations, aceita uma seleção em cookie `httpOnly`;
-6. revalida o ID do cookie contra os memberships a cada carregamento, portanto alterar o cookie não concede acesso.
+- produtos;
+- fornecedores/contatos;
+- categorias/unidades/locais;
+- saldos;
+- lotes ativos;
+- entrada via `record_stock_entry`;
+- retirada via `record_stock_withdrawal` após PR #25.
 
-Estados explícitos:
+Ainda in-memory/demo:
 
-- sessão ausente/expirada → login;
-- usuário autenticado sem membership → `/sem-acesso`;
-- múltiplas Organizations sem seleção válida → `/workspace/selecionar-organizacao`.
+- transferência/recebimento;
+- inventário físico;
+- demais ajustes ainda sem command RPC.
 
-A autorização continua derivando de `organization_memberships`, nunca de `user_metadata`.
+A UI não mistura silenciosamente uma operação real com outra somente em memória.
 
-## Bootstrap do primeiro owner
+## Commands do ledger
 
-A inicialização administrativa fica em `/bootstrap` e é deliberadamente restrita:
+### `record_stock_entry`
 
-- exige sessão válida e usuário obtido pelo Auth server;
-- exige correspondência exata com `LOJASAPH_BOOTSTRAP_OWNER_EMAIL` server-only;
-- `LOJASAPH_BOOTSTRAP_ORGANIZATION_ID` é obrigatório quando não existe exatamente uma Organization ativa;
-- se já existe outro owner ativo, o bootstrap é recusado;
-- usa secret key apenas no servidor;
-- cria o membership owner e `audit_logs`;
-- se a auditoria falhar, o vínculo recém-criado é removido como compensação;
-- após a inicialização, as variáveis de bootstrap devem ser removidas/desabilitadas.
+- `SECURITY DEFINER`, EXECUTE somente `authenticated`;
+- valida `auth.uid()` + role;
+- quantidade/custo exatos;
+- idempotência;
+- balance lock;
+- custo médio ponderado;
+- lote opcional/rastreado;
+- ledger + saldo + lote + audit atômicos.
 
-Não existe regra automática de “primeiro usuário vira admin”.
+### `record_stock_withdrawal`
 
-## Workspace persistente x demonstração
+- `SECURITY DEFINER`, EXECUTE somente `authenticated`;
+- roles `owner/admin/manager/inventory`;
+- advisory transaction lock por command ID;
+- idempotência compara payload semântico;
+- balance `FOR UPDATE`;
+- lotes candidatos bloqueados em ordem determinística;
+- lote preferido primeiro quando informado;
+- restante por FEFO;
+- snapshot do custo médio vigente;
+- saldo/lote/movimento/alocações/audit na mesma transação;
+- itens rastreados nunca criam lote negativo.
 
-### `/workspace`
+`PUBLIC` e `anon` não possuem EXECUTE nesses commands. O Security Advisor reporta ambos como `SECURITY DEFINER` executáveis por usuários autenticados; isso é intencional, pois eles são a API controlada das mutações críticas, com identidade, role, inputs e referências validados antes dos writes.
 
-Opera com Supabase real e sessão autenticada. Nesta fase suporta:
+## Estoque negativo
 
-- leitura/manutenção de produtos via `SupabaseStockItemRepository`;
-- leitura/manutenção de fornecedores e contatos via `SupabaseSupplierRepository`;
-- leitura de categorias, unidades de medida, locais e saldos por RLS;
-- entrada de estoque via `SupabaseStockEntryGateway` / `record_stock_entry`.
+`StockLocation.allow_negative_stock` agora é efetivo fisicamente:
 
-A UI apresenta permissões conforme papéis, mas isso é apenas UX; RLS/RPC continuam sendo a fronteira real.
+- negativo é proibido por default;
+- só local explicitamente configurado permite saldo negativo;
+- não se permite desativar a flag enquanto existir saldo negativo no local;
+- item rastreado continua limitado ao estoque físico em lotes.
 
-### `/cadastros`
+## Testes
 
-Continua explicitamente in-memory para os fluxos que ainda não possuem comandos PostgreSQL equivalentes:
+CI PostgreSQL efêmero valida migrations, seed, RLS, roles e commands.
 
-- retirada/FEFO;
-- transferência;
-- lotes/validades avançados;
-- inventário físico.
+Retirada cobre:
 
-Não misturar operações persistentes e in-memory numa mesma tela evita que uma ação pareça salva quando não está.
-
-## Escrita crítica de estoque
-
-`public.record_stock_entry(...)` permanece o primeiro command RPC do ledger real.
-
-Garantias:
-
-1. exige `auth.uid()`;
-2. exige papel `owner`, `admin`, `manager` ou `inventory` na Organization;
-3. cliente autenticado continua sem INSERT/UPDATE direto no ledger;
-4. valida item/local da mesma Organization;
-5. valida quantidade positiva e custo não negativo com escalas exatas;
-6. usa `command_id` como chave de idempotência;
-7. bloqueia a projeção de saldo com `FOR UPDATE`;
-8. recalcula custo médio ponderado;
-9. grava movimento + item + saldo + lote/alocação, quando aplicável, na mesma transação PostgreSQL;
-10. grava `audit_logs`;
-11. lote/validade desconhecidos permanecem `NULL`.
-
-A função é intencionalmente `SECURITY DEFINER` e executável somente por `authenticated`; `PUBLIC` e `anon` não possuem `EXECUTE`. O warning correspondente do Security Advisor é conhecido e aceito porque a função valida identidade, papel, inputs e referências antes dos writes.
-
-## Testes de autorização
-
-O CI PostgreSQL efêmero valida:
-
-- `inventory` pode manter catálogo e executar entrada;
-- `viewer` lê sua Organization, mas não mantém catálogo nem executa o RPC;
-- `purchases` mantém fornecedores, mas não catálogo/entrada;
-- outsider sem membership não vê Organizations;
-- membro de outra Organization não vê os itens da Organization seed;
-- anon não acessa tabelas operacionais/RPC;
-- ledger não aceita escrita direta de cliente autenticado.
+- FEFO;
+- lote preferido;
+- idempotência e conflito de payload;
+- insuficiência/rollback;
+- viewer/cross-Organization/anon;
+- política configurável de negativo.
 
 ## Projeto remoto
 
-O projeto Supabase homologado em `sa-east-1` continua com migrations versionadas e seed anonimizado. A Fase 8 não criou dados reais do cliente nem credenciais reais no GitHub.
+O projeto homologado em `sa-east-1` possui as migrations de entrada e retirada aplicadas, usando apenas seed anonimizado.
 
-## Próxima fase
+A retirada foi homologada remotamente em transação com `ROLLBACK`: saldo/lote foram reduzidos durante o teste, retry não duplicou, e após rollback não restou movimento nem usuário de teste.
 
-Issue #24 — persistir retirada/FEFO, transferência e inventário físico com comandos transacionais, idempotência, locks e auditoria. Somente após isso o workspace real deve substituir a demonstração nos fluxos principais de estoque.
+## Advisors
+
+Security Advisor: warnings conhecidos/intencionais para `record_stock_entry` e `record_stock_withdrawal` por serem `SECURITY DEFINER` expostos somente a `authenticated`.
+
+Performance Advisor: avisos informativos de FKs sem índice/índices ainda não usados permanecem como backlog de tuning orientado a carga real; não foi detectada regressão nova causada pela retirada.
+
+## Próxima entrega
+
+Issue #24 continua aberta. Depois do PR #25, implementar transferência em duas etapas (`dispatch`/`receive`) com idempotência, locks, preservação de custo/lote/validade e recebimento parcial. Inventário físico vem depois.
