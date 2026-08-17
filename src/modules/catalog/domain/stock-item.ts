@@ -6,6 +6,7 @@ export type StockItemType = "consumable" | "merchandise" | "reusable" | "supply"
 export interface StockItem {
   readonly id: EntityId;
   readonly organizationId: EntityId;
+  readonly categoryId?: EntityId;
   readonly name: string;
   readonly baseUnitCode: string;
   readonly type: StockItemType;
@@ -17,6 +18,7 @@ export interface StockItem {
 
 export interface CreateStockItemInput {
   organizationId: EntityId;
+  categoryId?: EntityId;
   name: string;
   baseUnitCode: string;
   type: StockItemType;
@@ -25,27 +27,58 @@ export interface CreateStockItemInput {
   isReturnable?: boolean;
 }
 
-export function createStockItem(input: CreateStockItemInput): StockItem {
-  const name = input.name.trim();
-  const baseUnitCode = input.baseUnitCode.trim().toLowerCase();
+export interface UpdateStockItemInput {
+  categoryId?: EntityId;
+  name: string;
+  baseUnitCode: string;
+  type: StockItemType;
+  active: boolean;
+  trackExpiration: boolean;
+  trackBatch: boolean;
+  isReturnable: boolean;
+}
 
+function normalizeName(value: string): string {
+  const name = value.trim();
   if (!name) {
     throw new DomainError("INVALID_STOCK_ITEM_NAME", "Stock item name is required.");
   }
+  return name;
+}
 
-  if (!baseUnitCode) {
+function normalizeUnit(value: string): string {
+  const unit = value.trim().toLowerCase();
+  if (!unit) {
     throw new DomainError("INVALID_UNIT", "Base unit is required.");
   }
+  return unit;
+}
 
+export function createStockItem(input: CreateStockItemInput): StockItem {
   return Object.freeze({
     id: newEntityId(),
     organizationId: input.organizationId,
-    name,
-    baseUnitCode,
+    categoryId: input.categoryId,
+    name: normalizeName(input.name),
+    baseUnitCode: normalizeUnit(input.baseUnitCode),
     type: input.type,
     active: true,
     trackExpiration: input.trackExpiration ?? false,
     trackBatch: input.trackBatch ?? false,
     isReturnable: input.isReturnable ?? input.type === "reusable",
+  });
+}
+
+export function updateStockItem(item: StockItem, input: UpdateStockItemInput): StockItem {
+  return Object.freeze({
+    ...item,
+    categoryId: input.categoryId,
+    name: normalizeName(input.name),
+    baseUnitCode: normalizeUnit(input.baseUnitCode),
+    type: input.type,
+    active: input.active,
+    trackExpiration: input.trackExpiration,
+    trackBatch: input.trackBatch,
+    isReturnable: input.isReturnable,
   });
 }
