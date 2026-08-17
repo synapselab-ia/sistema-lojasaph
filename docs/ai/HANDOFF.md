@@ -4,118 +4,140 @@ Este arquivo registra o contexto necessário para outro chat continuar sem depen
 
 ## Estado
 
-A Fase 8 / Issue #21 foi implementada no PR #23 (`agent/auth-runtime`). Após o merge, a próxima frente é a Issue #24 — Fase 9 — estoque transacional completo no Supabase.
+A Fase 8 foi concluída e integrada pelo PR #23. A Issue #24 — Fase 9 — estoque transacional completo no Supabase — está em andamento.
+
+A primeira entrega da Fase 9 é o PR #25 (`agent/stock-transactional-runtime`): retirada persistente com FEFO/lote preferido, idempotência, locks, auditoria e política configurável de estoque negativo.
+
+A Issue #24 não deve ser fechada com o PR #25. Depois dele, a próxima entrega é transferência transacional em duas etapas.
 
 ## Não repetir
 
 - não refazer engenharia reversa/modelagem consolidada;
 - não recriar o projeto Supabase;
-- não reimplementar Auth SSR/login/recovery/membership da Fase 8;
+- não reimplementar Auth SSR/login/recovery/membership;
+- não reimplementar `record_stock_entry`;
+- não reimplementar retirada/FEFO depois que o PR #25 estiver na `main`;
 - não editar saldo diretamente;
 - não remover RLS;
 - não conceder write direto no ledger;
-- não usar secret/admin client em operações normais de usuário;
+- não usar secret/admin client em operação normal;
 - não autorizar por `user_metadata`;
-- não misturar no workspace real fluxos que continuam in-memory;
 - não migrar dados reais do cliente antes da homologação planejada.
 
 ## O sistema já possui
 
 - Next.js/React/TypeScript strict, Tailwind, Vitest e CI;
 - domínio multi-negócio/multi-unidade;
-- produtos, fornecedores, ledger, custo médio, transferências, lotes/FEFO e inventário no domínio;
 - schema PostgreSQL/Supabase versionado;
 - projeto remoto homologado em `sa-east-1`;
-- RLS por membership organizacional;
-- seed anonimizado e CI PostgreSQL efêmero;
+- RLS por membership;
+- Auth SSR e workspace autenticado;
+- produtos e fornecedores persistentes;
 - `record_stock_entry` transacional/idempotente;
-- Auth SSR com `@supabase/ssr`;
-- login/logout/recuperação/callback;
-- resolução de memberships/Organizations;
-- seleção multi-Organization com cookie httpOnly revalidado;
-- bootstrap inicial de owner server-only e auditado;
-- workspace persistente para produtos, fornecedores e entrada de estoque;
-- workspace demo separado para os movimentos ainda não persistidos.
+- `record_stock_withdrawal` transacional/idempotente na Fase 9A;
+- leitura persistente de saldos e lotes ativos;
+- adapters/gateways Supabase sem acoplar domínio ao SDK;
+- demo in-memory mantida para transferência/inventário até haver paridade real.
 
-## Segurança Auth/Supabase
+## Retirada persistente — Fase 9A
 
-- browser usa somente publishable key;
-- server client normal usa sessão/JWT do usuário e RLS;
-- admin client importa `server-only` e usa `SUPABASE_SECRET_KEY` apenas em bootstrap administrativo;
-- Proxy chama `getClaims()` para refresh/verificação e copia cookies + headers anti-cache;
-- páginas protegidas resolvem acesso a partir de claims + `organization_memberships`;
-- cookie de Organization nunca é aceito sem revalidação do membership;
-- usuário sem membership recebe `/sem-acesso`;
-- `record_stock_entry` continua a única mutação real de estoque disponível no workspace persistente;
-- o RPC `SECURITY DEFINER` é warning conhecido/aceito e valida `auth.uid()` + role + inputs;
-- helpers privilegiados de membership continuam em schema `private`.
+Arquivos principais:
 
-## Bootstrap
+- `supabase/migrations/20260817223301_transactional_stock_withdrawal.sql`;
+- `supabase/tests/stock_withdrawal.sql`;
+- `src/modules/inventory/adapters/supabase-stock-withdrawal-gateway.ts`;
+- `src/modules/master-data/adapters/supabase-workspace-query.ts`;
+- `src/modules/master-data/ui/runtime-workspace-provider.tsx`;
+- `src/app/workspace/(operacao)/estoque/page.tsx`.
 
-Variáveis server-only:
+Garantias do RPC:
 
-- `LOJASAPH_BOOTSTRAP_OWNER_EMAIL`;
-- `LOJASAPH_BOOTSTRAP_ORGANIZATION_ID` quando necessário;
-- `SUPABASE_SECRET_KEY`.
+1. `auth.uid()` obrigatório;
+2. roles `owner/admin/manager/inventory`;
+3. advisory transaction lock por command ID;
+4. payload idempotente validado;
+5. balance `FOR UPDATE`;
+6. lotes candidatos bloqueados em ordem determinística;
+7. lote preferido primeiro;
+8. restante por FEFO;
+9. custo da saída = custo médio vigente no momento do movimento;
+10. saldo/lotes/movimento/alocações/audit na mesma transação;
+11. lote esgotado vira `depleted`;
+12. nenhuma escrita direta cliente-side no ledger.
 
-A rotina:
+## Estoque negativo
 
-1. exige usuário Auth válido;
-2. compara e-mail com allowlist;
-3. verifica owner existente;
-4. cria membership `owner` somente se seguro;
-5. grava audit log;
-6. compensa removendo o membership se audit falhar.
+ADR-002 prevê default proibido com exceção configurável por local. A implementação física agora respeita isso:
 
-Remover/desabilitar as variáveis de bootstrap depois do primeiro owner.
+- saldo negativo só é aceito quando `stock_locations.allow_negative_stock=true`;
+- item rastreado por lote/validade continua exigindo estoque físico/lotes suficientes;
+- local não pode voltar a `allow_negative_stock=false` enquanto existir saldo negativo nele.
 
-## Workspace persistente
+Não remover esses triggers para “simplificar”.
 
-Rotas principais:
+## Validação concluída da Fase 9A
 
-- `/login`;
-- `/recuperar-senha`;
-- `/auth/callback`;
-- `/bootstrap`;
-- `/workspace`;
-- `/workspace/produtos`;
-- `/workspace/fornecedores`;
-- `/workspace/estoque`;
-- `/workspace/selecionar-organizacao`;
-- `/sem-acesso`.
+CI do PR #25 passou:
 
-`/workspace` persiste produtos, fornecedores/contatos e entrada. `/cadastros` segue sendo demo para retirada, transferência, FEFO e inventário.
+- npm ci;
+- lint;
+- typecheck;
+- Vitest;
+- build;
+- todas as migrations em PostgreSQL 17 limpo;
+- seed demo;
+- smoke RLS/RPC;
+- role/Organization isolation;
+- suíte de retirada.
 
-## Validação da Fase 8
+Casos SQL:
 
-PR #23:
+- FEFO;
+- lote preferido;
+- retry idempotente;
+- conflito de command ID com payload diferente;
+- estoque insuficiente com rollback;
+- viewer negado;
+- cross-Organization negado;
+- anon negado;
+- negativo bloqueado por default;
+- negativo permitido quando configurado;
+- impossibilidade de desligar a exceção enquanto houver saldo negativo.
 
-- banco: migrations + seed + smoke RLS/RPC + novos testes de roles/Organization passaram;
-- aplicação: lint, typecheck, Vitest e build passaram após uma correção estreita de narrowing de claims;
-- tests de roles confirmam `inventory`, `viewer`, `purchases`, outsider, cross-Organization e anon;
-- test unitário confirma bloqueio de open redirects.
+## Supabase remoto
 
-## Configuração ainda necessária por ambiente
+A migration `transactional_stock_withdrawal` já foi aplicada no projeto homologado.
 
-- preencher URL/publishable key/secret nos ambientes apropriados, nunca no GitHub;
-- definir `NEXT_PUBLIC_APP_URL`;
-- cadastrar o callback/redirect de recuperação na allowlist de URLs do Supabase do ambiente;
-- provisionar a primeira conta Auth administrativamente antes do bootstrap do membership.
+Teste remoto em `BEGIN/ROLLBACK`:
 
-Esses itens são configuração de ambiente/deploy; não enfraquecer o código para contorná-los.
+- saldo demo inicial: 100;
+- retirada: 10;
+- saldo/lote dentro da transação: 90;
+- retry do mesmo command ID não duplicou;
+- após rollback: saldo/lote 100, movimento de teste 0, usuário de teste 0.
 
-## Próxima fase — Issue #24
+Security Advisor mantém warnings intencionais para `record_stock_entry` e `record_stock_withdrawal` porque ambos são `SECURITY DEFINER` executáveis por `authenticated`. A exposição é intencional e protegida por identidade, role, validação de inputs/referências e grants restritos.
 
-Objetivo: levar retirada/FEFO, transferência e inventário para PostgreSQL transacional e então remover a dependência do workspace demo para os fluxos principais de estoque.
+## Configuração de ambiente ainda necessária
 
-Ordem recomendada:
+- URL/publishable key/secret nos ambientes apropriados, nunca no GitHub;
+- `NEXT_PUBLIC_APP_URL`;
+- redirect/callback Auth permitido no Supabase;
+- primeira conta Auth provisionada administrativamente antes do bootstrap owner.
 
-1. retirada persistente com FEFO e lote preferido;
-2. idempotência + lock de saldo/lotes + audit;
-3. leitura real de lotes/movimentos;
-4. transferência com expedição/recebimento preservando custo/lote/validade;
-5. inventário físico com snapshot, stale detection e ajuste transacional;
-6. integrar cada fluxo ao workspace real somente depois do respectivo comando estar testado.
+## Próximo trabalho dentro da Issue #24
+
+Depois de integrar o PR #25:
+
+1. criar branch nova a partir da `main`;
+2. implementar transferência transacional em duas etapas — dispatch e receive;
+3. preservar custo, lote e validade do lote de origem no destino;
+4. permitir recebimento parcial coerente com o domínio atual;
+5. usar command IDs/idempotência, locks e audit;
+6. não creditar destino no dispatch; somente no receive;
+7. testar roles, cross-Organization, retry, estoque insuficiente, recebimento parcial/total e rollback;
+8. integrar ao workspace real somente depois do SQL/CI estar verde;
+9. depois avançar para inventário físico persistente.
 
 ## Regra de eficiência
 
