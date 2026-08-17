@@ -1,0 +1,364 @@
+name: One-shot finalize inventory docs
+
+on:
+  push:
+    branches: [agent/inventory-count-runtime]
+    paths:
+      - .github/workflows/one-shot-finalize-inventory-docs.yml
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/inventory-count-runtime
+
+      - name: Align UI and documentation
+        run: |
+          cat > src/app/page.tsx <<'TSX'
+          import Link from "next/link";
+
+          const foundations = [
+            "PostgreSQL/Supabase com migrations e RLS",
+            "Sessão SSR e autorização por membership",
+            "CI com aplicação + banco",
+            "Arquitetura multi-negócio e multi-unidade",
+          ];
+
+          export default function Home() {
+            return (
+              <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-10 px-6 py-12 sm:px-10 lg:py-16">
+                <header className="space-y-3">
+                  <p className="text-sm font-semibold uppercase tracking-[0.2em] text-neutral-500">Sistema de gestão</p>
+                  <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">Sistema Lojasaph</h1>
+                  <p className="max-w-2xl text-base leading-7 text-neutral-600">Gestão operacional multi-unidade com núcleo de estoque persistente e evolução planejada para compras, financeiro e caixa.</p>
+                  <div className="flex flex-wrap gap-3 pt-3">
+                    <Link href="/workspace" className="inline-flex rounded-xl bg-neutral-900 px-5 py-3 text-sm font-semibold text-white hover:bg-neutral-700">Entrar no workspace persistente</Link>
+                    <Link href="/cadastros" className="inline-flex rounded-xl border border-neutral-300 bg-white px-5 py-3 text-sm font-semibold text-neutral-800 hover:bg-neutral-50">Abrir demonstração</Link>
+                  </div>
+                </header>
+
+                <section className="grid gap-4 sm:grid-cols-2" aria-label="Estado da fundação">
+                  {foundations.map((item) => <article key={item} className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm"><p className="font-medium">{item}</p></article>)}
+                </section>
+
+                <section className="grid gap-4 lg:grid-cols-2">
+                  <article className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6">
+                    <h2 className="text-xl font-semibold text-emerald-950">Núcleo de estoque persistente</h2>
+                    <p className="mt-2 leading-7 text-emerald-950">Produtos, fornecedores, entradas, retiradas, transferências e inventário físico usam Supabase, RLS e comandos PostgreSQL transacionais/auditados.</p>
+                  </article>
+                  <article className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm">
+                    <h2 className="text-xl font-semibold">Próxima fase</h2>
+                    <p className="mt-2 leading-7 text-neutral-600">Compras, pedidos e recebimento operacional serão ligados ao estoque persistente antes de avançar para financeiro e caixa.</p>
+                  </article>
+                </section>
+              </main>
+            );
+          }
+          TSX
+
+          cat > 'src/app/workspace/(operacao)/page.tsx' <<'TSX'
+          "use client";
+
+          import Link from "next/link";
+          import { useRuntimeWorkspace } from "@/modules/master-data/ui/runtime-workspace-provider";
+
+          export default function WorkspacePage() {
+            const workspace = useRuntimeWorkspace();
+            const positiveBalances = workspace.balances.filter((balance) => !balance.quantity.isZero()).length;
+            const transfersInTransit = workspace.transfers.filter((transfer) => transfer.status !== "received").length;
+
+            const cards = [
+              { label: "Produtos", value: String(workspace.stockItems.length), href: "/workspace/produtos" },
+              { label: "Fornecedores", value: String(workspace.suppliers.length), href: "/workspace/fornecedores" },
+              { label: "Saldos com estoque", value: String(positiveBalances), href: "/workspace/estoque" },
+              { label: "Transferências em trânsito", value: String(transfersInTransit), href: "/workspace/transferencias" },
+              { label: "Inventários físicos", value: "Abrir", href: "/workspace/inventarios" },
+            ];
+
+            return (
+              <div className="mx-auto max-w-6xl space-y-8">
+                <header>
+                  <p className="text-sm font-medium text-emerald-700">Dados persistentes</p>
+                  <h1 className="mt-1 text-3xl font-semibold tracking-tight">{workspace.organizationName}</h1>
+                  <p className="mt-3 max-w-3xl text-sm leading-6 text-neutral-600">Este workspace consulta o Supabase com sessão autenticada e RLS. Os principais fluxos de estoque já operam com persistência transacional e auditoria.</p>
+                </header>
+
+                <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+                  {cards.map((card) => <Link key={card.label} href={card.href} className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm hover:border-neutral-300"><p className="text-sm text-neutral-500">{card.label}</p><p className="mt-2 text-2xl font-semibold">{card.value}</p></Link>)}
+                </section>
+
+                <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-sm leading-6 text-emerald-950">
+                  <h2 className="font-semibold">Estoque transacional completo</h2>
+                  <p className="mt-1">Entrada, retirada, transferência e inventário físico já usam commands PostgreSQL idempotentes. A próxima etapa do roadmap é compras e recebimento operacional.</p>
+                </section>
+              </div>
+            );
+          }
+          TSX
+
+          cat > docs/modules/inventory.md <<'MD'
+          # Módulo — Estoque transacional
+
+          Status: Fase 9 concluída tecnicamente no PR #27. Entrada, retirada, transferência e inventário físico possuem caminho PostgreSQL/Supabase real.
+
+          ## Princípios
+
+          - `InventoryBalance` é projeção; a UI nunca edita saldo diretamente.
+          - toda alteração física gera `StockMovement` e audit trail;
+          - commands críticos são transacionais/idempotentes;
+          - quantidade usa `numeric(18,3)` e dinheiro/custo `numeric(18,2)`;
+          - RLS + membership são a fronteira de autorização;
+          - lote/validade desconhecidos nunca são fabricados.
+
+          ## Entrada
+
+          `record_stock_entry` valida role, command ID, quantidade/custo, bloqueia saldo, recalcula custo médio e cria lote quando aplicável. Reposição sobre saldo anterior `<= 0` usa o custo recebido como novo custo-base.
+
+          ## Retirada
+
+          `record_stock_withdrawal` bloqueia saldo/lotes, usa lote preferido quando informado e FEFO para o restante, registra custo médio vigente e respeita a política configurável de estoque negativo. Item rastreado nunca cria lote negativo.
+
+          ## Transferência
+
+          `dispatch_stock_transfer` reduz somente a origem e grava `transfer_out`. `receive_stock_transfer` credita o destino apenas no recebimento real, aceita parcial/total e preserva `allocation_order`, código, validade e custo físico do lote. O saldo agregado do destino usa o snapshot do custo médio da linha transferida.
+
+          ## Inventário físico persistente
+
+          ### Início
+
+          `start_inventory_count`:
+
+          - uma sessão `counting` por Organization + local;
+          - captura todos os itens ativos;
+          - snapshot de `expected_quantity` e `expected_average_cost`;
+          - command ID idempotente;
+          - audit `inventory_count.started`.
+
+          O saldo esperado pode ser negativo quando a exceção do local permitir; a contagem física continua não negativa.
+
+          ### Registro de linhas
+
+          `set_inventory_count_line` grava `counted_quantity` e custo de ajuste opcional, somente enquanto a sessão está `counting`. Cada alteração é auditada e o command é retry-safe.
+
+          ### Confirmação
+
+          `confirm_inventory_count`:
+
+          1. bloqueia command, sessão, linhas e saldos em ordem determinística;
+          2. exige todas as linhas contadas;
+          3. compara quantidade **e custo médio** atuais com o snapshot;
+          4. qualquer divergência externa gera `INVENTORY_COUNT_STALE` e rollback integral;
+          5. diferença zero não gera movimento;
+          6. diferenças positivas/negativas geram movimentos `inventory_adjustment` separados e auditados;
+          7. ajuste negativo rastreado consome lotes por FEFO;
+          8. ajuste positivo não rastreado sem custo-base exige custo explícito;
+          9. ajuste positivo de item rastreado é bloqueado nesta versão, pois o sistema não inventa lote/validade desconhecidos;
+          10. ao final a sessão vira `confirmed` e fica imutável.
+
+          ### Cancelamento
+
+          `cancel_inventory_count` encerra sessão `counting` sem ajuste, é idempotente/auditado e libera o local para nova contagem. Sessão confirmada não pode ser cancelada.
+
+          ## Concorrência
+
+          Entrada, retirada, transferência e inventário usam row locks/advisory transaction locks no PostgreSQL. A fila in-memory continua apenas como mecanismo de demonstração/teste isolado.
+
+          ## Interfaces persistentes
+
+          - `/workspace/estoque` — saldo, entrada, retirada, lotes;
+          - `/workspace/transferencias` — dispatch/receive;
+          - `/workspace/inventarios` — iniciar, contar, confirmar/cancelar e histórico.
+
+          ## Testes
+
+          O CI cobre migrations/RLS, entrada, retirada, transferências base/multi-lote e inventário físico: snapshot, incompleto, stale, ajuste positivo/negativo, custo, FEFO, idempotência, cancelamento/reabertura, roles, anon e isolamento por Organization.
+          MD
+
+          cat > docs/modules/supabase-runtime.md <<'MD'
+          # Runtime Supabase — persistência, Auth e RLS
+
+          Status: Auth/runtime estabilizados e núcleo de estoque persistente completo.
+
+          ## Sessão e autorização
+
+          - `@supabase/ssr` no browser/server;
+          - `getClaims()` + cookies por request;
+          - memberships por Organization;
+          - secret/admin client somente `server-only`;
+          - operações normais usam JWT do usuário + RLS.
+
+          ## Commands críticos do ledger
+
+          Executáveis somente por `authenticated`, todos revalidando `auth.uid()` + role organizacional:
+
+          - `record_stock_entry`;
+          - `record_stock_withdrawal`;
+          - `dispatch_stock_transfer`;
+          - `receive_stock_transfer`;
+          - `start_inventory_count`;
+          - `set_inventory_count_line`;
+          - `confirm_inventory_count`;
+          - `cancel_inventory_count`.
+
+          `PUBLIC`/`anon` não possuem EXECUTE e clientes não recebem INSERT/UPDATE direto no ledger.
+
+          ## Inventário
+
+          A sessão captura quantidade e custo médio esperados. Confirmação usa locks, rejeita stale, gera ajustes de ledger e nunca materializa lote desconhecido. Cancelamento é explícito e auditado.
+
+          ## Homologação remota
+
+          As migrations da Fase 9 foram aplicadas ao projeto homologado em `sa-east-1`. Entrada, retirada, transferência e inventário foram validados com dados demo em transações `BEGIN/ROLLBACK`; os cenários de teste não deixam usuários/movimentos artificiais.
+
+          ## Advisors
+
+          O Security Advisor reporta os command RPCs `SECURITY DEFINER` executáveis por `authenticated`; isso é intencional porque são a API controlada de mutações críticas, com role/inputs/referências validados. Performance INFO permanece backlog orientado a carga real; não criar índices indiscriminadamente para zerar linter em banco demo.
+          MD
+
+          cat > docs/ai/CURRENT_STATE.md <<'MD'
+          # Current State — Sistema Lojasaph
+
+          Última atualização: 2026-08-17
+
+          ## Estado atual
+
+          Fase 9 — estoque transacional completo no Supabase — concluída tecnicamente no PR #27.
+
+          - Repositório: `synapselab-ia/sistema-lojasaph`
+          - Branch da entrega: `agent/inventory-count-runtime`
+          - PR: #27 — Fase 9C — inventário físico persistente
+          - Issue encerrada pelo merge: #24
+          - Próxima Issue: #28 — Fase 10 — Compras, pedidos e recebimento operacional
+
+          ## Concluído até aqui
+
+          - governança/engenharia reversa/domínio/Next.js;
+          - cadastros base e fornecedores;
+          - PostgreSQL/Supabase + migrations + RLS;
+          - Auth SSR + membership/Organization;
+          - entrada de estoque;
+          - retirada/FEFO;
+          - transferência dispatch/receive parcial/total;
+          - inventário físico persistente.
+
+          ## Inventário persistente
+
+          Migration principal: `20260817232352_persistent_inventory_count.sql`, seguida de migration de cancelamento gerada pelo CLI pinado.
+
+          Implementado:
+
+          - `expected_quantity` + `expected_average_cost` como snapshot;
+          - uma sessão aberta por local;
+          - contagem por linha auditada;
+          - stale detection por quantidade/custo;
+          - ajustes `inventory_adjustment` positivos/negativos;
+          - FEFO para ajuste negativo rastreado;
+          - custo explícito quando positivo sem base anterior;
+          - bloqueio de positivo rastreado sem lote explícito;
+          - confirmação/cancelamento idempotentes;
+          - rota `/workspace/inventarios`.
+
+          ## Validação
+
+          CI reaplica migrations/suites anteriores e os testes de inventário em PostgreSQL 17 limpo. A aplicação passa lint, typecheck, Vitest e build.
+
+          Homologação remota em rollback confirmou snapshot, ajuste negativo rastreado, ajuste positivo com custo, retry, stale, cancelamento/reabertura e bloqueio de positivo rastreado. Dados demo permanecem intactos.
+
+          ## Próxima ação
+
+          Após o merge do PR #27, trabalhar exclusivamente na Issue #28: compras, pedidos e recebimento operacional. Não reabrir estoque/auth sem bug ou requisito novo comprovado.
+          MD
+
+          cat > docs/ai/HANDOFF.md <<'MD'
+          # Handoff — Sistema Lojasaph
+
+          ## Estado
+
+          PR #27 conclui a Issue #24 e a Fase 9. O núcleo de estoque deixa de depender da demonstração in-memory para entrada, retirada, transferência e inventário.
+
+          Próxima frente: Issue #28 — Fase 10 — Compras, pedidos e recebimento operacional.
+
+          ## Não repetir
+
+          - engenharia reversa/modelagem já consolidada;
+          - Auth SSR/membership;
+          - fundação Supabase/RLS;
+          - entrada, retirada, transferência ou inventário já persistidos;
+          - edição direta de saldo;
+          - write direto do cliente no ledger;
+          - criação de lote/validade desconhecidos.
+
+          ## Inventário — regras que devem permanecer
+
+          - snapshot captura quantidade + custo médio;
+          - todas as linhas devem estar contadas;
+          - stale aborta tudo;
+          - diferença zero não gera movimento;
+          - ajuste negativo rastreado consome FEFO;
+          - positivo rastreado sem lote explícito é bloqueado;
+          - positivo sem custo-base exige custo;
+          - confirmed é imutável;
+          - cancelled não cria ajuste e libera o local;
+          - commands são idempotentes e auditados.
+
+          ## Validação
+
+          CI e homologação remota com rollback cobrem os fluxos críticos. Advisors mantêm apenas warnings intencionais dos command RPCs `SECURITY DEFINER` e INFO de performance já conhecido.
+
+          ## Próximo trabalho
+
+          Ler Issue #28, `docs/modules/inventory.md`, fornecedores/catálogo e ADRs relevantes. Compras deve reutilizar o estoque real no recebimento; não duplicar Supplier/SupplierItem nem editar saldo diretamente.
+          MD
+
+          cat > docs/ai/NEXT_ACTION.md <<'MD'
+          # Next Action — Sistema Lojasaph
+
+          ## Contexto
+
+          - PR #27 conclui a Fase 9 e fecha a Issue #24 quando integrado.
+          - Entrada, retirada, transferência e inventário físico já possuem persistência PostgreSQL/Supabase real.
+          - Próxima Issue registrada: #28 — Fase 10 — Compras, pedidos e recebimento operacional.
+
+          ## Fazer agora
+
+          1. Confirmar que o PR #27 foi integrado e a Issue #24 fechou.
+          2. Tornar a Issue #28 a única frente em andamento.
+          3. Criar branch nova a partir da `main`, sugerida `agent/purchases-runtime`.
+          4. Ler AGENTS, START-HERE, CURRENT_STATE, HANDOFF, Issue #28, ADR-002/003/006 e os módulos de fornecedores/estoque.
+          5. Reconciliar o domínio de compras com Supplier/SupplierItem existentes; não duplicar cadastros.
+          6. Modelar `purchase_orders` e itens por Organization/Unit/StockLocation.
+          7. Implementar status mínimos: draft, ordered, partially_received, received, cancelled.
+          8. Implementar commands transacionais/idempotentes para emitir, receber parcial/total e cancelar.
+          9. Recebimento deve gerar entrada de estoque atômica, preservando custo/lote e sem write direto no ledger.
+          10. Atualizar histórico de preço do fornecedor quando apropriado e auditável.
+          11. Criar testes SQL/RLS/concorrência antes da UI.
+          12. Integrar `/workspace/compras` somente depois do banco verde.
+          13. Aplicar/homologar remotamente somente após CI limpo, com dados demo/rollback.
+          14. Atualizar docs/handoff e só então integrar.
+
+          ## Fora do escopo da Fase 10
+
+          - contas a pagar/parcelas/NF;
+          - caixa;
+          - dados reais do cliente;
+          - aprovações avançadas/cotações se não forem necessárias ao primeiro fluxo utilizável.
+
+          ## Regra de eficiência
+
+          Não reabrir estoque/Auth sem evidência de bug ou requisito novo. Reutilizar os commands/invariantes já consolidados e manter migrations do GitHub como fonte de verdade.
+          MD
+
+      - name: Remove one-shot workflow and commit
+        run: |
+          rm -f .github/workflows/one-shot-finalize-inventory-docs.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "docs: conclude persistent inventory phase"
+          git push origin HEAD:agent/inventory-count-runtime
