@@ -97,3 +97,6 @@ jobs:
 
       - name: Run transactional transfer tests
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/stock_transfer.sql
+
+      - name: Run multi-batch transfer tests
+        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/stock_transfer_multibatch.sql
