@@ -2,44 +2,53 @@
 
 ## Contexto
 
-- Fase 5 implementada na branch `agent/inventory-ledger`.
-- PR atual: #16 — estoque transacional com ledger.
-- CI passou `npm ci`, lint, typecheck, testes e build.
-- Próxima Issue: #17 — Lotes, validades e inventário físico.
+- Fase 6 implementada na branch `agent/lots-expiry-inventory-count`.
+- PR atual: #18 — lotes, validades e inventário físico.
+- CI funcional passou `npm ci`, lint, typecheck, testes e build.
+- Próxima Issue: #19 — Persistência PostgreSQL/Supabase e segurança base.
 
 ## Objetivo atual
 
-Integrar o ledger básico e estender o estoque para lote/validade e inventário físico antes da decisão de persistência real.
+Integrar a Fase 6 e introduzir schema/migrations reais, mantendo domínio/UI desacoplados do provedor.
 
 ## Fazer agora
 
-1. Integrar o PR #16 na `main` e encerrar a Issue #15.
-2. Criar branch dedicada à Issue #17 a partir da `main` atualizada.
-3. Implementar InventoryBatch associado a item + local, com custo, lote e validade.
-4. Permitir entrada com lote/validade opcional quando o item exigir rastreamento.
-5. Manter quantidade remanescente do lote coerente com movimentos alocados.
-6. Exibir alertas de vencido e janelas 7/15/30 dias.
-7. Implementar sugestão FEFO, sem tornar a automação obrigatória ainda.
-8. Implementar InventoryCount com snapshot de saldo esperado por local.
-9. Registrar contagens e confirmar inventário gerando movimentos de ajuste positivos/negativos.
-10. Nunca sobrescrever saldo diretamente durante inventário.
-11. Integrar lotes, alertas e inventários à UI demo.
-12. Criar testes para validade, lote, consumo, FEFO e ajustes de contagem.
-13. Rodar CI e corrigir falhas.
-14. Atualizar CURRENT_STATE, HANDOFF e NEXT_ACTION.
+1. Confirmar o CI final do PR #18.
+2. Integrar o PR #18 na `main` e encerrar a Issue #17.
+3. Criar branch dedicada à Issue #19 a partir da `main` atualizada.
+4. Registrar ADR: PostgreSQL como modelo físico e Supabase como provedor hospedado inicial preferido/revisável.
+5. Criar estrutura `supabase/` versionada no GitHub.
+6. Criar migrations iniciais para:
+   - Organization, Business, Unit, Sector e StockLocation;
+   - usuários/membership/escopos mínimos;
+   - categorias, unidades de medida e StockItem;
+   - fornecedores, contatos, SupplierItem e histórico de preços;
+   - StockMovement, itens de movimento, InventoryBalance, InventoryBatch, Transfer e InventoryCount.
+7. Usar tipos exatos para dinheiro e quantidade e constraints para invariantes estruturais.
+8. Habilitar RLS nas tabelas expostas e criar políticas por Organization/membership.
+9. Não liberar acesso anônimo aos dados operacionais.
+10. Criar seed somente com dados demo anonimizados.
+11. Adicionar validação de schema/migrations em CI quando possível sem credenciais remotas.
+12. Documentar `.env.example` e fluxo local/remoto sem inserir segredos.
+13. Começar adapters reais por cadastros/estoque, mantendo adapters in-memory para testes.
+14. Atualizar CURRENT_STATE, HANDOFF e NEXT_ACTION ao concluir a etapa alcançável sem projeto remoto.
 
 ## Não fazer ainda
 
-- Não criar Supabase.
 - Não migrar dados reais.
-- Não implementar compras/financeiro/caixa completos.
-- Não criar autenticação real.
-- Não forçar FEFO sem necessidade operacional confirmada.
+- Não colocar service role key, senha ou URL secreta no GitHub.
+- Não expor tabelas operacionais sem RLS.
+- Não implementar financeiro/caixa completos antes da persistência base estar estável.
+- Não remover repositories/adapters para chamar Supabase diretamente da UI.
 
 ## Critério de conclusão
 
-O workspace deve registrar lotes/validades, sinalizar vencimentos e executar um inventário físico que gere ajustes rastreáveis no ledger, com CI passando.
+O schema deve ser reproduzível por migrations, proteger dados por escopo organizacional e permitir que os fluxos já existentes tenham adapters de persistência real sem alterar o domínio.
+
+## Dependência externa
+
+A criação/ligação de um projeto Supabase remoto pode ficar para um passo posterior se não houver conexão segura disponível. Isso não bloqueia schema, migrations, políticas e testes locais/versionados.
 
 ## Regra estrutural
 
-Validade pertence ao lote/quantidade/local, nunca ao produto mestre. Inventário confirmado gera movimentos; saldo continua derivado.
+GitHub permanece a fonte de verdade do schema e das migrations. O Dashboard remoto não deve ser a única fonte de uma alteração de banco.
