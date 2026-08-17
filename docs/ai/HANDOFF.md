@@ -4,100 +4,122 @@ Este arquivo registra o contexto necessário para outro chat continuar sem depen
 
 ## Estado
 
-A Fase 7 / Issue #19 está tecnicamente implementada na branch `agent/supabase-adapters` e precisa apenas passar pelo PR/CI final e merge.
-
-A próxima Issue já criada é #21 — Fase 8 — Autenticação real e runtime Supabase.
+A Fase 8 / Issue #21 foi implementada no PR #23 (`agent/auth-runtime`). Após o merge, a próxima frente é a Issue #24 — Fase 9 — estoque transacional completo no Supabase.
 
 ## Não repetir
 
-- não refazer engenharia reversa ou modelagem já consolidada;
-- não reabrir ADRs sem evidência concreta;
+- não refazer engenharia reversa/modelagem consolidada;
+- não recriar o projeto Supabase;
+- não reimplementar Auth SSR/login/recovery/membership da Fase 8;
 - não editar saldo diretamente;
-- não remover RLS para facilitar integração;
-- não conceder write direto de cliente no ledger;
-- não expor `SUPABASE_SECRET_KEY` no browser;
-- não usar secret/admin client em operação normal quando JWT + RLS resolvem;
-- não colocar dados reais do cliente no seed/demo;
-- não recriar projeto Supabase: já existe projeto remoto homologado e com schema aplicado.
+- não remover RLS;
+- não conceder write direto no ledger;
+- não usar secret/admin client em operações normais de usuário;
+- não autorizar por `user_metadata`;
+- não misturar no workspace real fluxos que continuam in-memory;
+- não migrar dados reais do cliente antes da homologação planejada.
 
 ## O sistema já possui
 
 - Next.js/React/TypeScript strict, Tailwind, Vitest e CI;
-- multi-negócio/multi-unidade;
-- produtos, fornecedores e preços;
-- ledger de estoque, custo médio e transferências;
-- lotes/validade/FEFO;
-- inventário físico;
+- domínio multi-negócio/multi-unidade;
+- produtos, fornecedores, ledger, custo médio, transferências, lotes/FEFO e inventário no domínio;
 - schema PostgreSQL/Supabase versionado;
+- projeto remoto homologado em `sa-east-1`;
 - RLS por membership organizacional;
-- seed anonimizado;
-- CI PostgreSQL efêmero;
-- projeto Supabase remoto em `sa-east-1` com migrations aplicadas;
-- factories Supabase browser/server;
-- adapters Supabase para StockItem e Supplier;
-- primeiro gateway transacional real de entrada de estoque.
+- seed anonimizado e CI PostgreSQL efêmero;
+- `record_stock_entry` transacional/idempotente;
+- Auth SSR com `@supabase/ssr`;
+- login/logout/recuperação/callback;
+- resolução de memberships/Organizations;
+- seleção multi-Organization com cookie httpOnly revalidado;
+- bootstrap inicial de owner server-only e auditado;
+- workspace persistente para produtos, fornecedores e entrada de estoque;
+- workspace demo separado para os movimentos ainda não persistidos.
 
-## Segurança Supabase
+## Segurança Auth/Supabase
 
-Membership privilegiado:
+- browser usa somente publishable key;
+- server client normal usa sessão/JWT do usuário e RLS;
+- admin client importa `server-only` e usa `SUPABASE_SECRET_KEY` apenas em bootstrap administrativo;
+- Proxy chama `getClaims()` para refresh/verificação e copia cookies + headers anti-cache;
+- páginas protegidas resolvem acesso a partir de claims + `organization_memberships`;
+- cookie de Organization nunca é aceito sem revalidação do membership;
+- usuário sem membership recebe `/sem-acesso`;
+- `record_stock_entry` continua a única mutação real de estoque disponível no workspace persistente;
+- o RPC `SECURITY DEFINER` é warning conhecido/aceito e valida `auth.uid()` + role + inputs;
+- helpers privilegiados de membership continuam em schema `private`.
 
-- lógica `SECURITY DEFINER` vive no schema `private`;
-- wrappers `public.is_org_member` e `public.has_org_role` são `SECURITY INVOKER`;
-- `anon` não recebe execução das helpers;
-- RLS continua a fronteira para consultas e cadastros.
+## Bootstrap
 
-`public.record_stock_entry` é uma exceção intencional `SECURITY DEFINER` exposta apenas a `authenticated`, porque precisa atualizar atomicamente tabelas que o usuário não pode escrever diretamente. A função valida `auth.uid()`, role organizacional, item/local, quantidade/custo e idempotência antes dos writes.
+Variáveis server-only:
 
-Não mover writes do ledger para chamadas `.from(...).insert()` no browser.
+- `LOJASAPH_BOOTSTRAP_OWNER_EMAIL`;
+- `LOJASAPH_BOOTSTRAP_ORGANIZATION_ID` quando necessário;
+- `SUPABASE_SECRET_KEY`.
 
-## Validação remota concluída
+A rotina:
 
-- migrations aplicadas no projeto remoto;
-- Security Advisor sem findings inesperados;
-- warning restante do RPC transacional é intencional/documentado;
-- seed demo carregado;
-- teste real do RPC em transação com rollback passou;
-- entrada 100@2,10 + 10@3,00 resultou em 110@2,18;
-- retry com mesmo command_id não duplicou movimento/lote/audit.
+1. exige usuário Auth válido;
+2. compara e-mail com allowlist;
+3. verifica owner existente;
+4. cria membership `owner` somente se seguro;
+5. grava audit log;
+6. compensa removendo o membership se audit falhar.
 
-## Arquivos novos/relevantes
+Remover/desabilitar as variáveis de bootstrap depois do primeiro owner.
 
-- `src/lib/supabase/env.ts`
-- `src/lib/supabase/browser.ts`
-- `src/lib/supabase/server.ts`
-- `src/modules/catalog/adapters/supabase-stock-item-repository.ts`
-- `src/modules/suppliers/adapters/supabase-supplier-repository.ts`
-- `src/modules/inventory/adapters/supabase-stock-entry-gateway.ts`
-- `docs/modules/supabase-runtime.md`
-- `supabase/migrations/*_private_membership_helpers.sql`
-- `supabase/migrations/*_transactional_stock_entry.sql`
+## Workspace persistente
 
-## Próxima fase — Issue #21
+Rotas principais:
 
-Implementar Auth/sessão real e ligar a UI aos adapters remotos:
+- `/login`;
+- `/recuperar-senha`;
+- `/auth/callback`;
+- `/bootstrap`;
+- `/workspace`;
+- `/workspace/produtos`;
+- `/workspace/fornecedores`;
+- `/workspace/estoque`;
+- `/workspace/selecionar-organizacao`;
+- `/sem-acesso`.
 
-1. login/logout e recuperação mínima;
-2. sessão server-side no Next.js;
-3. proteção de rotas;
-4. resolução de `organization_memberships` após login;
-5. onboarding inicial de membership por rotina server-only;
-6. composição dos repositories/gateways com cliente autenticado RLS;
-7. workspace autenticado usa persistência real por padrão;
-8. usuário sem membership recebe estado explícito e não vê dados;
-9. testes de isolamento e roles;
-10. manter adapters in-memory para unit tests.
+`/workspace` persiste produtos, fornecedores/contatos e entrada. `/cadastros` segue sendo demo para retirada, transferência, FEFO e inventário.
 
-## Antes de iniciar #21
+## Validação da Fase 8
 
-- abrir PR de `agent/supabase-adapters`;
-- confirmar CI completo;
-- mergear;
-- encerrar Issue #19;
-- criar branch nova a partir da `main`.
+PR #23:
+
+- banco: migrations + seed + smoke RLS/RPC + novos testes de roles/Organization passaram;
+- aplicação: lint, typecheck, Vitest e build passaram após uma correção estreita de narrowing de claims;
+- tests de roles confirmam `inventory`, `viewer`, `purchases`, outsider, cross-Organization e anon;
+- test unitário confirma bloqueio de open redirects.
+
+## Configuração ainda necessária por ambiente
+
+- preencher URL/publishable key/secret nos ambientes apropriados, nunca no GitHub;
+- definir `NEXT_PUBLIC_APP_URL`;
+- cadastrar o callback/redirect de recuperação na allowlist de URLs do Supabase do ambiente;
+- provisionar a primeira conta Auth administrativamente antes do bootstrap do membership.
+
+Esses itens são configuração de ambiente/deploy; não enfraquecer o código para contorná-los.
+
+## Próxima fase — Issue #24
+
+Objetivo: levar retirada/FEFO, transferência e inventário para PostgreSQL transacional e então remover a dependência do workspace demo para os fluxos principais de estoque.
+
+Ordem recomendada:
+
+1. retirada persistente com FEFO e lote preferido;
+2. idempotência + lock de saldo/lotes + audit;
+3. leitura real de lotes/movimentos;
+4. transferência com expedição/recebimento preservando custo/lote/validade;
+5. inventário físico com snapshot, stale detection e ajuste transacional;
+6. integrar cada fluxo ao workspace real somente depois do respectivo comando estar testado.
 
 ## Regra de eficiência
 
-Continuar automaticamente enquanto houver trabalho seguro/reversível. Perguntar ao usuário somente diante de custo, credencial externa inevitável ou decisão de negócio estrutural.
+Continuar automaticamente enquanto houver trabalho seguro/reversível. Pedir decisão do usuário somente diante de custo, credencial externa inevitável ou decisão de negócio estrutural ainda aberta.
 
 ## Próxima ação
 
