@@ -2,33 +2,37 @@
 
 ## Contexto
 
-- Issue em andamento: #6 — Validação P0 — estrutura do negócio e regras críticas
-- Branch: `agent/business-validation`
+- Fase 1 concluída e integrada.
+- Validação P0 resolvida para fins de arquitetura por defaults profissionais/revisáveis em `docs/decisions/ADR-001-organizational-and-p0-defaults.md`.
+- Issue seguinte: #8 — Fase 2 — Modelo de domínio, dados e ADRs fundamentais.
 
 ## Objetivo atual
 
-Validar as questões críticas P0 antes de transformar o modelo preliminar em modelo de domínio/schema definitivo.
+Executar a Fase 2 e transformar a documentação das planilhas em um modelo de domínio e dados lógico consolidado, ainda independente de Supabase.
 
 ## Fazer agora
 
-1. Ler `docs/product/open-questions.md`.
-2. Validar Q-001 a Q-008 com o usuário/cliente, preferencialmente uma pergunta por vez ou em pequenos blocos.
-3. Para cada resposta confirmada, atualizar `docs/product/business-rules.md` e marcar/remover a questão correspondente de `open-questions.md`.
-4. Atualizar `docs/architecture/preliminary-domain-model.md` quando a resposta alterar entidades ou relações.
-5. Quando Q-001 a Q-008 estiverem suficientemente resolvidas, encerrar a Issue #6 e criar a Issue da Fase 2 para formalizar modelo de dados e ADRs.
-6. Atualizar `CURRENT_STATE.md`, `HANDOFF.md` e este arquivo.
+1. Criar uma branch dedicada para a Issue #8 a partir da `main` atualizada.
+2. Ler `ADR-001`, `business-rules.md`, `requirements.md` e `preliminary-domain-model.md`.
+3. Formalizar a hierarquia `Organization → Business → Unit → Sector/StockLocation`.
+4. Consolidar entidades, relações, cardinalidades, estados e invariantes dos módulos de catálogo, estoque, fornecedores, financeiro e caixa.
+5. Criar um ERD/modelo lógico documentado.
+6. Registrar ADRs adicionais para saldo de estoque, custeio e demais decisões estruturais.
+7. Tratar Q-001 a Q-008 como defaults revisáveis: só reabrir se surgir evidência concreta do cliente que contradiga o ADR.
+8. Atualizar `CURRENT_STATE.md`, `HANDOFF.md` e este arquivo ao concluir a etapa.
 
 ## Não fazer ainda
 
 - Não criar Supabase.
+- Não criar migrations de produção.
 - Não implementar telas funcionais.
 - Não migrar dados reais.
-- Não inventar respostas para perguntas do negócio.
+- Não implementar PDV completo.
 
-## Primeira pergunta a fazer
+## Regra de eficiência
 
-**Q-001 — Tabatinga, Capricórnio e Barba Negra são lojas/unidades da mesma empresa, empresas diferentes, locais de estoque ou outra coisa?**
+Quando uma dúvida puder ser resolvida com default profissional, configurável e reversível, não bloquear o projeto. Pedir validação ao usuário apenas quando uma escolha errada puder provocar retrabalho estrutural relevante.
 
 ## Critério de conclusão
 
-As questões P0 necessárias ao modelo inicial estão respondidas e documentadas, permitindo iniciar a Fase 2 sem decisões estruturais baseadas em suposição.
+A Fase 2 termina quando existir um modelo lógico coerente e rastreável, suficiente para iniciar a fundação técnica da aplicação e avaliar o banco sem usar as planilhas como especificação direta.

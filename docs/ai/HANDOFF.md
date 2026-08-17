@@ -4,44 +4,54 @@ Este arquivo registra contexto operacional para o próximo chat. `CURRENT_STATE.
 
 ## Estado do handoff
 
-Fase 1 analisada na Issue #4 / branch `agent/spreadsheet-analysis`.
+Fase 1 concluída. Validação P0 convertida em defaults profissionais/revisáveis para liberar a Fase 2.
 
 ## Contexto que não pode ser perdido
 
 As seis planilhas já foram analisadas. Não reiniciar a engenharia reversa do zero salvo se surgirem novos arquivos ou houver necessidade específica de verificação.
 
-Antes do schema definitivo existem questões críticas em `docs/product/open-questions.md`.
+O usuário autorizou adotar a interpretação mais provável quando a solução puder permanecer configurável e reversível. Não transformar essas interpretações em afirmações jurídicas/fiscais sobre o cliente; tratá-las como defaults de projeto.
 
-As principais são:
+## Decisão organizacional atual
 
-- natureza organizacional de Tabatinga, Capricórnio e Barba Negra;
-- se Cozinha/Quiosque/Empório são setores ou operações independentes;
-- significado do checkbox sem título nas transferências;
-- significado financeiro de `em haver`;
-- diferença entre transferência e empréstimo;
-- natureza do `Gabarito` versus itens de estoque;
-- escopo de vendas/PDV;
-- método desejado de custeio de estoque.
+Consultar `docs/decisions/ADR-001-organizational-and-p0-defaults.md`.
 
-## Descobertas arquiteturalmente importantes
+Hierarquia adotada:
 
-- não modelar planilhas mensais como tabelas mensais;
-- não unificar `Gabarito` com estoque automaticamente;
-- não tratar devolução como registro isolado sem possibilidade de vínculo;
-- não hardcodar Tabatinga/Capricórnio;
-- não usar status financeiro das células como fonte primária;
-- não importar dashboards/abas auxiliares como tabelas transacionais;
-- não criar Supabase antes da validação/modelagem;
-- lote/validade deve ser separado do cadastro mestre do item.
+```text
+Organization / Grupo
+  └── Business / Negócio ou marca
+      └── Unit / Unidade
+          ├── Sector / Setor
+          └── StockLocation / Local de estoque
+```
 
-## Próxima ação
+Tabatinga, Capricórnio e Barba Negra entram inicialmente como unidades/operações do mesmo grupo. A associação a marcas/negócios e entidades jurídicas deve permanecer configurável.
 
-Executar `docs/ai/NEXT_ACTION.md`.
+## Outros defaults P0
+
+- Cozinha/Quiosque/Empório: setores operacionais por default;
+- checkbox legado desconhecido: não usar em regra central; preservar origem se possível;
+- `em haver`: indicador de conciliação interna separado do estoque físico;
+- transferência e empréstimo: processos distintos;
+- catálogo de venda e item de estoque: conceitos separados;
+- MVP do caixa: totais consolidados, integração com PDV/POS futura;
+- custeio gerencial: custo médio ponderado, preservando custo de compra/lote.
+
+## Próxima fase
+
+Issue #8 — Fase 2 — Modelo de domínio, dados e ADRs fundamentais.
+
+A Fase 2 deve produzir o modelo lógico/ERD e invariantes antes de qualquer escolha definitiva de Supabase ou implementação de banco.
 
 ## Segurança
 
 Os arquivos Excel reais não foram adicionados ao repositório. A documentação registra estruturas, regras e problemas sem publicar os dados operacionais completos.
 
-## Regra
+## Regra de eficiência
 
-Se documentação e GitHub real divergirem, conferir primeiro Issue, PR, branch e arquivos atuais; corrigir o estado documental antes de seguir.
+Não bloquear o projeto por perguntas que possam ser resolvidas com defaults configuráveis. Pedir validação do usuário apenas quando a escolha tiver potencial de retrabalho estrutural relevante.
+
+## Próxima ação
+
+Executar `docs/ai/NEXT_ACTION.md`.
