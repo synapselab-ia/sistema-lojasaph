@@ -4,21 +4,21 @@
 
 ## Fase atual
 
-Fase 0 — Fundação e governança do projeto, pronta para revisão e integração.
+Fase 0 — Fundação e governança do projeto: concluída e integrada à `main`.
 
-## Issue em andamento
+Próxima fase: Fase 1 — engenharia reversa das planilhas de origem.
 
-#1 — Fase 0 — Fundação e governança do projeto.
+## Estado do GitHub
 
-## Branch atual
+- Repositório: `synapselab-ia/sistema-lojasaph`
+- Branch principal: `main`
+- Fase 0 integrada por Pull Request.
+- Não existe aplicação/toolchain de código ainda.
 
-`agent/project-foundation`
-
-## Concluído nesta fase
+## Concluído
 
 - Repositório privado criado no GitHub.
-- Issue #1 criada para a fundação.
-- Branch de trabalho criada.
+- Governança inicial criada.
 - `AGENTS.md` criado para orientar novos chats/agentes.
 - `docs/00-START-HERE.md` criado como ponto de entrada.
 - visão do produto documentada;
@@ -27,14 +27,15 @@ Fase 0 — Fundação e governança do projeto, pronta para revisão e integraç
 - arquitetura inicial documentada;
 - workflow para múltiplos chats criado;
 - handoff criado;
+- protocolo `NEXT_ACTION.md` adotado;
 - seis planilhas de origem registradas;
 - README atualizado para orientar continuidade.
 
-## Validação desta fase
+## Validação
 
-Não há aplicação nem toolchain de código ainda, portanto lint, typecheck, testes e build ainda não existem para executar.
+Ainda não há aplicação nem toolchain, portanto lint, typecheck, testes e build ainda não existem para executar.
 
-A validação da Fase 0 consiste em verificar que um novo chat consegue localizar a documentação, entender o objetivo, recuperar o estado atual e identificar o próximo passo sem depender do histórico da conversa anterior.
+A fundação é considerada válida quando um novo chat consegue localizar a documentação, entender o objetivo, recuperar o estado atual e identificar uma próxima ação concreta sem depender de conversas anteriores.
 
 ## Ainda não iniciado
 
@@ -55,11 +56,12 @@ A validação da Fase 0 consiste em verificar que um novo chat consegue localiza
 5. O domínio e o modelo de dados serão definidos antes da decisão definitiva sobre Supabase.
 6. O sistema deve nascer preparado para múltiplas unidades e permissões por escopo.
 7. Dados operacionais reais das planilhas não devem ser enviados ao repositório automaticamente; preferir documentação e fixtures anonimizadas.
+8. Todo ciclo relevante deve terminar com `CURRENT_STATE.md`, `HANDOFF.md` e `NEXT_ACTION.md` coerentes com o estado real do GitHub.
 
-## Próximo passo após integração da Fase 0
+## Próxima ação
 
-Executar a Fase 1: engenharia reversa completa das seis planilhas de origem e transformar campos, fórmulas, relações e fluxos em requisitos e regras de negócio documentadas.
+Consulte `docs/ai/NEXT_ACTION.md`.
 
 ## Regra para o próximo chat
 
-Antes de qualquer trabalho, ler `AGENTS.md`, `docs/00-START-HERE.md`, este arquivo e `docs/ai/WORKFLOW.md`.
+Antes de qualquer trabalho, ler `AGENTS.md`, `docs/00-START-HERE.md`, este arquivo, `docs/ai/HANDOFF.md`, `docs/ai/NEXT_ACTION.md` e `docs/ai/WORKFLOW.md`; depois conferir Issue, branch e estado real do repositório.
