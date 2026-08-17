@@ -12,6 +12,7 @@ import {
   updateStockItem,
 } from "@/modules/catalog/domain/stock-item";
 import { SupabaseStockEntryGateway } from "@/modules/inventory/adapters/supabase-stock-entry-gateway";
+import { SupabaseStockTransferGateway } from "@/modules/inventory/adapters/supabase-stock-transfer-gateway";
 import { SupabaseStockWithdrawalGateway } from "@/modules/inventory/adapters/supabase-stock-withdrawal-gateway";
 import { InventoryBalance, InventoryBatch } from "@/modules/inventory/domain/inventory";
 import { SupabaseSupplierRepository } from "@/modules/suppliers/adapters/supabase-supplier-repository";
@@ -24,6 +25,7 @@ import {
 import {
   RuntimeCategory,
   RuntimeStockLocation,
+  RuntimeStockTransfer,
   RuntimeUnitOfMeasure,
   WorkspaceReferenceData,
   loadWorkspaceReferenceData,
@@ -57,6 +59,7 @@ interface RuntimePermissions {
   readonly manageSuppliers: boolean;
   readonly recordStockEntry: boolean;
   readonly recordStockWithdrawal: boolean;
+  readonly manageStockTransfers: boolean;
 }
 
 interface RuntimeWorkspaceValue {
@@ -69,6 +72,7 @@ interface RuntimeWorkspaceValue {
   readonly suppliers: readonly Supplier[];
   readonly balances: readonly InventoryBalance[];
   readonly batches: readonly InventoryBatch[];
+  readonly transfers: readonly RuntimeStockTransfer[];
   readonly permissions: RuntimePermissions;
   createStockItem(input: StockItemDraft): Promise<void>;
   updateStockItem(id: EntityId, input: StockItemDraft): Promise<void>;
@@ -89,6 +93,18 @@ interface RuntimeWorkspaceValue {
     quantity: string;
     preferredBatchId?: EntityId;
     notes?: string;
+  }): Promise<void>;
+  dispatchTransfer(input: {
+    stockItemId: EntityId;
+    sourceLocationId: EntityId;
+    destinationLocationId: EntityId;
+    quantity: string;
+    preferredBatchId?: EntityId;
+    notes?: string;
+  }): Promise<void>;
+  receiveTransfer(input: {
+    transferId: EntityId;
+    quantity?: string;
   }): Promise<void>;
   errorMessage(error: unknown): string;
 }
@@ -118,6 +134,7 @@ export function RuntimeWorkspaceProvider({
   const suppliersRepository = useMemo(() => new SupabaseSupplierRepository(client), [client]);
   const stockEntryGateway = useMemo(() => new SupabaseStockEntryGateway(client), [client]);
   const stockWithdrawalGateway = useMemo(() => new SupabaseStockWithdrawalGateway(client), [client]);
+  const stockTransferGateway = useMemo(() => new SupabaseStockTransferGateway(client), [client]);
 
   const [stockItems, setStockItems] = useState<readonly StockItem[]>(initialData.stockItems);
   const [suppliers, setSuppliers] = useState<readonly Supplier[]>(initialData.suppliers);
@@ -128,6 +145,7 @@ export function RuntimeWorkspaceProvider({
     manageSuppliers: can(roles, ["owner", "admin", "manager", "purchases"]),
     recordStockEntry: can(roles, ["owner", "admin", "manager", "inventory"]),
     recordStockWithdrawal: can(roles, ["owner", "admin", "manager", "inventory"]),
+    manageStockTransfers: can(roles, ["owner", "admin", "manager", "inventory"]),
   };
 
   async function refresh() {
@@ -196,6 +214,25 @@ export function RuntimeWorkspaceProvider({
     await refresh();
   }
 
+  async function dispatchTransfer(input: {
+    stockItemId: EntityId;
+    sourceLocationId: EntityId;
+    destinationLocationId: EntityId;
+    quantity: string;
+    preferredBatchId?: EntityId;
+    notes?: string;
+  }) {
+    if (!permissions.manageStockTransfers) throw new DomainError("INSUFFICIENT_ROLE", "Seu perfil não pode expedir transferências.");
+    await stockTransferGateway.dispatch({ organizationId, ...input });
+    await refresh();
+  }
+
+  async function receiveTransfer(input: { transferId: EntityId; quantity?: string }) {
+    if (!permissions.manageStockTransfers) throw new DomainError("INSUFFICIENT_ROLE", "Seu perfil não pode receber transferências.");
+    await stockTransferGateway.receive({ organizationId, ...input });
+    await refresh();
+  }
+
   const value: RuntimeWorkspaceValue = {
     organizationId,
     organizationName,
@@ -206,6 +243,7 @@ export function RuntimeWorkspaceProvider({
     suppliers,
     balances: referenceData.balances,
     batches: referenceData.batches,
+    transfers: referenceData.transfers,
     permissions,
     createStockItem: createItem,
     updateStockItem: editItem,
@@ -213,6 +251,8 @@ export function RuntimeWorkspaceProvider({
     updateSupplier: editSupplier,
     recordEntry,
     recordWithdrawal,
+    dispatchTransfer,
+    receiveTransfer,
     errorMessage(error) {
       if (error instanceof DomainError) return error.message;
       if (error instanceof Error) return error.message;
