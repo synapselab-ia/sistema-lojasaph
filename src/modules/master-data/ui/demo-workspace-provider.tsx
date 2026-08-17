@@ -6,11 +6,24 @@ import { EntityId } from "@/domain/common/entity-id";
 import { InMemoryStockItemRepository } from "@/modules/catalog/adapters/in-memory-stock-item-repository";
 import { StockItem, StockItemType } from "@/modules/catalog/domain/stock-item";
 import { InMemoryInventoryBalanceRepository } from "@/modules/inventory/adapters/in-memory-inventory-balance-repository";
+import { InMemoryInventoryBatchRepository } from "@/modules/inventory/adapters/in-memory-inventory-batch-repository";
+import { InMemoryInventoryCountRepository } from "@/modules/inventory/adapters/in-memory-inventory-count-repository";
 import { InMemoryStockMovementRepository } from "@/modules/inventory/adapters/in-memory-stock-movement-repository";
 import { InMemoryStockTransferRepository } from "@/modules/inventory/adapters/in-memory-stock-transfer-repository";
 import { InventoryService } from "@/modules/inventory/application/inventory-service";
-import { InventoryBalance, StockMovement, StockTransfer } from "@/modules/inventory/domain/inventory";
-import { DEMO_USER_ID, demoInventoryBalances, demoInventoryMovements } from "@/modules/inventory/fixtures/demo-inventory-data";
+import {
+  InventoryBalance,
+  InventoryBatch,
+  InventoryCount,
+  StockMovement,
+  StockTransfer,
+} from "@/modules/inventory/domain/inventory";
+import {
+  DEMO_USER_ID,
+  demoInventoryBalances,
+  demoInventoryBatches,
+  demoInventoryMovements,
+} from "@/modules/inventory/fixtures/demo-inventory-data";
 import { InMemorySupplierItemOfferRepository } from "@/modules/suppliers/adapters/in-memory-supplier-item-offer-repository";
 import { InMemorySupplierRepository } from "@/modules/suppliers/adapters/in-memory-supplier-repository";
 import { Supplier, SupplierContactInput } from "@/modules/suppliers/domain/supplier";
@@ -62,15 +75,41 @@ interface DemoWorkspaceValue {
   balances: readonly InventoryBalance[];
   movements: readonly StockMovement[];
   transfers: readonly StockTransfer[];
+  batches: readonly InventoryBatch[];
+  inventoryCounts: readonly InventoryCount[];
   createStockItem(input: StockItemDraft): Promise<void>;
   updateStockItem(id: EntityId, input: StockItemDraft): Promise<void>;
   createSupplier(input: SupplierDraft): Promise<void>;
   updateSupplier(id: EntityId, input: SupplierDraft): Promise<void>;
   createOffer(input: { supplierId: EntityId; stockItemId: EntityId; unitPrice: string }): Promise<void>;
-  recordEntry(input: { stockItemId: EntityId; stockLocationId: EntityId; quantity: string; unitCost: string; notes?: string }): Promise<void>;
-  withdraw(input: { stockItemId: EntityId; stockLocationId: EntityId; quantity: string; notes?: string }): Promise<void>;
-  dispatchTransfer(input: { stockItemId: EntityId; sourceLocationId: EntityId; destinationLocationId: EntityId; quantity: string; notes?: string }): Promise<void>;
+  recordEntry(input: {
+    stockItemId: EntityId;
+    stockLocationId: EntityId;
+    quantity: string;
+    unitCost: string;
+    batchCode?: string;
+    expirationDate?: string;
+    notes?: string;
+  }): Promise<void>;
+  withdraw(input: {
+    stockItemId: EntityId;
+    stockLocationId: EntityId;
+    quantity: string;
+    preferredBatchId?: EntityId;
+    notes?: string;
+  }): Promise<void>;
+  dispatchTransfer(input: {
+    stockItemId: EntityId;
+    sourceLocationId: EntityId;
+    destinationLocationId: EntityId;
+    quantity: string;
+    preferredBatchId?: EntityId;
+    notes?: string;
+  }): Promise<void>;
   receiveTransfer(transferId: EntityId, quantity?: string): Promise<void>;
+  startInventoryCount(stockLocationId: EntityId): Promise<void>;
+  setInventoryCountLine(countId: EntityId, stockItemId: EntityId, countedQuantity: string): Promise<void>;
+  confirmInventoryCount(countId: EntityId): Promise<void>;
   errorMessage(error: unknown): string;
 }
 
@@ -90,6 +129,8 @@ export function DemoWorkspaceProvider({ children }: { children: ReactNode }) {
         new InMemoryInventoryBalanceRepository(demoInventoryBalances),
         new InMemoryStockMovementRepository(demoInventoryMovements),
         new InMemoryStockTransferRepository(),
+        new InMemoryInventoryBatchRepository(demoInventoryBatches),
+        new InMemoryInventoryCountRepository(),
       ),
     };
   });
@@ -100,6 +141,8 @@ export function DemoWorkspaceProvider({ children }: { children: ReactNode }) {
   const [balances, setBalances] = useState<readonly InventoryBalance[]>(demoInventoryBalances);
   const [movements, setMovements] = useState<readonly StockMovement[]>(demoInventoryMovements);
   const [transfers, setTransfers] = useState<readonly StockTransfer[]>([]);
+  const [batches, setBatches] = useState<readonly InventoryBatch[]>(demoInventoryBatches);
+  const [inventoryCounts, setInventoryCounts] = useState<readonly InventoryCount[]>([]);
 
   const stockLocations: readonly StockLocationOption[] = demoStructure.businesses.flatMap((business) =>
     business.units.flatMap((unit) =>
@@ -119,14 +162,18 @@ export function DemoWorkspaceProvider({ children }: { children: ReactNode }) {
   }
 
   async function refreshInventory() {
-    const [nextBalances, nextMovements, nextTransfers] = await Promise.all([
+    const [nextBalances, nextMovements, nextTransfers, nextBatches, nextCounts] = await Promise.all([
       services.inventory.listBalances(),
       services.inventory.listMovements(),
       services.inventory.listTransfers(),
+      services.inventory.listBatches(),
+      services.inventory.listInventoryCounts(),
     ]);
     setBalances(nextBalances);
     setMovements(nextMovements);
     setTransfers(nextTransfers);
+    setBatches(nextBatches);
+    setInventoryCounts(nextCounts);
   }
 
   async function createItem(input: StockItemDraft) {
@@ -154,23 +201,75 @@ export function DemoWorkspaceProvider({ children }: { children: ReactNode }) {
     await refreshMasterData();
   }
 
-  async function recordEntry(input: { stockItemId: EntityId; stockLocationId: EntityId; quantity: string; unitCost: string; notes?: string }) {
-    await services.inventory.recordEntry({ organizationId: DEMO_ORGANIZATION_ID, responsibleUserId: DEMO_USER_ID, ...input });
+  async function recordEntry(input: {
+    stockItemId: EntityId;
+    stockLocationId: EntityId;
+    quantity: string;
+    unitCost: string;
+    batchCode?: string;
+    expirationDate?: string;
+    notes?: string;
+  }) {
+    await services.inventory.recordEntry({
+      organizationId: DEMO_ORGANIZATION_ID,
+      responsibleUserId: DEMO_USER_ID,
+      ...input,
+    });
     await refreshInventory();
   }
 
-  async function withdraw(input: { stockItemId: EntityId; stockLocationId: EntityId; quantity: string; notes?: string }) {
-    await services.inventory.withdraw({ organizationId: DEMO_ORGANIZATION_ID, responsibleUserId: DEMO_USER_ID, ...input });
+  async function withdraw(input: {
+    stockItemId: EntityId;
+    stockLocationId: EntityId;
+    quantity: string;
+    preferredBatchId?: EntityId;
+    notes?: string;
+  }) {
+    await services.inventory.withdraw({
+      organizationId: DEMO_ORGANIZATION_ID,
+      responsibleUserId: DEMO_USER_ID,
+      ...input,
+    });
     await refreshInventory();
   }
 
-  async function dispatchTransfer(input: { stockItemId: EntityId; sourceLocationId: EntityId; destinationLocationId: EntityId; quantity: string; notes?: string }) {
-    await services.inventory.dispatchTransfer({ organizationId: DEMO_ORGANIZATION_ID, responsibleUserId: DEMO_USER_ID, ...input });
+  async function dispatchTransfer(input: {
+    stockItemId: EntityId;
+    sourceLocationId: EntityId;
+    destinationLocationId: EntityId;
+    quantity: string;
+    preferredBatchId?: EntityId;
+    notes?: string;
+  }) {
+    await services.inventory.dispatchTransfer({
+      organizationId: DEMO_ORGANIZATION_ID,
+      responsibleUserId: DEMO_USER_ID,
+      ...input,
+    });
     await refreshInventory();
   }
 
   async function receiveTransfer(transferId: EntityId, quantity?: string) {
     await services.inventory.receiveTransfer({ transferId, quantity, responsibleUserId: DEMO_USER_ID });
+    await refreshInventory();
+  }
+
+  async function startInventoryCount(stockLocationId: EntityId) {
+    await services.inventory.startInventoryCount({
+      organizationId: DEMO_ORGANIZATION_ID,
+      stockLocationId,
+      responsibleUserId: DEMO_USER_ID,
+    });
+    await refreshInventory();
+  }
+
+  async function setInventoryCountLine(countId: EntityId, stockItemId: EntityId, countedQuantity: string) {
+    await services.inventory.setInventoryCountLine({ countId, stockItemId, countedQuantity });
+    await refreshInventory();
+  }
+
+  async function confirmInventoryCount(countId: EntityId) {
+    await services.inventory.confirmInventoryCount({ countId, responsibleUserId: DEMO_USER_ID });
     await refreshInventory();
   }
 
@@ -186,6 +285,8 @@ export function DemoWorkspaceProvider({ children }: { children: ReactNode }) {
     balances,
     movements,
     transfers,
+    batches,
+    inventoryCounts,
     createStockItem: createItem,
     updateStockItem: editItem,
     createSupplier,
@@ -195,6 +296,9 @@ export function DemoWorkspaceProvider({ children }: { children: ReactNode }) {
     withdraw,
     dispatchTransfer,
     receiveTransfer,
+    startInventoryCount,
+    setInventoryCountLine,
+    confirmInventoryCount,
     errorMessage(error) {
       if (error instanceof DomainError) return error.message;
       if (error instanceof Error) return error.message;
