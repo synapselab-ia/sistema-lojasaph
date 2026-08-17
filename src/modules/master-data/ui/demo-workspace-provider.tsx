@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, ReactNode, useContext, useRef, useState } from "react";
+import { createContext, ReactNode, useContext, useState } from "react";
 import { DomainError } from "@/domain/common/domain-error";
 import { EntityId } from "@/domain/common/entity-id";
 import { InMemoryStockItemRepository } from "@/modules/catalog/adapters/in-memory-stock-item-repository";
@@ -57,21 +57,19 @@ interface DemoWorkspaceValue {
 const DemoWorkspaceContext = createContext<DemoWorkspaceValue | null>(null);
 
 export function DemoWorkspaceProvider({ children }: { children: ReactNode }) {
-  const serviceRef = useRef<MasterDataService | null>(null);
-  if (!serviceRef.current) {
-    serviceRef.current = new MasterDataService(
-      new InMemoryStockItemRepository(demoStockItems),
-      new InMemorySupplierRepository(demoSuppliers),
-      new InMemorySupplierItemOfferRepository(demoOffers),
-    );
-  }
-
+  const [service] = useState(
+    () =>
+      new MasterDataService(
+        new InMemoryStockItemRepository(demoStockItems),
+        new InMemorySupplierRepository(demoSuppliers),
+        new InMemorySupplierItemOfferRepository(demoOffers),
+      ),
+  );
   const [stockItems, setStockItems] = useState<readonly StockItem[]>(demoStockItems);
   const [suppliers, setSuppliers] = useState<readonly Supplier[]>(demoSuppliers);
   const [offers, setOffers] = useState<readonly SupplierItemOffer[]>(demoOffers);
 
   async function refresh() {
-    const service = serviceRef.current!;
     const [nextItems, nextSuppliers, nextOffers] = await Promise.all([
       service.listStockItems(DEMO_ORGANIZATION_ID),
       service.listSuppliers(DEMO_ORGANIZATION_ID),
@@ -83,7 +81,7 @@ export function DemoWorkspaceProvider({ children }: { children: ReactNode }) {
   }
 
   async function createItem(input: StockItemDraft) {
-    await serviceRef.current!.createStockItem({
+    await service.createStockItem({
       organizationId: DEMO_ORGANIZATION_ID,
       ...input,
     });
@@ -91,7 +89,7 @@ export function DemoWorkspaceProvider({ children }: { children: ReactNode }) {
   }
 
   async function editItem(id: EntityId, input: StockItemDraft) {
-    await serviceRef.current!.updateStockItem(id, {
+    await service.updateStockItem(id, {
       ...input,
       active: input.active ?? true,
     });
@@ -99,7 +97,7 @@ export function DemoWorkspaceProvider({ children }: { children: ReactNode }) {
   }
 
   async function createSupplier(input: SupplierDraft) {
-    await serviceRef.current!.createSupplier({
+    await service.createSupplier({
       organizationId: DEMO_ORGANIZATION_ID,
       ...input,
     });
@@ -107,7 +105,7 @@ export function DemoWorkspaceProvider({ children }: { children: ReactNode }) {
   }
 
   async function editSupplier(id: EntityId, input: SupplierDraft) {
-    await serviceRef.current!.updateSupplier(id, {
+    await service.updateSupplier(id, {
       ...input,
       active: input.active ?? true,
     });
@@ -115,7 +113,7 @@ export function DemoWorkspaceProvider({ children }: { children: ReactNode }) {
   }
 
   async function createOffer(input: { supplierId: EntityId; stockItemId: EntityId; unitPrice: string }) {
-    await serviceRef.current!.createOffer(input);
+    await service.createOffer(input);
     await refresh();
   }
 
