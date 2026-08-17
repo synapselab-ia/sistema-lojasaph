@@ -1,12 +1,9 @@
+"use client";
+
 import Link from "next/link";
 import { useRuntimeWorkspace } from "@/modules/master-data/ui/runtime-workspace-provider";
 
 export default function WorkspacePage() {
-  return <WorkspaceOverview />;
-}
-
-function WorkspaceOverview() {
-  "use client";
   const workspace = useRuntimeWorkspace();
   const positiveBalances = workspace.balances.filter((balance) => !balance.quantity.isZero()).length;
 
