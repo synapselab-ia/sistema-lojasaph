@@ -1164,11 +1164,11 @@ begin
           'active'
         );
 
-        update public.stock_transfer_batch_allocations
+        update public.stock_transfer_batch_allocations allocation
         set destination_batch_id = v_destination_batch_id,
-            received_quantity = received_quantity + v_take
-        where id = v_allocation.id
-          and organization_id = p_organization_id;
+            received_quantity = allocation.received_quantity + v_take
+        where allocation.id = v_allocation.id
+          and allocation.organization_id = p_organization_id;
       else
         select batch.status
           into v_destination_batch_status
@@ -1196,10 +1196,10 @@ begin
         where id = v_destination_batch_id
           and organization_id = p_organization_id;
 
-        update public.stock_transfer_batch_allocations
-        set received_quantity = received_quantity + v_take
-        where id = v_allocation.id
-          and organization_id = p_organization_id;
+        update public.stock_transfer_batch_allocations allocation
+        set received_quantity = allocation.received_quantity + v_take
+        where allocation.id = v_allocation.id
+          and allocation.organization_id = p_organization_id;
       end if;
 
       insert into public.stock_movement_batch_allocations (
