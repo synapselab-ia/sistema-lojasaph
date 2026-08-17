@@ -7,6 +7,7 @@ import { StockItemRepository } from "../repositories/stock-item-repository";
 interface StockItemRow {
   id: string;
   organization_id: string;
+  category_id: string | null;
   base_unit_id: string;
   name: string;
   item_type: StockItemType;
@@ -31,7 +32,7 @@ export class SupabaseStockItemRepository implements StockItemRepository {
   async findById(id: EntityId): Promise<StockItem | null> {
     const { data, error } = await this.client
       .from("stock_items")
-      .select("id, organization_id, base_unit_id, name, item_type, active, track_expiration, track_batch, is_returnable")
+      .select("id, organization_id, category_id, base_unit_id, name, item_type, active, track_expiration, track_batch, is_returnable")
       .eq("id", id)
       .maybeSingle();
 
@@ -46,7 +47,7 @@ export class SupabaseStockItemRepository implements StockItemRepository {
   async listByOrganization(organizationId: EntityId): Promise<readonly StockItem[]> {
     const { data, error } = await this.client
       .from("stock_items")
-      .select("id, organization_id, base_unit_id, name, item_type, active, track_expiration, track_batch, is_returnable")
+      .select("id, organization_id, category_id, base_unit_id, name, item_type, active, track_expiration, track_batch, is_returnable")
       .eq("organization_id", organizationId)
       .order("name", { ascending: true });
 
@@ -67,6 +68,7 @@ export class SupabaseStockItemRepository implements StockItemRepository {
     const { error } = await this.client.from("stock_items").upsert({
       id: item.id,
       organization_id: item.organizationId,
+      category_id: item.categoryId ?? null,
       base_unit_id: baseUnitId,
       name: item.name,
       item_type: item.type,
@@ -83,6 +85,7 @@ export class SupabaseStockItemRepository implements StockItemRepository {
     return Object.freeze({
       id: row.id as EntityId,
       organizationId: row.organization_id as EntityId,
+      categoryId: row.category_id ? (row.category_id as EntityId) : undefined,
       name: row.name,
       baseUnitCode,
       type: row.item_type,
