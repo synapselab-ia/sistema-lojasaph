@@ -2,7 +2,7 @@
 
 A engenharia reversa do Sistema Lojasaph parte dos arquivos operacionais fornecidos pelo cliente.
 
-## Arquivos conhecidos
+## Arquivos analisados
 
 1. `Controle Retirada Tabatinga.xlsx`
 2. `Retirada Cozinha, Quiosque e Empório.xlsx`
@@ -15,30 +15,33 @@ A engenharia reversa do Sistema Lojasaph parte dos arquivos operacionais forneci
 
 As planilhas são fontes de evidência dos processos atuais, mas não definem automaticamente a arquitetura final.
 
-A Fase 1 deverá mapear para cada arquivo:
+A análise mapeou:
 
 - abas;
 - colunas;
-- tipos de dados;
-- fórmulas;
-- validações;
-- listas auxiliares;
+- tipos/conceitos de dados;
+- fórmulas relevantes;
 - relações entre abas;
-- duplicações;
+- duplicações e estruturas repetidas;
 - inconsistências;
 - regras de negócio implícitas;
 - processo operacional representado;
-- destino proposto no novo sistema.
+- destino conceitual proposto no novo sistema.
 
 ## Entregáveis da Fase 1
 
-- `spreadsheets-map.md`;
-- catálogo de campos;
-- lista de regras de negócio confirmadas;
-- lista de dúvidas para validação;
-- proposta inicial de entidades e relacionamentos;
-- plano de migração preliminar.
+- `spreadsheets-map.md` — mapa consolidado dos seis arquivos;
+- `field-catalog.md` — campos de origem e conceitos candidatos de destino;
+- `migration-plan.md` — estratégia preliminar de migração;
+- `../product/business-rules.md` — regras observadas e nível de confiança;
+- `../product/open-questions.md` — dúvidas que não podem ser respondidas por suposição;
+- `../product/requirements.md` — requisitos iniciais;
+- `../architecture/preliminary-domain-model.md` — entidades e relações preliminares.
+
+## Estado
+
+A engenharia reversa documental está concluída. O próximo passo é validar as questões críticas P0 antes do modelo definitivo.
 
 ## Segurança
 
-Não versionar no repositório planilhas contendo dados sensíveis ou operacionais reais sem decisão explícita. Preferir documentação normalizada e fixtures anonimizadas para desenvolvimento.
+Os arquivos Excel reais não foram versionados no repositório. Preferir documentação normalizada e fixtures anonimizadas para desenvolvimento. A migração futura deve preservar rastreabilidade por batch/arquivo/aba/linha sem publicar as fontes operacionais no GitHub.

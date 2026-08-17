@@ -4,59 +4,84 @@
 
 ## Fase atual
 
-Fase 0 — Fundação e governança do projeto: concluída e integrada à `main`.
+Fase 1 — engenharia reversa das planilhas: análise documental concluída na branch `agent/spreadsheet-analysis`, pronta para integração.
 
-Próxima fase: Fase 1 — engenharia reversa das planilhas de origem.
+Próximo passo após integração: validar as questões críticas P0 com o cliente/usuário antes do modelo de domínio definitivo.
 
 ## Estado do GitHub
 
 - Repositório: `synapselab-ia/sistema-lojasaph`
 - Branch principal: `main`
-- Fase 0 integrada por Pull Request.
-- Não existe aplicação/toolchain de código ainda.
+- Issue atual: #4 — Fase 1 — Engenharia reversa das planilhas
+- Branch da Issue: `agent/spreadsheet-analysis`
+- Ainda não existe aplicação/toolchain de código.
 
 ## Concluído
 
-- Repositório privado criado no GitHub.
-- Governança inicial criada.
-- `AGENTS.md` criado para orientar novos chats/agentes.
-- `docs/00-START-HERE.md` criado como ponto de entrada.
-- visão do produto documentada;
-- escopo inicial documentado;
-- glossário inicial criado;
-- arquitetura inicial documentada;
-- workflow para múltiplos chats criado;
-- handoff criado;
-- protocolo `NEXT_ACTION.md` adotado;
-- seis planilhas de origem registradas;
-- README atualizado para orientar continuidade.
+### Fase 0
 
-## Validação
+- governança inicial;
+- `AGENTS.md`;
+- `docs/00-START-HERE.md`;
+- protocolo `CURRENT_STATE` + `HANDOFF` + `NEXT_ACTION`;
+- visão, escopo, glossário e arquitetura inicial.
 
-Ainda não há aplicação nem toolchain, portanto lint, typecheck, testes e build ainda não existem para executar.
+### Fase 1
 
-A fundação é considerada válida quando um novo chat consegue localizar a documentação, entender o objetivo, recuperar o estado atual e identificar uma próxima ação concreta sem depender de conversas anteriores.
+As seis planilhas foram analisadas estruturalmente sem versionar os arquivos reais no GitHub.
+
+Entregáveis criados/atualizados:
+
+- `docs/source-data/spreadsheets-map.md`;
+- `docs/source-data/field-catalog.md`;
+- `docs/source-data/migration-plan.md`;
+- `docs/product/business-rules.md`;
+- `docs/product/open-questions.md`;
+- `docs/product/requirements.md`;
+- `docs/product/glossary.md` refinado;
+- `docs/architecture/preliminary-domain-model.md`.
+
+## Descobertas relevantes
+
+1. O fluxo Tabatinga ↔ Capricórnio mistura transferência, devolução, empréstimo, itens próximos do vencimento e possível acerto financeiro (`em haver`).
+2. Existem referências a Barba Negra, portanto a estrutura não pode assumir somente dois locais.
+3. A coluna de checkbox no controle Tabatinga ↔ Capricórnio não possui significado documentado e precisa de validação.
+4. O `Gabarito` parece representar catálogo de venda/POS diferente dos itens de estoque/retirada; não deve ser unificado automaticamente.
+5. Retiradas por setor usam abas mensais e texto livre, com custos frequentemente ausentes.
+6. Caixa deve ser normalizado por data/sessão; o MODELO diverge das abas reais e existe fórmula inconsistente.
+7. O financeiro mistura nota/documento, parcela e pagamento na mesma linha e usa fórmulas específicas do Google Sheets que aparecem quebradas como `#NAME?` no Excel analisado.
+8. `Parcela` é exibida como `n/total` mas armazenada por artifício de formatação de data; o novo sistema deve usar campos próprios.
+9. `Pix/Boleto` contém referências/códigos de pagamento e não deve ser modelado apenas como método.
+10. A planilha de validades é apenas template; o novo sistema deve usar lote + quantidade + validade + local.
+11. Fornecedores precisam de cadastro único com múltiplos contatos e condições comerciais.
+
+## Validação técnica desta fase
+
+Ainda não existe aplicação, portanto lint, typecheck, testes e build não se aplicam.
+
+A validação da Fase 1 foi documental: inventário de abas/campos/fórmulas, comparação estrutural, identificação de inconsistências e separação explícita entre regra comprovada, evidência e questão pendente.
 
 ## Ainda não iniciado
 
-- Código da aplicação.
-- Configuração de Next.js/TypeScript.
-- Modelo de dados detalhado.
-- Supabase.
-- Autenticação.
-- Migração das planilhas.
-- Módulos funcionais.
+- código da aplicação;
+- Next.js/TypeScript;
+- schema de banco definitivo;
+- Supabase;
+- autenticação;
+- migração real;
+- módulos funcionais.
 
 ## Decisões vigentes
 
 1. GitHub é a fonte oficial de verdade do projeto.
-2. Chats do ChatGPT são sessões temporárias de execução e análise.
-3. O sistema deve modelar processos reais, não reproduzir abas de Excel.
-4. A arquitetura inicial será um monólito modular web.
-5. O domínio e o modelo de dados serão definidos antes da decisão definitiva sobre Supabase.
-6. O sistema deve nascer preparado para múltiplas unidades e permissões por escopo.
-7. Dados operacionais reais das planilhas não devem ser enviados ao repositório automaticamente; preferir documentação e fixtures anonimizadas.
-8. Todo ciclo relevante deve terminar com `CURRENT_STATE.md`, `HANDOFF.md` e `NEXT_ACTION.md` coerentes com o estado real do GitHub.
+2. Chats são sessões temporárias.
+3. O sistema modela processos, não abas de Excel.
+4. Arquitetura inicial: monólito modular web.
+5. Modelo do domínio vem antes da decisão definitiva sobre Supabase.
+6. Múltiplas unidades e permissões por escopo são requisitos arquiteturais.
+7. Dados reais das planilhas não são versionados automaticamente.
+8. Regras inferidas permanecem identificadas como pendentes até validação.
+9. `CURRENT_STATE`, `HANDOFF` e `NEXT_ACTION` devem sempre refletir o GitHub real.
 
 ## Próxima ação
 
@@ -64,4 +89,4 @@ Consulte `docs/ai/NEXT_ACTION.md`.
 
 ## Regra para o próximo chat
 
-Antes de qualquer trabalho, ler `AGENTS.md`, `docs/00-START-HERE.md`, este arquivo, `docs/ai/HANDOFF.md`, `docs/ai/NEXT_ACTION.md` e `docs/ai/WORKFLOW.md`; depois conferir Issue, branch e estado real do repositório.
+Ler `AGENTS.md`, `docs/00-START-HERE.md`, este arquivo, `HANDOFF.md`, `NEXT_ACTION.md` e `WORKFLOW.md`; conferir Issue/branch/PR reais; então executar a ação documentada.
