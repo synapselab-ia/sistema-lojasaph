@@ -2,53 +2,48 @@
 
 ## Contexto
 
-- Fase 6 implementada na branch `agent/lots-expiry-inventory-count`.
-- PR atual: #18 — lotes, validades e inventário físico.
-- CI funcional passou `npm ci`, lint, typecheck, testes e build.
-- Próxima Issue: #19 — Persistência PostgreSQL/Supabase e segurança base.
+- Fase 7 / Issue #19 está em andamento.
+- PR #20 contém a fundação PostgreSQL/Supabase.
+- CI de aplicação e banco está verde.
+- Schema, RLS, seed demo e smoke tests já estão versionados.
+- A aplicação ainda usa adapters in-memory.
+- Nenhum projeto Supabase remoto está conectado ainda.
 
 ## Objetivo atual
 
-Integrar a Fase 6 e introduzir schema/migrations reais, mantendo domínio/UI desacoplados do provedor.
+Integrar a fundação de persistência e ligar a aplicação a um projeto Supabase de forma segura, preservando repositories/adapters e as invariantes do ledger.
 
 ## Fazer agora
 
-1. Confirmar o CI final do PR #18.
-2. Integrar o PR #18 na `main` e encerrar a Issue #17.
-3. Criar branch dedicada à Issue #19 a partir da `main` atualizada.
-4. Registrar ADR: PostgreSQL como modelo físico e Supabase como provedor hospedado inicial preferido/revisável.
-5. Criar estrutura `supabase/` versionada no GitHub.
-6. Criar migrations iniciais para:
-   - Organization, Business, Unit, Sector e StockLocation;
-   - usuários/membership/escopos mínimos;
-   - categorias, unidades de medida e StockItem;
-   - fornecedores, contatos, SupplierItem e histórico de preços;
-   - StockMovement, itens de movimento, InventoryBalance, InventoryBatch, Transfer e InventoryCount.
-7. Usar tipos exatos para dinheiro e quantidade e constraints para invariantes estruturais.
-8. Habilitar RLS nas tabelas expostas e criar políticas por Organization/membership.
-9. Não liberar acesso anônimo aos dados operacionais.
-10. Criar seed somente com dados demo anonimizados.
-11. Adicionar validação de schema/migrations em CI quando possível sem credenciais remotas.
-12. Documentar `.env.example` e fluxo local/remoto sem inserir segredos.
-13. Começar adapters reais por cadastros/estoque, mantendo adapters in-memory para testes.
-14. Atualizar CURRENT_STATE, HANDOFF e NEXT_ACTION ao concluir a etapa alcançável sem projeto remoto.
+1. Confirmar CI final do PR #20 após os commits documentais.
+2. Integrar PR #20 na `main`.
+3. Manter a Issue #19 aberta.
+4. Usar uma integração segura do Supabase para criar/conectar o projeto remoto; não pedir ao usuário para colar secret key no chat se houver conector/plugin disponível.
+5. Adicionar `@supabase/supabase-js` com lockfile reproduzível.
+6. Criar factories cliente/server separadas:
+   - cliente com URL + publishable key;
+   - servidor confiável com credencial server-only somente quando necessária.
+7. Implementar adapters reais começando por leitura/cadastros, sem alterar as interfaces de domínio.
+8. Não conceder escrita direta cliente-side no ledger.
+9. Implementar operações críticas de estoque por comando server-side/RPC transacional que atualize movimento, lote e saldo atomicamente.
+10. Manter adapters in-memory para testes unitários.
+11. Aplicar migrations ao projeto remoto pelo fluxo versionado e validar RLS com usuários demo.
+12. Não importar dados reais ainda.
+13. Rodar CI e atualizar CURRENT_STATE, HANDOFF e NEXT_ACTION.
 
-## Não fazer ainda
+## Se a conexão Supabase ainda não estiver autorizada
 
-- Não migrar dados reais.
-- Não colocar service role key, senha ou URL secreta no GitHub.
-- Não expor tabelas operacionais sem RLS.
-- Não implementar financeiro/caixa completos antes da persistência base estar estável.
-- Não remover repositories/adapters para chamar Supabase diretamente da UI.
+Pare apenas na dependência externa e peça ao usuário para instalar/autorizar a integração Supabase. Não solicitar secrets em texto.
 
-## Critério de conclusão
+## Não fazer
 
-O schema deve ser reproduzível por migrations, proteger dados por escopo organizacional e permitir que os fluxos já existentes tenham adapters de persistência real sem alterar o domínio.
+- Não versionar URL/chaves reais em `.env.example`.
+- Não colocar secret key em `NEXT_PUBLIC_*`.
+- Não usar secret/service role no navegador.
+- Não remover RLS para "fazer funcionar".
+- Não chamar tabelas diretamente da UI ignorando repositories.
+- Não migrar dados do cliente antes da homologação demo.
 
-## Dependência externa
+## Critério de conclusão da Issue #19
 
-A criação/ligação de um projeto Supabase remoto pode ficar para um passo posterior se não houver conexão segura disponível. Isso não bloqueia schema, migrations, políticas e testes locais/versionados.
-
-## Regra estrutural
-
-GitHub permanece a fonte de verdade do schema e das migrations. O Dashboard remoto não deve ser a única fonte de uma alteração de banco.
+A aplicação deve conseguir usar adapters reais contra o projeto Supabase para cadastros/leitura e executar o primeiro comando transacional de estoque de forma segura, com migrations/RLS reproduzíveis e CI verde.
