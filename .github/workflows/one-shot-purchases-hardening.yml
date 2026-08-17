@@ -1,0 +1,55 @@
+name: One-shot purchases hardening
+
+on:
+  push:
+    branches: [agent/purchases-runtime]
+    paths:
+      - .github/workflows/one-shot-purchases-hardening.yml
+
+permissions:
+  contents: write
+
+jobs:
+  harden:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/purchases-runtime
+      - name: Harden purchase migration
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          matches = list(Path('supabase/migrations').glob('*_purchases_operational_flow.sql'))
+          if len(matches) != 1:
+              raise SystemExit(f'expected exactly one purchases migration, got {len(matches)}')
+          path = matches[0]
+          text = path.read_text()
+          text = text.replace(
+              "if jsonb_typeof(p_items) <> 'array' or jsonb_array_length(p_items)=0 then raise exception 'PURCHASE_ORDER_ITEMS_REQUIRED' using errcode='22023'; end if;",
+              "if p_items is null or jsonb_typeof(p_items) <> 'array' or jsonb_array_length(p_items)=0 then raise exception 'PURCHASE_ORDER_ITEMS_REQUIRED' using errcode='22023'; end if;"
+          )
+          text = text.replace(
+              "if jsonb_typeof(p_items)<>'array' or jsonb_array_length(p_items)=0 then raise exception 'PURCHASE_RECEIPT_ITEMS_REQUIRED' using errcode='22023'; end if;",
+              "if p_items is null or jsonb_typeof(p_items)<>'array' or jsonb_array_length(p_items)=0 then raise exception 'PURCHASE_RECEIPT_ITEMS_REQUIRED' using errcode='22023'; end if;"
+          )
+          old_decl = "declare v_user_id uuid:=auth.uid(); v_status text; v_existing_order_id uuid;"
+          new_decl = "declare v_user_id uuid:=auth.uid(); v_status text; v_existing_order_id uuid; v_existing_reason text;"
+          if old_decl not in text:
+              raise SystemExit('cancel declaration marker not found')
+          text = text.replace(old_decl, new_decl)
+          old_select = "select a.entity_id into v_existing_order_id from public.audit_logs a where a.organization_id=p_organization_id and a.action='purchase_order.cancelled' and a.metadata->>'command_id'=p_command_id::text order by a.occurred_at desc limit 1;\n            if found then\n              if v_existing_order_id<>p_purchase_order_id then raise exception 'IDEMPOTENCY_KEY_CONFLICT' using errcode='23505'; end if;"
+          new_select = "select a.entity_id,a.after_data->>'reason' into v_existing_order_id,v_existing_reason from public.audit_logs a where a.organization_id=p_organization_id and a.action='purchase_order.cancelled' and a.metadata->>'command_id'=p_command_id::text order by a.occurred_at desc limit 1;\n            if found then\n              if v_existing_order_id<>p_purchase_order_id or v_existing_reason is distinct from nullif(trim(p_reason),'') then raise exception 'IDEMPOTENCY_KEY_CONFLICT' using errcode='23505'; end if;"
+          if old_select not in text:
+              raise SystemExit('cancel idempotency marker not found')
+          path.write_text(text.replace(old_select, new_select))
+          PY
+      - name: Remove one-shot workflow and commit
+        run: |
+          rm -f .github/workflows/one-shot-purchases-hardening.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: harden purchase command payload validation"
+          git push origin HEAD:agent/purchases-runtime
