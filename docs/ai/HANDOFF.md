@@ -4,45 +4,44 @@ Este arquivo registra o contexto necessário para outro chat continuar sem depen
 
 ## Estado
 
-A Fase 3 está implementada na branch `agent/technical-foundation`, PR #12, com CI validando a fundação técnica.
+A Fase 4 está implementada na branch `agent/base-catalogs`, PR #14, com CI completo passando.
 
-A próxima Issue é #13 — Fase 4 — Cadastros base e primeiro fluxo funcional.
+A próxima Issue é #15 — Estoque transacional: entrada, retirada e transferência.
 
 ## Não repetir
 
-- não refazer a engenharia reversa das seis planilhas;
-- não reabrir defaults P0 sem evidência concreta do cliente;
-- não redesenhar o domínio ignorando ADR-001 a ADR-005;
+- não refazer engenharia reversa das planilhas;
+- não reabrir defaults P0 sem evidência concreta;
+- não ignorar ADR-001 a ADR-005;
 - não criar Supabase por conveniência;
-- não substituir repositories por chamadas de banco espalhadas na UI;
-- não remover o ledger de estoque nem transformar saldo em campo editável.
+- não espalhar acesso a persistência pela UI;
+- não editar saldo diretamente;
+- não tratar workspace in-memory como persistência de produção.
 
-## Documentos centrais
-
-- `docs/architecture/domain-model.md`
-- `docs/architecture/data-model.md`
-- `docs/architecture/erd.md`
-- `docs/architecture/technical-foundation.md`
-- `docs/decisions/ADR-001-organizational-and-p0-defaults.md`
-- `docs/decisions/ADR-002-inventory-ledger-and-balance.md`
-- `docs/decisions/ADR-003-inventory-costing.md`
-- `docs/decisions/ADR-004-payables-and-payments.md`
-- `docs/decisions/ADR-005-cash-session-model.md`
-- `docs/qa/definition-of-done.md`
-
-## Fundação técnica existente
+## Fundação existente
 
 - Next.js/React/TypeScript strict;
-- Tailwind;
-- ESLint;
-- Vitest;
-- CI por GitHub Actions;
-- package-lock versionado e `npm ci` no CI;
-- `Money`, `EntityId`, `DomainError`;
-- `StockItem` inicial;
-- repository contract + adapter in-memory;
+- Tailwind, ESLint, Vitest;
+- CI com `npm ci`, lint, typecheck, testes e build;
+- package-lock versionado;
+- value objects `Money`, `EntityId`, `DomainError`;
+- arquitetura repositories/adapters;
 - health endpoint;
-- shell inicial da aplicação.
+- shell e navegação administrativa.
+
+## Cadastros existentes
+
+- estrutura organizacional visual;
+- StockItem com categoria/unidade/tipo/flags;
+- Supplier com múltiplos contatos;
+- preço observado por fornecedor/produto;
+- MasterDataService;
+- adapters in-memory e fixtures anonimizados;
+- páginas `/cadastros`, `/cadastros/estrutura`, `/cadastros/produtos`, `/cadastros/fornecedores`.
+
+## Persistência atual
+
+O workspace de cadastros vive na memória do navegador e reinicia em reload. Isso é explícito e aceitável apenas para desenvolvimento/demonstração.
 
 ## Decisões que não podem se perder
 
@@ -50,36 +49,35 @@ A próxima Issue é #13 — Fase 4 — Cadastros base e primeiro fluxo funcional
 - SalesItem separado de StockItem;
 - saldo de estoque derivado do ledger;
 - transferência com despacho e recebimento separados;
-- empréstimo distinto com retorno pendente;
-- custo médio ponderado móvel como default gerencial;
-- custo de lote e snapshots preservados;
-- PayableDocument → Installment → Payment com múltiplos pagamentos por parcela;
-- CashSession como unidade de fechamento;
+- empréstimo distinto;
+- custo médio ponderado móvel como default;
+- snapshots de custo preservados;
+- financeiro PayableDocument → Installment → Payment;
+- caixa por CashSession;
 - domínio independente de framework/banco;
-- persistência por repositories/adapters;
 - operações críticas com idempotência, transação e auditoria;
-- dados reais das planilhas não são versionados.
+- dados reais das planilhas não são fixtures.
 
-## Próxima implementação
+## Próxima implementação — Issue #15
 
-A Issue #13 deve criar o primeiro fluxo funcional de cadastros usando persistência in-memory/fixtures:
+Implementar estoque transacional ainda em memória:
 
-- estrutura organizacional;
-- produtos/itens;
-- fornecedores e contatos;
-- vínculo fornecedor-item/preço básico;
-- navegação administrativa inicial;
-- casos de uso e testes.
-
-Depois disso, o próximo fluxo deverá ser estoque transacional: entrada, retirada e transferência.
+- StockMovement/StockMovementItem;
+- projeção de saldo por StockItem + StockLocation;
+- entrada com quantidade e custo;
+- retirada com bloqueio de saldo negativo;
+- transferência: despacho separado de recebimento;
+- custo médio ponderado;
+- histórico e tela de saldos;
+- testes das invariantes.
 
 ## Segurança
 
-Nunca versionar tokens, senhas, chaves ou dados operacionais sensíveis. `.env.example` contém somente exemplos seguros.
+Nunca versionar segredos ou dados operacionais sensíveis.
 
 ## Regra de eficiência
 
-Usar defaults profissionais e reversíveis quando possível. Só interromper para perguntar ao usuário quando houver risco real de retrabalho estrutural.
+Usar defaults reversíveis e só interromper o usuário por risco estrutural real.
 
 ## Próxima ação
 
