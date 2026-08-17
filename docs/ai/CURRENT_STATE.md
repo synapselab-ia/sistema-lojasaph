@@ -4,89 +4,90 @@
 
 ## Fase atual
 
-Fase 3 — fundação técnica da aplicação: implementada na branch `agent/technical-foundation` e validada por CI. PR #12 está em fechamento para integração.
+Fase 4 — cadastros base e primeiro fluxo funcional: implementada na branch `agent/base-catalogs`, PR #14, com CI completo passando.
 
 ## Estado do GitHub
 
 - Repositório: `synapselab-ia/sistema-lojasaph`
 - Branch principal: `main`
-- Issue atual: #10 — Fase 3 — Fundação técnica da aplicação
-- Branch atual: `agent/technical-foundation`
-- PR atual: #12 — Fase 3 — fundação técnica da aplicação
-- Próxima Issue já criada: #13 — Fase 4 — Cadastros base e primeiro fluxo funcional
-- Supabase ainda não foi escolhido nem configurado.
+- Issue atual: #13 — Fase 4 — Cadastros base e primeiro fluxo funcional
+- Branch atual: `agent/base-catalogs`
+- PR atual: #14 — Fase 4 — cadastros base e primeiro fluxo funcional
+- Próxima Issue criada: #15 — Fase 5 — Estoque transacional: entrada, retirada e transferência
+- Supabase ainda não foi escolhido/configurado.
 
-## Histórico concluído
+## Fases concluídas
 
 ### Fase 0 — governança
 
-Criados `AGENTS.md`, `START-HERE`, workflow, handoff, current state e NEXT_ACTION.
+Governança para múltiplos chats, AGENTS, CURRENT_STATE, HANDOFF e NEXT_ACTION.
 
 ### Fase 1 — engenharia reversa
 
-As seis planilhas foram analisadas e transformadas em documentação de campos, regras, requisitos, dúvidas e migração sem versionar os arquivos reais.
+Seis planilhas transformadas em requisitos, regras, catálogo de campos, plano de migração e dúvidas rastreáveis.
 
-### Fase 2 — modelo lógico
+### Fase 2 — domínio/modelo lógico
 
-Domínio, modelo lógico, ERD e ADR-001 a ADR-005 foram consolidados e integrados à `main` pelo PR #11.
+Modelo consolidado, ERD e ADR-001 a ADR-005 integrados.
 
 ### Fase 3 — fundação técnica
 
+Next.js/React/TypeScript strict, Tailwind, ESLint, Vitest, package-lock, CI com `npm ci`, health endpoint, value objects e repository pattern.
+
+### Fase 4 — cadastros base
+
 Implementado:
 
-- Next.js 16.2.12 + React 19.2.8;
-- TypeScript strict;
-- Tailwind CSS 4;
-- ESLint 9;
-- Vitest;
-- `package-lock.json` versionado;
-- GitHub Actions com instalação reprodutível por `npm ci`;
-- shell inicial responsivo;
-- endpoint `GET /health`;
-- `DomainError`, `EntityId` e `Money`;
-- primeiro `StockItem`;
-- contrato `StockItemRepository`;
-- adapter `InMemoryStockItemRepository`;
-- testes unitários iniciais;
-- `.env.example` sem segredos;
-- documentação da fundação e Definition of Done.
+- workspace responsivo em `/cadastros`;
+- visualização da estrutura Organization → Business → Unit → Sector/StockLocation;
+- cadastro/edição de StockItem;
+- categorias e unidades essenciais de demonstração;
+- Supplier com múltiplos contatos;
+- cadastro/edição de fornecedores;
+- preço observado por fornecedor/produto;
+- MasterDataService separado da UI;
+- repositories/adapters in-memory;
+- fixtures anonimizados;
+- testes de integração do serviço;
+- documentação `docs/modules/master-data.md`.
 
-## Validação da Fase 3
+## Persistência atual
 
-O GitHub Actions validou com sucesso:
+O workspace de cadastros é propositalmente in-memory no navegador. Alterações duram apenas durante a sessão/reload e a interface informa isso explicitamente.
 
-1. instalação de dependências;
+Essa limitação é intencional para validar domínio e UX antes da adoção de banco real.
+
+## Validação
+
+O CI do PR #14 passou:
+
+1. `npm ci`;
 2. lint;
 3. typecheck;
-4. testes unitários;
+4. testes unitários/integração;
 5. build de produção.
 
-Após gerar e versionar o lockfile, o CI foi ajustado para `npm ci`, garantindo instalação reprodutível.
+Um erro inicial do lint sobre acesso a `ref` durante render foi detectado pelo CI, corrigido usando inicialização lazy via `useState` e revalidado com sucesso.
 
-## Decisões estruturais vigentes
+## Decisões vigentes
 
 1. GitHub é a fonte oficial de verdade.
-2. O sistema é multi-negócio e multi-unidade.
-3. Setor e local de estoque são conceitos distintos.
-4. `StockItem` e `SalesItem` são conceitos distintos.
-5. Saldo de estoque é derivado do ledger de movimentos confirmados.
-6. Movimento confirmado é corrigido por reversão, não exclusão silenciosa.
-7. Transferência possui despacho e recebimento separados.
-8. Empréstimo controla quantidade pendente de retorno.
-9. Custeio gerencial padrão é custo médio ponderado móvel, preservando snapshots/lotes.
-10. Financeiro separa PayableDocument → Installment → Payment e suporta múltiplos pagamentos por parcela.
-11. Caixa usa `CashSession` e totais por forma de pagamento.
-12. Domínio não depende de Next.js nem de banco específico.
-13. Persistência é acessada por repositories/adapters; adapters in-memory são o default de desenvolvimento atual.
-14. Operações críticas devem ser idempotentes, transacionais e auditáveis.
-15. Supabase permanece decisão futura.
+2. Sistema multi-negócio/multi-unidade.
+3. Setor e local de estoque são distintos.
+4. SalesItem e StockItem são distintos.
+5. Saldo de estoque deriva do ledger.
+6. Movimentos confirmados são revertidos/estornados, não apagados.
+7. Transferência tem despacho e recebimento separados.
+8. Custo médio ponderado móvel é o default gerencial.
+9. Financeiro separa documento, parcela e pagamento.
+10. Caixa usa CashSession.
+11. Domínio independe de framework/banco.
+12. Persistência usa repositories/adapters.
+13. Operações críticas devem ser idempotentes, transacionais e auditáveis.
+14. Supabase continua adiado até o domínio/fluxos justificarem a integração.
 
 ## Próxima ação
 
-Após integrar o PR #12 e encerrar a Issue #10, iniciar a Issue #13 — Cadastros base e primeiro fluxo funcional — em branch própria criada a partir da `main` atualizada.
+Após integrar o PR #14 e encerrar a Issue #13, iniciar a Issue #15 em branch própria a partir da `main`: estoque transacional com entrada, retirada e transferência em duas etapas.
 
 Consulte `docs/ai/NEXT_ACTION.md`.
-
-## Regra para o próximo chat
-
-Ler `AGENTS.md`, `docs/00-START-HERE.md`, este arquivo, `HANDOFF.md`, `NEXT_ACTION.md`, `WORKFLOW.md`, os ADRs e conferir Issue/branch/PR reais antes de agir.
