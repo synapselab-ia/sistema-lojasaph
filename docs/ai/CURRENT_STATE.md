@@ -4,20 +4,20 @@
 
 ## Fase atual
 
-Fase 7 — persistência PostgreSQL/Supabase e segurança base: fundação de schema/RLS implementada na branch `agent/persistence-foundation`, PR #20, com CI de aplicação e banco passando.
+Fase 7 — persistência PostgreSQL/Supabase e segurança base: implementação final na branch `agent/supabase-adapters`, aguardando CI/merge.
 
-A Issue #19 permanece aberta porque ainda faltam conexão do projeto Supabase remoto e adapters reais na aplicação.
+A Issue #19 pode ser encerrada após o PR desta branch ficar verde e ser integrado. A próxima Issue é #21 — Fase 8 — Autenticação real e runtime Supabase.
 
 ## Estado do GitHub
 
 - Repositório: `synapselab-ia/sistema-lojasaph`
 - Branch principal: `main`
-- Issue atual: #19 — Fase 7 — Persistência PostgreSQL/Supabase e segurança base
-- Branch atual: `agent/persistence-foundation`
-- PR atual: #20 — persistência PostgreSQL/Supabase e RLS
-- Projeto Supabase remoto ainda não está conectado.
+- Issue atual: #19 — Persistência PostgreSQL/Supabase e segurança base
+- Branch atual: `agent/supabase-adapters`
+- Próxima Issue: #21 — Autenticação real e runtime Supabase
+- PR desta branch: ainda deve ser aberto/validado.
 
-## Fases concluídas
+## Fases concluídas antes desta branch
 
 - Fase 0: governança e continuidade entre chats.
 - Fase 1: engenharia reversa das seis planilhas.
@@ -26,98 +26,90 @@ A Issue #19 permanece aberta porque ainda faltam conexão do projeto Supabase re
 - Fase 4: cadastros base e fornecedores.
 - Fase 5: ledger de estoque, entrada, retirada, transferência e custo médio.
 - Fase 6: lotes, validades, FEFO e inventário físico.
+- Fase 7A: schema PostgreSQL, RLS, seed e CI de banco integrados pelo PR #20.
 
-## Fase 7 — fundação implementada
+## Fase 7B — implementado nesta branch
 
-### Decisão
+### Projeto remoto
 
-`ADR-006` define:
+- projeto Supabase existente foi restaurado e inspecionado antes de qualquer DDL;
+- não possuía migrations nem tabelas de aplicação, portanto foi reutilizado;
+- região: `sa-east-1`;
+- migrations versionadas foram aplicadas ao projeto remoto;
+- seed anonimizado foi carregado;
+- nenhum dado real do cliente e nenhum usuário real foram criados.
 
-- PostgreSQL como modelo físico relacional;
-- Supabase como provedor hospedado inicial preferido e revisável;
-- domínio/UI desacoplados por repositories/adapters;
-- migrations no GitHub como fonte de verdade do schema;
-- RLS antes de produção;
-- segredos somente server-side.
+### Cliente e fronteiras
 
-### Schema versionado
+`@supabase/supabase-js` foi adicionado com versão exata e lockfile atualizado.
 
-Criado `supabase/` com migrations para:
+Factories:
 
-- Organization, Business, LegalEntity, Unit, Sector e StockLocation;
-- `organization_memberships` com papéis e escopos;
-- categorias, unidades de medida, StockItem e aliases;
-- Supplier, contatos, termos, SupplierItem e histórico de preços;
-- audit log;
-- StockMovement e itens;
-- InventoryBalance e InventoryBatch;
-- alocações de lote;
-- Transfer e itens/alocações;
-- InventoryCount e linhas.
+- `src/lib/supabase/browser.ts` — publishable key;
+- `src/lib/supabase/server.ts` — cliente RLS com access token e cliente admin server-only;
+- `src/lib/supabase/env.ts` — validação das variáveis necessárias.
 
-### Segurança e integridade
+Nenhum segredo ou URL real foi versionado.
 
-- IDs `uuid`;
-- dinheiro `numeric(18,2)`;
-- quantidade `numeric(18,3)`;
-- FKs compostas por Organization em relações críticas;
-- checks de quantidade/custo/transferência;
-- RLS habilitado nas tabelas operacionais expostas;
-- leitura por membership ativa;
-- escrita direta de cadastros limitada por papel;
-- ledger/inventário sem política/grant de escrita direta para cliente autenticado;
-- preços históricos de fornecedor append-only para clientes autenticados;
-- anônimo sem acesso às tabelas operacionais.
+### Adapters reais
 
-### Seed e testes de banco
+- `SupabaseStockItemRepository`;
+- `SupabaseSupplierRepository`;
+- `SupabaseStockEntryGateway`.
 
-- `supabase/seed.sql` contém somente dados anonimizados de demonstração;
-- `supabase/tests/bootstrap.sql` cria stubs mínimos de Auth para CI PostgreSQL genérico;
-- `schema_smoke.sql` valida constraints e RLS.
+Os adapters recebem `SupabaseClient` por injeção. Domínio e UI continuam sem importar persistência diretamente.
 
-## CI atual
+### Segurança RLS
 
-O workflow possui dois jobs independentes:
+Os helpers privilegiados de membership foram movidos para schema `private` como `SECURITY DEFINER`. As funções homônimas no schema `public` agora são wrappers `SECURITY INVOKER`.
 
-### Aplicação
+Depois dessa correção, o Supabase Security Advisor ficou sem alertas para helpers de membership.
 
-1. `npm ci`;
-2. lint;
-3. typecheck;
-4. testes;
-5. build.
+### Primeiro comando crítico real
 
-### Banco
+Migration `*_transactional_stock_entry.sql` adiciona `public.record_stock_entry(...)`.
 
-1. PostgreSQL 17 efêmero;
-2. bootstrap Auth;
-3. migrations em ordem;
-4. seed anonimizado;
-5. smoke tests SQL/RLS.
+O RPC:
 
-No PR #20 os dois jobs passaram. O job de banco confirmou, entre outros:
+- exige usuário autenticado;
+- valida role organizacional `owner/admin/manager/inventory`;
+- mantém o cliente sem grants diretos de escrita no ledger;
+- usa `command_id` como idempotency key;
+- trava a linha de saldo com `FOR UPDATE`;
+- atualiza saldo e custo médio;
+- cria movimento/item;
+- cria lote/alocação quando aplicável;
+- grava audit log;
+- executa tudo na mesma transação PostgreSQL.
 
-- rejeição de FK cross-Organization;
-- rejeição de saldo negativo;
-- rejeição de transferência origem=destino;
-- membro vê somente sua Organization;
-- outsider autenticado não vê outra Organization;
-- anon não lê tabelas operacionais;
-- usuário autenticado não grava diretamente no ledger.
+O Security Advisor sinaliza o RPC como `SECURITY DEFINER` executável por `authenticated`; este é um warning intencional e documentado porque o RPC é justamente a fronteira autorizada da mutação crítica. `PUBLIC` e `anon` não possuem EXECUTE e a função valida `auth.uid()` + role antes dos writes.
 
-## Persistência da aplicação hoje
+### Validação remota do RPC
 
-A UI ainda usa adapters in-memory. O banco físico está definido e validado, mas a aplicação ainda não foi ligada a um projeto Supabase remoto.
+Teste executado dentro de transação com `ROLLBACK`:
 
-Isso é proposital: o próximo passo é conectar o provedor com segurança e implementar adapters reais sem alterar o domínio.
+- saldo inicial: 100 a custo médio 2,10;
+- entrada: 10 a custo 3,00;
+- saldo esperado/obtido: 110;
+- custo médio esperado/obtido: 2,18;
+- exatamente um movimento, um lote e um audit log;
+- segunda chamada com mesmo `command_id` não duplicou evento;
+- cenário temporário descartado integralmente por rollback.
+
+### Performance
+
+A policy de membership foi ajustada para `(select auth.uid())`. Índices foram adicionados às relações operacionais mais relevantes. O advisor ainda lista FKs sem índice como `INFO` e índices recém-criados como `unused` porque o banco é praticamente vazio; isso não bloqueia a fase e deve ser revisitado com carga real/planos de consulta.
+
+## Persistência da UI hoje
+
+O workspace visual ainda usa adapters in-memory por padrão porque ainda não há login/sessão/membership real na aplicação. Isso é o escopo da Issue #21.
 
 ## Próxima ação
 
-1. integrar o PR #20 na `main`;
-2. manter Issue #19 aberta;
-3. conectar/criar um projeto Supabase por integração segura quando disponível;
-4. adicionar o cliente Supabase e adapters reais começando por cadastros/estoque;
-5. implementar as mutações críticas de estoque por operação server-side/RPC transacional, não por INSERT direto nas tabelas do ledger;
-6. homologar com seed/demo antes de qualquer dado real.
+1. abrir PR desta branch contra `main`;
+2. exigir CI de aplicação + banco verde;
+3. integrar o PR e encerrar Issue #19;
+4. iniciar Issue #21 em branch própria;
+5. implementar Auth/sessão real e composição runtime dos adapters RLS.
 
-Consulte `docs/ai/NEXT_ACTION.md`.
+Consulte `docs/ai/NEXT_ACTION.md` e `docs/modules/supabase-runtime.md`.

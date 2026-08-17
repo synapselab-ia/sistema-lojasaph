@@ -2,9 +2,14 @@
 drop policy if exists supplier_prices_purchases_update on public.supplier_prices;
 revoke update on public.supplier_prices from authenticated;
 
--- Helper functions are intentionally available only to authenticated users and
--- the database owner/service roles used by trusted server-side operations.
+-- Helper functions must not be callable by PUBLIC/anon. The membership helpers
+-- are SECURITY DEFINER because they need to inspect membership rows while RLS is
+-- evaluating another table; execution is restricted to authenticated/service roles.
 revoke execute on function public.set_updated_at() from public;
+revoke execute on function public.is_org_member(uuid) from public;
+revoke execute on function public.has_org_role(uuid, text[]) from public;
+grant execute on function public.is_org_member(uuid) to authenticated, service_role;
+grant execute on function public.has_org_role(uuid, text[]) to authenticated, service_role;
 
 -- Fast lookup for scopes and active memberships.
 create index if not exists organization_memberships_scope_idx
