@@ -1,30 +1,8 @@
-import { createServerClient } from "@supabase/ssr";
-import { NextResponse, type NextRequest } from "next/server";
+import { type NextRequest } from "next/server";
+import { updateSupabaseSession } from "@/lib/supabase/proxy";
 
 export async function proxy(request: NextRequest) {
-  let response = NextResponse.next({ request });
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-
-  // Keep local/test builds usable until runtime credentials are configured.
-  if (!url || !publishableKey) return response;
-
-  const supabase = createServerClient(url, publishableKey, {
-    cookies: {
-      getAll() {
-        return request.cookies.getAll();
-      },
-      setAll(cookiesToSet) {
-        cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
-        response = NextResponse.next({ request });
-        cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options));
-      },
-    },
-  });
-
-  // Supabase recommends getClaims() here so refreshed tokens reach Server Components.
-  await supabase.auth.getClaims();
-  return response;
+  return updateSupabaseSession(request);
 }
 
 export const config = {
