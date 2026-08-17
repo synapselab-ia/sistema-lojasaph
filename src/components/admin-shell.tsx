@@ -10,6 +10,8 @@ const links = [
   { href: "/cadastros/produtos", label: "Produtos" },
   { href: "/cadastros/fornecedores", label: "Fornecedores" },
   { href: "/cadastros/estoque", label: "Estoque" },
+  { href: "/cadastros/validades", label: "Validades" },
+  { href: "/cadastros/inventarios", label: "Inventários" },
 ];
 
 export function AdminShell({ children }: { children: ReactNode }) {
