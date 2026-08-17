@@ -1,30 +1,29 @@
 # Next Action — Sistema Lojasaph
 
-Este arquivo define a ação concreta que o próximo chat/agente deve executar. Ele deve permanecer curto, operacional e alinhado ao estado real do repositório.
-
 ## Objetivo atual
 
-Iniciar a Fase 1 — engenharia reversa completa das seis planilhas de origem.
+Validar as questões críticas P0 antes de transformar o modelo preliminar em modelo de domínio/schema definitivo.
 
 ## Fazer agora
 
-1. Criar/confirmar a Issue da Fase 1 e trabalhar em uma única branch dedicada.
-2. Analisar estruturalmente as seis planilhas de origem já registradas em `docs/source-data/README.md`.
-3. Mapear abas, colunas, fórmulas, listas, relações, repetições, inconsistências e regras de negócio implícitas.
-4. Separar dado mestre, lançamento operacional, cálculo, relatório e configuração.
-5. Criar `docs/source-data/spreadsheets-map.md` com o inventário consolidado.
-6. Criar ou atualizar documentação de requisitos e regras de negócio derivadas da análise.
-7. Registrar dúvidas que dependam de confirmação do cliente, sem inventar respostas.
-8. Atualizar `CURRENT_STATE.md`, `HANDOFF.md` e este `NEXT_ACTION.md` ao concluir a etapa.
+1. Ler `docs/product/open-questions.md`.
+2. Validar Q-001 a Q-008 com o usuário/cliente, preferencialmente uma pergunta por vez ou em pequenos blocos.
+3. Para cada resposta confirmada, atualizar `docs/product/business-rules.md` e remover/baixar a questão correspondente de `open-questions.md`.
+4. Atualizar `docs/architecture/preliminary-domain-model.md` quando a resposta alterar entidades ou relações.
+5. Quando Q-001 a Q-008 estiverem suficientemente resolvidas, criar a Issue da Fase 2 para formalizar modelo de dados e ADRs.
+6. Atualizar `CURRENT_STATE.md`, `HANDOFF.md` e este arquivo.
 
 ## Não fazer ainda
 
-- Não implementar telas funcionais.
 - Não criar Supabase.
-- Não escolher autenticação ou hospedagem definitiva.
-- Não migrar dados reais para banco.
-- Não copiar as planilhas literalmente para a arquitetura do sistema.
+- Não implementar telas funcionais.
+- Não migrar dados reais.
+- Não inventar respostas para perguntas do negócio.
+
+## Primeira pergunta a fazer
+
+Q-001 — Tabatinga, Capricórnio e Barba Negra são lojas/unidades da mesma empresa, empresas diferentes, locais de estoque ou outra coisa?
 
 ## Critério de conclusão
 
-A Fase 1 estará pronta quando o repositório documentar, de forma rastreável, o que cada planilha controla, quais entidades e processos existem, quais regras podem ser inferidas com segurança e quais pontos ainda exigem validação do cliente.
+As questões P0 necessárias ao modelo inicial estão respondidas e documentadas, permitindo iniciar a Fase 2 sem decisões estruturais baseadas em suposição.
