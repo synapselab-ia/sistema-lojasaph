@@ -4,80 +4,65 @@ Este arquivo registra o contexto necessário para outro chat continuar sem depen
 
 ## Estado
 
-A Fase 4 está implementada na branch `agent/base-catalogs`, PR #14, com CI completo passando.
+A Fase 5 está implementada na branch `agent/inventory-ledger`, PR #16, com CI completo passando.
 
-A próxima Issue é #15 — Estoque transacional: entrada, retirada e transferência.
+A próxima Issue é #17 — Lotes, validades e inventário físico.
 
 ## Não repetir
 
-- não refazer engenharia reversa das planilhas;
+- não refazer engenharia reversa;
 - não reabrir defaults P0 sem evidência concreta;
 - não ignorar ADR-001 a ADR-005;
 - não criar Supabase por conveniência;
-- não espalhar acesso a persistência pela UI;
 - não editar saldo diretamente;
-- não tratar workspace in-memory como persistência de produção.
+- não misturar UI e persistência;
+- não tratar adapters in-memory como produção.
 
-## Fundação existente
+## O sistema já possui
 
-- Next.js/React/TypeScript strict;
-- Tailwind, ESLint, Vitest;
-- CI com `npm ci`, lint, typecheck, testes e build;
-- package-lock versionado;
-- value objects `Money`, `EntityId`, `DomainError`;
-- arquitetura repositories/adapters;
-- health endpoint;
-- shell e navegação administrativa.
-
-## Cadastros existentes
-
-- estrutura organizacional visual;
-- StockItem com categoria/unidade/tipo/flags;
-- Supplier com múltiplos contatos;
-- preço observado por fornecedor/produto;
-- MasterDataService;
-- adapters in-memory e fixtures anonimizados;
-- páginas `/cadastros`, `/cadastros/estrutura`, `/cadastros/produtos`, `/cadastros/fornecedores`.
+- Next.js/React/TypeScript strict, Tailwind, ESLint, Vitest e CI;
+- package-lock e `npm ci`;
+- estrutura multi-negócio/unidade;
+- produtos e fornecedores com contatos/preços;
+- `Money`, `Quantity`, `EntityId`, `DomainError`;
+- StockMovement/InventoryBalance/StockTransfer;
+- entrada, retirada e transferência em duas etapas;
+- custo médio ponderado móvel;
+- serialização lógica das mutações da demo;
+- UI de saldos, movimentos e transferências.
 
 ## Persistência atual
 
-O workspace de cadastros vive na memória do navegador e reinicia em reload. Isso é explícito e aceitável apenas para desenvolvimento/demonstração.
+Tudo continua em memória no navegador e reinicia em reload. A próxima fase também pode continuar assim para estabilizar lote/validade/inventário antes do banco real.
 
-## Decisões que não podem se perder
+## Invariantes que não podem se perder
 
-- Organization → Business → Unit → Sector/StockLocation;
-- SalesItem separado de StockItem;
-- saldo de estoque derivado do ledger;
-- transferência com despacho e recebimento separados;
-- empréstimo distinto;
-- custo médio ponderado móvel como default;
-- snapshots de custo preservados;
-- financeiro PayableDocument → Installment → Payment;
-- caixa por CashSession;
-- domínio independente de framework/banco;
-- operações críticas com idempotência, transação e auditoria;
-- dados reais das planilhas não são fixtures.
+- saldo é projeção, nunca campo editável;
+- toda alteração física gera movimento;
+- retirada não pode gerar saldo negativo por padrão;
+- transferência só entra no destino após recebimento;
+- custo da saída é snapshot do custo vigente;
+- custo médio é recalculado nas entradas;
+- Quantity suporta até 3 casas sem float binário cru;
+- mutações críticas reais precisarão de transação/locking no banco;
+- SalesItem continua separado de StockItem;
+- dados reais do cliente não são fixtures.
 
-## Próxima implementação — Issue #15
+## Próxima implementação — Issue #17
 
-Implementar estoque transacional ainda em memória:
-
-- StockMovement/StockMovementItem;
-- projeção de saldo por StockItem + StockLocation;
-- entrada com quantidade e custo;
-- retirada com bloqueio de saldo negativo;
-- transferência: despacho separado de recebimento;
-- custo médio ponderado;
-- histórico e tela de saldos;
-- testes das invariantes.
-
-## Segurança
-
-Nunca versionar segredos ou dados operacionais sensíveis.
+- InventoryBatch por item + local + lote + validade + custo;
+- entrada com lote/validade opcional;
+- lotes vencidos/próximos do vencimento;
+- sugestão FEFO;
+- alocação de retirada a lote quando aplicável;
+- InventoryCount com snapshot esperado;
+- contagem física;
+- confirmação gerando movimentos de ajuste;
+- histórico de inventários e testes.
 
 ## Regra de eficiência
 
-Usar defaults reversíveis e só interromper o usuário por risco estrutural real.
+Usar defaults profissionais/reversíveis e interromper o usuário somente por risco estrutural real.
 
 ## Próxima ação
 
