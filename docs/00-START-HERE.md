@@ -13,9 +13,11 @@ O GitHub é a fonte oficial do projeto. Chats são sessões temporárias de trab
 1. `AGENTS.md`
 2. `docs/00-START-HERE.md`
 3. `docs/ai/CURRENT_STATE.md`
-4. `docs/ai/WORKFLOW.md`
-5. documentação do módulo em trabalho
-6. ADRs relacionados em `docs/decisions/`
+4. `docs/ai/HANDOFF.md`
+5. `docs/ai/NEXT_ACTION.md`
+6. `docs/ai/WORKFLOW.md`
+7. documentação do módulo em trabalho
+8. ADRs relacionados em `docs/decisions/`
 
 ## Escopo macro
 
@@ -47,9 +49,13 @@ A direção atual é um monólito modular web com Next.js, React e TypeScript, u
 
 Consulte `docs/architecture/overview.md` para detalhes e restrições.
 
-## Estado atual
+## Estado e continuidade
 
-Consulte sempre `docs/ai/CURRENT_STATE.md`. Ele é o resumo operacional para continuidade entre chats.
+- `docs/ai/CURRENT_STATE.md`: onde o projeto está.
+- `docs/ai/HANDOFF.md`: contexto necessário entre sessões.
+- `docs/ai/NEXT_ACTION.md`: o que executar agora.
+
+Um novo chat deve partir desses arquivos, conferir o estado real do GitHub e executar a próxima ação documentada.
 
 ## Dados de origem
 
