@@ -12,7 +12,8 @@ import {
   updateStockItem,
 } from "@/modules/catalog/domain/stock-item";
 import { SupabaseStockEntryGateway } from "@/modules/inventory/adapters/supabase-stock-entry-gateway";
-import { InventoryBalance } from "@/modules/inventory/domain/inventory";
+import { SupabaseStockWithdrawalGateway } from "@/modules/inventory/adapters/supabase-stock-withdrawal-gateway";
+import { InventoryBalance, InventoryBatch } from "@/modules/inventory/domain/inventory";
 import { SupabaseSupplierRepository } from "@/modules/suppliers/adapters/supabase-supplier-repository";
 import {
   Supplier,
@@ -55,6 +56,7 @@ interface RuntimePermissions {
   readonly manageCatalog: boolean;
   readonly manageSuppliers: boolean;
   readonly recordStockEntry: boolean;
+  readonly recordStockWithdrawal: boolean;
 }
 
 interface RuntimeWorkspaceValue {
@@ -66,6 +68,7 @@ interface RuntimeWorkspaceValue {
   readonly stockItems: readonly StockItem[];
   readonly suppliers: readonly Supplier[];
   readonly balances: readonly InventoryBalance[];
+  readonly batches: readonly InventoryBatch[];
   readonly permissions: RuntimePermissions;
   createStockItem(input: StockItemDraft): Promise<void>;
   updateStockItem(id: EntityId, input: StockItemDraft): Promise<void>;
@@ -78,6 +81,13 @@ interface RuntimeWorkspaceValue {
     unitCost: string;
     batchCode?: string;
     expirationDate?: string;
+    notes?: string;
+  }): Promise<void>;
+  recordWithdrawal(input: {
+    stockItemId: EntityId;
+    stockLocationId: EntityId;
+    quantity: string;
+    preferredBatchId?: EntityId;
     notes?: string;
   }): Promise<void>;
   errorMessage(error: unknown): string;
@@ -107,6 +117,7 @@ export function RuntimeWorkspaceProvider({
   const stockItemsRepository = useMemo(() => new SupabaseStockItemRepository(client), [client]);
   const suppliersRepository = useMemo(() => new SupabaseSupplierRepository(client), [client]);
   const stockEntryGateway = useMemo(() => new SupabaseStockEntryGateway(client), [client]);
+  const stockWithdrawalGateway = useMemo(() => new SupabaseStockWithdrawalGateway(client), [client]);
 
   const [stockItems, setStockItems] = useState<readonly StockItem[]>(initialData.stockItems);
   const [suppliers, setSuppliers] = useState<readonly Supplier[]>(initialData.suppliers);
@@ -116,6 +127,7 @@ export function RuntimeWorkspaceProvider({
     manageCatalog: can(roles, ["owner", "admin", "manager", "inventory"]),
     manageSuppliers: can(roles, ["owner", "admin", "manager", "purchases"]),
     recordStockEntry: can(roles, ["owner", "admin", "manager", "inventory"]),
+    recordStockWithdrawal: can(roles, ["owner", "admin", "manager", "inventory"]),
   };
 
   async function refresh() {
@@ -172,6 +184,18 @@ export function RuntimeWorkspaceProvider({
     await refresh();
   }
 
+  async function recordWithdrawal(input: {
+    stockItemId: EntityId;
+    stockLocationId: EntityId;
+    quantity: string;
+    preferredBatchId?: EntityId;
+    notes?: string;
+  }) {
+    if (!permissions.recordStockWithdrawal) throw new DomainError("INSUFFICIENT_ROLE", "Seu perfil não pode registrar retiradas de estoque.");
+    await stockWithdrawalGateway.record({ organizationId, ...input });
+    await refresh();
+  }
+
   const value: RuntimeWorkspaceValue = {
     organizationId,
     organizationName,
@@ -181,12 +205,14 @@ export function RuntimeWorkspaceProvider({
     stockItems,
     suppliers,
     balances: referenceData.balances,
+    batches: referenceData.batches,
     permissions,
     createStockItem: createItem,
     updateStockItem: editItem,
     createSupplier: createSupplierRecord,
     updateSupplier: editSupplier,
     recordEntry,
+    recordWithdrawal,
     errorMessage(error) {
       if (error instanceof DomainError) return error.message;
       if (error instanceof Error) return error.message;
