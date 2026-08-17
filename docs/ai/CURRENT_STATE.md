@@ -4,91 +4,72 @@
 
 ## Fase atual
 
-Transição da Validação P0 para a Fase 2 — modelo de domínio, dados e ADRs fundamentais.
-
-A Fase 1 de engenharia reversa das seis planilhas foi concluída e integrada à `main` pelo PR #5.
+Fase 2 — modelo de domínio, dados e ADRs fundamentais: concluída na branch `agent/domain-model`, pronta para integração.
 
 ## Estado do GitHub
 
 - Repositório: `synapselab-ia/sistema-lojasaph`
 - Branch principal: `main`
-- Issue de validação: #6 — Validação P0 — estrutura do negócio e regras críticas
-- Próxima Issue: #8 — Fase 2 — Modelo de domínio, dados e ADRs fundamentais
-- Branch desta transição: `agent/business-validation-q1`
-- Ainda não existe aplicação/toolchain de código.
+- Issue atual: #8 — Fase 2 — Modelo de domínio, dados e ADRs fundamentais
+- Branch: `agent/domain-model`
+- Próxima Issue já criada: #10 — Fase 3 — Fundação técnica da aplicação
+- Ainda não existe aplicação/toolchain de código na `main`.
 
-## Concluído
+## Histórico concluído
 
-### Fase 0
+### Fase 0 — governança
 
-- governança inicial;
-- `AGENTS.md`;
-- `docs/00-START-HERE.md`;
-- protocolo `CURRENT_STATE` + `HANDOFF` + `NEXT_ACTION`;
-- visão, escopo, glossário e arquitetura inicial.
+Criados `AGENTS.md`, `START-HERE`, workflow, handoff, current state e NEXT_ACTION.
 
-### Fase 1
+### Fase 1 — engenharia reversa
 
-As seis planilhas foram analisadas estruturalmente sem versionar os arquivos reais no GitHub.
+As seis planilhas foram analisadas e transformadas em documentação de campos, regras, requisitos, dúvidas e migração, sem versionar os arquivos reais.
 
-Entregáveis existentes:
+### Defaults P0
 
-- `docs/source-data/spreadsheets-map.md`;
-- `docs/source-data/field-catalog.md`;
-- `docs/source-data/migration-plan.md`;
-- `docs/product/business-rules.md`;
-- `docs/product/open-questions.md`;
-- `docs/product/requirements.md`;
-- `docs/product/glossary.md`;
-- `docs/architecture/preliminary-domain-model.md`.
+`ADR-001` formaliza hierarquia multi-negócio e defaults revisáveis: Organization → Business → Unit → Sector/StockLocation, separação SalesItem/StockItem, transferência/empréstimo, caixa consolidado e custeio inicial.
 
-### Validação P0 / defaults de arquitetura
+### Fase 2 — modelo lógico
 
-O usuário autorizou adotar a interpretação mais provável quando a solução puder permanecer configurável e reversível, evitando bloquear o projeto por detalhes que ainda não foram confirmados com o cliente final.
+Entregáveis criados:
 
-Foi criado `docs/decisions/ADR-001-organizational-and-p0-defaults.md` com os seguintes defaults:
+- `docs/architecture/domain-model.md`
+- `docs/architecture/data-model.md`
+- `docs/architecture/erd.md`
+- `docs/architecture/phase-2-validation.md`
+- `docs/decisions/ADR-002-inventory-ledger-and-balance.md`
+- `docs/decisions/ADR-003-inventory-costing.md`
+- `docs/decisions/ADR-004-payables-and-payments.md`
+- `docs/decisions/ADR-005-cash-session-model.md`
 
-1. arquitetura multi-negócio: `Organization → Business → Unit → Sector/StockLocation`;
-2. Tabatinga, Capricórnio e Barba Negra tratados inicialmente como unidades/operações sob a mesma Organization;
-3. Cozinha, Quiosque e Empório tratados inicialmente como setores/áreas operacionais;
-4. estrutura jurídica/CNPJ não será inferida nem hardcoded;
-5. checkbox legado sem significado será preservado apenas como metadado de importação até eventual confirmação;
-6. `em haver` será tratado como indicador de conciliação interna, separado do saldo físico de estoque;
-7. transferência e empréstimo serão processos distintos;
-8. `SalesItem` e `StockItem` serão conceitos separados;
-9. o MVP de caixa trabalhará com totais consolidados e permitirá integração futura com PDV/POS;
-10. custo médio ponderado será o default de valorização gerencial, preservando custos de compra/lote para auditoria.
+## Decisões estruturais vigentes
 
-## Princípio de expansão
+1. GitHub é a fonte oficial de verdade.
+2. O sistema é multi-negócio e multi-unidade.
+3. Setor e local de estoque são conceitos distintos.
+4. `StockItem` e `SalesItem` são conceitos distintos.
+5. Saldo de estoque é projeção reconstruível de um ledger de movimentos confirmados.
+6. Movimento confirmado é corrigido por reversão, não por exclusão silenciosa.
+7. Transferência possui despacho e recebimento separados.
+8. Empréstimo controla quantidade pendente de retorno.
+9. Custeio gerencial padrão: custo médio ponderado móvel, preservando custo de lote e snapshots históricos.
+10. Financeiro separa PayableDocument → Installment → Payment; parcela suporta múltiplos pagamentos.
+11. Caixa é modelado por `CashSession`, com totais por forma de pagamento, entradas/sangrias e esperado x contado.
+12. Operações críticas devem ser idempotentes, transacionais e auditáveis.
+13. Supabase ainda não foi escolhido nem criado.
 
-O sistema não será desenhado apenas para as unidades atuais. O mesmo produto deverá suportar novos restaurantes, quiosques, lojas, marcas ou outros negócios do mesmo proprietário sem reconstrução estrutural.
+## Validação
 
-## Ainda não iniciado
+A Fase 2 foi validada contra cenários de organização, estoque, fornecedores/compras, financeiro, caixa, migração e auditoria em `docs/architecture/phase-2-validation.md`.
 
-- código da aplicação;
-- Next.js/TypeScript;
-- schema físico de banco;
-- Supabase;
-- autenticação;
-- migração real;
-- módulos funcionais.
-
-## Decisões vigentes
-
-1. GitHub é a fonte oficial de verdade do projeto.
-2. Chats são sessões temporárias.
-3. O sistema modela processos, não abas de Excel.
-4. Arquitetura inicial: monólito modular web.
-5. Modelo do domínio vem antes da decisão definitiva sobre Supabase.
-6. O sistema nasce multi-negócio e multi-unidade.
-7. Dados reais das planilhas não são versionados automaticamente.
-8. Defaults revisáveis podem ser usados para não bloquear o projeto quando não houver risco estrutural alto.
-9. `CURRENT_STATE`, `HANDOFF` e `NEXT_ACTION` devem refletir o GitHub real.
+Ainda não existem lint/typecheck/test/build porque a aplicação será criada na Fase 3.
 
 ## Próxima ação
 
-Consulte `docs/ai/NEXT_ACTION.md`. A próxima etapa é a Issue #8.
+Após integrar a Fase 2, executar a Issue #10 — Fundação técnica da aplicação.
+
+Consulte `docs/ai/NEXT_ACTION.md`.
 
 ## Regra para o próximo chat
 
-Ler `AGENTS.md`, `docs/00-START-HERE.md`, este arquivo, `HANDOFF.md`, `NEXT_ACTION.md`, `WORKFLOW.md` e os ADRs; conferir Issue/branch/PR reais; então executar a ação documentada.
+Ler `AGENTS.md`, `docs/00-START-HERE.md`, este arquivo, `HANDOFF.md`, `NEXT_ACTION.md`, `WORKFLOW.md`, os ADRs e conferir o estado real de Issues/branches/PRs antes de agir.

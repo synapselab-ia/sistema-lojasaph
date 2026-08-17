@@ -1,56 +1,61 @@
 # Handoff — Sistema Lojasaph
 
-Este arquivo registra contexto operacional para o próximo chat. `CURRENT_STATE.md` descreve o estado; `NEXT_ACTION.md` determina o trabalho imediato.
+Este arquivo registra o contexto necessário para outro chat continuar sem depender desta conversa.
 
-## Estado do handoff
+## Estado
 
-Fase 1 concluída. Validação P0 convertida em defaults profissionais/revisáveis para liberar a Fase 2.
+A Fase 2 está concluída na branch `agent/domain-model` e pronta para integração.
 
-## Contexto que não pode ser perdido
+A próxima Issue é #10 — Fase 3 — Fundação técnica da aplicação.
 
-As seis planilhas já foram analisadas. Não reiniciar a engenharia reversa do zero salvo se surgirem novos arquivos ou houver necessidade específica de verificação.
+## Não repetir
 
-O usuário autorizou adotar a interpretação mais provável quando a solução puder permanecer configurável e reversível. Não transformar essas interpretações em afirmações jurídicas/fiscais sobre o cliente; tratá-las como defaults de projeto.
+- não refazer a engenharia reversa das seis planilhas;
+- não reabrir defaults P0 sem evidência concreta do cliente;
+- não redesenhar o domínio ignorando os ADRs existentes;
+- não criar Supabase antes da fase específica.
 
-## Decisão organizacional atual
+## Documentos centrais
 
-Consultar `docs/decisions/ADR-001-organizational-and-p0-defaults.md`.
+Ler, além dos arquivos obrigatórios:
 
-Hierarquia adotada:
+- `docs/architecture/domain-model.md`
+- `docs/architecture/data-model.md`
+- `docs/architecture/erd.md`
+- `docs/architecture/phase-2-validation.md`
+- `docs/decisions/ADR-001-organizational-and-p0-defaults.md`
+- `docs/decisions/ADR-002-inventory-ledger-and-balance.md`
+- `docs/decisions/ADR-003-inventory-costing.md`
+- `docs/decisions/ADR-004-payables-and-payments.md`
+- `docs/decisions/ADR-005-cash-session-model.md`
 
-```text
-Organization / Grupo
-  └── Business / Negócio ou marca
-      └── Unit / Unidade
-          ├── Sector / Setor
-          └── StockLocation / Local de estoque
-```
+## Decisões que não podem se perder
 
-Tabatinga, Capricórnio e Barba Negra entram inicialmente como unidades/operações do mesmo grupo. A associação a marcas/negócios e entidades jurídicas deve permanecer configurável.
+- Organization → Business → Unit → Sector/StockLocation;
+- saldo de estoque não é campo editável; é derivado do ledger;
+- transferência: despacho e recebimento em etapas separadas;
+- empréstimo: processo distinto com retorno pendente;
+- custo médio ponderado móvel como default gerencial;
+- custo de lote e snapshots históricos preservados;
+- PayableDocument → Installment → Payment, com múltiplos pagamentos por parcela;
+- CashSession como unidade de fechamento, sem tabelas mensais;
+- SalesItem separado de StockItem;
+- operações críticas com idempotência, transação e auditoria;
+- dados reais das planilhas não são versionados no GitHub.
 
-## Outros defaults P0
+## Próxima implementação
 
-- Cozinha/Quiosque/Empório: setores operacionais por default;
-- checkbox legado desconhecido: não usar em regra central; preservar origem se possível;
-- `em haver`: indicador de conciliação interna separado do estoque físico;
-- transferência e empréstimo: processos distintos;
-- catálogo de venda e item de estoque: conceitos separados;
-- MVP do caixa: totais consolidados, integração com PDV/POS futura;
-- custeio gerencial: custo médio ponderado, preservando custo de compra/lote.
+A Fase 3 deve criar a aplicação web e toolchain de qualidade, mantendo persistência desacoplada por repositories/adapters e usando fixtures/in-memory inicialmente.
 
-## Próxima fase
-
-Issue #8 — Fase 2 — Modelo de domínio, dados e ADRs fundamentais.
-
-A Fase 2 deve produzir o modelo lógico/ERD e invariantes antes de qualquer escolha definitiva de Supabase ou implementação de banco.
+Ela não deve implementar módulos completos nem escolher Supabase por conveniência.
 
 ## Segurança
 
-Os arquivos Excel reais não foram adicionados ao repositório. A documentação registra estruturas, regras e problemas sem publicar os dados operacionais completos.
+Nunca versionar tokens, senhas, chaves ou dados operacionais sensíveis. `.env.example` pode conter apenas nomes de variáveis e exemplos inofensivos.
 
 ## Regra de eficiência
 
-Não bloquear o projeto por perguntas que possam ser resolvidas com defaults configuráveis. Pedir validação do usuário apenas quando a escolha tiver potencial de retrabalho estrutural relevante.
+Usar defaults profissionais e reversíveis quando possível. Só interromper para perguntar ao usuário quando uma decisão tiver risco real de retrabalho estrutural.
 
 ## Próxima ação
 

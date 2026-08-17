@@ -2,37 +2,42 @@
 
 ## Contexto
 
-- Fase 1 concluída e integrada.
-- Validação P0 resolvida para fins de arquitetura por defaults profissionais/revisáveis em `docs/decisions/ADR-001-organizational-and-p0-defaults.md`.
-- Issue seguinte: #8 — Fase 2 — Modelo de domínio, dados e ADRs fundamentais.
+- Fase 2 concluída na branch `agent/domain-model`.
+- Próxima Issue: #10 — Fase 3 — Fundação técnica da aplicação.
 
 ## Objetivo atual
 
-Executar a Fase 2 e transformar a documentação das planilhas em um modelo de domínio e dados lógico consolidado, ainda independente de Supabase.
+Após integrar a Fase 2, criar a fundação executável do Sistema Lojasaph sem acoplar o projeto a Supabase ou outro banco definitivo.
 
 ## Fazer agora
 
-1. Criar uma branch dedicada para a Issue #8 a partir da `main` atualizada.
-2. Ler `ADR-001`, `business-rules.md`, `requirements.md` e `preliminary-domain-model.md`.
-3. Formalizar a hierarquia `Organization → Business → Unit → Sector/StockLocation`.
-4. Consolidar entidades, relações, cardinalidades, estados e invariantes dos módulos de catálogo, estoque, fornecedores, financeiro e caixa.
-5. Criar um ERD/modelo lógico documentado.
-6. Registrar ADRs adicionais para saldo de estoque, custeio e demais decisões estruturais.
-7. Tratar Q-001 a Q-008 como defaults revisáveis: só reabrir se surgir evidência concreta do cliente que contradiga o ADR.
-8. Atualizar `CURRENT_STATE.md`, `HANDOFF.md` e este arquivo ao concluir a etapa.
+1. Integrar a branch/PR da Fase 2 na `main` e encerrar a Issue #8.
+2. Criar branch dedicada à Issue #10 a partir da `main` atualizada.
+3. Ler `domain-model.md`, `data-model.md`, `erd.md` e ADR-001 a ADR-005.
+4. Inicializar Next.js + React + TypeScript estrito com uma versão estável atual e registrar as versões escolhidas.
+5. Configurar Tailwind e uma estrutura responsiva mínima.
+6. Criar arquitetura modular em `src/` separando app, domain, services/use-cases, repositories/adapters, components e lib.
+7. Criar contratos/interfaces iniciais de repositories e adapters in-memory/fixtures; não criar banco real ainda.
+8. Configurar validação, tratamento de erros e convenções de IDs/datas/dinheiro.
+9. Configurar lint, typecheck, testes e build.
+10. Configurar GitHub Actions para executar as validações em PRs.
+11. Criar `.env.example` sem segredos e atualizar README com comandos de desenvolvimento.
+12. Criar shell inicial da aplicação/health-dev status apenas para provar a fundação; não implementar módulos completos.
+13. Executar todas as validações e atualizar `CURRENT_STATE.md`, `HANDOFF.md` e este arquivo.
 
 ## Não fazer ainda
 
 - Não criar Supabase.
 - Não criar migrations de produção.
-- Não implementar telas funcionais.
+- Não implementar autenticação real.
 - Não migrar dados reais.
 - Não implementar PDV completo.
-
-## Regra de eficiência
-
-Quando uma dúvida puder ser resolvida com default profissional, configurável e reversível, não bloquear o projeto. Pedir validação ao usuário apenas quando uma escolha errada puder provocar retrabalho estrutural relevante.
+- Não desenvolver vários módulos ao mesmo tempo.
 
 ## Critério de conclusão
 
-A Fase 2 termina quando existir um modelo lógico coerente e rastreável, suficiente para iniciar a fundação técnica da aplicação e avaliar o banco sem usar as planilhas como especificação direta.
+A Fase 3 termina quando existir uma aplicação executável, tipada, testável e validada por CI, com arquitetura modular e persistência desacoplada, pronta para receber o primeiro fluxo vertical funcional.
+
+## Regra de eficiência
+
+Não bloquear o projeto por decisões facilmente reversíveis. Registrar decisões técnicas relevantes no repositório e preferir a solução mais simples que preserve as invariantes do domínio.
