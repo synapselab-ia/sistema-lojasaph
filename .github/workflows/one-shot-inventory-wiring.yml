@@ -1,0 +1,53 @@
+name: One-shot inventory wiring
+
+on:
+  push:
+    branches: [agent/inventory-count-runtime]
+    paths:
+      - .github/workflows/one-shot-inventory-wiring.yml
+
+permissions:
+  contents: write
+
+jobs:
+  wire:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/inventory-count-runtime
+      - name: Wire navigation and test gate
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          shell = Path('src/components/runtime-shell.tsx')
+          text = shell.read_text()
+          marker = '  { href: "/workspace/transferencias", label: "Transferências" },\n];'
+          replacement = '  { href: "/workspace/transferencias", label: "Transferências" },\n  { href: "/workspace/inventarios", label: "Inventários" },\n];'
+          if marker not in text:
+              raise SystemExit('runtime shell navigation marker not found')
+          text = text.replace(marker, replacement)
+          text = text.replace(
+              'Produtos, fornecedores, entradas, retiradas e transferências desta área usam Supabase + RLS. Inventário físico continua na demonstração até receber seu comando transacional próprio.',
+              'Produtos, fornecedores, entradas, retiradas, transferências e inventário físico desta área usam Supabase + RLS. Outros módulos ainda evoluem separadamente.'
+          )
+          shell.write_text(text)
+
+          workflow = Path('.github/workflows/inventory-count-ci.yml')
+          ci = workflow.read_text()
+          marker = '      - name: Run persistent inventory count suite\n        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/inventory_count.sql\n'
+          replacement = marker + '\n      - name: Run inventory count cancellation suite\n        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/inventory_count_cancel.sql\n'
+          if marker not in ci:
+              raise SystemExit('inventory CI marker not found')
+          workflow.write_text(ci.replace(marker, replacement))
+          PY
+      - name: Remove this one-shot workflow and commit
+        run: |
+          rm -f .github/workflows/one-shot-inventory-wiring.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: wire persistent inventory workspace"
+          git push origin HEAD:agent/inventory-count-runtime
