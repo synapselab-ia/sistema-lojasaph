@@ -136,7 +136,60 @@ begin
 end;
 $$;
 
+-- Transactional RPC is the only authenticated write path for the first stock command.
+select * from public.record_stock_entry(
+  '10000000-0000-4000-8000-000000000900',
+  '00000000-0000-4000-8000-000000000001',
+  '00000000-0000-4000-8000-000000000400',
+  '00000000-0000-4000-8000-000000000120',
+  10.000,
+  3.00,
+  'CI-RPC-TEST',
+  '2026-09-30',
+  'CI transactional entry'
+);
+
+-- Same command id must be idempotent.
+select * from public.record_stock_entry(
+  '10000000-0000-4000-8000-000000000900',
+  '00000000-0000-4000-8000-000000000001',
+  '00000000-0000-4000-8000-000000000400',
+  '00000000-0000-4000-8000-000000000120',
+  10.000,
+  3.00,
+  'CI-RPC-TEST',
+  '2026-09-30',
+  'CI transactional entry'
+);
+
 reset role;
+
+do $$
+begin
+  if (select count(*) from public.stock_movements where id = '10000000-0000-4000-8000-000000000900') <> 1 then
+    raise exception 'transactional RPC duplicated movement';
+  end if;
+  if (select quantity_on_hand from public.inventory_balances where organization_id = '00000000-0000-4000-8000-000000000001' and stock_item_id = '00000000-0000-4000-8000-000000000400' and stock_location_id = '00000000-0000-4000-8000-000000000120') <> 110.000 then
+    raise exception 'transactional RPC produced wrong balance';
+  end if;
+  if (select average_cost from public.inventory_balances where organization_id = '00000000-0000-4000-8000-000000000001' and stock_item_id = '00000000-0000-4000-8000-000000000400' and stock_location_id = '00000000-0000-4000-8000-000000000120') <> 2.18 then
+    raise exception 'transactional RPC produced wrong weighted cost';
+  end if;
+  if (select count(*) from public.inventory_batches where source_reference_id = '10000000-0000-4000-8000-000000000900') <> 1 then
+    raise exception 'transactional RPC failed to create batch';
+  end if;
+  if (select count(*) from public.audit_logs where entity_id = '10000000-0000-4000-8000-000000000900') <> 1 then
+    raise exception 'transactional RPC failed to create audit log';
+  end if;
+
+  if (select prosecdef from pg_proc where oid = 'public.is_org_member(uuid)'::regprocedure) then
+    raise exception 'public is_org_member must not remain SECURITY DEFINER';
+  end if;
+  if (select prosecdef from pg_proc where oid = 'public.has_org_role(uuid,text[])'::regprocedure) then
+    raise exception 'public has_org_role must not remain SECURITY DEFINER';
+  end if;
+end;
+$$;
 
 -- An authenticated user with no membership sees no Organizations.
 set role authenticated;
@@ -156,13 +209,30 @@ $$;
 
 reset role;
 
--- Anonymous role receives no operational table privileges.
+-- Anonymous role receives no operational table privileges or privileged helpers.
 set role anon;
 do $$
 begin
   begin
     perform count(*) from public.organizations;
     raise exception 'anonymous organization read unexpectedly succeeded';
+  exception
+    when insufficient_privilege then null;
+  end;
+
+  begin
+    perform public.record_stock_entry(
+      '10000000-0000-4000-8000-000000000901',
+      '00000000-0000-4000-8000-000000000001',
+      '00000000-0000-4000-8000-000000000400',
+      '00000000-0000-4000-8000-000000000120',
+      1,
+      1,
+      null,
+      null,
+      null
+    );
+    raise exception 'anonymous stock entry RPC unexpectedly succeeded';
   exception
     when insufficient_privilege then null;
   end;
