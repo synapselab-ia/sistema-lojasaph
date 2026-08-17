@@ -1,30 +1,99 @@
-# Runtime Supabase — fronteiras de persistência
+# Runtime Supabase — persistência, Auth e RLS
 
-Status: Fase 7 — fundação remota implementada; autenticação/runtime completo fica para a fase seguinte.
+Status: Fase 8 — runtime autenticado implementado no PR #23.
 
 ## Princípio
 
-O domínio e a UI não dependem diretamente do SDK do Supabase. A integração entra por factories e adapters.
+O domínio não depende diretamente do SDK do Supabase. A integração entra por factories, repositories/adapters e gateways. A UI persistente usa a sessão do usuário e RLS; credenciais privilegiadas não são um atalho para operações normais.
 
-## Factories
+## Factories e sessão SSR
 
-- `createBrowserSupabaseClient()` usa somente URL + publishable key.
-- `createServerRlsSupabaseClient(accessToken)` executa consultas com o JWT do usuário e, portanto, preserva RLS.
-- `createServerAdminSupabaseClient()` usa `SUPABASE_SECRET_KEY` e é reservado a rotinas administrativas server-only. Não deve ser usado por conveniência em operações normais de usuário.
+- `createBrowserSupabaseClient()` usa `@supabase/ssr` com URL + publishable key.
+- `createServerSupabaseClient()` cria um cliente por request com cookies da sessão.
+- `createServerRlsSupabaseClient(accessToken)` permanece disponível para cenários server-side bearer explícitos, mas o runtime Next.js normal usa cookies SSR.
+- `createServerAdminSupabaseClient()` usa `SUPABASE_SECRET_KEY`, importa `server-only` e é reservado a rotinas administrativas explícitas.
+- `src/proxy.ts` delega a renovação de sessão para `src/lib/supabase/proxy.ts`.
+- o Proxy chama `getClaims()` e propaga tanto cookies renovados quanto headers anti-cache produzidos por `@supabase/ssr`.
 
-Nenhuma credencial real é versionada no GitHub.
+Páginas protegidas não tratam `getSession()`/cookie bruto como prova de identidade. A resolução de acesso começa por claims verificadas.
 
-## Adapters reais implementados
+## Fluxos de autenticação
 
-- `SupabaseStockItemRepository` — leitura e manutenção de StockItem respeitando RLS.
-- `SupabaseSupplierRepository` — leitura/manutenção de Supplier e contatos respeitando RLS.
-- `SupabaseStockEntryGateway` — primeira mutação crítica via RPC transacional.
+Implementados:
 
-Adapters in-memory continuam disponíveis para testes rápidos e workspace de demonstração enquanto Auth/UI real não forem ligados.
+- login por e-mail/senha;
+- logout server-side;
+- recuperação de senha;
+- callback PKCE por `exchangeCodeForSession`;
+- suporte a callback `token_hash`/OTP quando usado por template server-side;
+- atualização de senha somente após sessão de recuperação válida;
+- redirects internos sanitizados para impedir open redirect.
+
+Não existe cadastro público aberto nesta fase. Contas são provisionadas de forma administrativa até existir um fluxo de convite formal.
+
+A recuperação exige `NEXT_PUBLIC_APP_URL` e que o URL/callback correspondente esteja permitido na configuração de redirects do Supabase do ambiente hospedado.
+
+## Membership e Organization
+
+`resolveMembershipContext()`:
+
+1. valida a identidade com `getClaims()`;
+2. consulta somente memberships ativos visíveis ao próprio usuário por RLS;
+3. carrega Organizations ativas acessíveis;
+4. agrega os papéis do usuário por Organization;
+5. para múltiplas Organizations, aceita uma seleção em cookie `httpOnly`;
+6. revalida o ID do cookie contra os memberships a cada carregamento, portanto alterar o cookie não concede acesso.
+
+Estados explícitos:
+
+- sessão ausente/expirada → login;
+- usuário autenticado sem membership → `/sem-acesso`;
+- múltiplas Organizations sem seleção válida → `/workspace/selecionar-organizacao`.
+
+A autorização continua derivando de `organization_memberships`, nunca de `user_metadata`.
+
+## Bootstrap do primeiro owner
+
+A inicialização administrativa fica em `/bootstrap` e é deliberadamente restrita:
+
+- exige sessão válida e usuário obtido pelo Auth server;
+- exige correspondência exata com `LOJASAPH_BOOTSTRAP_OWNER_EMAIL` server-only;
+- `LOJASAPH_BOOTSTRAP_ORGANIZATION_ID` é obrigatório quando não existe exatamente uma Organization ativa;
+- se já existe outro owner ativo, o bootstrap é recusado;
+- usa secret key apenas no servidor;
+- cria o membership owner e `audit_logs`;
+- se a auditoria falhar, o vínculo recém-criado é removido como compensação;
+- após a inicialização, as variáveis de bootstrap devem ser removidas/desabilitadas.
+
+Não existe regra automática de “primeiro usuário vira admin”.
+
+## Workspace persistente x demonstração
+
+### `/workspace`
+
+Opera com Supabase real e sessão autenticada. Nesta fase suporta:
+
+- leitura/manutenção de produtos via `SupabaseStockItemRepository`;
+- leitura/manutenção de fornecedores e contatos via `SupabaseSupplierRepository`;
+- leitura de categorias, unidades de medida, locais e saldos por RLS;
+- entrada de estoque via `SupabaseStockEntryGateway` / `record_stock_entry`.
+
+A UI apresenta permissões conforme papéis, mas isso é apenas UX; RLS/RPC continuam sendo a fronteira real.
+
+### `/cadastros`
+
+Continua explicitamente in-memory para os fluxos que ainda não possuem comandos PostgreSQL equivalentes:
+
+- retirada/FEFO;
+- transferência;
+- lotes/validades avançados;
+- inventário físico.
+
+Não misturar operações persistentes e in-memory numa mesma tela evita que uma ação pareça salva quando não está.
 
 ## Escrita crítica de estoque
 
-`public.record_stock_entry(...)` é o primeiro command RPC do ledger real.
+`public.record_stock_entry(...)` permanece o primeiro command RPC do ledger real.
 
 Garantias:
 
@@ -38,33 +107,26 @@ Garantias:
 8. recalcula custo médio ponderado;
 9. grava movimento + item + saldo + lote/alocação, quando aplicável, na mesma transação PostgreSQL;
 10. grava `audit_logs`;
-11. lote/validade desconhecidos permanecem `NULL`, sem fabricar informação.
+11. lote/validade desconhecidos permanecem `NULL`.
 
-A função é intencionalmente `SECURITY DEFINER` e exposta somente a `authenticated`. O Supabase Security Advisor sinaliza esse fato por design. Essa exceção é aceita porque a função é o endpoint autorizado da mutação: valida `auth.uid()`, papel organizacional, inputs e referências antes de qualquer write; `PUBLIC` e `anon` não possuem `EXECUTE`.
+A função é intencionalmente `SECURITY DEFINER` e executável somente por `authenticated`; `PUBLIC` e `anon` não possuem `EXECUTE`. O warning correspondente do Security Advisor é conhecido e aceito porque a função valida identidade, papel, inputs e referências antes dos writes.
 
-## Helpers de autorização
+## Testes de autorização
 
-As consultas privilegiadas de membership vivem em `private.is_org_member` e `private.has_org_role` como `SECURITY DEFINER`, num schema não exposto. As funções homônimas em `public` são wrappers `SECURITY INVOKER` usados pelas policies.
+O CI PostgreSQL efêmero valida:
 
-Após essa mudança, o Security Advisor ficou sem alertas, exceto o RPC transacional intencional descrito acima.
+- `inventory` pode manter catálogo e executar entrada;
+- `viewer` lê sua Organization, mas não mantém catálogo nem executa o RPC;
+- `purchases` mantém fornecedores, mas não catálogo/entrada;
+- outsider sem membership não vê Organizations;
+- membro de outra Organization não vê os itens da Organization seed;
+- anon não acessa tabelas operacionais/RPC;
+- ledger não aceita escrita direta de cliente autenticado.
 
 ## Projeto remoto
 
-Um projeto Supabase existente e vazio foi reutilizado na região `sa-east-1`. As migrations do GitHub foram aplicadas na ordem e o seed anonimizado foi carregado. Não há dados reais do cliente nem usuários reais cadastrados nesta fase.
-
-## Validação remota
-
-Foi executado teste real dentro de transação com `ROLLBACK`:
-
-- usuário/membership temporários;
-- entrada de 10 unidades sobre saldo 100 com custo 3,00 sobre custo médio 2,10;
-- saldo resultante 110;
-- custo médio resultante 2,18;
-- criação de um único movimento, lote e audit log;
-- repetição com mesmo `command_id` não duplicou o evento.
-
-Tudo do cenário temporário foi descartado por `ROLLBACK`.
+O projeto Supabase homologado em `sa-east-1` continua com migrations versionadas e seed anonimizado. A Fase 8 não criou dados reais do cliente nem credenciais reais no GitHub.
 
 ## Próxima fase
 
-A próxima fase deve implementar Auth/sessão real, onboarding seguro de membership, proteção de rotas e composição runtime dos adapters. Só então o workspace visual deixa de usar dados in-memory por padrão.
+Issue #24 — persistir retirada/FEFO, transferência e inventário físico com comandos transacionais, idempotência, locks e auditoria. Somente após isso o workspace real deve substituir a demonstração nos fluxos principais de estoque.
