@@ -1,10 +1,12 @@
 # Sistema Lojasaph
 
-Sistema de gestão operacional das lojas, cobrindo estoque, compras, fornecedores, financeiro, caixa e gestão.
+Sistema web de gestão operacional multi-negócio e multi-unidade para estoque, fornecedores, compras, financeiro, caixa e gestão.
 
 ## Estado atual
 
-O projeto está na fase de fundação e engenharia de requisitos. O código funcional ainda não foi iniciado.
+A modelagem do domínio está concluída e a fundação técnica da aplicação está em desenvolvimento na Issue #10.
+
+O projeto usa GitHub como fonte oficial de verdade. Supabase ainda não foi adotado.
 
 ## Para qualquer novo chat ou agente
 
@@ -13,25 +15,77 @@ Leia obrigatoriamente, nesta ordem:
 1. `AGENTS.md`
 2. `docs/00-START-HERE.md`
 3. `docs/ai/CURRENT_STATE.md`
-4. `docs/ai/WORKFLOW.md`
+4. `docs/ai/HANDOFF.md`
+5. `docs/ai/NEXT_ACTION.md`
+6. `docs/ai/WORKFLOW.md`
+7. ADRs e documentação do módulo afetado
 
-O GitHub é a fonte oficial de verdade do projeto. O histórico de uma conversa do ChatGPT não deve ser necessário para continuar o desenvolvimento.
+Depois confira Issue, branch e PR reais no GitHub antes de alterar o projeto.
 
-## Visão
+## Stack da fundação
 
-O Sistema Lojasaph será uma aplicação web profissional para substituir progressivamente os controles fragmentados em planilhas por processos integrados, rastreáveis e adequados à operação das lojas.
+- Next.js 16.2.12
+- React 19.2.8
+- TypeScript 5.x em modo strict
+- Tailwind CSS 4.x
+- ESLint 9.x
+- Vitest 4.1.10
+- npm
+- Node.js >= 20.9
 
-## Documentação
+Detalhes: `docs/architecture/technical-foundation.md`.
 
-- Visão do produto: `docs/product/vision.md`
-- Escopo: `docs/product/scope.md`
-- Glossário: `docs/product/glossary.md`
-- Arquitetura inicial: `docs/architecture/overview.md`
-- Estado atual: `docs/ai/CURRENT_STATE.md`
-- Handoff: `docs/ai/HANDOFF.md`
-- Workflow entre chats: `docs/ai/WORKFLOW.md`
-- Dados de origem: `docs/source-data/README.md`
+## Desenvolvimento local
 
-## Tecnologia
+Pré-requisito: Node.js 20.9 ou superior.
 
-A direção inicial é Next.js + React + TypeScript em arquitetura de monólito modular. O banco será relacional e o uso de Supabase/PostgreSQL será avaliado após a modelagem do domínio.
+```bash
+npm install
+npm run dev
+```
+
+A aplicação fica disponível em `http://localhost:3000`.
+
+Health endpoint:
+
+```text
+GET /health
+```
+
+## Validações
+
+```bash
+npm run lint
+npm run typecheck
+npm run test
+npm run build
+```
+
+Ou tudo em sequência:
+
+```bash
+npm run check
+```
+
+Pull Requests executam as mesmas validações via GitHub Actions.
+
+## Arquitetura
+
+A aplicação é um monólito modular. O domínio não depende do Next.js nem de um banco específico.
+
+A persistência seguirá contratos de repositories/adapters. Nesta fase há adapters in-memory para permitir evolução e testes sem decidir Supabase prematuramente.
+
+Documentos principais:
+
+- modelo de domínio: `docs/architecture/domain-model.md`
+- modelo lógico: `docs/architecture/data-model.md`
+- ERD: `docs/architecture/erd.md`
+- fundação técnica: `docs/architecture/technical-foundation.md`
+- decisões: `docs/decisions/`
+- requisitos: `docs/product/requirements.md`
+- engenharia reversa: `docs/source-data/`
+- Definition of Done: `docs/qa/definition-of-done.md`
+
+## Segurança
+
+Nunca versionar senhas, tokens, chaves ou dados operacionais sensíveis. `.env.example` contém apenas nomes/exemplos seguros de variáveis.

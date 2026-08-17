@@ -2,42 +2,49 @@
 
 ## Contexto
 
-- Fase 2 concluída na branch `agent/domain-model`.
-- Próxima Issue: #10 — Fase 3 — Fundação técnica da aplicação.
+- Fase 3 implementada na branch `agent/technical-foundation`.
+- PR atual: #12 — fundação técnica da aplicação.
+- CI passou instalação, lint, typecheck, testes e build; o lockfile está versionado e o CI usa `npm ci`.
+- Próxima Issue já criada: #13 — Fase 4 — Cadastros base e primeiro fluxo funcional.
 
 ## Objetivo atual
 
-Após integrar a Fase 2, criar a fundação executável do Sistema Lojasaph sem acoplar o projeto a Supabase ou outro banco definitivo.
+Integrar a fundação técnica e iniciar o primeiro fluxo vertical utilizável, ainda com repositories/adapters in-memory e sem banco definitivo.
 
 ## Fazer agora
 
-1. Integrar a branch/PR da Fase 2 na `main` e encerrar a Issue #8.
-2. Criar branch dedicada à Issue #10 a partir da `main` atualizada.
-3. Ler `domain-model.md`, `data-model.md`, `erd.md` e ADR-001 a ADR-005.
-4. Inicializar Next.js + React + TypeScript estrito com uma versão estável atual e registrar as versões escolhidas.
-5. Configurar Tailwind e uma estrutura responsiva mínima.
-6. Criar arquitetura modular em `src/` separando app, domain, services/use-cases, repositories/adapters, components e lib.
-7. Criar contratos/interfaces iniciais de repositories e adapters in-memory/fixtures; não criar banco real ainda.
-8. Configurar validação, tratamento de erros e convenções de IDs/datas/dinheiro.
-9. Configurar lint, typecheck, testes e build.
-10. Configurar GitHub Actions para executar as validações em PRs.
-11. Criar `.env.example` sem segredos e atualizar README com comandos de desenvolvimento.
-12. Criar shell inicial da aplicação/health-dev status apenas para provar a fundação; não implementar módulos completos.
-13. Executar todas as validações e atualizar `CURRENT_STATE.md`, `HANDOFF.md` e este arquivo.
+1. Confirmar o CI final do PR #12.
+2. Integrar o PR #12 na `main` e encerrar a Issue #10.
+3. Criar branch dedicada à Issue #13 a partir da `main` atualizada.
+4. Implementar casos de uso e UI para:
+   - Organization, Business, Unit, Sector e StockLocation;
+   - StockItem e categorias/unidades essenciais;
+   - Supplier e múltiplos contatos;
+   - vínculo SupplierItem e preço básico observado.
+5. Manter UI separada dos repositories/adapters.
+6. Usar dados de demonstração anonimizados/fixtures, nunca dados reais das planilhas.
+7. Criar navegação administrativa inicial responsiva.
+8. Criar testes unitários e de integração dos casos de uso.
+9. Rodar lint, typecheck, testes e build via CI.
+10. Atualizar `CURRENT_STATE.md`, `HANDOFF.md` e este arquivo ao concluir.
 
 ## Não fazer ainda
 
 - Não criar Supabase.
-- Não criar migrations de produção.
-- Não implementar autenticação real.
+- Não criar autenticação real.
 - Não migrar dados reais.
-- Não implementar PDV completo.
-- Não desenvolver vários módulos ao mesmo tempo.
+- Não implementar financeiro/caixa completos.
+- Não implementar PDV.
+- Não começar vários módulos transacionais em paralelo.
+
+## Depois da Issue #13
+
+O próximo fluxo deve ser estoque transacional: entrada, retirada e transferência entre locais/unidades usando o ledger definido no ADR-002.
 
 ## Critério de conclusão
 
-A Fase 3 termina quando existir uma aplicação executável, tipada, testável e validada por CI, com arquitetura modular e persistência desacoplada, pronta para receber o primeiro fluxo vertical funcional.
+A Fase 4 termina quando um usuário de demonstração consegue navegar pela estrutura organizacional, criar/editar produtos e fornecedores e relacionar fornecedor a item, com validações e CI passando.
 
 ## Regra de eficiência
 
-Não bloquear o projeto por decisões facilmente reversíveis. Registrar decisões técnicas relevantes no repositório e preferir a solução mais simples que preserve as invariantes do domínio.
+Não bloquear o projeto por decisões facilmente reversíveis. Preservar as invariantes dos ADRs e registrar no GitHub qualquer decisão estrutural nova.
