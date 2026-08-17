@@ -4,112 +4,153 @@
 
 ## Fase atual
 
-Fase 7 — persistência PostgreSQL/Supabase e segurança base: implementação final na branch `agent/supabase-adapters`, aguardando CI/merge.
+Fase 8 — Autenticação real e runtime Supabase — implementada pelo PR #23.
 
-A Issue #19 pode ser encerrada após o PR desta branch ficar verde e ser integrado. A próxima Issue é #21 — Fase 8 — Autenticação real e runtime Supabase.
+A próxima frente é a Issue #24 — Fase 9 — estoque transacional completo no Supabase. Ela só deve ser iniciada depois do merge do PR #23 / fechamento da Issue #21.
 
 ## Estado do GitHub
 
 - Repositório: `synapselab-ia/sistema-lojasaph`
 - Branch principal: `main`
-- Issue atual: #19 — Persistência PostgreSQL/Supabase e segurança base
-- Branch atual: `agent/supabase-adapters`
-- Próxima Issue: #21 — Autenticação real e runtime Supabase
-- PR desta branch: ainda deve ser aberto/validado.
+- PR de conclusão da Fase 8: #23 — `agent/auth-runtime` → `main`
+- Issue da Fase 8: #21
+- Próxima Issue/backlog: #24 — estoque transacional completo no Supabase
 
-## Fases concluídas antes desta branch
+## Fases concluídas
 
 - Fase 0: governança e continuidade entre chats.
 - Fase 1: engenharia reversa das seis planilhas.
 - Fase 2: domínio, modelo lógico, ERD e ADRs fundamentais.
 - Fase 3: fundação Next.js/React/TypeScript, testes e CI.
-- Fase 4: cadastros base e fornecedores.
-- Fase 5: ledger de estoque, entrada, retirada, transferência e custo médio.
-- Fase 6: lotes, validades, FEFO e inventário físico.
-- Fase 7A: schema PostgreSQL, RLS, seed e CI de banco integrados pelo PR #20.
+- Fase 4: cadastros base e fornecedores in-memory.
+- Fase 5: ledger de estoque, entrada, retirada, transferência e custo médio no domínio/in-memory.
+- Fase 6: lotes, validades, FEFO e inventário físico no domínio/in-memory.
+- Fase 7: PostgreSQL/Supabase, migrations, RLS, projeto remoto, adapters reais e primeiro RPC transacional de entrada.
+- Fase 8: Auth SSR, membership/Organization e workspace persistente para os fluxos já seguros.
 
-## Fase 7B — implementado nesta branch
+## Fase 8 — runtime autenticado
 
-### Projeto remoto
+### Sessão SSR
 
-- projeto Supabase existente foi restaurado e inspecionado antes de qualquer DDL;
-- não possuía migrations nem tabelas de aplicação, portanto foi reutilizado;
-- região: `sa-east-1`;
-- migrations versionadas foram aplicadas ao projeto remoto;
-- seed anonimizado foi carregado;
-- nenhum dado real do cliente e nenhum usuário real foram criados.
+- dependência `@supabase/ssr` pinada em `0.12.4` com lockfile;
+- browser client com publishable key;
+- server client por request usando cookies;
+- admin client continua `server-only` com secret key;
+- Proxy renova sessão com `getClaims()`;
+- cookies renovados e headers anti-cache do SSR são propagados na resposta;
+- páginas protegidas não usam sessão bruta como decisão de autorização.
 
-### Cliente e fronteiras
+### Fluxos Auth
 
-`@supabase/supabase-js` foi adicionado com versão exata e lockfile atualizado.
+Implementados:
 
-Factories:
+- login e logout;
+- recuperação de senha;
+- callback PKCE por `exchangeCodeForSession`;
+- callback OTP/token hash compatível com template server-side;
+- atualização de senha após sessão válida;
+- sanitização de redirects internos contra open redirect.
 
-- `src/lib/supabase/browser.ts` — publishable key;
-- `src/lib/supabase/server.ts` — cliente RLS com access token e cliente admin server-only;
-- `src/lib/supabase/env.ts` — validação das variáveis necessárias.
+Cadastro público não foi aberto. Contas continuam sendo provisionadas administrativamente até existir um fluxo de convite formal.
 
-Nenhum segredo ou URL real foi versionado.
+### Membership / Organization
 
-### Adapters reais
+`resolveMembershipContext()` valida claims, consulta memberships ativos via RLS e resolve Organizations disponíveis.
 
-- `SupabaseStockItemRepository`;
-- `SupabaseSupplierRepository`;
-- `SupabaseStockEntryGateway`.
+- sem sessão → login;
+- sessão sem membership → estado `/sem-acesso`;
+- uma Organization → seleção implícita;
+- múltiplas Organizations → seleção explícita;
+- Organization selecionada fica em cookie `httpOnly`, mas é revalidada contra os memberships em cada carregamento protegido;
+- roles vêm de `organization_memberships`, nunca de `user_metadata`.
 
-Os adapters recebem `SupabaseClient` por injeção. Domínio e UI continuam sem importar persistência diretamente.
+### Bootstrap inicial
 
-### Segurança RLS
+`/bootstrap` cria somente o primeiro vínculo owner:
 
-Os helpers privilegiados de membership foram movidos para schema `private` como `SECURITY DEFINER`. As funções homônimas no schema `public` agora são wrappers `SECURITY INVOKER`.
+- exige e-mail allowlisted em `LOJASAPH_BOOTSTRAP_OWNER_EMAIL`;
+- usa admin client somente server-side;
+- exige Organization explícita quando houver múltiplas;
+- recusa bootstrap se outro owner ativo já existir;
+- registra audit log;
+- se a auditoria falhar, remove o membership recém-criado como compensação;
+- variáveis de bootstrap devem ser removidas após a inicialização.
 
-Depois dessa correção, o Supabase Security Advisor ficou sem alertas para helpers de membership.
+Não existe regra “primeiro usuário vira admin”.
 
-### Primeiro comando crítico real
+## Workspace real
 
-Migration `*_transactional_stock_entry.sql` adiciona `public.record_stock_entry(...)`.
+`/workspace` usa Supabase real + JWT/RLS e está separado de `/cadastros`, que permanece demonstração in-memory.
 
-O RPC:
+Persistente hoje:
 
-- exige usuário autenticado;
-- valida role organizacional `owner/admin/manager/inventory`;
-- mantém o cliente sem grants diretos de escrita no ledger;
-- usa `command_id` como idempotency key;
-- trava a linha de saldo com `FOR UPDATE`;
-- atualiza saldo e custo médio;
-- cria movimento/item;
-- cria lote/alocação quando aplicável;
-- grava audit log;
-- executa tudo na mesma transação PostgreSQL.
+- produtos — leitura/manutenção por `SupabaseStockItemRepository`;
+- fornecedores/contatos — leitura/manutenção por `SupabaseSupplierRepository`;
+- categorias, unidades de medida, locais e saldos — leitura RLS;
+- entrada de estoque — `SupabaseStockEntryGateway` → `record_stock_entry` transacional/idempotente.
 
-O Security Advisor sinaliza o RPC como `SECURITY DEFINER` executável por `authenticated`; este é um warning intencional e documentado porque o RPC é justamente a fronteira autorizada da mutação crítica. `PUBLIC` e `anon` não possuem EXECUTE e a função valida `auth.uid()` + role antes dos writes.
+Ainda demo/in-memory:
 
-### Validação remota do RPC
+- retirada/FEFO;
+- transferência;
+- inventário físico;
+- operações avançadas de lotes/validade.
 
-Teste executado dentro de transação com `ROLLBACK`:
+Essa separação é intencional: não apresentar como persistente um fluxo que ainda grava somente em memória.
 
-- saldo inicial: 100 a custo médio 2,10;
-- entrada: 10 a custo 3,00;
-- saldo esperado/obtido: 110;
-- custo médio esperado/obtido: 2,18;
-- exatamente um movimento, um lote e um audit log;
-- segunda chamada com mesmo `command_id` não duplicou evento;
-- cenário temporário descartado integralmente por rollback.
+## Segurança e testes
 
-### Performance
+CI da Fase 8 cobre:
 
-A policy de membership foi ajustada para `(select auth.uid())`. Índices foram adicionados às relações operacionais mais relevantes. O advisor ainda lista FKs sem índice como `INFO` e índices recém-criados como `unused` porque o banco é praticamente vazio; isso não bloqueia a fase e deve ser revisitado com carga real/planos de consulta.
+### Aplicação
 
-## Persistência da UI hoje
+- `npm ci`;
+- lint;
+- typecheck;
+- Vitest;
+- production build.
 
-O workspace visual ainda usa adapters in-memory por padrão porque ainda não há login/sessão/membership real na aplicação. Isso é o escopo da Issue #21.
+### Banco
+
+- PostgreSQL 17 efêmero;
+- bootstrap Auth;
+- todas as migrations;
+- seed anonimizado;
+- smoke tests de schema/RLS/RPC;
+- matriz adicional de roles e isolamento.
+
+Casos validados:
+
+- `inventory` pode manter catálogo e registrar entrada;
+- `viewer` não altera catálogo nem executa entrada;
+- `purchases` altera fornecedores, mas não catálogo/entrada;
+- outsider sem membership não vê Organization;
+- membro de outra Organization não vê dados da Organization seed;
+- anon não acessa tabelas operacionais/RPC;
+- ledger continua sem escrita direta de cliente autenticado;
+- redirect externo/protocol-relative é rejeitado pelo runtime.
+
+O primeiro run do PR #23 encontrou apenas um narrow de TypeScript em claims opcionais; foi corrigido sem relaxar tipos. O run subsequente passou lint, typecheck, testes, build e banco.
+
+## Configuração de ambiente
+
+`.env.example` documenta:
+
+- `NEXT_PUBLIC_APP_URL`;
+- `NEXT_PUBLIC_SUPABASE_URL`;
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`;
+- `SUPABASE_SECRET_KEY`;
+- `LOJASAPH_BOOTSTRAP_OWNER_EMAIL`;
+- `LOJASAPH_BOOTSTRAP_ORGANIZATION_ID`.
+
+Nenhum valor real é versionado. Para recuperação de senha em ambiente hospedado, o callback da aplicação também precisa estar autorizado na configuração de redirect URLs do Supabase.
+
+## Projeto remoto
+
+O projeto Supabase homologado em `sa-east-1` continua com migrations e seed demo aplicados. Nenhum dado real do cliente foi migrado nesta fase.
 
 ## Próxima ação
 
-1. abrir PR desta branch contra `main`;
-2. exigir CI de aplicação + banco verde;
-3. integrar o PR e encerrar Issue #19;
-4. iniciar Issue #21 em branch própria;
-5. implementar Auth/sessão real e composição runtime dos adapters RLS.
+Iniciar a Issue #24 somente após o PR #23 estar integrado. A primeira entrega da Fase 9 deve ser retirada persistente com FEFO/idempotência/locks; depois transferência e inventário físico.
 
-Consulte `docs/ai/NEXT_ACTION.md` e `docs/modules/supabase-runtime.md`.
+Consulte `docs/ai/NEXT_ACTION.md`, `docs/modules/inventory.md`, `docs/modules/supabase-runtime.md`, ADR-002, ADR-003 e ADR-006.

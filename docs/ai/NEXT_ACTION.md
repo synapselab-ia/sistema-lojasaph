@@ -2,63 +2,72 @@
 
 ## Contexto
 
-- Fase 7 / Issue #19 está implementada na branch `agent/supabase-adapters`.
-- Projeto Supabase remoto foi conectado/reutilizado com segurança.
-- Migrations, RLS e seed demo foram aplicados no remoto.
-- Adapters reais existem para StockItem e Supplier.
-- Primeiro comando crítico real existe em `record_stock_entry` + `SupabaseStockEntryGateway`.
-- Teste remoto de idempotência/saldo/custo/lote/audit passou em transação com rollback.
-- Próxima Issue criada: #21 — Autenticação real e runtime Supabase.
+- Fase 8 / Issue #21 foi implementada no PR #23.
+- Auth SSR, login/logout/recuperação, membership e seleção de Organization já existem.
+- `/workspace` usa persistência real para produtos, fornecedores/contatos e entrada de estoque.
+- `/cadastros` continua in-memory para retirada, transferência, FEFO e inventário físico.
+- `record_stock_entry` é o primeiro comando PostgreSQL transacional do ledger.
+- CI da Fase 8 cobre aplicação, migrations, RLS/RPC, roles e isolamento entre Organizations.
+- Próxima Issue: #24 — Fase 9 — estoque transacional completo no Supabase.
 
 ## Objetivo atual
 
-Fechar a Issue #19 via PR/CI e iniciar a Fase 8, conectando Auth/sessão real aos adapters existentes sem enfraquecer RLS.
+Depois que o PR #23 estiver integrado e a Issue #21 fechada, iniciar a Issue #24 e persistir os demais fluxos principais de estoque sem liberar escrita direta no ledger.
 
 ## Fazer agora
 
-1. Abrir PR de `agent/supabase-adapters` contra `main`.
-2. Confirmar que não existem workflows temporários nem migrations duplicadas.
-3. Exigir CI completo:
-   - `npm ci`;
-   - lint;
-   - typecheck;
-   - testes;
-   - build;
-   - PostgreSQL efêmero;
-   - todas as migrations;
-   - seed;
-   - smoke tests de RLS e `record_stock_entry`.
-4. Corrigir qualquer falha antes do merge.
-5. Integrar o PR na `main` e encerrar Issue #19.
-6. Criar branch nova a partir da `main` para Issue #21.
-7. Na Issue #21, implementar:
-   - Supabase Auth e sessão server-side;
-   - login/logout/recuperação mínima;
-   - proteção de rotas;
-   - resolução de Organization/membership;
-   - onboarding administrativo server-only;
-   - composição runtime dos adapters com JWT + RLS;
-   - workspace autenticado usando persistência real;
-   - estado explícito para usuário sem membership;
-   - testes de roles e isolamento.
-8. Continuar usando adapters in-memory nos unit tests.
-9. Não migrar dados reais do cliente ainda.
-10. Atualizar CURRENT_STATE/HANDOFF/NEXT_ACTION ao concluir a próxima etapa.
+1. Confirmar que PR #23 está na `main` e Issue #21 fechada.
+2. Manter Issue #24 como única frente em execução.
+3. Criar branch nova a partir da `main`, sugerida: `agent/stock-transactional-runtime`.
+4. Ler antes de codar:
+   - `docs/modules/inventory.md`;
+   - `docs/decisions/ADR-002-inventory-ledger-and-balance.md`;
+   - `docs/decisions/ADR-003-inventory-costing.md`;
+   - `docs/decisions/ADR-006-postgresql-supabase-persistence.md`;
+   - implementação/testes atuais de `InventoryService`;
+   - migrations de estoque e `record_stock_entry`.
+5. Implementar primeiro a retirada persistente:
+   - command ID/idempotência;
+   - `auth.uid()` + role organizacional;
+   - lock de saldo e lotes envolvidos;
+   - impedir saldo negativo conforme regra do local;
+   - lote preferido quando informado;
+   - FEFO quando lote não for informado;
+   - custo snapshot sem recalcular custo médio de saída;
+   - `stock_movements` + itens + alocações + saldo/lotes + audit na mesma transação;
+   - nenhuma informação de lote/validade inventada.
+6. Adicionar gateway/adapters reais sem alterar contratos de domínio desnecessariamente.
+7. Criar testes SQL para:
+   - retirada simples;
+   - FEFO;
+   - lote preferido;
+   - estoque insuficiente;
+   - idempotência;
+   - role sem permissão;
+   - isolamento cross-Organization;
+   - rollback atômico em erro.
+8. Só depois do comando estar verde, adicionar retirada ao `/workspace/estoque`.
+9. Repetir o mesmo padrão para transferência e inventário físico, em entregas incrementais dentro da Issue #24.
+10. Rodar advisors Supabase após qualquer DDL/RPC e manter CI completo verde.
+11. Não importar dados reais do cliente nesta fase.
+12. Atualizar CURRENT_STATE/HANDOFF/NEXT_ACTION ao encerrar a sessão.
 
-## Regras de segurança que não podem regredir
+## Regras que não podem regredir
 
-- `SUPABASE_SECRET_KEY` nunca vai para browser/`NEXT_PUBLIC_*`.
-- Publishable key não é autorização; RLS continua obrigatória.
-- Autorização deriva de `organization_memberships`, não de `user_metadata`.
-- Helpers privilegiados de membership ficam em schema `private`.
-- `record_stock_entry` é a única escrita real de entrada nesta fase; não adicionar grants diretos ao ledger.
-- RPC `SECURITY DEFINER` deve sempre validar `auth.uid()` + role + inputs e ter EXECUTE restrito.
-- GitHub migrations continuam fonte de verdade do schema.
+- GitHub migrations são fonte de verdade do schema.
+- Não editar `inventory_balances` diretamente pela UI.
+- Não conceder INSERT/UPDATE cliente-side nas tabelas do ledger.
+- Operações críticas usam transação/locks e são idempotentes.
+- `SUPABASE_SECRET_KEY` permanece server-only e não é usada em operação normal.
+- Autorização deriva de `organization_memberships`.
+- Custos/quantidades continuam usando precisão exata do modelo.
+- Lote/validade desconhecidos permanecem desconhecidos.
+- Adapters in-memory permanecem disponíveis para testes e demo até a paridade real estar pronta.
 
-## Critério de conclusão da Issue #19
+## Critério da primeira entrega da Issue #24
 
-Issue #19 encerra quando o PR atual passar CI e estiver na `main`. O caminho de persistência real já cobre cadastros/leitura e o primeiro comando transacional de estoque, com RLS/migrations reproduzíveis.
+Um usuário com papel de estoque deve conseguir registrar uma retirada real no workspace persistente, com FEFO/lote correto, saldo consistente, idempotência e auditoria; usuários sem papel e outras Organizations não podem executar/observar a operação.
 
 ## Regra de eficiência
 
-Não refazer etapas concluídas. Conferir estado real do GitHub/Supabase antes de agir e avançar automaticamente enquanto não houver custo ou decisão estrutural não reversível.
+Não refazer Auth, schema base ou entrada de estoque. Começar pela retirada, validar end-to-end em CI/ambiente demo e só então avançar para transferência/inventário.

@@ -41,13 +41,14 @@ O sistema deverá evoluir para cobrir:
 - Manter rastreabilidade para estoque e financeiro.
 - Priorizar experiência rápida em desktop, tablet e celular.
 - Evitar complexidade prematura, mantendo arquitetura profissional.
-- Supabase é uma opção futura; a decisão final depende da modelagem e dos requisitos estabilizados.
+- PostgreSQL é o modelo físico relacional; Supabase é o provedor hospedado inicial preferido e revisável conforme `ADR-006`.
+- Migrations versionadas no GitHub, RLS e adapters preservam a independência do domínio em relação ao provedor.
 
-## Arquitetura inicial
+## Arquitetura atual
 
-A direção atual é um monólito modular web com Next.js, React e TypeScript, uma camada de domínio/serviços e abstração de persistência por repositories. O modelo será relacional e preparado para PostgreSQL.
+A direção é um monólito modular web com Next.js, React e TypeScript, camada de domínio/serviços, repositories/adapters e PostgreSQL. O Supabase fornece inicialmente Postgres, Auth e a Data API protegida por RLS; credenciais privilegiadas permanecem exclusivamente server-side.
 
-Consulte `docs/architecture/overview.md` para detalhes e restrições.
+Consulte `docs/architecture/overview.md`, `docs/architecture/persistence.md` e `docs/decisions/ADR-006-postgresql-supabase-persistence.md` para detalhes e restrições.
 
 ## Estado e continuidade
 
@@ -59,4 +60,4 @@ Um novo chat deve partir desses arquivos, conferir o estado real do GitHub e exe
 
 ## Dados de origem
 
-O projeto começou a partir de seis planilhas operacionais do cliente, cobrindo retiradas, caixa, notas fiscais, validades e fornecedores. A engenharia reversa completa será documentada em `docs/source-data/` antes da migração.
+O projeto começou a partir de seis planilhas operacionais do cliente, cobrindo retiradas, caixa, notas fiscais, validades e fornecedores. A engenharia reversa completa está documentada em `docs/source-data/`; dados reais não devem ser migrados antes da homologação dos fluxos persistentes e da reconciliação planejada.
