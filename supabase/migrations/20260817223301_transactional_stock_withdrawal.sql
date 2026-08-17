@@ -29,6 +29,37 @@ before insert or update of organization_id, stock_location_id, quantity_on_hand
 on public.inventory_balances
 for each row execute function private.enforce_inventory_balance_negative_policy();
 
+create or replace function private.enforce_stock_location_negative_policy_change()
+returns trigger
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+begin
+  if old.allow_negative_stock
+    and not new.allow_negative_stock
+    and exists (
+      select 1
+      from public.inventory_balances balance
+      where balance.organization_id = new.organization_id
+        and balance.stock_location_id = new.id
+        and balance.quantity_on_hand < 0
+    )
+  then
+    raise exception 'NEGATIVE_BALANCE_EXISTS' using errcode = '23514';
+  end if;
+  return new;
+end;
+$$;
+
+revoke all on function private.enforce_stock_location_negative_policy_change() from public, anon, authenticated;
+
+drop trigger if exists stock_locations_negative_policy_change on public.stock_locations;
+create trigger stock_locations_negative_policy_change
+before update of allow_negative_stock
+on public.stock_locations
+for each row execute function private.enforce_stock_location_negative_policy_change();
+
 create or replace function public.record_stock_withdrawal(
   p_command_id uuid,
   p_organization_id uuid,
@@ -63,6 +94,8 @@ declare
   v_existing_location uuid;
   v_existing_item uuid;
   v_existing_quantity numeric(18,3);
+  v_existing_notes text;
+  v_existing_preferred_batch_id uuid;
   v_batch record;
 begin
   if v_user_id is null then
@@ -80,16 +113,32 @@ begin
     raise exception 'INVALID_STOCK_QUANTITY' using errcode = '22023';
   end if;
 
+  -- Serialize retries of the same command before the idempotency lookup.
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(p_command_id::text, 0));
+
   select movement.organization_id,
          movement.movement_type,
          movement.source_location_id,
          item.stock_item_id,
-         item.quantity
+         item.quantity,
+         movement.notes,
+         (
+           select nullif(audit.after_data ->> 'preferred_batch_id', '')::uuid
+           from public.audit_logs audit
+           where audit.organization_id = movement.organization_id
+             and audit.entity_type = 'stock_movement'
+             and audit.entity_id = movement.id
+             and audit.action = 'stock_withdrawal.recorded'
+           order by audit.occurred_at desc
+           limit 1
+         )
     into v_existing_org,
          v_existing_type,
          v_existing_location,
          v_existing_item,
-         v_existing_quantity
+         v_existing_quantity,
+         v_existing_notes,
+         v_existing_preferred_batch_id
   from public.stock_movements movement
   left join public.stock_movement_items item
     on item.movement_id = movement.id
@@ -102,6 +151,8 @@ begin
       or v_existing_location is distinct from p_stock_location_id
       or v_existing_item is distinct from p_stock_item_id
       or v_existing_quantity is distinct from p_quantity
+      or v_existing_notes is distinct from nullif(trim(p_notes), '')
+      or v_existing_preferred_batch_id is distinct from p_preferred_batch_id
     then
       raise exception 'IDEMPOTENCY_KEY_CONFLICT' using errcode = '23505';
     end if;
