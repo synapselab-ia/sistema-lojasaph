@@ -1,0 +1,39 @@
+name: Generate Supabase lockfile
+
+on:
+  push:
+    branches: [agent/supabase-adapters]
+
+permissions:
+  contents: write
+
+jobs:
+  lockfile:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: agent/supabase-adapters
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Generate package-lock
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+
+      - name: Commit lockfile if changed
+        run: |
+          if git status --porcelain -- package-lock.json | grep -q .; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add package-lock.json
+            git commit -m "chore: update npm lockfile for supabase"
+            git push origin HEAD:agent/supabase-adapters
+          else
+            echo "package-lock.json is already up to date"
+          fi
