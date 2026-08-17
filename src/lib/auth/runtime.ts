@@ -39,7 +39,8 @@ export async function resolveMembershipContext(): Promise<MembershipContext> {
     return { authenticated: false, organizations: [] };
   }
 
-  const email = typeof claims.email === "string" ? claims.email : undefined;
+  const emailClaim = claims?.email;
+  const email = typeof emailClaim === "string" ? emailClaim : undefined;
   const { data: membershipData, error: membershipError } = await supabase
     .from("organization_memberships")
     .select("organization_id, role")
