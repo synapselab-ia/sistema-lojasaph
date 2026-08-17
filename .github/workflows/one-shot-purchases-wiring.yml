@@ -1,0 +1,58 @@
+name: One-shot purchases wiring
+
+on:
+  push:
+    branches: [agent/purchases-runtime]
+    paths:
+      - .github/workflows/one-shot-purchases-wiring.yml
+
+permissions:
+  contents: write
+
+jobs:
+  wire:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/purchases-runtime
+      - name: Wire runtime purchases permissions and navigation
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          provider = Path('src/modules/master-data/ui/runtime-workspace-provider.tsx')
+          text = provider.read_text()
+          marker = '  readonly manageStockTransfers: boolean;\n}'
+          replacement = '  readonly manageStockTransfers: boolean;\n  readonly managePurchases: boolean;\n  readonly receivePurchases: boolean;\n}'
+          if marker not in text:
+              raise SystemExit('runtime permissions interface marker not found')
+          text = text.replace(marker, replacement)
+          marker = '    manageStockTransfers: can(roles, ["owner", "admin", "manager", "inventory"]),\n  };'
+          replacement = '    manageStockTransfers: can(roles, ["owner", "admin", "manager", "inventory"]),\n    managePurchases: can(roles, ["owner", "admin", "manager", "purchases"]),\n    receivePurchases: can(roles, ["owner", "admin", "manager", "purchases", "inventory"]),\n  };'
+          if marker not in text:
+              raise SystemExit('runtime permissions assignment marker not found')
+          provider.write_text(text.replace(marker, replacement))
+
+          shell = Path('src/components/runtime-shell.tsx')
+          text = shell.read_text()
+          marker = '  { href: "/workspace/inventarios", label: "Inventários" },\n];'
+          replacement = '  { href: "/workspace/inventarios", label: "Inventários" },\n  { href: "/workspace/compras", label: "Compras" },\n];'
+          if marker not in text:
+              raise SystemExit('runtime shell inventory marker not found')
+          text = text.replace(marker, replacement)
+          text = text.replace(
+              'Produtos, fornecedores, entradas, retiradas, transferências e inventário físico desta área usam Supabase + RLS. Outros módulos ainda evoluem separadamente.',
+              'Estoque e compras desta área usam Supabase + RLS e commands PostgreSQL transacionais. Financeiro e caixa ainda evoluem separadamente.'
+          )
+          shell.write_text(text)
+          PY
+      - name: Remove one-shot workflow and commit
+        run: |
+          rm -f .github/workflows/one-shot-purchases-wiring.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: wire purchases into authenticated workspace"
+          git push origin HEAD:agent/purchases-runtime
