@@ -37,3 +37,54 @@ jobs:
 
       - name: Production build
         run: npm run build
+
+  database:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: lojasaph
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d lojasaph"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: lojasaph
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show PostgreSQL client
+        run: psql --version
+
+      - name: Bootstrap Supabase auth stubs
+        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/bootstrap.sql
+
+      - name: Apply migrations
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r migration; do
+            echo "Applying ${migration}"
+            psql -v ON_ERROR_STOP=1 -f "${migration}"
+          done < <(find supabase/migrations -maxdepth 1 -type f -name '*.sql' | sort)
+
+      - name: Apply anonymized seed
+        run: psql -v ON_ERROR_STOP=1 -f supabase/seed.sql
+
+      - name: Run schema and RLS smoke tests
+        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/schema_smoke.sql

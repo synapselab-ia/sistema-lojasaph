@@ -4,73 +4,120 @@
 
 ## Fase atual
 
-Fase 6 — lotes, validades e inventário físico: implementada na branch `agent/lots-expiry-inventory-count`, PR #18, com CI completo passando antes do fechamento documental.
+Fase 7 — persistência PostgreSQL/Supabase e segurança base: fundação de schema/RLS implementada na branch `agent/persistence-foundation`, PR #20, com CI de aplicação e banco passando.
+
+A Issue #19 permanece aberta porque ainda faltam conexão do projeto Supabase remoto e adapters reais na aplicação.
 
 ## Estado do GitHub
 
 - Repositório: `synapselab-ia/sistema-lojasaph`
 - Branch principal: `main`
-- Issue atual: #17 — Fase 6 — Lotes, validades e inventário físico
-- Branch atual: `agent/lots-expiry-inventory-count`
-- PR atual: #18 — Fase 6 — lotes, validades e inventário físico
-- Próxima Issue criada: #19 — Fase 7 — Persistência PostgreSQL/Supabase e segurança base
-- Projeto remoto Supabase ainda não está conectado.
+- Issue atual: #19 — Fase 7 — Persistência PostgreSQL/Supabase e segurança base
+- Branch atual: `agent/persistence-foundation`
+- PR atual: #20 — persistência PostgreSQL/Supabase e RLS
+- Projeto Supabase remoto ainda não está conectado.
 
 ## Fases concluídas
 
 - Fase 0: governança e continuidade entre chats.
 - Fase 1: engenharia reversa das seis planilhas.
-- Fase 2: modelo de domínio, ERD e ADR-001 a ADR-005.
+- Fase 2: domínio, modelo lógico, ERD e ADRs fundamentais.
 - Fase 3: fundação Next.js/React/TypeScript, testes e CI.
-- Fase 4: cadastros base de estrutura, produtos e fornecedores.
-- Fase 5: ledger de estoque com entrada, retirada, transferência e custo médio.
+- Fase 4: cadastros base e fornecedores.
+- Fase 5: ledger de estoque, entrada, retirada, transferência e custo médio.
+- Fase 6: lotes, validades, FEFO e inventário físico.
 
-## Fase 6 — implementado
+## Fase 7 — fundação implementada
 
-- `InventoryBatch` por produto + local;
-- código de lote e validade opcionais, sem inventar dados desconhecidos;
-- quantidade original e remanescente por lote;
-- custo físico do lote preservado;
-- alocação FEFO como default quando nenhum lote é preferido;
-- possibilidade de lote preferencial no domínio;
-- transferência preservando lote/validade e materializando lote no destino;
-- classificação de vencido / 7 / 15 / 30 dias / validade desconhecida;
-- UI `/cadastros/validades` com alertas, prioridade FEFO e entrada com lote;
-- `InventoryCount` com snapshot do saldo esperado;
-- bloqueio de confirmação de contagem quando o saldo mudou após o início (`INVENTORY_COUNT_STALE`);
-- ajuste positivo/negativo por movimentos do ledger;
-- UI `/cadastros/inventarios` para contagem e histórico;
-- adapters in-memory de lotes e inventários;
-- fixtures anonimizados de lotes;
-- testes de validade, FEFO, transferência de lote e inventário físico;
-- documentação de estoque atualizada.
+### Decisão
 
-## Persistência atual
+`ADR-006` define:
 
-A aplicação ainda usa repositories/adapters in-memory no workspace de demonstração. Reload restaura fixtures anonimizados.
+- PostgreSQL como modelo físico relacional;
+- Supabase como provedor hospedado inicial preferido e revisável;
+- domínio/UI desacoplados por repositories/adapters;
+- migrations no GitHub como fonte de verdade do schema;
+- RLS antes de produção;
+- segredos somente server-side.
 
-Isso foi mantido até esta fase para estabilizar o ciclo físico de estoque antes de criar schema e políticas reais.
+### Schema versionado
 
-## Validação
+Criado `supabase/` com migrations para:
 
-O CI do PR #18 passou:
+- Organization, Business, LegalEntity, Unit, Sector e StockLocation;
+- `organization_memberships` com papéis e escopos;
+- categorias, unidades de medida, StockItem e aliases;
+- Supplier, contatos, termos, SupplierItem e histórico de preços;
+- audit log;
+- StockMovement e itens;
+- InventoryBalance e InventoryBatch;
+- alocações de lote;
+- Transfer e itens/alocações;
+- InventoryCount e linhas.
+
+### Segurança e integridade
+
+- IDs `uuid`;
+- dinheiro `numeric(18,2)`;
+- quantidade `numeric(18,3)`;
+- FKs compostas por Organization em relações críticas;
+- checks de quantidade/custo/transferência;
+- RLS habilitado nas tabelas operacionais expostas;
+- leitura por membership ativa;
+- escrita direta de cadastros limitada por papel;
+- ledger/inventário sem política/grant de escrita direta para cliente autenticado;
+- preços históricos de fornecedor append-only para clientes autenticados;
+- anônimo sem acesso às tabelas operacionais.
+
+### Seed e testes de banco
+
+- `supabase/seed.sql` contém somente dados anonimizados de demonstração;
+- `supabase/tests/bootstrap.sql` cria stubs mínimos de Auth para CI PostgreSQL genérico;
+- `schema_smoke.sql` valida constraints e RLS.
+
+## CI atual
+
+O workflow possui dois jobs independentes:
+
+### Aplicação
 
 1. `npm ci`;
 2. lint;
 3. typecheck;
-4. testes unitários/integração;
-5. build de produção.
+4. testes;
+5. build.
 
-Uma nova execução de CI deve validar os commits documentais finais antes do merge.
+### Banco
 
-## Decisão para a próxima fase
+1. PostgreSQL 17 efêmero;
+2. bootstrap Auth;
+3. migrations em ordem;
+4. seed anonimizado;
+5. smoke tests SQL/RLS.
 
-PostgreSQL será o modelo físico relacional. Supabase passa a ser o provedor hospedado inicial preferido, mantendo o domínio e a UI desacoplados através de repositories/adapters.
+No PR #20 os dois jobs passaram. O job de banco confirmou, entre outros:
 
-A escolha é revisável: nenhuma regra de negócio passa a depender do SDK do Supabase.
+- rejeição de FK cross-Organization;
+- rejeição de saldo negativo;
+- rejeição de transferência origem=destino;
+- membro vê somente sua Organization;
+- outsider autenticado não vê outra Organization;
+- anon não lê tabelas operacionais;
+- usuário autenticado não grava diretamente no ledger.
+
+## Persistência da aplicação hoje
+
+A UI ainda usa adapters in-memory. O banco físico está definido e validado, mas a aplicação ainda não foi ligada a um projeto Supabase remoto.
+
+Isso é proposital: o próximo passo é conectar o provedor com segurança e implementar adapters reais sem alterar o domínio.
 
 ## Próxima ação
 
-Após integrar o PR #18 e encerrar a Issue #17, iniciar a Issue #19 em branch própria a partir da `main`: schema/migrations PostgreSQL/Supabase, RLS e segurança base.
+1. integrar o PR #20 na `main`;
+2. manter Issue #19 aberta;
+3. conectar/criar um projeto Supabase por integração segura quando disponível;
+4. adicionar o cliente Supabase e adapters reais começando por cadastros/estoque;
+5. implementar as mutações críticas de estoque por operação server-side/RPC transacional, não por INSERT direto nas tabelas do ledger;
+6. homologar com seed/demo antes de qualquer dado real.
 
 Consulte `docs/ai/NEXT_ACTION.md`.
