@@ -4,17 +4,17 @@
 
 ## Fase atual
 
-Fase 5 — estoque transacional: implementada na branch `agent/inventory-ledger`, PR #16, com CI completo passando.
+Fase 6 — lotes, validades e inventário físico: implementada na branch `agent/lots-expiry-inventory-count`, PR #18, com CI completo passando antes do fechamento documental.
 
 ## Estado do GitHub
 
 - Repositório: `synapselab-ia/sistema-lojasaph`
 - Branch principal: `main`
-- Issue atual: #15 — Estoque transacional: entrada, retirada e transferência
-- Branch atual: `agent/inventory-ledger`
-- PR atual: #16 — estoque transacional com ledger
-- Próxima Issue: #17 — Lotes, validades e inventário físico
-- Supabase ainda não foi escolhido/configurado.
+- Issue atual: #17 — Fase 6 — Lotes, validades e inventário físico
+- Branch atual: `agent/lots-expiry-inventory-count`
+- PR atual: #18 — Fase 6 — lotes, validades e inventário físico
+- Próxima Issue criada: #19 — Fase 7 — Persistência PostgreSQL/Supabase e segurança base
+- Projeto remoto Supabase ainda não está conectado.
 
 ## Fases concluídas
 
@@ -23,33 +23,37 @@ Fase 5 — estoque transacional: implementada na branch `agent/inventory-ledger`
 - Fase 2: modelo de domínio, ERD e ADR-001 a ADR-005.
 - Fase 3: fundação Next.js/React/TypeScript, testes e CI.
 - Fase 4: cadastros base de estrutura, produtos e fornecedores.
+- Fase 5: ledger de estoque com entrada, retirada, transferência e custo médio.
 
-## Fase 5 — implementado
+## Fase 6 — implementado
 
-- `Quantity` com milésimos inteiros e até três casas decimais;
-- StockMovement e StockMovementItem lógicos;
-- InventoryBalance por produto + local;
-- entrada com custo unitário e custo médio ponderado móvel;
-- retirada com bloqueio de estoque negativo;
-- transferência com despacho separado de recebimento;
-- estado em trânsito e recebimento parcial suportado pelo domínio;
-- snapshots de custo nas saídas/transferências;
-- repositories/adapters in-memory para saldo, movimentos e transferências;
-- fila interna que serializa mutações do workspace demo;
-- saldos iniciais anonimizados;
-- página `/cadastros/estoque` com saldos, entrada, retirada, transferência e histórico;
-- testes para custo médio, estoque negativo, transferência e retiradas concorrentes;
-- documentação em `docs/modules/inventory.md`.
+- `InventoryBatch` por produto + local;
+- código de lote e validade opcionais, sem inventar dados desconhecidos;
+- quantidade original e remanescente por lote;
+- custo físico do lote preservado;
+- alocação FEFO como default quando nenhum lote é preferido;
+- possibilidade de lote preferencial no domínio;
+- transferência preservando lote/validade e materializando lote no destino;
+- classificação de vencido / 7 / 15 / 30 dias / validade desconhecida;
+- UI `/cadastros/validades` com alertas, prioridade FEFO e entrada com lote;
+- `InventoryCount` com snapshot do saldo esperado;
+- bloqueio de confirmação de contagem quando o saldo mudou após o início (`INVENTORY_COUNT_STALE`);
+- ajuste positivo/negativo por movimentos do ledger;
+- UI `/cadastros/inventarios` para contagem e histórico;
+- adapters in-memory de lotes e inventários;
+- fixtures anonimizados de lotes;
+- testes de validade, FEFO, transferência de lote e inventário físico;
+- documentação de estoque atualizada.
 
 ## Persistência atual
 
-Todos os dados funcionais continuam em adapters in-memory/fixtures. O workspace reinicia ao recarregar. Isso é intencional enquanto domínio e UX estão sendo estabilizados.
+A aplicação ainda usa repositories/adapters in-memory no workspace de demonstração. Reload restaura fixtures anonimizados.
 
-A fila interna de mutações NÃO substitui transação de banco. Persistência real precisará executar validação + ledger + projeção de saldo atomicamente.
+Isso foi mantido até esta fase para estabilizar o ciclo físico de estoque antes de criar schema e políticas reais.
 
 ## Validação
 
-O CI do PR #16 passou:
+O CI do PR #18 passou:
 
 1. `npm ci`;
 2. lint;
@@ -57,18 +61,16 @@ O CI do PR #16 passou:
 4. testes unitários/integração;
 5. build de produção.
 
-## Invariantes já implementadas
+Uma nova execução de CI deve validar os commits documentais finais antes do merge.
 
-1. Saldo não é editado diretamente.
-2. Entrada gera movimento e recalcula custo médio.
-3. Retirada exige saldo disponível.
-4. Transferência reduz origem no despacho e só aumenta destino no recebimento.
-5. Custo da transferência é preservado por snapshot.
-6. Mutações simultâneas da demonstração são serializadas.
-7. Quantidades não usam float binário cru no domínio.
+## Decisão para a próxima fase
+
+PostgreSQL será o modelo físico relacional. Supabase passa a ser o provedor hospedado inicial preferido, mantendo o domínio e a UI desacoplados através de repositories/adapters.
+
+A escolha é revisável: nenhuma regra de negócio passa a depender do SDK do Supabase.
 
 ## Próxima ação
 
-Após integrar o PR #16 e encerrar a Issue #15, iniciar a Issue #17 — lotes, validades e inventário físico — em branch criada a partir da `main` atualizada.
+Após integrar o PR #18 e encerrar a Issue #17, iniciar a Issue #19 em branch própria a partir da `main`: schema/migrations PostgreSQL/Supabase, RLS e segurança base.
 
 Consulte `docs/ai/NEXT_ACTION.md`.
