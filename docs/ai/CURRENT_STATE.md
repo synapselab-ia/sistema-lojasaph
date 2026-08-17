@@ -4,16 +4,16 @@
 
 ## Fase atual
 
-Fase 1 — engenharia reversa das planilhas: análise documental concluída na branch `agent/spreadsheet-analysis`, pronta para integração.
+Validação P0 — estrutura do negócio e regras críticas.
 
-Próximo passo após integração: validar as questões críticas P0 com o cliente/usuário antes do modelo de domínio definitivo.
+A Fase 1 de engenharia reversa das seis planilhas foi concluída e integrada à `main` pelo PR #5.
 
 ## Estado do GitHub
 
 - Repositório: `synapselab-ia/sistema-lojasaph`
 - Branch principal: `main`
-- Issue atual: #4 — Fase 1 — Engenharia reversa das planilhas
-- Branch da Issue: `agent/spreadsheet-analysis`
+- Issue em andamento: #6 — Validação P0 — estrutura do negócio e regras críticas
+- Branch de trabalho: `agent/business-validation`
 - Ainda não existe aplicação/toolchain de código.
 
 ## Concluído
@@ -30,7 +30,7 @@ Próximo passo após integração: validar as questões críticas P0 com o clien
 
 As seis planilhas foram analisadas estruturalmente sem versionar os arquivos reais no GitHub.
 
-Entregáveis criados/atualizados:
+Entregáveis existentes:
 
 - `docs/source-data/spreadsheets-map.md`;
 - `docs/source-data/field-catalog.md`;
@@ -38,7 +38,7 @@ Entregáveis criados/atualizados:
 - `docs/product/business-rules.md`;
 - `docs/product/open-questions.md`;
 - `docs/product/requirements.md`;
-- `docs/product/glossary.md` refinado;
+- `docs/product/glossary.md`;
 - `docs/architecture/preliminary-domain-model.md`.
 
 ## Descobertas relevantes
@@ -49,17 +49,13 @@ Entregáveis criados/atualizados:
 4. O `Gabarito` parece representar catálogo de venda/POS diferente dos itens de estoque/retirada; não deve ser unificado automaticamente.
 5. Retiradas por setor usam abas mensais e texto livre, com custos frequentemente ausentes.
 6. Caixa deve ser normalizado por data/sessão; o MODELO diverge das abas reais e existe fórmula inconsistente.
-7. O financeiro mistura nota/documento, parcela e pagamento na mesma linha e usa fórmulas específicas do Google Sheets que aparecem quebradas como `#NAME?` no Excel analisado.
-8. `Parcela` é exibida como `n/total` mas armazenada por artifício de formatação de data; o novo sistema deve usar campos próprios.
-9. `Pix/Boleto` contém referências/códigos de pagamento e não deve ser modelado apenas como método.
-10. A planilha de validades é apenas template; o novo sistema deve usar lote + quantidade + validade + local.
-11. Fornecedores precisam de cadastro único com múltiplos contatos e condições comerciais.
+7. O financeiro mistura documento, parcela e pagamento e possui fórmulas de Google Sheets que aparecem quebradas no Excel analisado.
+8. Validades exigem lote + quantidade + validade + local.
+9. Fornecedores precisam de cadastro único com múltiplos contatos e condições comerciais.
 
-## Validação técnica desta fase
+## Objetivo da Issue #6
 
-Ainda não existe aplicação, portanto lint, typecheck, testes e build não se aplicam.
-
-A validação da Fase 1 foi documental: inventário de abas/campos/fórmulas, comparação estrutural, identificação de inconsistências e separação explícita entre regra comprovada, evidência e questão pendente.
+Validar Q-001 a Q-008 de `docs/product/open-questions.md` em pequenos blocos. Cada resposta confirmada deve virar regra documentada e, quando necessário, ajustar o modelo de domínio preliminar.
 
 ## Ainda não iniciado
 
@@ -80,12 +76,12 @@ A validação da Fase 1 foi documental: inventário de abas/campos/fórmulas, co
 5. Modelo do domínio vem antes da decisão definitiva sobre Supabase.
 6. Múltiplas unidades e permissões por escopo são requisitos arquiteturais.
 7. Dados reais das planilhas não são versionados automaticamente.
-8. Regras inferidas permanecem identificadas como pendentes até validação.
-9. `CURRENT_STATE`, `HANDOFF` e `NEXT_ACTION` devem sempre refletir o GitHub real.
+8. Regras inferidas permanecem pendentes até validação explícita.
+9. `CURRENT_STATE`, `HANDOFF` e `NEXT_ACTION` devem refletir o GitHub real.
 
 ## Próxima ação
 
-Consulte `docs/ai/NEXT_ACTION.md`.
+Consulte `docs/ai/NEXT_ACTION.md`. A primeira validação é Q-001.
 
 ## Regra para o próximo chat
 
