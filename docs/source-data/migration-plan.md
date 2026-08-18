@@ -1,7 +1,24 @@
 # Plano Preliminar de Migração das Planilhas
 
-Data: 2026-08-17
-Status: preliminar — executar apenas depois do modelo de dados estar estabilizado.
+Data: 2026-08-18
+Status: preliminar — a fundação de staging/dry run existe; migração real continua bloqueada pelos critérios finais deste documento.
+
+## Estado da fundação
+
+A Fase 15 implementou e homologou a infraestrutura genérica necessária antes de qualquer importação real:
+
+- batches rastreáveis por fonte/hash/versão;
+- staging com arquivo/aba/linha/payload bruto;
+- idempotência determinística;
+- estados `accepted`, `duplicate`, `warning`, `rejected` e `pending_mapping`;
+- dry run sem escrita nas tabelas operacionais;
+- relatório estruturado;
+- matching apenas por entidade canônica exata ou alias explícito, sem auto-merge por similaridade;
+- RLS/auditoria e homologação remota com fixtures sintéticos.
+
+Detalhes técnicos: `docs/modules/imports.md`.
+
+Isso **não significa que a migração real esteja liberada**. As fontes reais não foram importadas nem versionadas, não houve cutover e continuam necessários importadores específicos, regras de transformação aprovadas, backup, reconciliação e aceite da data de corte.
 
 ## Objetivo
 
@@ -36,16 +53,21 @@ No momento da migração real:
 
 # Etapa 2 — Staging
 
-Criar estruturas temporárias/importação para receber valores praticamente como aparecem na origem, incluindo:
+A infraestrutura genérica desta etapa existe desde a Fase 15 em `import_batches` e `import_rows`.
+
+Ela recebe/preserva:
 
 - arquivo;
 - aba;
 - linha;
 - valores brutos;
-- erros de parsing;
-- status de transformação.
+- erros/warnings de parsing e transformação;
+- status de preview;
+- hashes e chaves determinísticas para rastreabilidade/idempotência.
 
-Staging não deve ser usado pela aplicação operacional.
+Staging não é usado pela aplicação operacional e o modo atual permanece exclusivamente `dry_run`.
+
+Ainda faltam os importadores específicos das fontes reais e as transformações aprovadas para cada domínio.
 
 ---
 
@@ -76,6 +98,8 @@ Só depois importar transações.
 - não fundir itens automaticamente apenas por similaridade;
 - manter `ItemAlias` para grafias antigas;
 - separar catálogo Gabarito dos itens de estoque até Q-006 ser validada.
+
+A Fase 15 implementa somente matching canônico exato/alias explícito; referência inexistente ou ambígua fica para revisão manual.
 
 ## Fornecedores
 
@@ -179,28 +203,30 @@ Reconciliar por mês:
 
 # Etapa 7 — Idempotência
 
-Cada linha transformada deve receber chave de importação determinística ou combinação equivalente baseada em:
+A Fase 15 implementa chave determinística equivalente baseada em Organization, hash da fonte, aba, linha e hash do payload bruto, além de chave determinística do batch por fonte/hash/versão.
 
-- batch;
-- arquivo;
-- aba;
-- linha;
-- tipo do registro.
+- executar novamente a mesma fonte/versão não cria outro batch;
+- repetir a mesma linha no mesmo batch não duplica staging;
+- a mesma origem reapresentada em outra versão de transformação é detectada como duplicata quando aplicável.
 
-Executar novamente o mesmo batch não pode criar duplicatas.
+A idempotência da futura **aplicação nas tabelas operacionais** ainda deverá ser validada junto dos importadores específicos antes do cutover.
 
 ---
 
 # Etapa 8 — Relatório de importação
 
-Cada execução deve informar:
+O preview da Fase 15 já informa:
 
 - quantidade lida;
-- quantidade importada;
-- quantidade ignorada;
+- quantidade aceita;
 - duplicatas detectadas;
 - registros com warning;
 - registros rejeitados;
+- mapeamentos pendentes.
+
+Na migração real o relatório deverá ser estendido/interpretado pelos importadores para incluir, quando aplicável:
+
+- quantidade efetivamente aplicada;
 - aliases criados/mapeados;
 - diferenças de reconciliação.
 
@@ -244,8 +270,10 @@ Não começar migração definitiva enquanto não existirem:
 - modelo de domínio validado;
 - schema versionado;
 - regras de transformação documentadas;
-- ambiente de staging;
-- importadores testados;
+- ambiente de staging — **fundação disponível desde a Fase 15**;
+- importadores específicos testados;
 - estratégia de backup;
 - procedimento de reconciliação;
 - aceite da data de corte.
+
+A existência do staging/dry run não substitui nenhum dos demais critérios.
