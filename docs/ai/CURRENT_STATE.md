@@ -4,98 +4,125 @@
 
 ## Estado atual
 
-Fase 17 — observabilidade, logs estruturados e rastreabilidade de erros — **concluída e integrada na `main`**.
+Fase 18 — isolamento de ambientes, previews seguros e separação de dados/segredos — **implementada e tecnicamente validada; aguardando homologação do Preview no head final antes do merge**.
 
 - Repositório: `synapselab-ia/sistema-lojasaph`
-- PR #44 — merged
-- Issue #43 — closed/completed
-- merge commit: `5dce4b75b76380b4d668debd399bdca079f6b3dd`
-- SHA final pré-merge: `87c9a4e209eeb4a146d96cfaa26696fa8d159ca0`
-- próxima Issue: #45 — `Fase 18 — isolamento de ambientes, previews seguros e separação de dados/segredos`
-- nenhuma branch funcional da Fase 18 foi criada ainda.
+- Issue #45 — open
+- PR #46 — draft/open
+- branch: `agent/environment-isolation`
+- base da branch: `main` em `5c617e7f26c514139be3b6171f38e28ae5ae30af`
+- SHA técnico validado antes dos commits documentais finais: `ba200af6e2343b1b17fdeadfffbee1d4215bf0a0`
+- nenhuma migration/DDL da Fase 18 foi necessária.
 
-## Fase 17 — concluído
+## Fase 18 — implementado
 
-A entrega cobre `REQ-PLAT-006` no escopo atual e reforça `REQ-SEC-004`:
+A entrega cobre a fundação de `REQ-PLAT-007 — Ambientes separados` e reforça `REQ-SEC-004`:
 
-- contrato vendor-neutral de log estruturado em JSON;
-- níveis `debug`, `info`, `warn`, `error` e event codes estáveis;
-- `x-correlation-id` validado/gerado no Proxy e devolvido na response;
-- redaction por chave e padrão de texto para credentials, tokens, JWT, cookies, senha, API keys, connection strings e PII comum;
-- `src/instrumentation.ts` com `Instrumentation.onRequestError` para exceções server-side do Next;
-- query string removida do path registrado;
-- `error.tsx` e `global-error.tsx` com fallback seguro e `digest` como referência quando disponível;
-- `toPublicError()` impede exposição de persistência/internals/unknown errors na UI;
-- workspace deixou de devolver `Error.message` bruto;
-- falhas relevantes de Auth tratadas sem exceção emitem eventos estruturados;
-- testes Vitest de envelope, redaction, correlation ID e error mapping;
-- ADR `docs/decisions/ADR-007-observability-contract.md`;
-- runbook `docs/operations/observability.md`.
+- política central fail-closed em `src/lib/runtime/environment.ts`;
+- identificação explícita de `development`, `preview`, `production` e estado `unknown`;
+- mismatch entre `LOJASAPH_APP_ENV` e `VERCEL_ENV` bloqueia acesso operacional;
+- Production rejeita backend local e pode fixar a ref esperada do projeto Supabase;
+- Preview fica sem acesso Supabase por padrão até existir backend hospedado próprio, com ref explícita e diferente de Production;
+- Development aceita Supabase local por padrão; backend remoto exige identidade própria distinta de Production;
+- `SUPABASE_SECRET_KEY` continua server-only e o admin client fica bloqueado fora de Production por padrão;
+- opt-in administrativo não-prod exige backend já isolado + `LOJASAPH_ALLOW_NON_PRODUCTION_ADMIN=true`;
+- callbacks de Preview usam o domínio do próprio deployment, não reutilizam silenciosamente a URL de Production;
+- Proxy continua renderizando páginas quando Preview está isolado, mas não cria cliente Supabase;
+- Auth, callback, password reset, signout, bootstrap e workspace respeitam a política;
+- browser client usa somente variáveis públicas permitidas e também aplica fail-closed nos clientes diretos legados;
+- workspace recebe configuração Supabase já validada pelo servidor;
+- `/health` expõe somente ambiente/estado/reason codes não sensíveis;
+- login e recuperação ficam visualmente desabilitados em ambiente sem backend operacional aprovado;
+- `.env.example` documenta identidade de ambiente e refs públicas sem valores reais;
+- testes cobrem parsing, mismatch, refs distintas, Development local/remoto, admin, callbacks e fronteira client/server de secrets.
 
-## CI final da Fase 17
+## Documentação da Fase 18
 
-No SHA `87c9a4e209eeb4a146d96cfaa26696fa8d159ca0` passaram:
+- decisão: `docs/decisions/ADR-008-environment-isolation.md`;
+- runbook: `docs/operations/environments.md`;
+- runtime Supabase atualizado em `docs/modules/supabase-runtime.md`.
 
-- `CI` #219 — success;
-- `Inventory Count Integration` #134 — success;
-- `Business Transactions Integration` #117 — success.
+## CI técnico da Fase 18
 
-O CI validou lint, typecheck, Vitest, build, migrations/seed, drill de backup/restore e todas as suítes PostgreSQL existentes.
+No SHA `ba200af6e2343b1b17fdeadfffbee1d4215bf0a0` passaram:
 
-## Homologação Vercel da Fase 17
+- `CI` #229 — success;
+- `Inventory Count Integration` #139 — success;
+- `Business Transactions Integration` #122 — success.
 
-Preview técnico validado: `dpl_DCRih5bSXPSY5ykJ4eSUzbmX8xm9` — `READY`.
+O `CI` validou:
 
-Smoke sintético executado em `/auth/callback` sem `code`/`token_hash` real:
+- lint;
+- typecheck;
+- Vitest, incluindo os testes novos de isolamento;
+- build de produção Next.js;
+- migrations/seed existentes;
+- drill de backup/restore;
+- schema/RLS;
+- Auth/Organization isolation;
+- estoque/transferências;
+- import staging/dry run.
 
-- UI exibiu somente mensagem segura;
-- response trouxe `x-correlation-id`;
-- Runtime Logs registrou `auth.callback.failed` em JSON estruturado;
-- nenhum token real, e-mail, cookie, secret ou dado de cliente foi usado.
+Uma primeira execução (`CI` #225) falhou somente porque cinco páginas cliente existentes ainda chamavam `createBrowserSupabaseClient()` sem argumento. A correção preservou esses call sites, adicionando fallback client-side protegido exclusivamente por variáveis públicas e pela mesma política fail-closed. A revalidação completa ficou verde no SHA técnico acima.
 
-O preview do SHA documental final também ficou Ready antes do merge.
+## Estado externo verificado
 
-## Supabase remoto
+### Supabase
 
-A Fase 17 fez somente consultas read-only de logs.
+Verificação somente leitura confirmou:
 
-- projeto conectado saudável;
+- um único projeto conectado;
+- projeto saudável;
 - PostgreSQL 17;
 - organização no plano Free;
-- nenhuma migration, DDL, configuração ou write da Fase 17;
-- Log Drains não foram configurados;
-- não reaplicar migrations antigas.
+- zero Supabase branches.
 
-## Próxima frente — Issue #45
+A Fase 18 **não**:
 
-Após o fechamento formal da Fase 17, os requisitos MUST e Issues reais foram revistos. Não havia outra Issue aberta.
+- criou migration;
+- executou DDL;
+- criou branch/projeto adicional;
+- alterou configuração remota;
+- escreveu dados;
+- copiou dados reais para ambiente não-prod.
 
-A próxima lacuna executável é `REQ-PLAT-007 — Ambientes separados`.
+Nenhum upgrade de plano ou infraestrutura paga foi feito por inferência.
 
-Evidência atual:
+### Vercel
 
-- Vercel já possui Preview e Production;
-- Preview da Fase 17 conseguiu inicializar o runtime Supabase, portanto existe configuração Supabase disponível em Preview;
-- a conta Supabase conectada possui somente um projeto;
-- `list_branches` retorna zero branches;
-- a organização está no plano Free e a capacidade atual de Supabase Branching/preview environments exige plano compatível pago;
-- busca no repositório não encontrou política/runbook que prove isolamento de dados/segredos entre Development, Preview e Production.
+O projeto possui ambientes Preview/Production e suporta identificação de ambiente/variáveis escopadas. O conector disponível nesta sessão não expõe a auditoria segura dos valores/targets das environment variables; portanto o estado anterior foi tratado como **não comprovado**, e não como comprovadamente seguro ou comprovadamente compartilhado.
 
-Isso **não prova vazamento ou compartilhamento indevido já ocorrido**. Significa que o isolamento obrigatório ainda não está demonstrado nem protegido por guardrails versionados.
+O primeiro commit da Fase 18 (`7307ccf8dc53295e0bf4c01448eac8bdbcd962db`) chegou a gerar Preview `READY` (`dpl_7f4gBBdmdTsRfWWiAz3ddCVzGnjT`), mas esse deployment **não contém a implementação final** e não serve como homologação da fase.
 
-A Issue #45 deve primeiro auditar targets/escopos de configuração sem revelar valores, definir uma estratégia sem custo automático e implementar fail-closed para impedir Preview/Development de operar inadvertidamente com credenciais/dados privilegiados de Production.
+Os commits posteriores, incluindo o SHA técnico final, ficaram sem novo deployment porque a Vercel passou a retornar `build-rate-limit`/`upgradeToPro`. Isso é um bloqueio de frequência da plataforma, não uma falha de código identificada.
+
+## Bloqueio restante para fechar a Fase 18
+
+A Fase 18 **não deve ser mergeada ainda**.
+
+Falta exclusivamente homologar um Preview criado a partir do **head final atual** quando a Vercel voltar a aceitar builds.
+
+Smoke esperado, sem dados reais e sem mutação:
+
+1. `/health` retorna `environment=preview`;
+2. enquanto não houver backend isolado aprovado, `supabaseAccess=blocked` e `adminAccess=blocked`;
+3. `/login` mostra aviso de ambiente isolado e não apresenta formulário operacional;
+4. `/auth/callback` sem credencial real redireciona de forma segura;
+5. nenhuma autenticação real, reset de senha, token ou mutação é usada.
+
+Se `/health` retornar `supabaseAccess=allowed`, **não executar nenhuma mutação**: primeiro comprovar que o backend identificado é realmente distinto de Production.
 
 ## Não repetir
 
+- não reimplementar a política de ambientes;
 - não reimplementar observabilidade da Fase 17;
 - não reabrir backup/restore da Fase 16;
-- não executar restore destrutivo no Supabase ativo;
+- não fazer alteração de código para contornar `build-rate-limit` da Vercel;
+- não contratar/ativar plano pago por inferência;
 - não reaplicar migrations antigas;
 - não importar dados reais/cutover;
-- não inferir Q-001 a Q-025;
-- não contratar/ativar Supabase Pro/Branching ou outro recurso pago sem decisão explícita;
-- não copiar dados reais de Production para Preview/Development.
+- não inferir Q-001 a Q-025.
 
 ## Próximo passo
 
-Seguir `docs/ai/NEXT_ACTION.md`: iniciar a Issue #45 em branch própria a partir da `main`, verificar primeiro a configuração real de ambientes Vercel/Supabase sem expor secrets e implementar somente a fundação de isolamento prevista na Issue.
+Seguir `docs/ai/NEXT_ACTION.md`: revalidar o head do PR #46 e o estado da Vercel. Se o rate limit persistir, manter PR/Issue abertos sem alterar código. Quando existir Preview `READY` do head final, executar somente o smoke não mutável documentado, registrar a evidência, exigir os três workflows verdes no SHA final e então fechar corretamente PR #46 / Issue #45.
