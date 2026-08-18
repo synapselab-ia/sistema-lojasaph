@@ -108,6 +108,10 @@ function publicSupabaseConfig(source: RuntimeEnvironmentSource): SupabasePublicC
   return { url, publishableKey };
 }
 
+function configuredRef(source: RuntimeEnvironmentSource, publicName: string, legacyName: string): string | undefined {
+  return trimmed(source[publicName]) ?? trimmed(source[legacyName]);
+}
+
 function resolveSupabaseAccess(
   environment: AppEnvironment,
   identityReason: string | undefined,
@@ -122,7 +126,11 @@ function resolveSupabaseAccess(
 
   const url = new URL(config.url);
   const actualRef = supabaseProjectRefFromUrl(config.url);
-  const productionRef = trimmed(source.LOJASAPH_PRODUCTION_SUPABASE_REF);
+  const productionRef = configuredRef(
+    source,
+    "NEXT_PUBLIC_LOJASAPH_PRODUCTION_SUPABASE_REF",
+    "LOJASAPH_PRODUCTION_SUPABASE_REF",
+  );
 
   if (environment === "production") {
     if (isLocalUrl(url)) return { access: "blocked", reason: "production_backend_is_local" };
@@ -133,7 +141,11 @@ function resolveSupabaseAccess(
   }
 
   if (environment === "preview") {
-    const previewRef = trimmed(source.LOJASAPH_PREVIEW_SUPABASE_REF);
+    const previewRef = configuredRef(
+      source,
+      "NEXT_PUBLIC_LOJASAPH_PREVIEW_SUPABASE_REF",
+      "LOJASAPH_PREVIEW_SUPABASE_REF",
+    );
     if (!productionRef || !previewRef || !actualRef) {
       return { access: "blocked", reason: "preview_backend_unverified" };
     }
@@ -147,7 +159,11 @@ function resolveSupabaseAccess(
     return { access: "allowed", reason: "development_local_backend", config };
   }
 
-  const developmentRef = trimmed(source.LOJASAPH_DEVELOPMENT_SUPABASE_REF);
+  const developmentRef = configuredRef(
+    source,
+    "NEXT_PUBLIC_LOJASAPH_DEVELOPMENT_SUPABASE_REF",
+    "LOJASAPH_DEVELOPMENT_SUPABASE_REF",
+  );
   if (!productionRef || !developmentRef || !actualRef) {
     return { access: "blocked", reason: "development_backend_unverified" };
   }
@@ -173,9 +189,7 @@ function vercelHostUrl(value: string | undefined): string | undefined {
 }
 
 function resolveAppUrl(environment: AppEnvironment, source: RuntimeEnvironmentSource): string | undefined {
-  if (environment === "preview") {
-    return vercelHostUrl(source.VERCEL_URL);
-  }
+  if (environment === "preview") return vercelHostUrl(source.VERCEL_URL);
   if (environment === "production") {
     return (
       normalizedBaseUrl(source.NEXT_PUBLIC_APP_URL, true) ??
@@ -184,10 +198,7 @@ function resolveAppUrl(environment: AppEnvironment, source: RuntimeEnvironmentSo
   }
   if (environment === "development") {
     const configured = normalizedBaseUrl(source.NEXT_PUBLIC_APP_URL, false);
-    if (configured) {
-      const url = new URL(configured);
-      if (isLocalUrl(url)) return configured;
-    }
+    if (configured && isLocalUrl(new URL(configured))) return configured;
     return "http://localhost:3000";
   }
   return undefined;
@@ -202,6 +213,16 @@ export function evaluateRuntimeEnvironment(source: RuntimeEnvironmentSource): Ru
     supabase.access === "allowed" &&
     secretPresent &&
     (identity.environment === "production" || nonProductionAdminExplicit);
+  const appUrl = resolveAppUrl(identity.environment, source);
+
+  let adminReason = "admin_secret_not_configured";
+  if (adminAllowed) {
+    adminReason = identity.environment === "production"
+      ? "production_admin"
+      : "explicit_isolated_non_production_admin";
+  } else if (secretPresent) {
+    adminReason = "admin_environment_blocked";
+  }
 
   return {
     environment: identity.environment,
@@ -210,14 +231,8 @@ export function evaluateRuntimeEnvironment(source: RuntimeEnvironmentSource): Ru
     supabaseReason: supabase.reason,
     ...(supabase.config ? { supabaseConfig: supabase.config } : {}),
     adminAccess: adminAllowed ? "allowed" : "blocked",
-    adminReason: adminAllowed
-      ? identity.environment === "production"
-        ? "production_admin"
-        : "explicit_isolated_non_production_admin"
-      : secretPresent
-        ? "admin_environment_blocked"
-        : "admin_secret_not_configured",
-    ...(resolveAppUrl(identity.environment, source) ? { appUrl: resolveAppUrl(identity.environment, source) } : {}),
+    adminReason,
+    ...(appUrl ? { appUrl } : {}),
   };
 }
 
