@@ -4,6 +4,7 @@ import { createContext, ReactNode, useContext, useMemo, useState } from "react";
 import { DomainError } from "@/domain/common/domain-error";
 import { EntityId } from "@/domain/common/entity-id";
 import { toPublicError } from "@/lib/observability/public-error";
+import { type SupabasePublicConfig } from "@/lib/runtime/environment";
 import { createBrowserSupabaseClient } from "@/lib/supabase/browser";
 import { SupabaseStockItemRepository } from "@/modules/catalog/adapters/supabase-stock-item-repository";
 import {
@@ -130,6 +131,7 @@ export function RuntimeWorkspaceProvider({
   roles,
   organizationWideRoles,
   initialData,
+  supabaseConfig,
 }: {
   children: ReactNode;
   organizationId: EntityId;
@@ -137,8 +139,9 @@ export function RuntimeWorkspaceProvider({
   roles: readonly string[];
   organizationWideRoles: readonly string[];
   initialData: RuntimeWorkspaceInitialData;
+  supabaseConfig: SupabasePublicConfig;
 }) {
-  const client = useMemo(() => createBrowserSupabaseClient(), []);
+  const client = useMemo(() => createBrowserSupabaseClient(supabaseConfig), [supabaseConfig]);
   const stockItemsRepository = useMemo(() => new SupabaseStockItemRepository(client), [client]);
   const suppliersRepository = useMemo(() => new SupabaseSupplierRepository(client), [client]);
   const stockEntryGateway = useMemo(() => new SupabaseStockEntryGateway(client), [client]);

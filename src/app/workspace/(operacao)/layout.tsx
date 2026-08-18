@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { EntityId } from "@/domain/common/entity-id";
 import { RuntimeShell } from "@/components/runtime-shell";
 import { resolveMembershipContext } from "@/lib/auth/runtime";
+import { getSupabasePublicEnv } from "@/lib/supabase/env";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { SupabaseStockItemRepository } from "@/modules/catalog/adapters/supabase-stock-item-repository";
 import { loadWorkspaceReferenceData } from "@/modules/master-data/adapters/supabase-workspace-query";
@@ -18,6 +19,7 @@ export default async function PersistentWorkspaceLayout({ children }: Readonly<{
 
   const organization = context.selectedOrganization;
   const organizationId = organization.id as EntityId;
+  const supabaseConfig = getSupabasePublicEnv();
   const supabase = await createServerSupabaseClient();
   const stockItemsRepository = new SupabaseStockItemRepository(supabase);
   const suppliersRepository = new SupabaseSupplierRepository(supabase);
@@ -35,6 +37,7 @@ export default async function PersistentWorkspaceLayout({ children }: Readonly<{
       roles={organization.roles}
       organizationWideRoles={organization.organizationWideRoles}
       initialData={{ ...referenceData, stockItems, suppliers }}
+      supabaseConfig={supabaseConfig}
     >
       <RuntimeShell
         organizationName={organization.name}

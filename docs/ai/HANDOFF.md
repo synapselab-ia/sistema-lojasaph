@@ -2,131 +2,103 @@
 
 ## Estado
 
-Fase 17 — observabilidade, logs estruturados e rastreabilidade de erros — **concluída e integrada**.
+Fase 18 — isolamento de ambientes, previews seguros e separação de dados/segredos — **implementada; falta apenas o gate final do head atual e o fechamento do PR #46**.
 
-- PR #44 — merged;
-- Issue #43 — closed/completed;
-- merge commit: `5dce4b75b76380b4d668debd399bdca079f6b3dd`;
-- SHA final pré-merge: `87c9a4e209eeb4a146d96cfaa26696fa8d159ca0`;
-- próxima Issue: #45 — Fase 18 — isolamento de ambientes, previews seguros e separação de dados/segredos;
-- ainda não existe branch funcional da Fase 18.
+- Issue #45 — open;
+- PR #46 — draft/open;
+- branch: `agent/environment-isolation`;
+- a branch foi reconciliada com a `main` após os PRs #47/#48;
+- `vercel.json` está em modo `git.deploymentEnabled=false` tanto na `main` quanto na branch;
+- nenhuma migration/DDL/write/config change remoto no Supabase na Fase 18.
 
-## Fase 17 — não repetir
+## Já concluído — não refazer
 
-- logger estruturado vendor-neutral em `src/lib/observability/`;
-- correlation ID via `x-correlation-id` no Proxy/response;
-- redaction explícita de secrets/tokens/PII comum;
-- `Instrumentation.onRequestError` para erros server-side do Next;
-- query string removida de path logado;
-- `error.tsx` e `global-error.tsx` seguros;
-- `toPublicError()` esconde detalhes de persistência/internals;
-- workspace não mostra mais `Error.message` bruto;
-- falhas relevantes de Auth emitem event codes sem logar credenciais;
-- testes Vitest de observabilidade;
-- ADR-007 e runbook operacional;
-- nenhuma migration/DDL/write remoto na Fase 17.
+### Política e runtime
 
-## CI final da Fase 17
+- política fail-closed em `src/lib/runtime/environment.ts`;
+- runtime server-only em `src/lib/runtime/server.ts`;
+- `development`, `preview`, `production` e `unknown`;
+- mismatch de identidade de ambiente bloqueia acesso;
+- Preview só permite Supabase quando backend próprio e Production têm refs explícitas e distintas;
+- Development aceita Supabase local; remoto exige identidade própria;
+- Production rejeita backend local e pode fixar ref esperada;
+- `SUPABASE_SECRET_KEY` continua server-only;
+- admin não-prod bloqueado por padrão.
 
-No SHA `87c9a4e209eeb4a146d96cfaa26696fa8d159ca0`:
+### Browser/Auth/UI
 
-- `CI` #219 — success;
-- `Inventory Count Integration` #134 — success;
-- `Business Transactions Integration` #117 — success.
+- browser usa apenas `NODE_ENV`/`NEXT_PUBLIC_*` permitidas;
+- workspace recebe configuração validada pelo servidor;
+- Proxy/Auth/callback/reset/signout/bootstrap respeitam a política;
+- login/recuperação mostram estado isolado sem formulário operacional quando bloqueado;
+- `/health` não expõe URL, ref, key ou secret.
 
-O CI passou lint, typecheck, Vitest, build e todas as suítes PostgreSQL, incluindo backup/restore.
+### Testes e docs
 
-## Homologação Vercel
+- `src/lib/runtime/environment.test.ts`;
+- `src/lib/runtime/client-boundary.test.ts`;
+- `.env.example` sem valores reais;
+- ADR-008;
+- `docs/operations/environments.md`;
+- `docs/modules/supabase-runtime.md`.
 
-Preview técnico `dpl_DCRih5bSXPSY5ykJ4eSUzbmX8xm9` — `READY`.
+## CI
 
-Smoke sintético `/auth/callback` sem parâmetros reais confirmou:
+O último head completo antes da política Vercel, `0979a33f05fefb75f554219d8552e9f7b74c3601`, ficou 3/3 verde:
 
-- mensagem segura na UI;
-- `x-correlation-id` na response;
-- evento `auth.callback.failed` em Runtime Logs;
-- nenhum token/e-mail/cookie/secret/dado real usado.
+- `CI` #236;
+- `Inventory Count Integration` #146;
+- `Business Transactions Integration` #129.
 
-O preview do SHA documental final `87c9a4e209eeb4a146d96cfaa26696fa8d159ca0` também ficou `READY` (`dpl_DWApS8pBnpqNjTe26eUtnQbruvzV`).
+O próximo chat deve sempre conferir os workflows do **head atual**, porque a política manual-only e a reconciliação com `main` criaram commits posteriores.
 
-### Limite de deploy observado após o merge
+## Vercel
 
-Depois do merge e dos commits documentais diretos na `main`, o status Vercel do head documental retornou `failure` apontando para `upgradeToPro=build-rate-limit`.
+Os PRs #47 e #48 desligaram deployments automáticos Git para evitar consumo acidental da quota Hobby. A política vigente é manual-only.
 
-Isso é **limite de frequência de builds da plataforma**, não falha identificada de código:
+Não esperar que um push gere Preview. Não reativar deploy automático para cumprir o gate.
 
-- o SHA funcional/documental pré-merge está 3/3 verde no GitHub;
-- o mesmo código teve preview Vercel `READY`;
-- não fazer alteração de código para “corrigir” esse status;
-- não fazer upgrade de plano por inferência;
-- no próximo ciclo, apenas revalidar o status/deployment da `main` quando o limite permitir e registrar o resultado.
+Último Preview homologado:
+
+- `dpl_7DrbV7VjgHe7SSFPVkwkYQzPfwC2` — `READY`;
+- commit `91738dc6f780c8269cdf9600fc57c64d63e6134d`;
+- `GET /health` confirmou `environment=preview`, `supabaseAccess=blocked`, `preview_backend_unverified` e `adminAccess=blocked`;
+- zero autenticação, senha, token ou mutação.
 
 ## Supabase remoto
 
-Fase 17 somente read-only:
+Último estado read-only conhecido:
 
 - projeto saudável;
 - PostgreSQL 17;
-- organização no plano Free;
-- nenhuma migration/DDL/config/write;
-- uma única instância de projeto conectada;
-- zero Supabase branches no estado pós-Fase 17.
+- zero development branches.
 
-## Próxima frente — Issue #45
-
-`REQ-PLAT-007 — Ambientes separados` é MUST e ainda não está demonstrado.
-
-Fatos atuais:
-
-- Vercel possui ambientes Preview e Production;
-- o Preview funcional da Fase 17 possui configuração suficiente para inicializar o cliente Supabase;
-- existe somente um projeto Supabase conectado e nenhuma branch;
-- a organização está no plano Free;
-- Supabase Branching/preview environments exige plano pago compatível na documentação vigente;
-- não há política/runbook versionado de isolamento de env vars/dados/segredos.
-
-Não afirmar que Preview já usa Production sem provar o valor efetivo das variáveis. A lacuna é a **ausência de isolamento comprovado/fail-closed**.
-
-### Limites da Fase 18
-
-- auditar nomes/targets/escopos de variáveis sem revelar valores;
-- não copiar secrets para docs/issues/logs;
-- não ativar recurso pago ou criar branch Supabase com custo sem autorização explícita;
-- não copiar dados reais para Preview/Development;
-- Production pode continuar usando o projeto hospedado atual;
-- Development deve preferir ambiente local/efêmero com fixtures sintéticas;
-- Preview deve usar backend isolado ou permanecer sem capacidade mutável contra Production até decisão de infraestrutura;
-- guardrails devem falhar fechado quando o ambiente/configuração forem ambíguos;
-- `SUPABASE_SECRET_KEY` não deve existir em Preview/Development sem rotina administrativa explicitamente isolada e aprovada;
-- callbacks/App URL devem refletir o ambiente correto;
-- não mexer em regras transacionais/RLS/RPC para compensar configuração de ambiente.
+Não criar branch/projeto pago, não executar migration/DDL e não usar dados reais para fechar esta fase.
 
 ## Próxima ação exata
 
-1. confirmar Issue #45 e o head atual da `main`;
-2. conferir o status Vercel da `main`; se ainda estiver em build-rate-limit, não alterar código nem contratar plano apenas por isso;
-3. confirmar que não existe branch/PR funcional equivalente antes de criar trabalho novo;
-4. criar `agent/environment-isolation` a partir da `main` atual;
-5. ler `AGENTS.md`, `START-HERE`, `CURRENT_STATE`, este `HANDOFF`, `NEXT_ACTION`, `requirements.md`, `.env.example`, runtime Supabase, ADR-006/ADR-007 e docs de Vercel/Supabase atuais;
-6. inventariar a configuração real sem revelar valores:
-   - targets Production/Preview/Development das variáveis Vercel relevantes;
-   - presença/ausência de server-only secrets por ambiente;
-   - projetos/branches Supabase disponíveis;
-   - callbacks/domínios por ambiente;
-7. documentar a matriz de ambientes e escolher estratégia reversível compatível com o plano atual antes de alterar configuração;
-8. implementar identificação explícita de ambiente e guardrails fail-closed para configuração perigosa/ambígua;
-9. garantir que Preview/Development não usem secret/admin path de Production;
-10. criar testes para parsing de ambiente, validação de configuração, fail-closed e ausência de secret no client bundle;
-11. validar Preview Vercel usando somente dados sintéticos ou operação não mutável, sem tocar em dados reais;
-12. manter lint, typecheck, Vitest, build, backup/restore e workflows PostgreSQL verdes;
-13. atualizar documentação operacional e continuidade antes do PR/merge.
+1. conferir Issue #45, PR #46 e o head atual da branch;
+2. confirmar que a branch contém a `main` atual e que não há drift funcional além da política de deployment/documentação;
+3. exigir `CI`, `Inventory Count Integration` e `Business Transactions Integration` verdes no head atual;
+4. somente após 3/3 verde, executar **um único deployment manual de Preview** do head atual;
+5. fazer smoke não mutável:
+   - `GET /health`;
+   - esperar `environment=preview`;
+   - enquanto não houver backend Preview isolado, esperar `supabaseAccess=blocked` e `adminAccess=blocked`;
+   - abrir `/login` se a proteção Vercel permitir e confirmar estado isolado;
+   - callback somente sem credenciais reais, se necessário;
+6. se `/health` indicar `supabaseAccess=allowed`, não testar escrita; primeiro comprovar backend distinto de Production;
+7. após smoke aprovado, atualizar PR #46, marcar ready e fazer merge normal;
+8. confirmar Issue #45 closed/completed;
+9. revisar os MUST/Issues reais e selecionar a próxima frente;
+10. atualizar `CURRENT_STATE`, `HANDOFF` e `NEXT_ACTION` na `main` pós-merge.
 
-## Regras que permanecem
+## Regras
 
-- GitHub é fonte de verdade;
+- não reimplementar Fase 18;
+- não reabrir Fase 17/backup;
+- não reativar deployments automáticos;
 - secrets nunca no browser/Git/log;
-- service role continua server-only;
-- migrations continuam forward-only;
-- nenhuma questão de negócio é resolvida por inferência;
-- dados reais/planilhas reais continuam fora do GitHub e de Preview/Development;
-- nenhuma operação destrutiva remota ou contratação sem necessidade/autorização explícita.
+- dados reais nunca em Preview/Development;
+- nenhuma questão Q-001..Q-025 por inferência;
+- nenhuma contratação/operação destrutiva sem autorização explícita.
