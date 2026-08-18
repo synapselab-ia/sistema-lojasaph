@@ -79,6 +79,8 @@ CI do head técnico `8bfbc3e397d3eb89ee7bcc55f89b8468985c030b` passou:
 - Business Transactions Integration;
 - `supabase/tests/scoped_permissions.sql`.
 
+O SHA documental final `8795f4b3aca0d1693da3ede0c4fc68e3f024ba56` também passou os três workflows finais antes do merge.
+
 A migration já foi aplicada no Supabase remoto e aparece no histórico como versão remota `20260818150253` / `scoped_permissions`. Não reaplicar.
 
 Security Advisor continua sinalizando os wrappers públicos `SECURITY DEFINER`; isso é intencional nesta arquitetura porque eles são a API autorizada e revalidam identidade/role/escopo. Implementações ficam em `private` sem grant de execução para `authenticated`.
@@ -104,4 +106,6 @@ Foram comprovados remotamente:
 
 Uma checagem separada após o `ROLLBACK` confirmou zero resíduos temporários nos usuários/memberships e nos artefatos de hierarquia, catálogo, estoque, transferência, compras, financeiro e caixa usados na homologação.
 
-Pendência antes do merge: somente CI final do SHA documental, ready/merge do PR #38 e fechamento da Issue #37.
+## Fechamento
+
+A Fase 14 foi integrada pela PR #38 no merge commit `0cbb6ed38add92fb220f575cad17c6983d700ed3`; a Issue #37 está closed/completed. `REQ-SEC-002` permanece representado por esta arquitetura e sua suíte de regressão. A próxima frente do projeto é a Issue #39 e não altera estas regras por padrão.
