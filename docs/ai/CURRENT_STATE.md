@@ -4,116 +4,113 @@
 
 ## Estado atual
 
-Fase 10 — Compras, pedidos e recebimento operacional — concluída tecnicamente no PR #29.
+Fase 11 — Financeiro: documentos, parcelas e contas a pagar — concluída tecnicamente no PR #32.
 
 - Repositório: `synapselab-ia/sistema-lojasaph`
-- Branch da entrega: `agent/purchases-runtime`
-- PR atual: #29 — Fase 10 — compras, pedidos e recebimento operacional
-- Issue atual: #28 — deve ser encerrada pelo merge do PR #29
-- Próxima Issue registrada: #31 — Fase 11 — Financeiro: documentos, parcelas e contas a pagar
-
-## Correção de continuidade realizada antes da Fase 10
-
-Durante a validação do PR #29 foi comprovado que o PR #26 de transferência nunca havia sido integrado à `main`, embora a documentação posterior o tratasse como concluído.
-
-O reparo foi concluído pelo PR #30:
-
-- transferência transacional restaurada na `main`;
-- suites de transferência restauradas;
-- runtime `/workspace/transferencias` restaurado;
-- contrato `inventory_adjustment` reconciliado por migration forward-only;
-- factories de domínio e CI conciliados;
-- Issue #24 reaberta durante o reparo e fechada novamente após CI verde;
-- PR #26 antigo fechado como superseded, sem merge.
-
-Registro detalhado: `docs/ai/RESTORE_TRANSFER_NOTE.md`.
+- Branch da entrega: `agent/finance-runtime`
+- PR atual: #32 — Fase 11 — financeiro, parcelas e contas a pagar
+- Issue atual: #31 — deve ser encerrada pelo merge do PR #32
+- Próxima Issue registrada: #33 — Fase 12 — Caixa: sessões, meios de pagamento e fechamento diário
 
 ## Concluído até aqui
 
 - governança, engenharia reversa, domínio e fundação Next.js;
-- PostgreSQL/Supabase + migrations + RLS;
-- Auth SSR + membership/Organization;
+- PostgreSQL/Supabase, migrations, RLS e Auth SSR;
 - produtos e fornecedores persistentes;
-- entrada e retirada/FEFO;
-- transferência dispatch/receive parcial/total;
-- inventário físico persistente;
-- compras e recebimento operacional persistentes.
+- entrada, retirada/FEFO, transferência e inventário físico;
+- compras, pedidos e recebimento operacional;
+- documentos financeiros, parcelas, pagamentos e estornos.
 
-## Fase 10 — Compras
+O reparo de continuidade da transferência foi concluído no PR #30. Não reabrir o PR #26; detalhes em `docs/ai/RESTORE_TRANSFER_NOTE.md`.
 
-Implementado:
+## Fase 11 — Financeiro
 
-- `purchase_orders`, `purchase_order_items`, `purchase_receipts` e `purchase_receipt_items`;
-- criação de pedido em `draft`;
-- emissão para `ordered`;
-- recebimento parcial/total;
-- cancelamento controlado;
-- preço/custo snapshot;
-- histórico de preço em `supplier_prices` na emissão;
-- recebimento multi-item atômico integrado ao ledger/saldo/lotes;
-- idempotência + locks + auditoria;
-- RLS por Organization;
-- `/workspace/compras`;
-- papéis de gestão `owner/admin/manager/purchases`;
-- recebimento também permitido a `inventory`;
-- quantidade do pedido na unidade-base de estoque; `purchase_unit_snapshot` informativo, sem conversão implícita.
+Persistência:
 
-A migration versionada é `20260817234222_purchases_operational_flow.sql`.
+- `payable_documents`;
+- `installments`;
+- `payment_instructions`;
+- `payments` como eventos `payment`/`reversal`;
+- view `payable_installment_summary` com `security_invoker`.
 
-## Hardening da Fase 10
+Commands:
 
-- payload `NULL` de criação/recebimento é rejeitado explicitamente;
-- retry de cancelamento compara também o motivo original;
-- retry com o mesmo command ID e payload diferente conflita;
-- direct writes do cliente permanecem proibidos nas tabelas críticas;
-- `received` não é cancelável pelo command simples;
-- cancelamento parcial não desfaz mercadoria já recebida.
+- `create_payable_document`;
+- `record_installment_payment`;
+- `reverse_installment_payment`;
+- `cancel_payable_document`.
+
+Todos exigem `auth.uid()`, papel `owner/admin/manager/finance`, command ID/idempotência e auditoria. As tabelas críticas não aceitam write direto do browser.
+
+## Regras financeiras preservadas
+
+- Q-013: identificadores fiscais continuam opcionais; não fabricar número/série/chave ausentes.
+- Q-014: a parcela aceita múltiplos eventos de pagamento, sem obrigar UI avançada de pagamento parcial.
+- Q-015: diferença entre nominal e pago é preservada como saldo; não inferir juros/multa/desconto.
+- Q-016: Pix/Boleto histórico fica como referência bruta separada do pagamento executado.
+- Q-017: `Checar data` não virou status artificial; status é derivado.
+- pagamento original não é apagado no estorno;
+- documento só pode ser cancelado quando pagamentos líquidos foram neutralizados por estorno.
+
+Status derivados por parcela:
+
+- `cancelled`;
+- `paid`;
+- `overdue`;
+- `due_today`;
+- `upcoming`.
+
+A data de vencimento usa o timezone da Organization.
+
+## Workspace
+
+`/workspace/financeiro` possui:
+
+- KPIs nominal/pago/saldo/vencidos;
+- cadastro de documento e parcelas;
+- referência de pagamento separada;
+- visão de vencimento/status/saldo;
+- registro de pagamentos;
+- estorno preservando histórico;
+- cancelamento controlado.
+
+Navegação e visão geral do workspace foram alinhadas a Estoque + Compras + Financeiro persistentes.
 
 ## Validação
 
-Head material final da implementação passou:
+Fase 11 passou em PostgreSQL 17 limpo:
 
-- lint;
-- typecheck;
-- testes unitários;
-- production build;
-- CI PostgreSQL 17 com todas as migrations;
-- suites de schema/RLS/roles;
+- todas as migrations;
+- schema/RLS/roles;
 - retirada;
-- transferência simples e multi-lote;
-- inventário físico;
-- suíte completa de compras.
+- transferência simples/multi-lote;
+- inventário;
+- compras;
+- `finance_payables.sql`.
 
-A suíte de compras comprova também rollback multi-item: se uma linha de recebimento falha, nenhuma linha do mesmo command permanece aplicada.
+Aplicação passou lint, typecheck, Vitest e production build no head material da implementação.
+
+A suíte financeira cobre payload inválido, múltiplas parcelas, status derivados, pagamentos múltiplos, sobrepagamento, retry/conflito de idempotência, estorno, cancelamento, viewer, cross-Organization e anon.
 
 ## Supabase remoto
 
-Aplicado no projeto homologado em `sa-east-1`:
+A migration `finance_payables_flow` foi aplicada ao projeto homologado em `sa-east-1`.
 
-- `reconcile_inventory_adjustment_type` durante o reparo da Fase 9;
-- `purchases_operational_flow` na Fase 10.
+Security Advisor mostrou apenas warnings esperados/intencionais dos RPCs `SECURITY DEFINER`. Performance Advisor trouxe INFO de FKs/índices para tuning orientado a carga real.
 
-Homologação de Compras executada em `BEGIN/ROLLBACK` confirmou:
+Homologação em `BEGIN/ROLLBACK` confirmou:
 
-- criação e retry;
-- emissão;
-- payloads `NULL` rejeitados;
-- recebimento parcial e final;
-- retry de recebimento sem duplicação;
-- custo médio e saldo coerentes;
-- lotes/validades preservados quando informados;
-- cancelamento idempotente e conflito com motivo diferente.
+- criação/retry do documento;
+- referência de pagamento separada;
+- `overdue`, `due_today` e `upcoming`;
+- pagamentos múltiplos e retry sem duplicação;
+- sobrepagamento preservado como saldo negativo;
+- estornos como eventos separados;
+- cancelamento após neutralização dos pagamentos;
+- audit log gravado, mas corretamente não legível pela role `authenticated` comum.
 
-Após rollback:
-
-- item rastreado retornou a saldo `100.000` e custo `2.10`;
-- item não rastreado retornou a saldo `20.000` e custo `20.00`;
-- zero pedidos de teste;
-- zero usuário de teste;
-- zero vínculo SupplierItem temporário.
-
-Security Advisor mostra apenas warnings esperados/intencionais dos command RPCs `SECURITY DEFINER` executáveis por `authenticated`. Performance Advisor mantém INFO de FKs/índices, tratado como backlog de tuning orientado a carga real.
+Após rollback: zero documento, zero pagamentos, zero usuário e zero membership de teste residuais.
 
 ## Próxima ação
 
-Integrar o PR #29 e confirmar o fechamento da Issue #28. Depois, tornar a Issue #31 a única frente em andamento e iniciar a Fase 11 — Financeiro conforme `docs/ai/NEXT_ACTION.md`.
+Integrar o PR #32 e confirmar o fechamento da Issue #31. Depois tornar a Issue #33 a única frente em andamento e iniciar a Fase 12 — Caixa conforme `docs/ai/NEXT_ACTION.md`.
