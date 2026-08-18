@@ -47,6 +47,20 @@ Smoke sintético `/auth/callback` sem parâmetros reais confirmou:
 - evento `auth.callback.failed` em Runtime Logs;
 - nenhum token/e-mail/cookie/secret/dado real usado.
 
+O preview do SHA documental final `87c9a4e209eeb4a146d96cfaa26696fa8d159ca0` também ficou `READY` (`dpl_DWApS8pBnpqNjTe26eUtnQbruvzV`).
+
+### Limite de deploy observado após o merge
+
+Depois do merge e dos commits documentais diretos na `main`, o status Vercel do head documental retornou `failure` apontando para `upgradeToPro=build-rate-limit`.
+
+Isso é **limite de frequência de builds da plataforma**, não falha identificada de código:
+
+- o SHA funcional/documental pré-merge está 3/3 verde no GitHub;
+- o mesmo código teve preview Vercel `READY`;
+- não fazer alteração de código para “corrigir” esse status;
+- não fazer upgrade de plano por inferência;
+- no próximo ciclo, apenas revalidar o status/deployment da `main` quando o limite permitir e registrar o resultado.
+
 ## Supabase remoto
 
 Fase 17 somente read-only:
@@ -90,21 +104,22 @@ Não afirmar que Preview já usa Production sem provar o valor efetivo das vari�
 ## Próxima ação exata
 
 1. confirmar Issue #45 e o head atual da `main`;
-2. confirmar que não existe branch/PR funcional equivalente antes de criar trabalho novo;
-3. criar `agent/environment-isolation` a partir da `main` atual;
-4. ler `AGENTS.md`, `START-HERE`, `CURRENT_STATE`, este `HANDOFF`, `NEXT_ACTION`, `requirements.md`, `.env.example`, runtime Supabase, ADR-006/ADR-007 e docs de Vercel/Supabase atuais;
-5. inventariar a configuração real sem revelar valores:
+2. conferir o status Vercel da `main`; se ainda estiver em build-rate-limit, não alterar código nem contratar plano apenas por isso;
+3. confirmar que não existe branch/PR funcional equivalente antes de criar trabalho novo;
+4. criar `agent/environment-isolation` a partir da `main` atual;
+5. ler `AGENTS.md`, `START-HERE`, `CURRENT_STATE`, este `HANDOFF`, `NEXT_ACTION`, `requirements.md`, `.env.example`, runtime Supabase, ADR-006/ADR-007 e docs de Vercel/Supabase atuais;
+6. inventariar a configuração real sem revelar valores:
    - targets Production/Preview/Development das variáveis Vercel relevantes;
    - presença/ausência de server-only secrets por ambiente;
    - projetos/branches Supabase disponíveis;
    - callbacks/domínios por ambiente;
-6. documentar a matriz de ambientes e escolher estratégia reversível compatível com o plano atual antes de alterar configuração;
-7. implementar identificação explícita de ambiente e guardrails fail-closed para configuração perigosa/ambígua;
-8. garantir que Preview/Development não usem secret/admin path de Production;
-9. criar testes para parsing de ambiente, validação de configuração, fail-closed e ausência de secret no client bundle;
-10. validar Preview Vercel usando somente dados sintéticos ou operação não mutável, sem tocar em dados reais;
-11. manter lint, typecheck, Vitest, build, backup/restore e workflows PostgreSQL verdes;
-12. atualizar documentação operacional e continuidade antes do PR/merge.
+7. documentar a matriz de ambientes e escolher estratégia reversível compatível com o plano atual antes de alterar configuração;
+8. implementar identificação explícita de ambiente e guardrails fail-closed para configuração perigosa/ambígua;
+9. garantir que Preview/Development não usem secret/admin path de Production;
+10. criar testes para parsing de ambiente, validação de configuração, fail-closed e ausência de secret no client bundle;
+11. validar Preview Vercel usando somente dados sintéticos ou operação não mutável, sem tocar em dados reais;
+12. manter lint, typecheck, Vitest, build, backup/restore e workflows PostgreSQL verdes;
+13. atualizar documentação operacional e continuidade antes do PR/merge.
 
 ## Regras que permanecem
 
