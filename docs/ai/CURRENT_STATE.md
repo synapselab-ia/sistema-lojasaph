@@ -4,93 +4,88 @@
 
 ## Estado atual
 
-Fase 14 — Permissões por escopo de unidade/setor e hardening RLS — **implementada, aplicada e homologada no Supabase remoto; aguardando apenas CI documental final + ready/merge do PR #38**.
+Fase 14 — Permissões por escopo de unidade/setor e hardening RLS — **concluída e integrada na `main`**.
 
 - Repositório: `synapselab-ia/sistema-lojasaph`
-- Branch ativa: `agent/scoped-permissions`
-- PR atual: #38 — `Fase 14 — permissões por escopo e hardening RLS` — aberto, draft, mergeable
-- Issue atual: #37 — aberta
-- Head técnico previamente validado: `8bfbc3e397d3eb89ee7bcc55f89b8468985c030b`
+- PR #38 — merged
+- Issue #37 — closed/completed
+- merge commit: `0cbb6ed38add92fb220f575cad17c6983d700ed3`
+- head documental final validado antes do merge: `8795f4b3aca0d1693da3ede0c4fc68e3f024ba56`
+- próxima Issue: #39 — `Fase 15 — staging de importação, dry run e reconciliação rastreável`
+- nenhuma branch funcional da Fase 15 foi iniciada ainda.
 
-## O que já foi concluído na Fase 14
+## Fase 14 — concluído
 
 - migration canônica no GitHub: `supabase/migrations/20260818143221_scoped_permissions.sql`;
-- helpers privados para Organization-wide, Business, Unit, Sector, StockLocation, PurchaseOrder, PayableDocument, CashRegister e demais recursos operacionais;
-- validação de hierarquia de `organization_memberships` por trigger;
+- helpers privados para Organization-wide, Business, Unit, Sector e recursos operacionais;
+- trigger de integridade da hierarquia de `organization_memberships`;
 - RLS operacional scope-aware;
-- commands públicos preservados como wrappers de autorização e implementações transacionais movidas para `private`;
-- implementations privadas sem `EXECUTE` para `authenticated`;
-- wrappers públicos continuam a fronteira RPC e validam role + escopo real;
-- transferências: dispatch exige os dois extremos; receive exige destino;
-- catálogo/fornecedores/configurações globais: mutation exige membership Organization-wide quando a alteração afeta a Organization inteira;
-- UI/runtime distingue role Organization-wide de role operacional escopada;
-- Caixa separa cadastro de caixa local de configuração global de meios/taxas;
-- documentação de arquitetura em `docs/architecture/authorization-scopes.md`;
-- suíte `supabase/tests/scoped_permissions.sql` cobre Organization/Business/Unit/Sector, múltiplos memberships, viewer, cross-scope, transferência, Compras, Financeiro, Caixa e acesso às implementações privadas.
+- commands públicos como wrappers de autorização e implementations transacionais no schema `private`;
+- `authenticated` sem `EXECUTE` direto nas implementations privadas testadas;
+- transferências com regra conservadora de origem/destino;
+- mutation global bloqueada para membership restrito quando o recurso é Organization-wide;
+- UI/runtime distingue permissões globais das operacionais escopadas;
+- documentação em `docs/architecture/authorization-scopes.md`;
+- suíte `supabase/tests/scoped_permissions.sql`.
 
-## Validação CI técnica
+## Validação final da Fase 14
 
-No head técnico `8bfbc3e397d3eb89ee7bcc55f89b8468985c030b` os três workflows estavam verdes:
+No SHA `8795f4b3aca0d1693da3ede0c4fc68e3f024ba56` os três workflows finais passaram:
 
-- `CI` — lint, typecheck, Vitest, production build e banco principal;
+- `CI`;
 - `Inventory Count Integration`;
-- `Business Transactions Integration` — incluindo `scoped_permissions.sql`.
+- `Business Transactions Integration`.
 
-A regressão Organization-wide também permaneceu verde.
-
-## Supabase remoto
-
-A mudança de escopo **já foi aplicada** no projeto remoto. Não reaplicar a migration.
-
-Histórico remoto contém:
-
-- versão remota `20260818150253` — `scoped_permissions`.
-
-Observação: a versão remota é diferente do timestamp do arquivo GitHub porque `apply_migration` registra sua própria versão no projeto remoto. O conteúdo aplicado corresponde à migration canônica validada no PR.
-
-Verificação estrutural remota confirmou wrappers públicos, implementações privadas, helpers de escopo e trigger de hierarquia.
-
-Security Advisor: warnings de `SECURITY DEFINER` nos wrappers públicos continuam esperados/intencionais; os wrappers são a API transacional e revalidam `auth.uid()`, role, Organization e escopo antes de chamar a implementação privada.
-
-Performance Advisor: apenas recomendações de índices/FKs e `auth.uid()` em policy; não são bloqueantes para a Fase 14.
-
-## Homologação funcional remota final
-
-Homologação executada em 2026-08-18 no Supabase hospedado, reutilizando a suíte versionada `supabase/tests/scoped_permissions.sql` em **uma única transação `BEGIN/ROLLBACK`**.
+A homologação funcional remota foi executada no Supabase hospedado em uma única transação `BEGIN/ROLLBACK`, reutilizando `supabase/tests/scoped_permissions.sql`.
 
 Resultado: `scoped permission tests passed`.
 
-Foi comprovado remotamente que:
+Foi comprovado remotamente:
 
-- membership Organization-wide preserva comportamento amplo;
+- Organization-wide preserva acesso amplo;
 - Business limita às Units filhas;
-- Unit A não lê nem opera Unit B;
-- Sector não amplia recurso unit-wide sem vínculo explícito;
+- Unit A não lê/opera Unit B;
+- Sector não amplia recurso sem vínculo explícito;
 - múltiplos memberships formam união segura;
 - dispatch exige autorização nos dois extremos;
-- receive exige autorização no destino e não amplia acesso à origem;
-- Compras valida StockLocation/PurchaseOrder real;
-- Financeiro valida Unit/Sector do documento;
-- Caixa valida Unit/CashRegister e bloqueia configuração Organization-wide para membership restrito;
+- receive exige autorização no destino sem ampliar acesso à origem;
+- Compras, Financeiro e Caixa validam o recurso real;
+- mutation Organization-wide permanece bloqueada para membership restrito;
 - viewer permanece read-only;
-- `authenticated` não possui `EXECUTE` nas implementations privadas testadas.
+- implementations privadas testadas não são executáveis por `authenticated`.
 
-Após o `ROLLBACK`, uma verificação separada retornou zero resíduos para usuários/memberships temporários e para os artefatos temporários de hierarquia, catálogo, estoque, transferência, compras, financeiro e caixa.
+Após o `ROLLBACK`, checagem separada confirmou zero resíduos temporários em usuários/memberships, hierarquia, catálogo, estoque, transferências, compras, financeiro e caixa.
 
-## Pendência exata antes do merge
+## Supabase remoto
 
-1. atualizar corpo do PR #38 com a evidência da homologação;
-2. rodar CI final no SHA documental;
-3. marcar PR #38 como ready;
-4. mergear #38;
-5. confirmar Issue #37 como completed;
-6. só então escolher a próxima Issue a partir dos requisitos MUST ainda pendentes, sem resolver Q-022 por inferência.
+A migration de escopos já está aplicada como versão remota `20260818150253` / `scoped_permissions`.
+
+**Não reaplicar.**
+
+Security Advisor mantém warnings esperados dos wrappers públicos `SECURITY DEFINER`; eles são a fronteira RPC autorizada e revalidam identidade, role, Organization e escopo antes da implementation privada.
+
+Performance Advisor mantém recomendações de tuning não bloqueantes para esta fase.
+
+## Próxima frente — Issue #39
+
+A próxima lacuna executável foi escolhida a partir dos requisitos MUST ainda incompletos:
+
+- `REQ-IMP-001` — importação rastreável;
+- `REQ-IMP-002` — idempotência;
+- `REQ-IMP-003` — preview/dry run;
+- `REQ-IMP-004` — relatório de inconsistências;
+- suporte de aliases necessário à migração conforme `REQ-ITEM-002`.
+
+A Issue #39 cobre somente a **fundação de staging/importação com dados sintéticos**. Não importar planilhas reais, não executar cutover e não resolver questões abertas por inferência.
 
 ## Não repetir
 
-- não recriar a migration;
-- não reaplicar `scoped_permissions` no Supabase;
-- não reimplementar helpers/RLS/wrappers;
-- não refazer a suíte de escopos salvo regressão real;
+- não recriar/reaplicar `scoped_permissions`;
+- não reimplementar a Fase 14;
 - não redefinir perfis/pessoas reais enquanto Q-022 estiver aberta;
-- não dar bypass implícito a owner/admin com membership escopado.
+- não iniciar migração definitiva sem staging, validação, backup/reconciliação e regras aprovadas;
+- não versionar arquivos reais das planilhas nem segredos.
+
+## Próximo passo
+
+Seguir `docs/ai/NEXT_ACTION.md`: iniciar a Issue #39 em branch própria a partir da `main`, implementando somente a fundação de staging/dry run com fixtures sintéticos e mantendo CI/Supabase/documentação coerentes.
