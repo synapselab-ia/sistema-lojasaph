@@ -4,83 +4,98 @@
 
 ## Estado atual
 
-Fase 17 — observabilidade, logs estruturados e rastreabilidade de erros — **implementada e tecnicamente validada; aguardando gate documental/merge do PR #44**.
+Fase 17 — observabilidade, logs estruturados e rastreabilidade de erros — **concluída e integrada na `main`**.
 
 - Repositório: `synapselab-ia/sistema-lojasaph`
-- Issue #43 — open até o merge
-- PR #44 — draft
-- branch: `agent/observability`
-- base da branch: `main` em `00e2f3c72c22f571a86b15dd52edd8873c9e5fef`
-- SHA técnico validado: `8d52a03f778c5fa5e66773fef9fe30387a62b5eb`
-- nenhuma migration/DDL da Fase 17 foi necessária.
+- PR #44 — merged
+- Issue #43 — closed/completed
+- merge commit: `5dce4b75b76380b4d668debd399bdca079f6b3dd`
+- SHA final pré-merge: `87c9a4e209eeb4a146d96cfaa26696fa8d159ca0`
+- próxima Issue: #45 — `Fase 18 — isolamento de ambientes, previews seguros e separação de dados/segredos`
+- nenhuma branch funcional da Fase 18 foi criada ainda.
 
-## Fase 17 — implementado
+## Fase 17 — concluído
 
 A entrega cobre `REQ-PLAT-006` no escopo atual e reforça `REQ-SEC-004`:
 
 - contrato vendor-neutral de log estruturado em JSON;
-- níveis `debug`, `info`, `warn`, `error`;
-- event codes estáveis;
+- níveis `debug`, `info`, `warn`, `error` e event codes estáveis;
 - `x-correlation-id` validado/gerado no Proxy e devolvido na response;
-- redaction por chave e por padrão de texto para tokens, JWT, cookies, senha, API keys, connection strings e PII comum;
+- redaction por chave e padrão de texto para credentials, tokens, JWT, cookies, senha, API keys, connection strings e PII comum;
 - `src/instrumentation.ts` com `Instrumentation.onRequestError` para exceções server-side do Next;
-- query string removida de paths registrados;
+- query string removida do path registrado;
 - `error.tsx` e `global-error.tsx` com fallback seguro e `digest` como referência quando disponível;
-- `toPublicError()` impede exposição de mensagens de persistência/erros desconhecidos na UI;
-- workspace deixou de devolver `Error.message` bruto ao usuário;
-- eventos explícitos para falhas relevantes de Auth tratadas sem exceção;
-- testes Vitest de envelope, níveis, redaction, correlation ID e error mapping;
-- `ADR-007-observability-contract.md` e `docs/operations/observability.md`.
+- `toPublicError()` impede exposição de persistência/internals/unknown errors na UI;
+- workspace deixou de devolver `Error.message` bruto;
+- falhas relevantes de Auth tratadas sem exceção emitem eventos estruturados;
+- testes Vitest de envelope, redaction, correlation ID e error mapping;
+- ADR `docs/decisions/ADR-007-observability-contract.md`;
+- runbook `docs/operations/observability.md`.
 
-## Capacidades atuais verificadas
+## CI final da Fase 17
 
-### Vercel
+No SHA `87c9a4e209eeb4a146d96cfaa26696fa8d159ca0` passaram:
 
-O projeto conectado expõe Runtime Logs e Runtime Errors, com filtros por deployment/ambiente/nível/status/origem/texto/request ID.
+- `CI` #219 — success;
+- `Inventory Count Integration` #134 — success;
+- `Business Transactions Integration` #117 — success.
 
-Antes da implementação não havia runtime errors/logs de aplicação nas últimas 24h.
+O CI validou lint, typecheck, Vitest, build, migrations/seed, drill de backup/restore e todas as suítes PostgreSQL existentes.
 
-O preview da Fase 17 foi validado no deployment `dpl_DCRih5bSXPSY5ykJ4eSUzbmX8xm9`, estado `READY`.
+## Homologação Vercel da Fase 17
 
-Smoke seguro executado em `/auth/callback` sem parâmetros reais:
+Preview técnico validado: `dpl_DCRih5bSXPSY5ykJ4eSUzbmX8xm9` — `READY`.
 
-- resposta exibiu mensagem genérica de autenticação inválida/expirada;
+Smoke sintético executado em `/auth/callback` sem `code`/`token_hash` real:
+
+- UI exibiu somente mensagem segura;
 - response trouxe `x-correlation-id`;
 - Runtime Logs registrou `auth.callback.failed` em JSON estruturado;
-- nenhum token real, e-mail, cookie ou secret foi usado.
+- nenhum token real, e-mail, cookie, secret ou dado de cliente foi usado.
 
-### Supabase
+O preview do SHA documental final também ficou Ready antes do merge.
 
-Projeto conectado permanece saudável, PostgreSQL 17, organização no plano Free.
+## Supabase remoto
 
-A Fase 17 usou apenas consulta read-only de logs. Nenhuma migration, DDL, dado ou configuração remota foi alterada.
+A Fase 17 fez somente consultas read-only de logs.
 
-Log Drains não foram configurados porque a documentação atual exige plano Pro/Team/Enterprise. Logs Explorer/API permanecem fonte de diagnóstico separada para Postgres/Auth/Data API.
+- projeto conectado saudável;
+- PostgreSQL 17;
+- organização no plano Free;
+- nenhuma migration, DDL, configuração ou write da Fase 17;
+- Log Drains não foram configurados;
+- não reaplicar migrations antigas.
 
-## CI técnico da Fase 17
+## Próxima frente — Issue #45
 
-No SHA `8d52a03f778c5fa5e66773fef9fe30387a62b5eb` passaram:
+Após o fechamento formal da Fase 17, os requisitos MUST e Issues reais foram revistos. Não havia outra Issue aberta.
 
-- `CI` #213 — success;
-- `Inventory Count Integration` #128 — success;
-- `Business Transactions Integration` #111 — success.
+A próxima lacuna executável é `REQ-PLAT-007 — Ambientes separados`.
 
-O CI cobriu lint, typecheck, Vitest, build, backup/restore efêmero e todas as suítes PostgreSQL existentes.
+Evidência atual:
 
-Duas incompatibilidades foram detectadas e corrigidas antes desse gate:
+- Vercel já possui Preview e Production;
+- Preview da Fase 17 conseguiu inicializar o runtime Supabase, portanto existe configuração Supabase disponível em Preview;
+- a conta Supabase conectada possui somente um projeto;
+- `list_branches` retorna zero branches;
+- a organização está no plano Free e a capacidade atual de Supabase Branching/preview environments exige plano compatível pago;
+- busca no repositório não encontrou política/runbook que prove isolamento de dados/segredos entre Development, Preview e Production.
 
-1. a documentação corrente do Next expõe `renderType`, mas os tipos instalados em `next@16.2.12` não; o logger usa somente campos suportados localmente;
-2. o type guard de `Headers | Record` foi tornado explícito após o build da Vercel detectar narrowing insuficiente.
+Isso **não prova vazamento ou compartilhamento indevido já ocorrido**. Significa que o isolamento obrigatório ainda não está demonstrado nem protegido por guardrails versionados.
 
-## Limites conscientes
+A Issue #45 deve primeiro auditar targets/escopos de configuração sem revelar valores, definir uma estratégia sem custo automático e implementar fail-closed para impedir Preview/Development de operar inadvertidamente com credenciais/dados privilegiados de Production.
 
-- não existe vendor dedicado de browser error tracking nesta fase;
-- erro puramente client-side pode não aparecer em Runtime Logs sem contraparte server-side;
-- chamadas Supabase diretas do browser não recebem automaticamente o correlation ID do Next;
-- retenção, SLA/SLO, alertas e on-call permanecem pendentes;
-- nenhum fornecedor pago foi adotado por inferência;
-- nenhum fluxo transacional, RLS ou RPC homologado foi alterado.
+## Não repetir
+
+- não reimplementar observabilidade da Fase 17;
+- não reabrir backup/restore da Fase 16;
+- não executar restore destrutivo no Supabase ativo;
+- não reaplicar migrations antigas;
+- não importar dados reais/cutover;
+- não inferir Q-001 a Q-025;
+- não contratar/ativar Supabase Pro/Branching ou outro recurso pago sem decisão explícita;
+- não copiar dados reais de Production para Preview/Development.
 
 ## Próximo passo
 
-Seguir `docs/ai/NEXT_ACTION.md`: exigir os três workflows verdes no SHA documental final da branch, atualizar o PR #44, marcar ready e fazer merge normal. Confirmar Issue #43 como closed/completed e somente então revisar requisitos MUST/Issues reais para a próxima frente.
+Seguir `docs/ai/NEXT_ACTION.md`: iniciar a Issue #45 em branch própria a partir da `main`, verificar primeiro a configuração real de ambientes Vercel/Supabase sem expor secrets e implementar somente a fundação de isolamento prevista na Issue.
