@@ -6,6 +6,7 @@ on:
       - "supabase/**"
       - "src/modules/purchases/**"
       - "src/modules/finance/**"
+      - "src/modules/cash/**"
       - "src/modules/suppliers/**"
       - "src/modules/inventory/**"
       - "src/modules/master-data/**"
@@ -20,7 +21,6 @@ jobs:
   business-database:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-
     services:
       postgres:
         image: postgres:17-alpine
@@ -28,40 +28,29 @@ jobs:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: lojasaph
-        ports:
-          - 5432:5432
+        ports: ["5432:5432"]
         options: >-
           --health-cmd "pg_isready -U postgres -d lojasaph"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
-
     env:
       PGHOST: 127.0.0.1
       PGPORT: 5432
       PGUSER: postgres
       PGPASSWORD: postgres
       PGDATABASE: lojasaph
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v4
       - name: Bootstrap Supabase auth stubs
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/bootstrap.sql
-
       - name: Apply all migrations
         shell: bash
         run: |
           set -euo pipefail
-          while IFS= read -r migration; do
-            echo "Applying ${migration}"
-            psql -v ON_ERROR_STOP=1 -f "${migration}"
-          done < <(find supabase/migrations -maxdepth 1 -type f -name '*.sql' | sort)
-
+          while IFS= read -r migration; do psql -v ON_ERROR_STOP=1 -f "${migration}"; done < <(find supabase/migrations -maxdepth 1 -type f -name '*.sql' | sort)
       - name: Apply anonymized seed
         run: psql -v ON_ERROR_STOP=1 -f supabase/seed.sql
-
       - name: Replay stabilized database suites
         run: |
           psql -v ON_ERROR_STOP=1 -f supabase/tests/schema_smoke.sql
@@ -71,6 +60,27 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f supabase/tests/stock_transfer_multibatch.sql
           psql -v ON_ERROR_STOP=1 -f supabase/tests/inventory_count.sql
           psql -v ON_ERROR_STOP=1 -f supabase/tests/purchase_orders.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/tests/finance_payables.sql
 
-      - name: Run finance payables lifecycle suite
-        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/finance_payables.sql
+  generate-cash-migration:
+    if: github.event_name == 'pull_request' && github.head_ref == 'agent/cash-runtime' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/cash-runtime
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Generate migration with pinned Supabase CLI
+        run: npx --yes supabase@2.111.0 migration new cash_sessions_flow
+      - name: Commit migration shell
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add supabase/migrations/*_cash_sessions_flow.sql
+          git commit -m "chore: create cash sessions migration"
+          git push origin HEAD:agent/cash-runtime
