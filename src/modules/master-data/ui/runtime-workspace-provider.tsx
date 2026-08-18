@@ -3,6 +3,7 @@
 import { createContext, ReactNode, useContext, useMemo, useState } from "react";
 import { DomainError } from "@/domain/common/domain-error";
 import { EntityId } from "@/domain/common/entity-id";
+import { toPublicError } from "@/lib/observability/public-error";
 import { createBrowserSupabaseClient } from "@/lib/supabase/browser";
 import { SupabaseStockItemRepository } from "@/modules/catalog/adapters/supabase-stock-item-repository";
 import {
@@ -284,9 +285,7 @@ export function RuntimeWorkspaceProvider({
     dispatchTransfer,
     receiveTransfer,
     errorMessage(error: unknown) {
-      if (error instanceof DomainError) return error.message;
-      if (error instanceof Error) return error.message;
-      return "Não foi possível concluir a operação.";
+      return toPublicError(error).message;
     },
   };
 
