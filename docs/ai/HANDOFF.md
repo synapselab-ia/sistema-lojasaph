@@ -2,76 +2,106 @@
 
 ## Estado
 
-A Fase 18 foi encerrada e integrada.
+A Fase 19 foi concluída e integrada.
 
-- PR #46 — merged;
-- Issue #45 — closed/completed;
-- merge commit: `7aa98ebacb8eaed1587245fa04e19fc6a4e16f9c`;
-- head final pré-merge: `596127843c671aea5ceca6a6abc1f79e3172fbc5`;
-- `CI` #243 — success;
-- `Inventory Count Integration` #149 — success;
-- `Business Transactions Integration` #132 — success.
+- PR #50 — merged;
+- Issue #49 — closed/completed;
+- merge commit: `f9eae62dd7e2de062c7a48eae326aeec51f6cee0`;
+- head final pré-merge: `2ed1317bd6b8a74e99d8deaa907d2645f6e414fa`;
+- `CI` #249 — success;
+- `Inventory Count Integration` #153 — success;
+- `Business Transactions Integration` #136 — success.
 
-## Decisão operacional de Vercel
+## Fase 19 — o que ficou pronto
 
-Não gastar tempo/quota tentando obter Preview para cada commit.
+`REQ-ORG-004` agora possui caminho persistente real:
 
-`vercel.json` mantém `git.deploymentEnabled=false` após os PRs #47/#48. A Fase 18 pôde fechar porque:
+- Employee separado de identidade autenticada;
+- Employee sem login é válido;
+- vínculo opcional com `auth.users` sem efeito sobre memberships/roles;
+- cadastro administrativo com Unit/Sector padrão opcionais;
+- RLS administrativo por escopo;
+- inativação em vez de delete físico;
+- UI `/workspace/funcionarios`;
+- testes unitários e PostgreSQL integrados ao CI.
 
-1. todo o código funcional do isolamento já havia sido homologado em Preview `READY` no commit `91738dc6f780c8269cdf9600fc57c64d63e6134d`;
-2. `/health` comprovou Preview fail-closed (`preview`, Supabase bloqueado, admin bloqueado);
-3. não houve drift funcional posterior nesse código;
-4. o head final passou 3/3 no CI.
+### Hardening remoto importante
 
-Daqui em diante, **CI é o gate principal de desenvolvimento**. Usar Vercel manualmente apenas quando a validação dependa de hosting/browser real ou em milestone de release/produção.
+Ao aplicar a primeira migration no Supabase hospedado, a checagem pós-DDL mostrou que os default privileges do projeto davam `DELETE` a `authenticated`, embora o PostgreSQL limpo do CI não fizesse isso.
 
-## Supabase
+Foi criada e validada uma segunda migration:
 
-Última checagem read-only: projeto `ACTIVE_HEALTHY`, PostgreSQL 17, zero branches. A Fase 18 não alterou banco/configuração/dados remotamente.
+- `employee_privilege_hardening`;
+- revoga todos os privilégios de `anon` na tabela;
+- revoga `DELETE`, `TRUNCATE`, `REFERENCES` e `TRIGGER` de `authenticated`;
+- garante apenas `SELECT`/`INSERT`/`UPDATE` em nível de tabela;
+- adiciona índices cobrindo FKs apontadas pelo advisor.
 
-## Próxima frente — Issue #49
+Estado remoto final:
 
-Título: `Fase 19 — funcionários operacionais e separação de identidade de acesso`.
+- projeto `ACTIVE_HEALTHY`, PostgreSQL 17;
+- zero branches;
+- migrations `employees` (`20260818215813`) e `employee_privilege_hardening` (`20260818220222`) aplicadas;
+- RLS ativo;
+- `anon` sem acesso à tabela;
+- `authenticated` sem `DELETE`;
+- três policies administrativas de Employee;
+- smoke sintético executado com rollback;
+- zero linhas em `employees` após homologação;
+- nenhum dado real usado.
+
+## Vercel
+
+Não usar Vercel como gate rotineiro.
+
+`vercel.json` continua com `git.deploymentEnabled=false`. CI é o gate principal. Deployment manual somente quando houver validação que realmente dependa de hosting/browser real ou em milestone/release apropriada.
+
+## Próxima frente — Issue #51
+
+Título: `Fase 20 — perdas, quebras e vencimentos como baixas rastreáveis`.
 
 Motivo objetivo:
 
-- `REQ-ORG-004` é MUST;
-- escopo MVP inclui funcionários básicos;
-- modelo lógico possui `employees` separado de `users`;
-- schema físico atual não possui `employees` na migration de fundação;
-- autenticação hoje usa `auth.users` + `organization_memberships`;
-- não existe módulo de funcionários dedicado.
+- `REQ-STK-008` é MUST;
+- `REQ-STK-003` exige motivo estruturado;
+- `stock_movements` já aceita `loss` e `expiration` e possui `reason_code`;
+- o módulo persistente atual documenta entrada, retirada, transferência e inventário, mas não baixa por perda/quebra/vencimento;
+- não havia Issue aberta após o fechamento da Fase 19.
 
-### Defaults já registrados na Issue
+### Defaults já registrados na Issue #51
 
-- Employee é pessoa operacional e não identidade de login;
-- cadastrar/inativar Employee não concede/revoga acesso automaticamente;
-- vínculo com usuário autenticado é opcional e explícito;
-- campos mínimos, sem folha/RH/dados sensíveis não requeridos;
-- Unit/Sector padrão podem ser opcionais quando coerentes;
-- Q-022 continua aberta;
-- fixtures somente sintéticas;
-- migration + RLS + testes antes de qualquer homologação remota.
+- toda baixa passa pelo ledger, nunca por edição de saldo;
+- motivo estruturado; observação apenas complementar;
+- motivos mínimos reversíveis (`loss`, `breakage`, `expiration`, `other`) sem inventar taxonomia real do cliente;
+- lote/validade/custo preservados;
+- idempotência por command ID;
+- RLS e papéis/escopos de estoque existentes;
+- sem dados reais;
+- `REQ-STK-006` devolução/retorno fica separado;
+- Q-005 empréstimo x transferência não deve ser inferida.
 
 ## Próximo chat deve fazer
 
-1. confirmar Issue #49 e estado real da `main`;
-2. trabalhar em `agent/employees` (criar se ainda não existir);
-3. ler `docs/architecture/data-model.md`, `docs/modules/master-data.md`, migrations de foundation/RLS/scoped permissions e contracts atuais de `src/modules/master-data`/`organization`;
-4. definir a menor representação física coerente para `employees` e vínculo opcional com `auth.users`;
-5. criar migration versionada e testes PostgreSQL primeiro;
-6. implementar domínio/repository/adapter/UI administrativa mínima;
-7. validar lint, typecheck, Vitest, build e suites PostgreSQL;
-8. só após CI verde considerar aplicação remota no Supabase com fixtures sintéticas;
-9. não usar Vercel salvo necessidade concreta de validação hospedada;
-10. atualizar continuidade ao encerrar.
+1. confirmar Issue #51, `main`, branches e PRs reais;
+2. criar/usar branch `agent/stock-losses` a partir da `main` atual;
+3. reler `docs/modules/inventory.md`, `docs/product/requirements.md`, ADRs de ledger/custeio e migrations/RPCs de retirada/lotes/scoped permissions;
+4. reutilizar as invariantes de `record_stock_withdrawal` para lock/saldo/lote/custo, sem duplicar lógica insegura;
+5. definir motivo estruturado mínimo e como ele é configurado/versionado;
+6. criar migration e testes PostgreSQL antes da integração de UI;
+7. implementar comando/gateway/UI persistente de perda/quebra/vencimento;
+8. validar idempotência, audit log, custo, lotes, roles/escopo, cross-Organization e rollback;
+9. rodar lint, typecheck, Vitest, build e todos os workflows PostgreSQL;
+10. só depois de CI verde aplicar/homologar no Supabase remoto com dados sintéticos e rollback;
+11. não usar Vercel sem necessidade concreta;
+12. atualizar PR/Issue e continuidade ao encerrar.
 
 ## Não fazer
 
-- não reimplementar Fase 18;
+- não reabrir Fase 19;
+- não mexer em Employee sem defeito relacionado à nova frente;
 - não reativar auto-deploy Vercel;
-- não criar RH/folha/ponto/cargos e salários;
-- não cadastrar/importar pessoas reais;
-- não resolver Q-022 por inferência;
-- não associar Employee a role/permissão automaticamente;
-- não alterar módulos transacionais sem necessidade direta da Issue #49.
+- não resolver advisors antigos fora de escopo por oportunismo;
+- não implementar devolução/retorno (`REQ-STK-006`) nesta fase;
+- não implementar empréstimo enquanto Q-005 estiver aberta;
+- não importar dados reais;
+- não inferir Q-001 a Q-025.

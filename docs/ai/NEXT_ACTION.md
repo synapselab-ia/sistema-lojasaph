@@ -2,67 +2,76 @@
 
 ## Contexto
 
-Fase 18 está concluída e mergeada na `main` pelo PR #46. Issue #45 está closed/completed.
+Fase 19 está concluída e mergeada na `main` pelo PR #50. Issue #49 está closed/completed.
 
-O próximo requisito MUST verificavelmente incompleto é `REQ-ORG-004 — Funcionários e usuários`:
+O próximo requisito MUST verificavelmente incompleto selecionado é `REQ-STK-008 — Perdas e vencimentos`, reforçando também `REQ-STK-003 — Tipos/motivos estruturados`.
 
-- o escopo MVP inclui funcionários básicos;
-- o modelo lógico prevê `employees` separado de `users`;
-- a migration física de fundação possui `auth.users`/`organization_memberships`, mas não possui `employees`;
-- não existe módulo dedicado de funcionários.
+Evidência:
 
-A Issue #49 documenta a Fase 19.
+- `stock_movements` já reserva `loss` e `expiration` e possui `reason_code`;
+- o fluxo persistente atual cobre entrada, retirada, transferência e inventário;
+- não existe comando/UI persistente documentado para perda, quebra ou vencimento;
+- a Issue #51 documenta a Fase 20.
 
 ## Fazer agora
 
-1. Confirmar estado real da Issue #49 e da `main`.
-2. Criar/usar a branch `agent/employees` a partir da `main` atual.
+1. Confirmar estado real da Issue #51, `main`, PRs e branches.
+2. Criar/usar a branch `agent/stock-losses` a partir da `main` atual.
 3. Ler antes de editar:
-   - `docs/architecture/data-model.md` — seção Pessoas e acesso;
-   - `docs/modules/master-data.md`;
-   - migrations de foundation, RLS e scoped permissions;
-   - `src/modules/master-data` e `src/modules/organization`;
-   - fluxo atual de `organization_memberships`/Auth.
-4. Definir a representação física mínima de `employees`:
-   - Organization obrigatória;
-   - nome obrigatório;
-   - código/identificador operacional opcional;
-   - status ativo/inativo;
-   - Unit/Sector padrão opcionais e coerentes com Organization;
-   - vínculo opcional e explícito com identidade autenticada, sem conceder autorização por efeito colateral.
-5. Criar migration versionada e RLS usando os helpers de escopo já homologados.
-6. Criar testes PostgreSQL para:
+   - `docs/product/requirements.md` — `REQ-STK-001`, `REQ-STK-003`, `REQ-STK-008`;
+   - `docs/modules/inventory.md`;
+   - ADRs de ledger/custeio;
+   - migrations de inventory, transactional withdrawal, multi-batch/scoped permissions;
+   - gateway/UI atuais de retirada e lotes.
+4. Definir motivo estruturado mínimo e reversível:
+   - perda;
+   - quebra;
+   - vencimento;
+   - outro motivo configurado, sem inventar taxonomia real do cliente.
+5. Versionar migration necessária para motivos/RLS/constraints e comando transacional idempotente de baixa.
+6. Reutilizar as invariantes já homologadas de estoque:
+   - row/advisory locks;
+   - saldo nunca editado diretamente;
+   - estoque negativo conforme política vigente;
+   - lote preferido/FEFO quando aplicável;
+   - item rastreado não fabrica lote/validade;
+   - custo histórico preservado;
+   - command ID idempotente;
+   - audit log obrigatório.
+7. Registrar `stock_movements.movement_type` como `loss` ou `expiration` e preencher `reason_code` estruturado.
+8. Criar testes PostgreSQL para:
+   - perda/quebra/vencimento;
+   - saldo e custo;
+   - lotes/FEFO;
+   - idempotência;
+   - roles e escopo Unit/Sector;
    - cross-Organization;
-   - membership Organization-wide e escopado;
-   - roles administrativas permitidas/bloqueadas;
-   - vínculo opcional com usuário;
-   - inativação sem delete físico;
-   - Employee sem login continuar válido como pessoa operacional.
-7. Implementar domínio/casos de uso/repository/adapter persistente sem acoplamento do domínio ao SDK.
-8. Criar UI administrativa mínima e responsiva para listar, criar, editar e inativar funcionários.
-9. Atualizar `docs/modules/master-data.md` para refletir a persistência atual e o novo submódulo.
-10. Rodar lint, typecheck, Vitest, build e todas as suites PostgreSQL relevantes.
-11. Só após CI verde aplicar/homologar migration no Supabase remoto, com dados sintéticos e sem deixar resíduos desnecessários.
-12. Atualizar PR/Issue e continuidade.
+   - rollback integral em erro;
+   - audit log.
+9. Implementar gateway/caso de uso e UI persistente no estoque sem acoplar domínio ao SDK.
+10. Atualizar `docs/modules/inventory.md`.
+11. Rodar lint, typecheck, Vitest, build e todos os workflows PostgreSQL.
+12. Só após CI verde aplicar/homologar no Supabase remoto com dados sintéticos e rollback.
+13. Atualizar PR/Issue e continuidade ao final.
+
+## Separação de escopo
+
+Não misturar nesta fase:
+
+- `REQ-STK-006` devolução/retorno relacionado;
+- empréstimos enquanto Q-005 estiver aberta;
+- notificações externas;
+- descarte/logística física;
+- dados reais/cutover.
 
 ## Política de Vercel
 
 - `git.deploymentEnabled=false` permanece vigente;
 - não reativar deployments automáticos;
 - não exigir Preview para cada commit/head;
-- CI é o gate principal desta fase;
-- usar deployment manual apenas se surgir uma validação concreta que dependa de ambiente hospedado.
+- CI é o gate principal;
+- deployment manual apenas se surgir validação concreta que dependa de ambiente hospedado.
 
-## Não fazer
+## Critério de conclusão da Fase 20
 
-- não criar folha de pagamento/RH/ponto;
-- não adicionar CPF, salário ou outros dados pessoais não requeridos;
-- não importar funcionários reais;
-- não inferir Q-022 ou demais Q-001..Q-025;
-- não transformar Employee em role/membership;
-- não alterar regras de negócio de Estoque/Compras/Financeiro/Caixa fora do necessário para referência a Employee;
-- não reabrir Fase 18.
-
-## Critério de conclusão da próxima fase
-
-Employee existe como entidade persistente operacional separada de autenticação, com vínculo opcional e explícito a usuário, RLS/escopo corretos, UI mínima, testes e CI verdes. Criar/inativar Employee não altera acesso ao sistema automaticamente.
+Usuário autorizado consegue registrar baixa por perda, quebra ou vencimento com motivo estruturado; saldo, lotes, custo e auditoria permanecem consistentes e idempotentes sob retry; RLS/escopo impedem operação indevida; CI fica verde e a homologação remota usa apenas dados sintéticos com zero resíduo.
