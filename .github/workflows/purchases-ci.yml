@@ -72,3 +72,35 @@ jobs:
 
       - name: Run purchase order lifecycle suite
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/purchase_orders.sql
+
+  # BEGIN TEMP PURCHASES SYNTAX REPAIR
+  repair-purchase-syntax:
+    if: github.head_ref == 'agent/purchases-runtime' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/purchases-runtime
+      - name: Repair declaration
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('supabase/migrations/20260817234222_purchases_operational_flow.sql')
+          text = path.read_text()
+          old = 'declare v_user_id uuid:=auth.uid(); v_status text; v_existing_order_id uuid v_existing_reason text;'
+          new = 'declare v_user_id uuid:=auth.uid(); v_status text; v_existing_order_id uuid; v_existing_reason text;'
+          if old not in text:
+              raise SystemExit('broken cancel declaration marker not found')
+          path.write_text(text.replace(old, new, 1))
+          PY
+      - name: Commit syntax repair
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add supabase/migrations/20260817234222_purchases_operational_flow.sql
+          git commit -m "fix(purchases): repair cancel command declaration"
+          git push origin HEAD:agent/purchases-runtime
+  # END TEMP PURCHASES SYNTAX REPAIR
