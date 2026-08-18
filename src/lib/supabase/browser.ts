@@ -1,7 +1,6 @@
 import { createBrowserClient } from "@supabase/ssr";
-import { getSupabasePublicEnv } from "./env";
+import { type SupabasePublicConfig } from "@/lib/runtime/environment";
 
-export function createBrowserSupabaseClient() {
-  const { url, publishableKey } = getSupabasePublicEnv();
-  return createBrowserClient(url, publishableKey);
+export function createBrowserSupabaseClient(config: SupabasePublicConfig) {
+  return createBrowserClient(config.url, config.publishableKey);
 }
