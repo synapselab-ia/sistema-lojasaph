@@ -21,7 +21,6 @@ export const onRequestError: Instrumentation.onRequestError = (error, request, c
       routeType: context.routeType,
       renderSource: context.renderSource,
       revalidateReason: context.revalidateReason,
-      renderType: context.renderType,
     },
   });
 };
