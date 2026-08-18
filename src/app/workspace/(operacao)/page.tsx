@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { EntityId } from "@/domain/common/entity-id";
 import { Money } from "@/domain/common/money";
 import { createBrowserSupabaseClient } from "@/lib/supabase/browser";
@@ -22,6 +22,7 @@ function attentionClass(item: DashboardAttentionItem): string {
 export default function WorkspacePage() {
   const workspace = useRuntimeWorkspace();
   const gateway = useMemo(() => new SupabaseDashboardQuery(createBrowserSupabaseClient()), []);
+  const requestSequence = useRef(0);
   const [snapshot, setSnapshot] = useState<DashboardSnapshot | null>(null);
   const [unitId, setUnitId] = useState("");
   const [horizonDays, setHorizonDays] = useState(7);
@@ -32,31 +33,39 @@ export default function WorkspacePage() {
 
   useEffect(() => {
     let active = true;
+    const requestId = ++requestSequence.current;
     void gateway.load(organizationId, { horizonDays: 7 })
       .then((next) => {
-        if (!active) return;
+        if (!active || requestId !== requestSequence.current) return;
         setSnapshot(next);
         setError(null);
       })
       .catch((reason) => {
-        if (active) setError(reason instanceof Error ? reason.message : "Não foi possível carregar o dashboard.");
+        if (active && requestId === requestSequence.current) setError(reason instanceof Error ? reason.message : "Não foi possível carregar o dashboard.");
       })
       .finally(() => {
-        if (active) setLoading(false);
+        if (active && requestId === requestSequence.current) setLoading(false);
       });
     return () => { active = false; };
   }, [gateway, organizationId]);
 
   function reload(nextUnitId: string, nextHorizonDays: number) {
+    const requestId = ++requestSequence.current;
     setLoading(true);
     setError(null);
     void gateway.load(organizationId, {
       unitId: nextUnitId ? nextUnitId as EntityId : undefined,
       horizonDays: nextHorizonDays,
     })
-      .then((next) => setSnapshot(next))
-      .catch((reason) => setError(reason instanceof Error ? reason.message : "Não foi possível atualizar o dashboard."))
-      .finally(() => setLoading(false));
+      .then((next) => {
+        if (requestId === requestSequence.current) setSnapshot(next);
+      })
+      .catch((reason) => {
+        if (requestId === requestSequence.current) setError(reason instanceof Error ? reason.message : "Não foi possível atualizar o dashboard.");
+      })
+      .finally(() => {
+        if (requestId === requestSequence.current) setLoading(false);
+      });
   }
 
   const summary = snapshot ? buildDashboardSummary(snapshot.data, {
@@ -74,7 +83,7 @@ export default function WorkspacePage() {
 
   const operationalCards = summary ? [
     { label: "Caixas abertos", value: String(summary.cash.openCount), href: "/workspace/caixa" },
-    { label: "Divergências", value: String(summary.cash.discrepancyCount), href: "/workspace/caixa" },
+    { label: "Divergências no período", value: String(summary.cash.discrepancyCount), href: "/workspace/caixa" },
     { label: "Pedidos pendentes", value: String(summary.purchases.pendingCount), href: "/workspace/compras" },
     { label: "Transferências em trânsito", value: String(summary.stock.transfersInTransitCount), href: "/workspace/transferencias" },
     { label: "Inventários em andamento", value: String(summary.stock.openInventoryCount), href: "/workspace/inventarios" },
