@@ -33,6 +33,7 @@ export default async function PersistentWorkspaceLayout({ children }: Readonly<{
       organizationId={organizationId}
       organizationName={organization.name}
       roles={organization.roles}
+      organizationWideRoles={organization.organizationWideRoles}
       initialData={{ ...referenceData, stockItems, suppliers }}
     >
       <RuntimeShell
