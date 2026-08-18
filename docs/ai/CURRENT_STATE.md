@@ -4,88 +4,95 @@
 
 ## Estado atual
 
-Fase 14 — Permissões por escopo de unidade/setor e hardening RLS — **concluída e integrada na `main`**.
+Fase 15 — staging de importação, dry run e reconciliação rastreável — **implementada, aplicada e homologada; aguardando fechamento documental/merge do PR #40**.
 
 - Repositório: `synapselab-ia/sistema-lojasaph`
-- PR #38 — merged
-- Issue #37 — closed/completed
-- merge commit: `0cbb6ed38add92fb220f575cad17c6983d700ed3`
-- head documental final validado antes do merge: `8795f4b3aca0d1693da3ede0c4fc68e3f024ba56`
-- próxima Issue: #39 — `Fase 15 — staging de importação, dry run e reconciliação rastreável`
-- nenhuma branch funcional da Fase 15 foi iniciada ainda.
+- Issue #39 — open até o merge
+- PR #40 — draft na branch `agent/import-staging`
+- base da branch: `main` em `dba8f8248e623df020b4e00e82bd9282447a7532`
+- último SHA técnico com CI completo verde antes da documentação: `8ee091875bdcc7707a7333b1d4c12acdc2a43931`
+- Fase 14 permanece concluída; não recriar/reaplicar `scoped_permissions`.
 
-## Fase 14 — concluído
+## Fase 15 — implementado
 
-- migration canônica no GitHub: `supabase/migrations/20260818143221_scoped_permissions.sql`;
-- helpers privados para Organization-wide, Business, Unit, Sector e recursos operacionais;
-- trigger de integridade da hierarquia de `organization_memberships`;
-- RLS operacional scope-aware;
-- commands públicos como wrappers de autorização e implementations transacionais no schema `private`;
-- `authenticated` sem `EXECUTE` direto nas implementations privadas testadas;
-- transferências com regra conservadora de origem/destino;
-- mutation global bloqueada para membership restrito quando o recurso é Organization-wide;
-- UI/runtime distingue permissões globais das operacionais escopadas;
-- documentação em `docs/architecture/authorization-scopes.md`;
-- suíte `supabase/tests/scoped_permissions.sql`.
+A fundação cobre os MUST de importação executáveis nesta fase:
 
-## Validação final da Fase 14
-
-No SHA `8795f4b3aca0d1693da3ede0c4fc68e3f024ba56` os três workflows finais passaram:
-
-- `CI`;
-- `Inventory Count Integration`;
-- `Business Transactions Integration`.
-
-A homologação funcional remota foi executada no Supabase hospedado em uma única transação `BEGIN/ROLLBACK`, reutilizando `supabase/tests/scoped_permissions.sql`.
-
-Resultado: `scoped permission tests passed`.
-
-Foi comprovado remotamente:
-
-- Organization-wide preserva acesso amplo;
-- Business limita às Units filhas;
-- Unit A não lê/opera Unit B;
-- Sector não amplia recurso sem vínculo explícito;
-- múltiplos memberships formam união segura;
-- dispatch exige autorização nos dois extremos;
-- receive exige autorização no destino sem ampliar acesso à origem;
-- Compras, Financeiro e Caixa validam o recurso real;
-- mutation Organization-wide permanece bloqueada para membership restrito;
-- viewer permanece read-only;
-- implementations privadas testadas não são executáveis por `authenticated`.
-
-Após o `ROLLBACK`, checagem separada confirmou zero resíduos temporários em usuários/memberships, hierarquia, catálogo, estoque, transferências, compras, financeiro e caixa.
-
-## Supabase remoto
-
-A migration de escopos já está aplicada como versão remota `20260818150253` / `scoped_permissions`.
-
-**Não reaplicar.**
-
-Security Advisor mantém warnings esperados dos wrappers públicos `SECURITY DEFINER`; eles são a fronteira RPC autorizada e revalidam identidade, role, Organization e escopo antes da implementation privada.
-
-Performance Advisor mantém recomendações de tuning não bloqueantes para esta fase.
-
-## Próxima frente — Issue #39
-
-A próxima lacuna executável foi escolhida a partir dos requisitos MUST ainda incompletos:
-
-- `REQ-IMP-001` — importação rastreável;
+- `REQ-IMP-001` — rastreabilidade;
 - `REQ-IMP-002` — idempotência;
 - `REQ-IMP-003` — preview/dry run;
 - `REQ-IMP-004` — relatório de inconsistências;
-- suporte de aliases necessário à migração conforme `REQ-ITEM-002`.
+- suporte explícito de aliases necessário a `REQ-ITEM-002`.
 
-A Issue #39 cobre somente a **fundação de staging/importação com dados sintéticos**. Não importar planilhas reais, não executar cutover e não resolver questões abertas por inferência.
+Entregas:
 
-## Não repetir
+- `import_batches` rastreável por Organization, fonte, SHA-256 e versão de transformação;
+- `import_rows` com arquivo/aba/linha/payload bruto, hashes, payload normalizado, warnings/errors e resolução;
+- estados `accepted`, `duplicate`, `warning`, `rejected`, `pending_mapping`;
+- RPCs auditadas para staging, relatório e finalização de preview;
+- idempotência determinística de batch/linha e detecção de duplicata entre versões;
+- modo limitado a `dry_run`, sem command para aplicar staging às tabelas operacionais;
+- matching de item apenas por nome canônico exato normalizado ou alias explícito;
+- referências inexistentes/ambíguas e regras dependentes de Q-001 a Q-025 ficam pendentes para revisão;
+- RLS Organization-wide: owner/admin/manager globais; memberships escopados e outsiders não acessam staging;
+- escrita direta nas tabelas de staging e execução anônima permanecem bloqueadas;
+- `docs/modules/imports.md` documenta o desenho.
 
-- não recriar/reaplicar `scoped_permissions`;
-- não reimplementar a Fase 14;
-- não redefinir perfis/pessoas reais enquanto Q-022 estiver aberta;
-- não iniciar migração definitiva sem staging, validação, backup/reconciliação e regras aprovadas;
-- não versionar arquivos reais das planilhas nem segredos.
+## Migrations
+
+GitHub:
+
+- `20260818174500_import_staging.sql`;
+- `20260818180500_import_staging_finalize_fix.sql`;
+- `20260818182000_import_staging_indexes.sql`.
+
+Supabase remoto:
+
+- `20260818180723 / import_staging`;
+- `20260818180738 / import_staging_finalize_fix`;
+- `20260818181051 / import_staging_indexes`.
+
+Não reaplicar.
+
+## Validação
+
+No SHA técnico `8ee091875bdcc7707a7333b1d4c12acdc2a43931` os três workflows passaram:
+
+- `CI` #187;
+- `Inventory Count Integration` #110;
+- `Business Transactions Integration` #93.
+
+O `CI` validou lint, typecheck, Vitest, build, aplicação integral das migrations e `supabase/tests/import_staging.sql` junto das suítes PostgreSQL existentes.
+
+A homologação remota ocorreu somente após CI verde, em uma única transação `BEGIN/ROLLBACK` com fixtures sintéticos.
+
+Resultado: `import staging tests passed`.
+
+Foi comprovado remotamente:
+
+- idempotência de batch e linha;
+- relatório estruturado;
+- imutabilidade após finalização;
+- duplicata entre versões;
+- ausência de escrita operacional no dry run;
+- bloqueio de escrita direta;
+- isolamento de membership escopado/outsider;
+- bloqueio de `anon`;
+- auditoria única dos comandos relevantes.
+
+Checagem pós-rollback retornou zero resíduos em usuários, memberships, batches, rows, audits e itens operacionais temporários.
+
+## Advisors
+
+Security Advisor foi executado. Os avisos das novas RPCs são do padrão intencional `SECURITY DEFINER` autenticado já usado pelo projeto; as funções revalidam identidade e escopo e foram homologadas contra memberships restritos/outsider/anon.
+
+Performance Advisor inicialmente encontrou dois novos FKs sem índice. A migration `import_staging_indexes` adicionou os índices cobrindo-os; nova execução não reportou `unindexed_foreign_keys` para `import_batches`/`import_rows`. Permanecem recomendações históricas do projeto e o aviso normal de índices recém-criados ainda sem uso produtivo.
+
+## Migração real continua fora do escopo
+
+Nenhuma das seis planilhas reais foi importada ou versionada. Não houve cutover nem escrita dos dados de staging em tabelas operacionais.
+
+`docs/source-data/migration-plan.md` continua exigindo importadores específicos, regras de transformação aprovadas, backup, reconciliação e aceite da data de corte antes da migração definitiva.
 
 ## Próximo passo
 
-Seguir `docs/ai/NEXT_ACTION.md`: iniciar a Issue #39 em branch própria a partir da `main`, implementando somente a fundação de staging/dry run com fixtures sintéticos e mantendo CI/Supabase/documentação coerentes.
+Seguir `docs/ai/NEXT_ACTION.md`: finalizar documentação do PR #40, exigir CI verde no SHA documental, atualizar o PR, marcar ready e fazer merge. Só depois fechar/confirmar a Issue #39 e escolher a próxima lacuna MUST.
