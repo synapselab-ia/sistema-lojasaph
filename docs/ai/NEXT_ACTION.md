@@ -2,73 +2,61 @@
 
 ## Contexto
 
-- Fase 12 — Caixa — integrada na `main` e Issue #33 completed.
-- Fase 13 — Dashboard — concluída tecnicamente no PR #36, sem migration nova, com CI verde e homologação remota de leitura sob RLS.
-- Issue #35 deve ser encerrada pelo merge do PR #36.
-- Próxima Issue registrada: #37 — Fase 14 — Permissões por escopo de unidade/setor e hardening RLS.
+Fase 14 — Permissões por escopo de unidade/setor e hardening RLS — já está implementada na branch `agent/scoped-permissions` e no PR #38.
+
+Não iniciar a Fase 14 do zero.
+
+Estado real:
+
+- Issue #37 aberta;
+- PR #38 aberto, draft e mergeable;
+- CI técnico verde no head `8bfbc3e397d3eb89ee7bcc55f89b8468985c030b`;
+- migration GitHub: `supabase/migrations/20260818143221_scoped_permissions.sql`;
+- migration já aplicada no Supabase remoto como versão `20260818150253` / `scoped_permissions`;
+- Security/Performance Advisors já executados;
+- estrutura remota de wrappers/helpers/trigger já verificada.
 
 ## Fazer agora
 
-1. Confirmar que o PR #36 foi integrado e a Issue #35 fechou como completed.
-2. Tornar a Issue #37 a única frente em andamento.
-3. Criar branch nova a partir da `main`, sugerida `agent/scoped-permissions`.
-4. Ler antes de implementar:
-   - `docs/product/requirements.md` — REQ-SEC-002 e REQ-SEC-003;
-   - `docs/product/open-questions.md` — Q-022;
-   - `docs/architecture/data-model.md` — Organization/Business/Unit/Sector/StockLocation e memberships;
-   - `supabase/migrations/20260817190000_foundation.sql` — estrutura atual de membership;
-   - `supabase/migrations/20260817214846_private_membership_helpers.sql`;
-   - RLS e commands atuais de Estoque, Transferência, Inventário, Compras, Financeiro e Caixa;
-   - ADR-001 e ADR-006, além dos ADRs de cada módulo afetado.
-5. Mapear cada recurso operacional para seu escopo físico antes de mudar policy/RPC:
-   - Unit direta;
-   - Sector direto quando existir;
-   - StockLocation → Unit/Sector;
-   - CashRegister → Unit;
-   - PurchaseOrder → StockLocation;
-   - PayableDocument → Unit/Sector;
-   - InventoryCount → StockLocation;
-   - Transfer → origem/destino.
-6. Gerar uma migration nova somente via Supabase CLI pinado.
-7. Implementar helpers privados de escopo com defaults conservadores:
-   - membership sem business/unit/sector = Organization-wide;
-   - Business autoriza apenas filhos;
-   - Unit autoriza própria Unit/filhos;
-   - Sector autoriza apenas recursos explicitamente vinculados ao Sector;
-   - múltiplos memberships formam união dos escopos válidos;
-   - owner/admin não ignoram escopo explicitamente informado.
-8. Preservar leitura de cadastros mestres compartilhados necessária à operação, mas exigir membership Organization-wide para mutation global que afete outras unidades, salvo regra explicitamente documentada.
-9. Atualizar RLS das tabelas operacionais para usar os helpers de escopo.
-10. Atualizar RPCs `SECURITY DEFINER` para validar o recurso real dentro do escopo, não apenas Organization + role.
-11. Transferências:
-   - criação/despacho exige autorização nos dois extremos;
-   - recebimento exige autorização no destino;
-   - não usar destino para ampliar leitura da origem.
-12. Alinhar queries/UI para não listar unidades, locais, caixas ou operações fora do escopo efetivo.
-13. Criar testes SQL antes de aplicar remotamente para:
-   - Organization-wide;
-   - Business-scoped;
-   - Unit-scoped;
-   - Sector-scoped;
-   - múltiplos memberships;
-   - viewer/roles;
-   - cross-Unit/cross-Sector/cross-Organization;
-   - transferências com autorização parcial/total;
-   - anon;
-   - regressão dos commands existentes.
-14. Rodar lint, typecheck, testes, build e todas as suites SQL afetadas.
-15. Aplicar migration remotamente somente após CI limpo; rodar advisors e homologar em `BEGIN/ROLLBACK` com memberships temporários.
-16. Documentar a política em arquivo de arquitetura/autorização, atualizar CURRENT_STATE/HANDOFF/NEXT_ACTION e somente então integrar.
+1. Ler `docs/ai/CURRENT_STATE.md`, `docs/ai/HANDOFF.md` e `docs/architecture/authorization-scopes.md` na branch `agent/scoped-permissions`.
+2. Confirmar estado real do PR #38 e Issue #37 antes de agir.
+3. **Não recriar nem reaplicar a migration `scoped_permissions`.**
+4. Executar somente a homologação funcional remota final em `BEGIN/ROLLBACK` no Supabase:
+   - criar usuários/memberships/dados temporários dentro da transação;
+   - Organization-wide deve manter acesso amplo;
+   - Business-scoped deve limitar a Units filhas;
+   - Unit A não deve ler nem operar Unit B;
+   - Sector-scoped deve limitar a recursos explicitamente ligados ao Sector;
+   - múltiplos memberships devem formar união segura;
+   - dispatch de transferência exige autorização nos dois extremos;
+   - receive exige autorização no destino e não amplia acesso à origem;
+   - Compras deve validar StockLocation/PurchaseOrder real;
+   - Financeiro deve validar Unit/Sector do documento/parcela/pagamento;
+   - Caixa deve validar Unit/CashRegister/CashSession;
+   - mutation global de catálogo/fornecedor/configuração Organization-wide deve permanecer bloqueada para membership restrito;
+   - tentativa de executar implementations do schema `private` como `authenticated` deve falhar;
+   - confirmar rollback com zero resíduos.
+5. Se a homologação falhar, corrigir a causa no GitHub primeiro, rodar todas as suites e só então reconciliar remoto por migration forward-only. Não editar o remoto fora de migration para corrigir regra.
+6. Se a homologação passar:
+   - registrar resultado em `CURRENT_STATE.md` e `HANDOFF.md`;
+   - atualizar este `NEXT_ACTION.md` para a fase seguinte;
+   - atualizar o corpo do PR #38 com CI, advisors e homologação;
+   - rodar CI final no SHA documental;
+   - marcar PR #38 como ready;
+   - mergear PR #38;
+   - confirmar Issue #37 como completed.
+7. Só depois do merge escolher a próxima Issue a partir dos requisitos MUST ainda incompletos. Não resolver Q-022 por inferência.
 
-## Não fazer na Fase 14
+## Não fazer agora
 
-- definir pessoas reais em cada role enquanto Q-022 estiver aberta;
-- introduzir ACL arbitrária/roles dinâmicas;
-- criar SSO/2FA;
-- alterar regras de negócio de Estoque/Compras/Financeiro/Caixa fora do necessário para autorização;
-- dar bypass implícito a owner/admin scoped;
-- usar service role no browser.
+- não recriar helpers/RLS/wrappers já implementados;
+- não reaplicar `scoped_permissions`;
+- não criar roles dinâmicas/ACL arbitrária;
+- não definir pessoas reais por perfil enquanto Q-022 estiver aberta;
+- não dar bypass a owner/admin scoped;
+- não introduzir service role no browser;
+- não iniciar outra frente funcional antes de fechar #38/#37.
 
-## Critério de conclusão da próxima fase
+## Critério para encerrar a Fase 14
 
-Memberships limitados a Business/Unit/Sector restringem de fato leitura e mutation nos recursos operacionais correspondentes, inclusive RPCs `SECURITY DEFINER`, enquanto memberships sem escopo preservam o comportamento Organization-wide atual. A política deve estar comprovada por PostgreSQL limpo, CI e homologação remota sem resíduos.
+A homologação remota deve provar que os escopos Business/Unit/Sector restringem leitura e mutation nos recursos operacionais correspondentes, que memberships Organization-wide preservam compatibilidade e que o rollback não deixa resíduos. Depois, o SHA documental final deve permanecer verde antes do merge do PR #38.
