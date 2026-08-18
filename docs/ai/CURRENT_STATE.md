@@ -4,20 +4,18 @@
 
 ## Estado atual
 
-Fase 18 — isolamento de ambientes, previews seguros e separação de dados/segredos — **implementada e tecnicamente validada; PR #46 permanece draft até o gate final de Preview**.
+Fase 18 — isolamento de ambientes, previews seguros e separação de dados/segredos — **implementada e tecnicamente validada; fechamento depende do último gate hospedado**.
 
 - Repositório: `synapselab-ia/sistema-lojasaph`
 - Issue #45 — open
 - PR #46 — draft/open
 - branch: `agent/environment-isolation`
-- base da branch: `main` em `5c617e7f26c514139be3b6171f38e28ae5ae30af`
-- SHA técnico validado: `ba200af6e2343b1b17fdeadfffbee1d4215bf0a0`
-- último SHA documental já validado antes desta atualização: `ca9aece949988404f33d5ee951ad36a6228f5503`
-- nenhuma migration/DDL da Fase 18 foi necessária.
+- Fase 18 não exige migration/DDL.
+- código funcional final já foi validado anteriormente em CI e em Preview fail-closed.
 
 ## Fase 18 — implementado
 
-A entrega cobre a fundação de `REQ-PLAT-007` e reforça `REQ-SEC-004`:
+A entrega cobre `REQ-PLAT-007` e reforça `REQ-SEC-004`:
 
 - política central fail-closed em `src/lib/runtime/environment.ts`;
 - ambientes `development`, `preview`, `production` e `unknown`;
@@ -27,86 +25,81 @@ A entrega cobre a fundação de `REQ-PLAT-007` e reforça `REQ-SEC-004`:
 - Development aceita Supabase local e exige identidade própria para backend remoto;
 - `SUPABASE_SECRET_KEY` permanece server-only;
 - admin client fora de Production fica bloqueado por padrão;
-- callbacks de Preview usam o domínio do próprio deployment;
-- Proxy não cria cliente Supabase quando acesso não está comprovado;
-- Auth, callback, password reset, signout, bootstrap e workspace respeitam a política;
-- browser usa apenas `NODE_ENV`/`NEXT_PUBLIC_*` e aplica a mesma política nos clientes diretos;
+- callbacks usam URL coerente com o ambiente;
+- Proxy/Auth/reset/signout/bootstrap/workspace respeitam a política;
+- browser usa somente variáveis públicas permitidas;
 - `/health` expõe somente estado não sensível;
-- login/recuperação ficam desabilitados quando não há backend operacional aprovado;
-- `.env.example` documenta a configuração sem valores reais;
+- login/recuperação ficam desabilitados sem backend operacional aprovado;
 - testes cobrem parsing, refs, fail-closed, admin e fronteira client/server de secrets.
 
 ## Documentação
 
 - `docs/decisions/ADR-008-environment-isolation.md`;
 - `docs/operations/environments.md`;
-- `docs/modules/supabase-runtime.md` atualizado.
+- `docs/modules/supabase-runtime.md`.
 
-## CI
+## CI historicamente validado
 
-No SHA técnico `ba200af6e2343b1b17fdeadfffbee1d4215bf0a0` passaram:
+No SHA `0979a33f05fefb75f554219d8552e9f7b74c3601` passaram:
 
-- `CI` #229;
-- `Inventory Count Integration` #139;
-- `Business Transactions Integration` #122.
+- `CI` #236;
+- `Inventory Count Integration` #146;
+- `Business Transactions Integration` #129.
 
-No SHA documental `ca9aece949988404f33d5ee951ad36a6228f5503` passaram novamente:
+Esse gate validou lint, typecheck, Vitest, build, migrations/seed, backup/restore e suítes PostgreSQL existentes.
 
-- `CI` #235;
-- `Inventory Count Integration` #145;
-- `Business Transactions Integration` #128.
+## Vercel — política atual
 
-O CI final validou lint, typecheck, Vitest, build, migrations/seed, backup/restore e todas as suítes PostgreSQL existentes.
+Depois do bloqueio por quota Hobby, os PRs #47 e #48 foram integrados à `main` e `vercel.json` agora define:
+
+```json
+{
+  "git": {
+    "deploymentEnabled": false
+  }
+}
+```
+
+Portanto **nenhum deployment Git automático deve ser esperado**, inclusive em `main`. Previews e Production devem ser disparados manualmente apenas quando explicitamente necessários.
+
+A branch da Fase 18 foi reconciliada com a `main` mantendo o mesmo conteúdo final de `vercel.json`.
+
+Último Preview homologado da Fase 18:
+
+- commit `91738dc6f780c8269cdf9600fc57c64d63e6134d`;
+- deployment `dpl_7DrbV7VjgHe7SSFPVkwkYQzPfwC2` — `READY`;
+- `/health`: `environment=preview`, `supabaseAccess=blocked`, `supabaseReason=preview_backend_unverified`, `adminAccess=blocked`;
+- zero autenticação, senha, token ou mutação.
+
+Esse commit já contém todo o código funcional da fase. Mudanças posteriores foram continuidade e política de deployment.
 
 ## Supabase remoto
 
-Verificação somente leitura confirmou:
+Última verificação read-only conhecida:
 
 - um projeto conectado;
 - saudável;
 - PostgreSQL 17;
-- organização no plano Free;
 - zero branches.
 
 A Fase 18 não criou migration, DDL, branch/projeto, configuração remota ou write de dados. Nenhum dado real foi copiado e nenhum upgrade foi contratado.
 
-## Vercel — evidência atual
-
-A plataforma ficou parte do ciclo em `build-rate-limit`, mas voltou a aceitar um build do commit `91738dc6f780c8269cdf9600fc57c64d63e6134d`.
-
-Esse commit já contém **todo o código funcional final da Fase 18**; depois dele foram alterados somente arquivos de continuidade.
-
-Deployment validado:
-
-- `dpl_7DrbV7VjgHe7SSFPVkwkYQzPfwC2` — `READY`.
-
-Smoke não mutável em `GET /health` retornou:
-
-- `environment=preview`;
-- `supabaseAccess=blocked`;
-- `supabaseReason=preview_backend_unverified`;
-- `adminAccess=blocked`.
-
-Nenhuma autenticação, senha, token, reset ou mutação foi usada.
-
-O SHA documental `ca9aece9...` ainda não recebeu deployment e o status Vercel continuou apontando para `build-rate-limit`. Portanto o PR permanece draft: não criar commit artificial nem fazer upgrade apenas para provocar deployment.
-
 ## Gate restante
 
-Antes do merge:
-
-1. revalidar os três workflows no head atual desta documentação;
-2. conferir se a Vercel criou Preview `READY` do head atual;
-3. se não criou, manter PR #46 draft e Issue #45 open;
-4. quando houver Preview do head atual, repetir `GET /health` e confirmar o mesmo fail-closed;
-5. se `supabaseAccess=allowed`, não executar mutação: primeiro comprovar backend distinto de Production;
-6. só então atualizar PR, marcar ready, fazer merge normal e confirmar Issue #45 closed/completed.
+1. exigir os três workflows verdes no **head atual após a reconciliação com `main`**;
+2. criar **um único Preview manual** do head atual;
+3. executar somente smoke não mutável em `/health` e, se acessível, `/login`;
+4. esperar `environment=preview`, `supabaseAccess=blocked` e `adminAccess=blocked` enquanto não existir backend Preview isolado;
+5. se `supabaseAccess=allowed`, parar antes de qualquer operação e comprovar backend distinto de Production;
+6. com smoke aprovado, atualizar PR #46, marcar ready, mergear e confirmar Issue #45 closed;
+7. atualizar continuidade na `main` pós-merge.
 
 ## Não repetir
 
 - não reimplementar Fase 18;
-- não reabrir observabilidade ou backup/restore;
-- não alterar código para contornar rate limit;
+- não reabrir observabilidade/backup;
+- não reativar deploy automático apenas para obter Preview;
+- não criar commits artificiais para provocar Vercel;
 - não contratar recurso pago por inferência;
 - não reaplicar migrations antigas;
 - não importar dados reais/cutover;
