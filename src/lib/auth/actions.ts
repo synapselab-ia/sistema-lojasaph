@@ -5,6 +5,10 @@ import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { correlationIdFromHeaders } from "@/lib/observability/core";
 import { serverLogger } from "@/lib/observability/server";
+import {
+  getApplicationBaseUrl,
+  getRuntimeAccessSummary,
+} from "@/lib/runtime/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { ORGANIZATION_COOKIE, resolveMembershipContext } from "./runtime";
 import { safeInternalPath, urlWithMessage } from "./redirect";
@@ -18,6 +22,26 @@ async function requestCorrelationId(): Promise<string> {
   return correlationIdFromHeaders(await headers());
 }
 
+async function requireOperationalBackend(path: string): Promise<void> {
+  const runtime = getRuntimeAccessSummary();
+  if (runtime.supabaseAccess === "allowed") return;
+
+  serverLogger.warn("environment.supabase_access_blocked", {
+    correlationId: await requestCorrelationId(),
+    context: {
+      environment: runtime.environment,
+      reason: runtime.supabaseReason,
+    },
+  });
+  redirect(
+    urlWithMessage(
+      path,
+      "error",
+      "Este ambiente não possui backend operacional isolado habilitado.",
+    ),
+  );
+}
+
 export async function loginAction(formData: FormData) {
   const email = field(formData, "email").toLowerCase();
   const password = field(formData, "password");
@@ -27,6 +51,7 @@ export async function loginAction(formData: FormData) {
     redirect(urlWithMessage(`/login?next=${encodeURIComponent(next)}`, "error", "Informe e-mail e senha."));
   }
 
+  await requireOperationalBackend(`/login?next=${encodeURIComponent(next)}`);
   const supabase = await createServerSupabaseClient();
   const { error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) {
@@ -39,12 +64,17 @@ export async function loginAction(formData: FormData) {
 
 export async function requestPasswordResetAction(formData: FormData) {
   const email = field(formData, "email").toLowerCase();
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/$/, "");
 
   if (!email || !email.includes("@")) {
     redirect(urlWithMessage("/recuperar-senha", "error", "Informe um e-mail válido."));
   }
-  if (!appUrl) {
+
+  await requireOperationalBackend("/recuperar-senha");
+
+  let appUrl: string;
+  try {
+    appUrl = getApplicationBaseUrl();
+  } catch {
     serverLogger.warn("auth.password_reset.configuration_missing", {
       correlationId: await requestCorrelationId(),
     });
@@ -83,6 +113,7 @@ export async function updatePasswordAction(formData: FormData) {
     redirect(urlWithMessage("/auth/atualizar-senha", "error", "As senhas não coincidem."));
   }
 
+  await requireOperationalBackend("/auth/atualizar-senha");
   const supabase = await createServerSupabaseClient();
   const { data: claimsData } = await supabase.auth.getClaims();
   if (!claimsData?.claims?.sub) {
@@ -103,6 +134,7 @@ export async function updatePasswordAction(formData: FormData) {
 }
 
 export async function selectOrganizationAction(formData: FormData) {
+  await requireOperationalBackend("/workspace/selecionar-organizacao");
   const organizationId = field(formData, "organizationId");
   const context = await resolveMembershipContext();
 
