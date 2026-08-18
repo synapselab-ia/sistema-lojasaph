@@ -2,13 +2,13 @@
 
 ## Estado
 
-Fase 11 — Financeiro: documentos, parcelas e contas a pagar — concluída tecnicamente no PR #32.
+Fase 12 — Caixa: sessões, meios de pagamento e fechamento diário — concluída tecnicamente no PR #34.
 
-Ao integrar o PR #32:
+Ao integrar o PR #34:
 
-- fechar a Issue #31 como completed;
-- manter a Issue #33 como próxima frente única;
-- iniciar Fase 12 — Caixa: sessões, meios de pagamento e fechamento diário.
+- fechar a Issue #33 como completed;
+- manter a Issue #35 como próxima frente única;
+- iniciar Fase 13 — Dashboard operacional, alertas e KPIs.
 
 ## Não repetir
 
@@ -16,77 +16,111 @@ Ao integrar o PR #32:
 - Auth SSR/membership/RLS base;
 - estoque, transferência e inventário persistentes;
 - Compras da Fase 10;
-- Financeiro da Fase 11 após o merge do PR #32;
+- Financeiro da Fase 11;
+- Caixa da Fase 12 após o merge do PR #34;
 - reparo da transferência do PR #30;
 - write direto em tabelas críticas;
-- inferência de juros/multa/desconto a partir de diferença financeira;
-- transformação da referência Pix/Boleto histórica em tipo inventado.
+- recriação dos shells vazios de migration removidos da Fase 12.
 
-## Financeiro — arquivos principais
+## Caixa — arquivos principais
 
-- `supabase/migrations/20260818123554_finance_payables_flow.sql`;
-- `supabase/tests/finance_payables.sql`;
-- `src/modules/finance/adapters/supabase-finance-gateway.ts`;
-- `src/app/workspace/(operacao)/financeiro/page.tsx`;
-- `docs/modules/finance.md`.
+- `supabase/migrations/20260818130358_cash_sessions_flow.sql`;
+- `supabase/tests/cash_sessions.sql`;
+- `src/modules/cash/adapters/supabase-cash-gateway.ts`;
+- `src/app/workspace/(operacao)/caixa/page.tsx`;
+- `docs/modules/cash.md`.
 
 ## Regras que devem permanecer
 
-- documento pertence a Organization/Unit, setor opcional e Supplier;
-- múltiplas parcelas são explícitas e numeradas;
-- status de pagamento é derivado, não editável;
-- pagamento é evento append-only;
-- estorno cria outro evento e não apaga o original;
-- sobrepagamento pode gerar saldo negativo e não recebe causa automática;
-- `payment_instructions.raw_reference` preserva o conteúdo histórico sem inferir Pix/Boleto;
-- documento cancelado exige pagamentos líquidos zerados por estornos;
-- command IDs com payload diferente conflitam;
-- RLS permite leitura por membership, mas mutations ficam em RPCs validados.
+- primeira versão trabalha com totais consolidados, não vendas individuais;
+- fundo inicial é valor da sessão, não saldo financeiro da empresa;
+- esperado e contado são distintos; divergência é derivada;
+- somente meios com `affects_cash_drawer=true` entram no dinheiro físico esperado;
+- taxas são configuráveis/versionadas;
+- Voucher é opcional/habilitável;
+- `employee_consumption` fica separado do faturamento e do esperado enquanto Q-009 estiver aberta;
+- entrada/sangria são eventos append-only;
+- sessão fechada/cancelada não recebe novas mutações operacionais;
+- correção preserva trilha; não apagar operação crítica;
+- retry com mesmo command ID e payload diferente conflita.
 
-## Validação da Fase 11
+Fórmula validada:
 
-PostgreSQL limpo:
+`expected = opening_float + drawer payment methods + cash_in - cash_out`
+
+`difference = counted - expected`
+
+## Permissões
+
+- configuração: `owner/admin/manager`;
+- operação: `owner/admin/manager/cashier`;
+- viewer permanece leitura;
+- `anon` sem acesso;
+- RLS limita leitura à Organization;
+- mutations críticas ficam nos RPCs validados.
+
+## Validação da Fase 12
+
+PostgreSQL 17 limpo:
 
 - migrations + seed;
 - schema/RLS/roles;
 - estoque/transferência/inventário;
 - compras;
-- financeiro.
+- financeiro;
+- caixa.
 
 Aplicação:
 
 - lint;
 - typecheck;
-- Vitest;
+- testes unitários;
 - production build.
 
-Supabase remoto:
+A primeira execução da suíte de Caixa detectou referência PL/pgSQL ambígua em `close_cash_session`; a correção qualificou `cash_movements` com alias explícito sem alterar a regra. O gate seguinte passou integralmente.
 
-- `finance_payables_flow` aplicada;
-- advisors sem nova vulnerabilidade crítica;
-- homologação em rollback passou criação/retry, status derivados, pagamentos múltiplos, sobrepagamento, estornos, cancelamento e auditoria;
+## Supabase remoto
+
+- migration `cash_sessions_flow` aplicada;
+- versão remota atual `20260818135623`;
+- Security Advisor apenas com warnings intencionais dos command RPCs `SECURITY DEFINER`;
+- Performance Advisor com INFO de FKs/índices e índices sem uso;
+- homologação em rollback passou taxa, bruto/líquido, abertura, retries, entrada/sangria, Consumo Funcionários, esperado/contado/divergência e cancelamento;
 - zero resíduos após rollback.
 
-Observação de segurança: `audit_logs` não é legível pela role `authenticated` comum; a asserção administrativa de homologação precisou de `reset role`. Isso é comportamento esperado de RLS, não falta de trilha.
+## Higiene de migrations
 
-## Próxima fase — Issue #33
+O job temporário de geração foi removido do workflow. Runs antigos ainda criaram alguns arquivos vazios depois da primeira limpeza; eles também foram removidos. Não restaurar esses shells.
 
-Caixa deve partir de:
+A migration canônica no GitHub é somente `20260818130358_cash_sessions_flow.sql`.
 
-- REQ-CASH-001 a REQ-CASH-008;
-- `cash_registers`, `cash_sessions`, `cash_movements`, `payment_method_totals`, `fee_rules` e `payment_methods` do modelo lógico;
-- engenharia reversa de `Caixa Empório Espeticho Tabatinga.xlsx`;
-- Q-007 e Q-009 a Q-012.
+## Próxima fase — Issue #35
 
-Defaults reversíveis da Issue #33:
+Dashboard deve partir de:
 
-- trabalhar inicialmente com totais consolidados, não vendas individuais;
-- `fundo de caixa` = valor inicial da sessão, sem inferir caixa financeiro da empresa;
-- valor esperado e contado ficam separados; divergência é derivada;
-- taxas ficam configuráveis/versionadas, sem regra hardcoded de adquirente/bandeira;
-- Voucher é meio habilitável, não obrigatório;
-- Consumo Funcionários fica categoria operacional separada do faturamento até Q-009 ser resolvida;
-- correções usam cancelamento/estorno auditado, não delete físico.
+- REQ-DASH-001 a REQ-DASH-005;
+- read models previstos no modelo lógico;
+- dados já persistidos de Estoque, Compras, Financeiro e Caixa.
+
+Defaults registrados na Issue #35:
+
+- priorizar pendências acionáveis antes de gráficos decorativos;
+- não inventar zero/métrica quando o dado não existe;
+- reutilizar status/cálculos centrais dos módulos, não duplicar regra na UI;
+- filtros por período/unidade apenas onde a origem suporta;
+- timezone da Organization governa datas de negócio;
+- dashboard respeita RLS e nunca cria bypass;
+- read models são reconstruíveis e não substituem transações de origem.
+
+Escopo inicial previsto:
+
+- financeiro vencido/vencendo/pago/saldo;
+- sessões de caixa abertas e divergências;
+- pedidos pendentes/entregas previstas;
+- transferências em trânsito/inventários abertos/validades quando disponíveis;
+- links diretos para ação.
+
+Não incluir previsão/IA, POS/PDV, BI externo, notificações externas ou estoque mínimo sem regra implementada.
 
 ## Regra de eficiência
 

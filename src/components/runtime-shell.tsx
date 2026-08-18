@@ -13,6 +13,7 @@ const links = [
   { href: "/workspace/inventarios", label: "Inventários" },
   { href: "/workspace/compras", label: "Compras" },
   { href: "/workspace/financeiro", label: "Financeiro" },
+  { href: "/workspace/caixa", label: "Caixa" },
 ];
 
 export function RuntimeShell({
@@ -45,7 +46,7 @@ export function RuntimeShell({
           })}
         </nav>
         <div className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs leading-5 text-emerald-900">
-          Estoque, compras e contas a pagar usam Supabase + RLS e commands PostgreSQL transacionais. Caixa evolui em fase separada.
+          Estoque, compras, contas a pagar e caixa usam Supabase + RLS e commands PostgreSQL transacionais.
         </div>
         <div className="mt-5 flex flex-wrap gap-2 lg:flex-col">
           {canSwitchOrganization && <Link href="/workspace/selecionar-organizacao" className="rounded-lg border border-neutral-300 px-3 py-2 text-center text-xs font-medium">Trocar organização</Link>}

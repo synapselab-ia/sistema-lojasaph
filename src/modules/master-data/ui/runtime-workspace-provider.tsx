@@ -63,6 +63,8 @@ interface RuntimePermissions {
   readonly managePurchases: boolean;
   readonly receivePurchases: boolean;
   readonly manageFinance: boolean;
+  readonly manageCashConfig: boolean;
+  readonly operateCash: boolean;
 }
 
 interface RuntimeWorkspaceValue {
@@ -152,6 +154,8 @@ export function RuntimeWorkspaceProvider({
     managePurchases: can(roles, ["owner", "admin", "manager", "purchases"]),
     receivePurchases: can(roles, ["owner", "admin", "manager", "purchases", "inventory"]),
     manageFinance: can(roles, ["owner", "admin", "manager", "finance"]),
+    manageCashConfig: can(roles, ["owner", "admin", "manager"]),
+    operateCash: can(roles, ["owner", "admin", "manager", "cashier"]),
   };
 
   async function refresh() {

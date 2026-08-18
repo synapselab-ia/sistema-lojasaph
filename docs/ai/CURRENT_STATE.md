@@ -4,13 +4,13 @@
 
 ## Estado atual
 
-Fase 11 — Financeiro: documentos, parcelas e contas a pagar — concluída tecnicamente no PR #32.
+Fase 12 — Caixa: sessões, meios de pagamento e fechamento diário — concluída tecnicamente no PR #34.
 
 - Repositório: `synapselab-ia/sistema-lojasaph`
-- Branch da entrega: `agent/finance-runtime`
-- PR atual: #32 — Fase 11 — financeiro, parcelas e contas a pagar
-- Issue atual: #31 — deve ser encerrada pelo merge do PR #32
-- Próxima Issue registrada: #33 — Fase 12 — Caixa: sessões, meios de pagamento e fechamento diário
+- Branch da entrega: `agent/cash-runtime`
+- PR atual: #34 — Fase 12 — caixa, meios de pagamento e fechamento diário
+- Issue atual: #33 — deve ser encerrada pelo merge do PR #34
+- Próxima Issue registrada: #35 — Fase 13 — Dashboard operacional, alertas e KPIs
 
 ## Concluído até aqui
 
@@ -19,98 +19,116 @@ Fase 11 — Financeiro: documentos, parcelas e contas a pagar — concluída tec
 - produtos e fornecedores persistentes;
 - entrada, retirada/FEFO, transferência e inventário físico;
 - compras, pedidos e recebimento operacional;
-- documentos financeiros, parcelas, pagamentos e estornos.
+- documentos financeiros, parcelas, pagamentos e estornos;
+- caixa operacional e fechamento diário.
 
 O reparo de continuidade da transferência foi concluído no PR #30. Não reabrir o PR #26; detalhes em `docs/ai/RESTORE_TRANSFER_NOTE.md`.
 
-## Fase 11 — Financeiro
+## Fase 12 — Caixa
 
 Persistência:
 
-- `payable_documents`;
-- `installments`;
-- `payment_instructions`;
-- `payments` como eventos `payment`/`reversal`;
-- view `payable_installment_summary` com `security_invoker`.
+- `cash_registers`;
+- `payment_methods`;
+- `fee_rules`;
+- `cash_sessions`;
+- `payment_method_totals`;
+- `cash_movements`.
 
 Commands:
 
-- `create_payable_document`;
-- `record_installment_payment`;
-- `reverse_installment_payment`;
-- `cancel_payable_document`.
+- `create_cash_register`;
+- `create_payment_method`;
+- `create_fee_rule`;
+- `open_cash_session`;
+- `set_cash_payment_total`;
+- `record_cash_movement`;
+- `close_cash_session`;
+- `cancel_cash_session`.
 
-Todos exigem `auth.uid()`, papel `owner/admin/manager/finance`, command ID/idempotência e auditoria. As tabelas críticas não aceitam write direto do browser.
+Configuração exige `owner/admin/manager`. Operação aceita `owner/admin/manager/cashier`. As tabelas críticas não aceitam write direto do browser; os commands revalidam `auth.uid()`, papel, Organization, payload e idempotência.
 
-## Regras financeiras preservadas
+## Regras preservadas
 
-- Q-013: identificadores fiscais continuam opcionais; não fabricar número/série/chave ausentes.
-- Q-014: a parcela aceita múltiplos eventos de pagamento, sem obrigar UI avançada de pagamento parcial.
-- Q-015: diferença entre nominal e pago é preservada como saldo; não inferir juros/multa/desconto.
-- Q-016: Pix/Boleto histórico fica como referência bruta separada do pagamento executado.
-- Q-017: `Checar data` não virou status artificial; status é derivado.
-- pagamento original não é apagado no estorno;
-- documento só pode ser cancelado quando pagamentos líquidos foram neutralizados por estorno.
+- Q-007: apenas totais consolidados; não há venda individual/POS.
+- Q-009: `employee_consumption` é categoria separada e não entra automaticamente no faturamento nem no caixa esperado.
+- Q-010: esperado e contado são campos distintos; divergência é derivada.
+- Q-011: Voucher é meio habilitável, não obrigatório.
+- Q-012: taxas são configuráveis/versionadas, sem regra hardcoded por adquirente/bandeira/parcelamento.
 
-Status derivados por parcela:
+Fórmula atual:
 
-- `cancelled`;
-- `paid`;
-- `overdue`;
-- `due_today`;
-- `upcoming`.
+`expected_cash_amount = opening_float + meios com affects_cash_drawer + cash_in - cash_out`
 
-A data de vencimento usa o timezone da Organization.
+`cash_difference = counted_cash_amount - expected_cash_amount`
 
 ## Workspace
 
-`/workspace/financeiro` possui:
+`/workspace/caixa` possui:
 
-- KPIs nominal/pago/saldo/vencidos;
-- cadastro de documento e parcelas;
-- referência de pagamento separada;
-- visão de vencimento/status/saldo;
-- registro de pagamentos;
-- estorno preservando histórico;
+- configuração de caixa físico;
+- meios de pagamento;
+- regras de taxa;
+- abertura por data/sequence;
+- totais consolidados por meio;
+- entrada/sangria/Consumo Funcionários;
+- fechamento esperado x contado;
+- divergência;
 - cancelamento controlado.
 
-Navegação e visão geral do workspace foram alinhadas a Estoque + Compras + Financeiro persistentes.
+A navegação e a visão geral do workspace incluem Caixa.
 
-## Validação
+## Validação local/CI
 
-Fase 11 passou em PostgreSQL 17 limpo:
+Head material da Fase 12 passou:
 
-- todas as migrations;
+- lint;
+- typecheck;
+- testes unitários;
+- production build;
+- migrations em PostgreSQL 17 limpo;
 - schema/RLS/roles;
 - retirada;
 - transferência simples/multi-lote;
-- inventário;
+- inventário físico;
 - compras;
-- `finance_payables.sql`.
+- financeiro;
+- `cash_sessions.sql`.
 
-Aplicação passou lint, typecheck, Vitest e production build no head material da implementação.
+A suíte de Caixa cobre configuração por papel, direct write negado, abertura/retry, identidade caixa/data/sequence, Dinheiro/Crédito/Pix/Voucher, taxa versionada, bruto/taxa/líquido, entradas/sangrias, Consumo Funcionários separado, esperado x contado, cancelamento, viewer, cross-Organization e anon.
 
-A suíte financeira cobre payload inválido, múltiplas parcelas, status derivados, pagamentos múltiplos, sobrepagamento, retry/conflito de idempotência, estorno, cancelamento, viewer, cross-Organization e anon.
+Durante o primeiro gate foi corrigida uma ambiguidade PL/pgSQL em `close_cash_session`: colunas de `cash_movements` passaram a usar alias explícito. A fórmula não mudou.
 
 ## Supabase remoto
 
-A migration `finance_payables_flow` foi aplicada ao projeto homologado em `sa-east-1`.
-
-Security Advisor mostrou apenas warnings esperados/intencionais dos RPCs `SECURITY DEFINER`. Performance Advisor trouxe INFO de FKs/índices para tuning orientado a carga real.
+A migration `cash_sessions_flow` está aplicada no projeto homologado em `sa-east-1` como versão remota `20260818135623`.
 
 Homologação em `BEGIN/ROLLBACK` confirmou:
 
-- criação/retry do documento;
-- referência de pagamento separada;
-- `overdue`, `due_today` e `upcoming`;
-- pagamentos múltiplos e retry sem duplicação;
-- sobrepagamento preservado como saldo negativo;
-- estornos como eventos separados;
-- cancelamento após neutralização dos pagamentos;
-- audit log gravado, mas corretamente não legível pela role `authenticated` comum.
+- caixa e meios configuráveis;
+- Voucher opcional;
+- regra de taxa de 2%: R$ 1.000 bruto, R$ 20 taxa, R$ 980 líquido;
+- abertura e retries idempotentes;
+- entrada R$ 100 e sangria R$ 40;
+- Consumo Funcionários R$ 25 preservado separadamente;
+- esperado R$ 660;
+- contado R$ 650;
+- divergência `-R$ 10`;
+- cancelamento idempotente de segunda sessão;
+- trilha de auditoria.
 
-Após rollback: zero documento, zero pagamentos, zero usuário e zero membership de teste residuais.
+Após rollback: zero sessão, caixa, meio, regra, movimento, usuário e membership temporários.
+
+Security Advisor mantém warnings esperados dos command RPCs `SECURITY DEFINER`. Performance Advisor retornou apenas INFO de FKs/índices e índices ainda sem uso para tuning baseado em carga real.
+
+## Higiene de migrations
+
+O gerador temporário da Fase 12 criou shells vazios duplicados enquanto runs antigos ainda estavam em voo. Todos foram removidos. A única migration GitHub de Caixa com schema é:
+
+- `supabase/migrations/20260818130358_cash_sessions_flow.sql`.
+
+Não restaurar os shells vazios removidos.
 
 ## Próxima ação
 
-Integrar o PR #32 e confirmar o fechamento da Issue #31. Depois tornar a Issue #33 a única frente em andamento e iniciar a Fase 12 — Caixa conforme `docs/ai/NEXT_ACTION.md`.
+Rodar o gate final do SHA documental do PR #34. Se CI permanecer verde, integrar o PR #34 e confirmar a Issue #33 como completed. Depois tornar a Issue #35 a única frente e iniciar a Fase 13 conforme `docs/ai/NEXT_ACTION.md`.
