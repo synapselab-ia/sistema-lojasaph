@@ -64,3 +64,5 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f supabase/tests/finance_payables.sql
       - name: Run cash sessions lifecycle suite
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/cash_sessions.sql
+      - name: Run scoped permission suite
+        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/scoped_permissions.sql
