@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { getRuntimeAccessSummary } from "@/lib/runtime/server";
 import { createServerAdminSupabaseClient, createServerSupabaseClient } from "@/lib/supabase/server";
 import { ORGANIZATION_COOKIE } from "./runtime";
 import { urlWithMessage } from "./redirect";
@@ -20,6 +21,11 @@ function configuredOwnerEmail(): string | undefined {
 }
 
 export async function getBootstrapStatus(): Promise<BootstrapStatus> {
+  const runtime = getRuntimeAccessSummary();
+  if (runtime.supabaseAccess !== "allowed" || runtime.adminAccess !== "allowed") {
+    return { configured: false, authenticated: false, eligible: false };
+  }
+
   const expectedEmail = configuredOwnerEmail();
   if (!expectedEmail) return { configured: false, authenticated: false, eligible: false };
 
@@ -39,6 +45,11 @@ export async function getBootstrapStatus(): Promise<BootstrapStatus> {
 }
 
 export async function bootstrapOwnerAction() {
+  const runtime = getRuntimeAccessSummary();
+  if (runtime.supabaseAccess !== "allowed" || runtime.adminAccess !== "allowed") {
+    redirect(urlWithMessage("/bootstrap", "error", "Bootstrap administrativo não está habilitado neste ambiente."));
+  }
+
   const expectedEmail = configuredOwnerEmail();
   if (!expectedEmail) {
     redirect(urlWithMessage("/bootstrap", "error", "Bootstrap não está habilitado neste ambiente."));
