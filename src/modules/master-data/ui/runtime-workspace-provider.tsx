@@ -63,6 +63,7 @@ interface RuntimePermissions {
   readonly managePurchases: boolean;
   readonly receivePurchases: boolean;
   readonly manageFinance: boolean;
+  readonly manageCashRegisters: boolean;
   readonly manageCashConfig: boolean;
   readonly operateCash: boolean;
 }
@@ -126,12 +127,14 @@ export function RuntimeWorkspaceProvider({
   organizationId,
   organizationName,
   roles,
+  organizationWideRoles,
   initialData,
 }: {
   children: ReactNode;
   organizationId: EntityId;
   organizationName: string;
   roles: readonly string[];
+  organizationWideRoles: readonly string[];
   initialData: RuntimeWorkspaceInitialData;
 }) {
   const client = useMemo(() => createBrowserSupabaseClient(), []);
@@ -146,15 +149,16 @@ export function RuntimeWorkspaceProvider({
   const [referenceData, setReferenceData] = useState<WorkspaceReferenceData>(initialData);
 
   const permissions: RuntimePermissions = {
-    manageCatalog: can(roles, ["owner", "admin", "manager", "inventory"]),
-    manageSuppliers: can(roles, ["owner", "admin", "manager", "purchases"]),
+    manageCatalog: can(organizationWideRoles, ["owner", "admin", "manager", "inventory"]),
+    manageSuppliers: can(organizationWideRoles, ["owner", "admin", "manager", "purchases"]),
     recordStockEntry: can(roles, ["owner", "admin", "manager", "inventory"]),
     recordStockWithdrawal: can(roles, ["owner", "admin", "manager", "inventory"]),
     manageStockTransfers: can(roles, ["owner", "admin", "manager", "inventory"]),
     managePurchases: can(roles, ["owner", "admin", "manager", "purchases"]),
     receivePurchases: can(roles, ["owner", "admin", "manager", "purchases", "inventory"]),
     manageFinance: can(roles, ["owner", "admin", "manager", "finance"]),
-    manageCashConfig: can(roles, ["owner", "admin", "manager"]),
+    manageCashRegisters: can(roles, ["owner", "admin", "manager"]),
+    manageCashConfig: can(organizationWideRoles, ["owner", "admin", "manager"]),
     operateCash: can(roles, ["owner", "admin", "manager", "cashier"]),
   };
 
@@ -170,14 +174,14 @@ export function RuntimeWorkspaceProvider({
   }
 
   async function createItem(input: StockItemDraft) {
-    if (!permissions.manageCatalog) throw new DomainError("INSUFFICIENT_ROLE", "Seu perfil não pode alterar produtos.");
+    if (!permissions.manageCatalog) throw new DomainError("INSUFFICIENT_ROLE", "Seu vínculo não pode alterar o catálogo global.");
     const item = createStockItem({ organizationId, ...input });
     await stockItemsRepository.save(item);
     await refresh();
   }
 
   async function editItem(id: EntityId, input: StockItemDraft) {
-    if (!permissions.manageCatalog) throw new DomainError("INSUFFICIENT_ROLE", "Seu perfil não pode alterar produtos.");
+    if (!permissions.manageCatalog) throw new DomainError("INSUFFICIENT_ROLE", "Seu vínculo não pode alterar o catálogo global.");
     const current = await stockItemsRepository.findById(id);
     if (!current) throw new DomainError("STOCK_ITEM_NOT_FOUND", "Produto não encontrado.");
     await stockItemsRepository.save(updateStockItem(current, { ...input, active: input.active ?? true }));
@@ -185,13 +189,13 @@ export function RuntimeWorkspaceProvider({
   }
 
   async function createSupplierRecord(input: SupplierDraft) {
-    if (!permissions.manageSuppliers) throw new DomainError("INSUFFICIENT_ROLE", "Seu perfil não pode alterar fornecedores.");
+    if (!permissions.manageSuppliers) throw new DomainError("INSUFFICIENT_ROLE", "Seu vínculo não pode alterar fornecedores globais.");
     await suppliersRepository.save(createSupplier({ organizationId, ...input }));
     await refresh();
   }
 
   async function editSupplier(id: EntityId, input: SupplierDraft) {
-    if (!permissions.manageSuppliers) throw new DomainError("INSUFFICIENT_ROLE", "Seu perfil não pode alterar fornecedores.");
+    if (!permissions.manageSuppliers) throw new DomainError("INSUFFICIENT_ROLE", "Seu vínculo não pode alterar fornecedores globais.");
     const current = await suppliersRepository.findById(id);
     if (!current) throw new DomainError("SUPPLIER_NOT_FOUND", "Fornecedor não encontrado.");
     await suppliersRepository.save(updateSupplier(current, { ...input, active: input.active ?? true }));
