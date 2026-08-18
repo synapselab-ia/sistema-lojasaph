@@ -393,7 +393,7 @@ create or replace function public.cancel_purchase_order(
 returns table(purchase_order_id uuid,purchase_order_status text)
 language plpgsql security definer set search_path=''
 as $$
-declare v_user_id uuid:=auth.uid(); v_status text; v_existing_order_id uuid v_existing_reason text;
+declare v_user_id uuid:=auth.uid(); v_status text; v_existing_order_id uuid; v_existing_reason text;
 begin
   if v_user_id is null then raise exception 'AUTH_REQUIRED' using errcode='42501'; end if;
   if not private.has_org_role(p_organization_id,array['owner','admin','manager','purchases']) then raise exception 'INSUFFICIENT_ROLE' using errcode='42501'; end if;
