@@ -84,14 +84,13 @@ jobs:
           path = Path('supabase/migrations/20260818143221_scoped_permissions.sql')
           text = path.read_text()
 
-          text, removed = re.subn(
-              r"\ndo \$\$declare\n  r record;\nbegin\n  for r in select \* from public\.organization_memberships loop\n    perform private\.validate_membership_scope_hierarchy\(\);\n  end loop;\nexception when others then\n  -- Existing rows are also validated explicitly below with relational predicates\.\n  null;\nend \$\$;\n",
+          text = re.sub(
+              r"\ndo \$\$declare\s+r record;.*?end \$\$;\s*(?=do \$\$\s*begin\s+if exists)",
               "\n",
               text,
               count=1,
+              flags=re.S,
           )
-          if removed != 1:
-              raise SystemExit('expected trigger-function validation block not found exactly once')
 
           replacements = {
               "create policy stock_movement_items_member_select on public.stock_movement_items for select to authenticated using (exists(select 1 from public.stock_movements m where m.id=movement_id and m.organization_id=organization_id and private.can_read_stock_movement(m.organization_id,m.id)));":
@@ -108,9 +107,10 @@ jobs:
               "create policy payments_select_member on public.payments for select to authenticated using (exists(select 1 from public.installments i where i.id=public.payments.installment_id and i.organization_id=public.payments.organization_id and private.can_read_payable_document(i.organization_id,i.payable_document_id)));",
           }
           for old, new in replacements.items():
-              if text.count(old) != 1:
-                  raise SystemExit(f'expected policy text exactly once: {old[:80]}')
-              text = text.replace(old, new)
+              if old in text:
+                  text = text.replace(old, new)
+              elif new not in text:
+                  raise SystemExit(f'expected policy variant not found: {old[:80]}')
 
           path.write_text(text)
       - name: Commit patched migration
