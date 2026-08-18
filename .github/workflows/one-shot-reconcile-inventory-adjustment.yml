@@ -1,3 +1,4 @@
+# one-shot workflow; self-removes after successful reconciliation
 name: One-shot reconcile inventory adjustment contract
 
 on:
