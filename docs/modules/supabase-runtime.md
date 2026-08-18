@@ -1,6 +1,6 @@
 # Runtime Supabase — persistência, Auth e RLS
 
-Status: Auth/runtime estabilizados e núcleo de estoque persistente completo.
+Status: Auth/runtime estabilizados, núcleo transacional persistente e fronteira de observabilidade documentada.
 
 ## Sessão e autorização
 
@@ -29,9 +29,26 @@ Executáveis somente por `authenticated`, todos revalidando `auth.uid()` + role 
 
 A sessão captura quantidade e custo médio esperados. Confirmação usa locks, rejeita stale, gera ajustes de ledger e nunca materializa lote desconhecido. Cancelamento é explícito e auditado.
 
+## Observabilidade do runtime
+
+A Fase 17 adicionou logging estruturado no Next.js sem alterar schema, RLS ou RPCs.
+
+- Vercel Runtime Logs recebe os eventos server-side do app;
+- Supabase Logs Explorer/API permanece a fonte de diagnóstico para Postgres/Auth/Data API;
+- consultas feitas nesta fase foram somente leitura;
+- a organização Supabase conectada permanece no plano Free;
+- Log Drains não foram configurados porque a capacidade exige plano compatível;
+- chamadas Supabase feitas diretamente pelo browser não recebem automaticamente o `correlationId` do Next.js, então a correlação entre as duas fontes usa horário, RPC/rota e código de erro quando necessário.
+
+Nunca registrar JWT, cookies, e-mail, secrets, connection strings ou payloads sensíveis para tentar facilitar correlação.
+
+Runbook: `docs/operations/observability.md`. Decisão: `docs/decisions/ADR-007-observability-contract.md`.
+
 ## Homologação remota
 
 As migrations da Fase 9 foram aplicadas ao projeto homologado em `sa-east-1`. Entrada, retirada, transferência e inventário foram validados com dados demo em transações `BEGIN/ROLLBACK`; os cenários de teste não deixam usuários/movimentos artificiais.
+
+Fases posteriores aplicaram migrations adicionais conforme seus handoffs. A Fase 17 não cria migration nem executa DDL no projeto remoto.
 
 ## Advisors
 
