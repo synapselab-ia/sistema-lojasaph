@@ -1,0 +1,87 @@
+import { describe, expect, it } from "vitest";
+import { Money } from "@/domain/common/money";
+import { EntityId } from "@/domain/common/entity-id";
+import { buildDashboardSummary, DashboardRawData, localIsoDate } from "./dashboard-summary";
+
+const unitA = "10000000-0000-4000-8000-000000000001" as EntityId;
+const unitB = "10000000-0000-4000-8000-000000000002" as EntityId;
+const id = (value: number) => `20000000-0000-4000-8000-${String(value).padStart(12, "0")}` as EntityId;
+
+function demoData(): DashboardRawData {
+  return {
+    finance: [
+      { id: id(1), unitId: unitA, nominalAmount: Money.fromDecimal("1000.00"), netPaidAmount: Money.fromDecimal("0.00"), balanceAmount: Money.fromDecimal("1000.00"), status: "overdue", dueDate: "2026-08-17" },
+      { id: id(2), unitId: unitA, nominalAmount: Money.fromDecimal("500.00"), netPaidAmount: Money.fromDecimal("100.00"), balanceAmount: Money.fromDecimal("400.00"), status: "due_today", dueDate: "2026-08-18" },
+      { id: id(3), unitId: unitA, nominalAmount: Money.fromDecimal("300.00"), netPaidAmount: Money.fromDecimal("300.00"), balanceAmount: Money.fromDecimal("0.00"), status: "paid", dueDate: "2026-08-10" },
+      { id: id(4), unitId: unitA, nominalAmount: Money.fromDecimal("200.00"), netPaidAmount: Money.fromDecimal("0.00"), balanceAmount: Money.fromDecimal("200.00"), status: "upcoming", dueDate: "2026-08-22" },
+      { id: id(5), unitId: unitB, nominalAmount: Money.fromDecimal("999.00"), netPaidAmount: Money.zero(), balanceAmount: Money.fromDecimal("999.00"), status: "overdue", dueDate: "2026-08-01" },
+      { id: id(6), unitId: unitA, nominalAmount: Money.fromDecimal("700.00"), netPaidAmount: Money.zero(), balanceAmount: Money.fromDecimal("700.00"), status: "cancelled", dueDate: "2026-08-01" },
+    ],
+    cash: [
+      { id: id(10), unitId: unitA, businessDate: "2026-08-18", status: "open" },
+      { id: id(11), unitId: unitA, businessDate: "2026-08-17", status: "closed", cashDifference: Money.fromDecimal("-10.00") },
+      { id: id(12), unitId: unitB, businessDate: "2026-08-17", status: "closed", cashDifference: Money.fromDecimal("50.00") },
+    ],
+    purchases: [
+      { id: id(20), unitId: unitA, status: "ordered", expectedDeliveryDate: "2026-08-17" },
+      { id: id(21), unitId: unitA, status: "partially_received", expectedDeliveryDate: "2026-08-20" },
+      { id: id(22), unitId: unitB, status: "ordered", expectedDeliveryDate: "2026-08-17" },
+    ],
+    transfers: [
+      { id: id(30), sourceUnitId: unitA, destinationUnitId: unitB, status: "dispatched" },
+      { id: id(31), sourceUnitId: unitB, destinationUnitId: unitB, status: "received" },
+    ],
+    inventoryCounts: [
+      { id: id(40), unitId: unitA, status: "counting" },
+      { id: id(41), unitId: unitB, status: "confirmed" },
+    ],
+    expiries: [
+      { id: id(50), unitId: unitA, expirationDate: "2026-08-17" },
+      { id: id(51), unitId: unitA, expirationDate: "2026-08-21" },
+      { id: id(52), unitId: unitB, expirationDate: "2026-08-17" },
+    ],
+  };
+}
+
+describe("dashboard summary", () => {
+  it("aggregates actionable signals without mixing another unit", () => {
+    const summary = buildDashboardSummary(demoData(), {
+      today: "2026-08-18",
+      horizonDays: 7,
+      unitId: unitA,
+    });
+
+    expect(summary.finance.nominal.toDecimal()).toBe("2000.00");
+    expect(summary.finance.paid.toDecimal()).toBe("400.00");
+    expect(summary.finance.openBalance.toDecimal()).toBe("1600.00");
+    expect(summary.finance.overdueCount).toBe(1);
+    expect(summary.finance.dueTodayCount).toBe(1);
+    expect(summary.finance.dueSoonCount).toBe(1);
+    expect(summary.cash).toEqual({ openCount: 1, discrepancyCount: 1, recentClosedCount: 1 });
+    expect(summary.purchases).toEqual({ pendingCount: 2, lateDeliveryCount: 1, deliverySoonCount: 1 });
+    expect(summary.stock).toEqual({ transfersInTransitCount: 1, openInventoryCount: 1, expiredBatchCount: 1, expiringSoonCount: 1 });
+    expect(summary.attention.map((item) => item.key)).toContain("finance-overdue");
+    expect(summary.attention.map((item) => item.key)).toContain("cash-discrepancy");
+    expect(summary.attention.map((item) => item.key)).toContain("expiry-expired");
+  });
+
+  it("uses the configured horizon for upcoming and recent signals", () => {
+    const sevenDays = buildDashboardSummary(demoData(), { today: "2026-08-18", horizonDays: 7, unitId: unitA });
+    const twoDays = buildDashboardSummary(demoData(), { today: "2026-08-18", horizonDays: 2, unitId: unitA });
+
+    expect(sevenDays.finance.dueSoonCount).toBe(1);
+    expect(twoDays.finance.dueSoonCount).toBe(0);
+    expect(sevenDays.stock.expiringSoonCount).toBe(1);
+    expect(twoDays.stock.expiringSoonCount).toBe(0);
+  });
+
+  it("resolves the business date using Organization timezone", () => {
+    const instant = new Date("2026-08-18T01:30:00.000Z");
+    expect(localIsoDate(instant, "America/Sao_Paulo")).toBe("2026-08-17");
+    expect(localIsoDate(instant, "UTC")).toBe("2026-08-18");
+  });
+
+  it("rejects an unreasonable dashboard horizon", () => {
+    expect(() => buildDashboardSummary(demoData(), { today: "2026-08-18", horizonDays: 0 })).toThrow();
+  });
+});
