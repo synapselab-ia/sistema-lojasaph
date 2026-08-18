@@ -4,95 +4,80 @@
 
 ## Estado atual
 
-Fase 15 — staging de importação, dry run e reconciliação rastreável — **implementada, aplicada e homologada; aguardando fechamento documental/merge do PR #40**.
+Fase 15 — staging de importação, dry run e reconciliação rastreável — **concluída e integrada na `main`**.
 
 - Repositório: `synapselab-ia/sistema-lojasaph`
-- Issue #39 — open até o merge
-- PR #40 — draft na branch `agent/import-staging`
-- base da branch: `main` em `dba8f8248e623df020b4e00e82bd9282447a7532`
-- último SHA técnico com CI completo verde antes da documentação: `8ee091875bdcc7707a7333b1d4c12acdc2a43931`
-- Fase 14 permanece concluída; não recriar/reaplicar `scoped_permissions`.
+- PR #40 — merged
+- Issue #39 — closed/completed
+- merge commit: `88be9da74b9c3611f533e388c5387ac0f9906d23`
+- head final pré-merge: `3ef9e595249885d0e1f0b1567874037377e01aab`
+- próximo trabalho selecionado: Issue #41 — `Fase 16 — backup automático, restauração testada e recuperação operacional`
+- nenhuma branch funcional da Fase 16 foi criada ainda.
 
-## Fase 15 — implementado
+## Fase 15 — concluído
 
-A fundação cobre os MUST de importação executáveis nesta fase:
-
-- `REQ-IMP-001` — rastreabilidade;
-- `REQ-IMP-002` — idempotência;
-- `REQ-IMP-003` — preview/dry run;
-- `REQ-IMP-004` — relatório de inconsistências;
-- suporte explícito de aliases necessário a `REQ-ITEM-002`.
-
-Entregas:
+A fundação cobre `REQ-IMP-001` a `REQ-IMP-004` e o suporte explícito de aliases necessário a `REQ-ITEM-002`:
 
 - `import_batches` rastreável por Organization, fonte, SHA-256 e versão de transformação;
-- `import_rows` com arquivo/aba/linha/payload bruto, hashes, payload normalizado, warnings/errors e resolução;
-- estados `accepted`, `duplicate`, `warning`, `rejected`, `pending_mapping`;
-- RPCs auditadas para staging, relatório e finalização de preview;
-- idempotência determinística de batch/linha e detecção de duplicata entre versões;
-- modo limitado a `dry_run`, sem command para aplicar staging às tabelas operacionais;
-- matching de item apenas por nome canônico exato normalizado ou alias explícito;
-- referências inexistentes/ambíguas e regras dependentes de Q-001 a Q-025 ficam pendentes para revisão;
-- RLS Organization-wide: owner/admin/manager globais; memberships escopados e outsiders não acessam staging;
-- escrita direta nas tabelas de staging e execução anônima permanecem bloqueadas;
-- `docs/modules/imports.md` documenta o desenho.
+- `import_rows` preservando arquivo/aba/linha/payload bruto e resultado de validação;
+- idempotência determinística de batch e linha;
+- estados `accepted`, `duplicate`, `warning`, `rejected` e `pending_mapping`;
+- preview/dry run sem aplicação nas tabelas operacionais;
+- relatório estruturado;
+- matching somente por nome canônico exato normalizado ou alias explícito, sem fuzzy auto-merge;
+- referência ambígua/inexistente e transformação dependente de Q-001 a Q-025 ficam para revisão;
+- RLS Organization-wide e command surface auditada;
+- memberships escopados, outsider e `anon` bloqueados conforme o desenho;
+- Vitest e suíte PostgreSQL `supabase/tests/import_staging.sql` integrados ao CI;
+- documentação em `docs/modules/imports.md` e `docs/source-data/migration-plan.md`.
 
-## Migrations
+## CI final da Fase 15
 
-GitHub:
+No SHA pré-merge `3ef9e595249885d0e1f0b1567874037377e01aab` passaram:
 
-- `20260818174500_import_staging.sql`;
-- `20260818180500_import_staging_finalize_fix.sql`;
-- `20260818182000_import_staging_indexes.sql`.
+- `CI` #192;
+- `Inventory Count Integration` #115;
+- `Business Transactions Integration` #98.
 
-Supabase remoto:
+O `CI` incluiu lint, typecheck, Vitest, build, aplicação integral das migrations e a suíte de staging/dry run.
+
+## Supabase remoto
+
+Migrations da Fase 15 já aplicadas — **não reaplicar**:
 
 - `20260818180723 / import_staging`;
 - `20260818180738 / import_staging_finalize_fix`;
 - `20260818181051 / import_staging_indexes`.
 
-Não reaplicar.
+Homologação remota com fixtures sintéticos foi executada em uma única transação `BEGIN/ROLLBACK` e retornou `import staging tests passed`.
 
-## Validação
+Checagem após rollback confirmou zero resíduos em usuários, memberships, batches, rows, audits e itens operacionais temporários.
 
-No SHA técnico `8ee091875bdcc7707a7333b1d4c12acdc2a43931` os três workflows passaram:
+Security Advisor manteve somente o padrão intencional de RPCs autenticadas `SECURITY DEFINER` já protegidas por validação interna de identidade/escopo. Performance Advisor inicialmente encontrou dois FKs novos sem índice; ambos foram corrigidos pela migration `import_staging_indexes` e deixaram de aparecer como `unindexed_foreign_keys` nas tabelas novas.
 
-- `CI` #187;
-- `Inventory Count Integration` #110;
-- `Business Transactions Integration` #93.
+## Migração real continua bloqueada
 
-O `CI` validou lint, typecheck, Vitest, build, aplicação integral das migrations e `supabase/tests/import_staging.sql` junto das suítes PostgreSQL existentes.
+Nenhuma das seis planilhas reais foi importada ou versionada. Não houve cutover nem aplicação do staging às tabelas operacionais.
 
-A homologação remota ocorreu somente após CI verde, em uma única transação `BEGIN/ROLLBACK` com fixtures sintéticos.
+A migração definitiva continua condicionada a importadores específicos, regras de transformação aprovadas, backup, reconciliação, validação e aceite da data de corte conforme `docs/source-data/migration-plan.md`.
 
-Resultado: `import staging tests passed`.
+## Próxima frente — Issue #41
 
-Foi comprovado remotamente:
+Após o fechamento da Fase 15, os requisitos MUST e Issues reais foram revistos. Não havia Issue aberta.
 
-- idempotência de batch e linha;
-- relatório estruturado;
-- imutabilidade após finalização;
-- duplicata entre versões;
-- ausência de escrita operacional no dry run;
-- bloqueio de escrita direta;
-- isolamento de membership escopado/outsider;
-- bloqueio de `anon`;
-- auditoria única dos comandos relevantes.
+A próxima lacuna executável escolhida é `REQ-PLAT-005 — Backup e restauração`, MUST antes de produção e explicitamente fora do escopo da Fase 15.
 
-Checagem pós-rollback retornou zero resíduos em usuários, memberships, batches, rows, audits e itens operacionais temporários.
+A Issue #41 deve construir estratégia/runbook e prova de restauração segura com dados sintéticos, sem executar restore destrutivo sobre o projeto remoto ativo e sem inventar RPO/RTO de negócio.
 
-## Advisors
+## Não repetir
 
-Security Advisor foi executado. Os avisos das novas RPCs são do padrão intencional `SECURITY DEFINER` autenticado já usado pelo projeto; as funções revalidam identidade e escopo e foram homologadas contra memberships restritos/outsider/anon.
-
-Performance Advisor inicialmente encontrou dois novos FKs sem índice. A migration `import_staging_indexes` adicionou os índices cobrindo-os; nova execução não reportou `unindexed_foreign_keys` para `import_batches`/`import_rows`. Permanecem recomendações históricas do projeto e o aviso normal de índices recém-criados ainda sem uso produtivo.
-
-## Migração real continua fora do escopo
-
-Nenhuma das seis planilhas reais foi importada ou versionada. Não houve cutover nem escrita dos dados de staging em tabelas operacionais.
-
-`docs/source-data/migration-plan.md` continua exigindo importadores específicos, regras de transformação aprovadas, backup, reconciliação e aceite da data de corte antes da migração definitiva.
+- não reaplicar `scoped_permissions`;
+- não reaplicar migrations da Fase 15;
+- não importar dados reais nem executar cutover;
+- não inferir Q-001 a Q-025;
+- não executar restore destrutivo no Supabase remoto ativo;
+- não versionar backups contendo dados reais ou segredos.
 
 ## Próximo passo
 
-Seguir `docs/ai/NEXT_ACTION.md`: finalizar documentação do PR #40, exigir CI verde no SHA documental, atualizar o PR, marcar ready e fazer merge. Só depois fechar/confirmar a Issue #39 e escolher a próxima lacuna MUST.
+Seguir `docs/ai/NEXT_ACTION.md`: iniciar a Issue #41 em branch própria a partir da `main`, verificar primeiro as capacidades atuais de backup/restauração do Supabase e implementar somente uma estratégia segura, reproduzível e testada com fixtures sintéticos.
