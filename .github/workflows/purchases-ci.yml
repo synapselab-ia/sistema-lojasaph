@@ -72,3 +72,74 @@ jobs:
 
       - name: Run purchase order lifecycle suite
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/purchase_orders.sql
+
+  # BEGIN TEMP PURCHASES HARDENING
+  harden-purchase-contracts:
+    if: github.head_ref == 'agent/purchases-runtime' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout purchases branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/purchases-runtime
+
+      - name: Harden migration and coverage
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          migration = Path('supabase/migrations/20260817234222_purchases_operational_flow.sql')
+          text = migration.read_text()
+          text = text.replace(
+              "if jsonb_typeof(p_items) <> 'array' or jsonb_array_length(p_items)=0 then raise exception 'PURCHASE_ORDER_ITEMS_REQUIRED' using errcode='22023'; end if;",
+              "if p_items is null or jsonb_typeof(p_items) <> 'array' or jsonb_array_length(p_items)=0 then raise exception 'PURCHASE_ORDER_ITEMS_REQUIRED' using errcode='22023'; end if;",
+              1,
+          )
+          text = text.replace(
+              "if jsonb_typeof(p_items)<>'array' or jsonb_array_length(p_items)=0 then raise exception 'PURCHASE_RECEIPT_ITEMS_REQUIRED' using errcode='22023'; end if;",
+              "if p_items is null or jsonb_typeof(p_items)<>'array' or jsonb_array_length(p_items)=0 then raise exception 'PURCHASE_RECEIPT_ITEMS_REQUIRED' using errcode='22023'; end if;",
+              1,
+          )
+          old_decl = "declare v_user_id uuid:=auth.uid(); v_status text; v_existing_order_id uuid;"
+          if old_decl not in text:
+              raise SystemExit('cancel declaration marker not found')
+          text = text.replace(old_decl, old_decl[:-1] + " v_existing_reason text;", 1)
+          old_select = "select a.entity_id into v_existing_order_id from public.audit_logs a where a.organization_id=p_organization_id and a.action='purchase_order.cancelled' and a.metadata->>'command_id'=p_command_id::text order by a.occurred_at desc limit 1;\n  if found then\n    if v_existing_order_id<>p_purchase_order_id then raise exception 'IDEMPOTENCY_KEY_CONFLICT' using errcode='23505'; end if;"
+          new_select = "select a.entity_id,a.after_data->>'reason' into v_existing_order_id,v_existing_reason from public.audit_logs a where a.organization_id=p_organization_id and a.action='purchase_order.cancelled' and a.metadata->>'command_id'=p_command_id::text order by a.occurred_at desc limit 1;\n  if found then\n    if v_existing_order_id<>p_purchase_order_id or v_existing_reason is distinct from nullif(trim(p_reason),'') then raise exception 'IDEMPOTENCY_KEY_CONFLICT' using errcode='23505'; end if;"
+          if old_select not in text:
+              raise SystemExit('cancel idempotency marker not found')
+          migration.write_text(text.replace(old_select, new_select, 1))
+
+          tests = Path('supabase/tests/purchase_orders.sql')
+          text = tests.read_text()
+
+          create_marker = "-- Create a two-line draft order. Quantities are base-stock-unit quantities in Fase 10 v1.\n"
+          null_create = '''-- Null item payload is invalid and must not create a draft.\ndo $$\nbegin\n  begin\n    perform public.create_purchase_order(\n      '71000000-0000-4000-8000-000000000090',\n      '00000000-0000-4000-8000-000000000001',\n      '00000000-0000-4000-8000-000000000500',\n      '00000000-0000-4000-8000-000000000120',\n      null,\n      'null items denied',\n      null\n    );\n    raise exception 'null purchase order items unexpectedly succeeded';\n  exception when invalid_parameter_value then null;\n  end;\nend;\n$$;\n\n'''
+          if create_marker not in text:
+              raise SystemExit('create test marker not found')
+          text = text.replace(create_marker, null_create + create_marker, 1)
+
+          receive_marker = "-- Inventory role performs the first partial receipt with two items.\n"
+          null_receive = '''-- Null receipt payload is invalid while the order is receivable.\ndo $$\nbegin\n  begin\n    perform public.receive_purchase_order(\n      '71000000-0000-4000-8000-000000000091',\n      '00000000-0000-4000-8000-000000000001',\n      '71000000-0000-4000-8000-000000000001',\n      null,\n      'null receipt items denied'\n    );\n    raise exception 'null purchase receipt items unexpectedly succeeded';\n  exception when invalid_parameter_value then null;\n  end;\nend;\n$$;\n\n'''
+          if receive_marker not in text:
+              raise SystemExit('receive test marker not found')
+          text = text.replace(receive_marker, null_receive + receive_marker, 1)
+
+          cancel_marker = "-- Partial order may be cancelled; already received stock is retained.\n"
+          cancel_conflict = '''-- Same cancel command with a different reason is an idempotency conflict.\ndo $$\nbegin\n  begin\n    perform public.cancel_purchase_order(\n      '71000000-0000-4000-8000-000000000041',\n      '00000000-0000-4000-8000-000000000001',\n      '71000000-0000-4000-8000-000000000040',\n      'different cancel reason'\n    );\n    raise exception 'cancel idempotency conflict unexpectedly succeeded';\n  exception when unique_violation then null;\n  end;\nend;\n$$;\n\n'''
+          if cancel_marker not in text:
+              raise SystemExit('cancel test marker not found')
+          tests.write_text(text.replace(cancel_marker, cancel_conflict + cancel_marker, 1))
+          PY
+
+      - name: Commit hardening
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add supabase/migrations/20260817234222_purchases_operational_flow.sql supabase/tests/purchase_orders.sql
+          git commit -m "fix(purchases): harden command idempotency and null payloads"
+          git push origin HEAD:agent/purchases-runtime
+  # END TEMP PURCHASES HARDENING
