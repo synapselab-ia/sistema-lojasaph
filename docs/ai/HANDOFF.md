@@ -2,13 +2,13 @@
 
 ## Estado
 
-Fase 12 — Caixa: sessões, meios de pagamento e fechamento diário — concluída tecnicamente no PR #34.
+Fase 13 — Dashboard operacional, alertas e KPIs — concluída tecnicamente no PR #36.
 
-Ao integrar o PR #34:
+Ao integrar o PR #36:
 
-- fechar a Issue #33 como completed;
-- manter a Issue #35 como próxima frente única;
-- iniciar Fase 13 — Dashboard operacional, alertas e KPIs.
+- fechar a Issue #35 como completed;
+- manter a Issue #37 como próxima frente única;
+- iniciar Fase 14 — Permissões por escopo de unidade/setor e hardening RLS.
 
 ## Não repetir
 
@@ -17,114 +17,107 @@ Ao integrar o PR #34:
 - estoque, transferência e inventário persistentes;
 - Compras da Fase 10;
 - Financeiro da Fase 11;
-- Caixa da Fase 12 após o merge do PR #34;
+- Caixa da Fase 12;
+- Dashboard da Fase 13 após merge;
 - reparo da transferência do PR #30;
 - write direto em tabelas críticas;
-- recriação dos shells vazios de migration removidos da Fase 12.
+- materialização de read model sem evidência de necessidade.
 
-## Caixa — arquivos principais
+## Dashboard — arquivos principais
 
-- `supabase/migrations/20260818130358_cash_sessions_flow.sql`;
-- `supabase/tests/cash_sessions.sql`;
-- `src/modules/cash/adapters/supabase-cash-gateway.ts`;
-- `src/app/workspace/(operacao)/caixa/page.tsx`;
-- `docs/modules/cash.md`.
+- `src/modules/dashboard/application/dashboard-summary.ts`;
+- `src/modules/dashboard/application/dashboard-summary.test.ts`;
+- `src/modules/dashboard/adapters/supabase-dashboard-query.ts`;
+- `src/app/workspace/(operacao)/page.tsx`;
+- `docs/modules/dashboard.md`.
 
 ## Regras que devem permanecer
 
-- primeira versão trabalha com totais consolidados, não vendas individuais;
-- fundo inicial é valor da sessão, não saldo financeiro da empresa;
-- esperado e contado são distintos; divergência é derivada;
-- somente meios com `affects_cash_drawer=true` entram no dinheiro físico esperado;
-- taxas são configuráveis/versionadas;
-- Voucher é opcional/habilitável;
-- `employee_consumption` fica separado do faturamento e do esperado enquanto Q-009 estiver aberta;
-- entrada/sangria são eventos append-only;
-- sessão fechada/cancelada não recebe novas mutações operacionais;
-- correção preserva trilha; não apagar operação crítica;
-- retry com mesmo command ID e payload diferente conflita.
+- Dashboard é somente leitura;
+- não recalcular status financeiro na UI: usar `payable_installment_summary`;
+- não criar segunda fonte de verdade para estoque/caixa/compras;
+- absence de dado não vira métrica inventada;
+- data de negócio usa timezone da Organization;
+- filtro de unidade preserva transferências quando a unidade for origem ou destino;
+- horizonte 7/15/30 é filtro de visualização, não configuração persistente;
+- fila de atenção só exibe ocorrências reais;
+- cada alerta liga ao módulo de origem;
+- requests de filtro antigos não podem sobrescrever seleção nova.
 
-Fórmula validada:
+## KPIs atuais
 
-`expected = opening_float + drawer payment methods + cash_in - cash_out`
+Financeiro:
 
-`difference = counted - expected`
+- nominal;
+- pago líquido;
+- saldo em aberto;
+- vencidas;
+- vencendo hoje;
+- vencendo no horizonte.
 
-## Permissões
+Caixa:
 
-- configuração: `owner/admin/manager`;
-- operação: `owner/admin/manager/cashier`;
-- viewer permanece leitura;
-- `anon` sem acesso;
-- RLS limita leitura à Organization;
-- mutations críticas ficam nos RPCs validados.
+- sessões abertas;
+- fechamentos recentes;
+- divergências não-zero.
 
-## Validação da Fase 12
+Compras:
 
-PostgreSQL 17 limpo:
+- pedidos pendentes;
+- entrega prevista atrasada;
+- entrega prevista no horizonte.
 
-- migrations + seed;
-- schema/RLS/roles;
-- estoque/transferência/inventário;
-- compras;
-- financeiro;
-- caixa.
+Estoque:
 
-Aplicação:
+- transferências em trânsito;
+- inventários em andamento;
+- lotes vencidos com saldo;
+- lotes próximos da validade.
+
+## Validação da Fase 13
+
+Head material `64d61c0c3bcf8d6ea25e4b24d079fad9fd6ac94f` verde em:
 
 - lint;
 - typecheck;
-- testes unitários;
-- production build.
+- Vitest;
+- production build;
+- CI PostgreSQL 17;
+- Inventory Count Integration;
+- Business Transactions Integration.
 
-A primeira execução da suíte de Caixa detectou referência PL/pgSQL ambígua em `close_cash_session`; a correção qualificou `cash_movements` com alias explícito sem alterar a regra. O gate seguinte passou integralmente.
+Homologação remota somente leitura, sem migration:
 
-## Supabase remoto
+- viewer temporário da Organization demo acessou as fontes previstas;
+- Organization/Unit temporária sem membership ficou invisível sob RLS;
+- rollback deixou zero resíduos.
 
-- migration `cash_sessions_flow` aplicada;
-- versão remota atual `20260818135623`;
-- Security Advisor apenas com warnings intencionais dos command RPCs `SECURITY DEFINER`;
-- Performance Advisor com INFO de FKs/índices e índices sem uso;
-- homologação em rollback passou taxa, bruto/líquido, abertura, retries, entrada/sangria, Consumo Funcionários, esperado/contado/divergência e cancelamento;
-- zero resíduos após rollback.
+Dataset demo remoto atual: 2 lotes com validade e zero pendências em Financeiro/Caixa/Compras/Transferência/Inventário.
 
-## Higiene de migrations
+## Próxima lacuna — Issue #37
 
-O job temporário de geração foi removido do workflow. Runs antigos ainda criaram alguns arquivos vazios depois da primeira limpeza; eles também foram removidos. Não restaurar esses shells.
+`REQ-SEC-002` é MUST e ainda não está completo.
 
-A migration canônica no GitHub é somente `20260818130358_cash_sessions_flow.sql`.
+Evidência:
 
-## Próxima fase — Issue #35
+- membership já possui `business_id`, `unit_id`, `sector_id`;
+- `private.is_org_member` e `private.has_org_role` consideram apenas Organization + role;
+- várias policies/RPCs usam esses helpers, portanto um membership limitado ainda não é efetivamente limitado dentro da Organization.
 
-Dashboard deve partir de:
+Defaults profissionais registrados na Issue #37:
 
-- REQ-DASH-001 a REQ-DASH-005;
-- read models previstos no modelo lógico;
-- dados já persistidos de Estoque, Compras, Financeiro e Caixa.
-
-Defaults registrados na Issue #35:
-
-- priorizar pendências acionáveis antes de gráficos decorativos;
-- não inventar zero/métrica quando o dado não existe;
-- reutilizar status/cálculos centrais dos módulos, não duplicar regra na UI;
-- filtros por período/unidade apenas onde a origem suporta;
-- timezone da Organization governa datas de negócio;
-- dashboard respeita RLS e nunca cria bypass;
-- read models são reconstruíveis e não substituem transações de origem.
-
-Escopo inicial previsto:
-
-- financeiro vencido/vencendo/pago/saldo;
-- sessões de caixa abertas e divergências;
-- pedidos pendentes/entregas previstas;
-- transferências em trânsito/inventários abertos/validades quando disponíveis;
-- links diretos para ação.
-
-Não incluir previsão/IA, POS/PDV, BI externo, notificações externas ou estoque mínimo sem regra implementada.
+- sem escopo = Organization-wide;
+- Business limita a unidades filhas;
+- Unit limita a própria Unit/filhos;
+- Sector limita recursos explicitamente vinculados;
+- owner/admin não ignoram um escopo explicitamente informado;
+- recursos mestres compartilhados podem continuar legíveis, mas mutation global por membership restrito é conservadoramente bloqueada até regra explícita;
+- criação/despacho de transferência exige autorização nos dois extremos; recebimento exige destino;
+- Q-022 continua aberta para mapear perfis/pessoas reais; a fase trata da mecânica genérica.
 
 ## Regra de eficiência
 
-Continuar automaticamente enquanto houver trabalho seguro/reversível. Escalar apenas decisão estrutural realmente aberta, custo relevante ou credencial externa inevitável.
+Continuar automaticamente enquanto houver trabalho seguro/reversível. Não refatorar regras transacionais fora do necessário para escopo. Migrations somente via Supabase CLI pinado. Homologação remota apenas depois de CI verde.
 
 ## Próxima ação
 
