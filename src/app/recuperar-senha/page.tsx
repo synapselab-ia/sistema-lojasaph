@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { requestPasswordResetAction } from "@/lib/auth/actions";
+import { getRuntimeAccessSummary } from "@/lib/runtime/server";
 
 interface RecoveryPageProps {
   searchParams: Promise<{ error?: string | string[] }>;
@@ -11,6 +12,7 @@ function first(value: string | string[] | undefined): string | undefined {
 
 export default async function RecoveryPage({ searchParams }: RecoveryPageProps) {
   const error = first((await searchParams).error);
+  const operational = getRuntimeAccessSummary().supabaseAccess === "allowed";
 
   return (
     <main className="mx-auto flex min-h-screen max-w-md items-center px-5 py-10">
@@ -19,15 +21,22 @@ export default async function RecoveryPage({ searchParams }: RecoveryPageProps) 
         <h1 className="mt-2 text-3xl font-semibold tracking-tight">Recuperar senha</h1>
         <p className="mt-2 text-sm leading-6 text-neutral-600">Informe o e-mail da conta. A resposta é deliberadamente neutra para não revelar quais endereços estão cadastrados.</p>
 
+        {!operational && (
+          <p className="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            Recuperação de senha está desabilitada neste ambiente isolado.
+          </p>
+        )}
         {error && <p className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{error}</p>}
 
-        <form action={requestPasswordResetAction} className="mt-6 space-y-4">
-          <label className="block text-sm font-medium">
-            E-mail
-            <input name="email" type="email" autoComplete="email" required className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2.5 font-normal outline-none focus:border-neutral-800" />
-          </label>
-          <button type="submit" className="w-full rounded-lg bg-neutral-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-neutral-700">Enviar instruções</button>
-        </form>
+        {operational && (
+          <form action={requestPasswordResetAction} className="mt-6 space-y-4">
+            <label className="block text-sm font-medium">
+              E-mail
+              <input name="email" type="email" autoComplete="email" required className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2.5 font-normal outline-none focus:border-neutral-800" />
+            </label>
+            <button type="submit" className="w-full rounded-lg bg-neutral-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-neutral-700">Enviar instruções</button>
+          </form>
+        )}
 
         <Link href="/login" className="mt-5 inline-block text-sm font-medium text-neutral-700 underline underline-offset-4">Voltar ao login</Link>
       </section>
