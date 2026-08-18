@@ -1,8 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { correlationIdFromHeaders } from "@/lib/observability/core";
+import { serverLogger } from "@/lib/observability/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { ORGANIZATION_COOKIE, resolveMembershipContext } from "./runtime";
 import { safeInternalPath, urlWithMessage } from "./redirect";
@@ -10,6 +12,10 @@ import { safeInternalPath, urlWithMessage } from "./redirect";
 function field(formData: FormData, name: string): string {
   const value = formData.get(name);
   return typeof value === "string" ? value.trim() : "";
+}
+
+async function requestCorrelationId(): Promise<string> {
+  return correlationIdFromHeaders(await headers());
 }
 
 export async function loginAction(formData: FormData) {
@@ -39,13 +45,23 @@ export async function requestPasswordResetAction(formData: FormData) {
     redirect(urlWithMessage("/recuperar-senha", "error", "Informe um e-mail válido."));
   }
   if (!appUrl) {
+    serverLogger.warn("auth.password_reset.configuration_missing", {
+      correlationId: await requestCorrelationId(),
+    });
     redirect(urlWithMessage("/recuperar-senha", "error", "Recuperação de senha ainda não está configurada neste ambiente."));
   }
 
   const supabase = await createServerSupabaseClient();
-  await supabase.auth.resetPasswordForEmail(email, {
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
     redirectTo: `${appUrl}/auth/callback?next=${encodeURIComponent("/auth/atualizar-senha")}`,
   });
+
+  if (error) {
+    serverLogger.warn("auth.password_reset.provider_failed", {
+      correlationId: await requestCorrelationId(),
+      error,
+    });
+  }
 
   redirect(
     urlWithMessage(
@@ -75,6 +91,10 @@ export async function updatePasswordAction(formData: FormData) {
 
   const { error } = await supabase.auth.updateUser({ password });
   if (error) {
+    serverLogger.warn("auth.password_update.provider_failed", {
+      correlationId: await requestCorrelationId(),
+      error,
+    });
     redirect(urlWithMessage("/auth/atualizar-senha", "error", "Não foi possível atualizar a senha. Solicite um novo link."));
   }
 

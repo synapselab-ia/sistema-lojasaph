@@ -2,105 +2,100 @@
 
 ## Estado
 
-Fase 16 — backup automático, restauração testada e recuperação operacional — **concluída e integrada**.
+Fase 17 — observabilidade, logs estruturados e rastreabilidade de erros — **implementada e tecnicamente validada; PR #44 deve ser fechado corretamente**.
 
-- PR #42 — merged;
-- Issue #41 — closed/completed;
-- merge commit: `c1bd48e99f74687622c24a856f193bf47aa35d39`;
-- SHA final pré-merge: `efb4b2ca55bf650fa303c57025979f5f5c4d13f8`;
-- próxima Issue: #43 — Fase 17 — observabilidade, logs estruturados e rastreabilidade de erros;
-- ainda não existe branch funcional da Fase 17.
+- Issue #43 — open até o merge;
+- PR #44 — draft;
+- branch: `agent/observability`;
+- base: `main` em `00e2f3c72c22f571a86b15dd52edd8873c9e5fef`;
+- SHA técnico verde antes dos commits documentais: `8d52a03f778c5fa5e66773fef9fe30387a62b5eb`;
+- nenhuma migration/DDL da Fase 17;
+- nenhum write remoto no Supabase.
 
-## Fase 16 — não repetir
+## O que já está concluído
 
-- estratégia/runbook em `docs/operations/backup-restore.md`;
-- helper de exportação lógica `scripts/export-supabase-backup.sh`;
-- helper impede gravação de dump dentro do Git repository;
-- checksum SHA-256 e permissões restritas;
-- `/backups/` ignorado;
-- drill automatizado `scripts/verify-backup-restore.sh`;
-- checks em `supabase/tests/backup_restore.sql`;
-- PostgreSQL 17 + cliente 17 PGDG no CI;
-- restore apenas em banco efêmero isolado;
-- RLS/grants/Organization isolation comprovados após restore;
-- nenhum DDL/migration/restore remoto na Fase 16;
-- RPO/RTO, retenção e destino off-site continuam pendentes.
+- capacidades atuais de Vercel/Supabase verificadas contra documentação oficial e conectores reais;
+- logger estruturado vendor-neutral em `src/lib/observability/`;
+- envelope JSON com timestamp/service/level/event/correlation/context/error;
+- correlation ID propagado pelo Proxy via `x-correlation-id`;
+- redaction explícita de credentials/tokens/PII comum;
+- `Instrumentation.onRequestError` cobre erros server-side de render/route/action/proxy;
+- query string não entra no path de erro;
+- `error.tsx` e `global-error.tsx` mostram fallback sem internals;
+- `toPublicError()` mantém regras de negócio seguras e esconde persistência/unknown errors;
+- RuntimeWorkspaceProvider não exibe mais `Error.message` bruto;
+- falhas relevantes de Auth tratadas explicitamente geram event codes;
+- testes Vitest novos cobrem estrutura, redaction, correlação e error mapping;
+- ADR: `docs/decisions/ADR-007-observability-contract.md`;
+- runbook: `docs/operations/observability.md`.
 
-Não criar outro mecanismo de backup sem requisito novo e não executar restore sobre o Supabase ativo.
+## Validação técnica
 
-## CI final da Fase 16
+No SHA `8d52a03f778c5fa5e66773fef9fe30387a62b5eb`:
 
-No SHA `efb4b2ca55bf650fa303c57025979f5f5c4d13f8`:
+- `CI` #213 — success;
+- `Inventory Count Integration` #128 — success;
+- `Business Transactions Integration` #111 — success.
 
-- `CI` #206 — success;
-- `Inventory Count Integration` #125 — success;
-- `Business Transactions Integration` #108 — success.
+O CI passou lint, typecheck, Vitest, build e todas as suítes PostgreSQL, inclusive o drill de backup/restore da Fase 16.
 
-O `CI` passou inclusive por `Verify logical backup and isolated restore` e por todas as suítes PostgreSQL existentes.
+### Preview Vercel
+
+Deployment validado: `dpl_DCRih5bSXPSY5ykJ4eSUzbmX8xm9` — `READY`.
+
+Smoke sintético/não sensível:
+
+1. `GET /auth/callback` sem `code`/`token_hash`;
+2. aplicação redirecionou para login com mensagem segura;
+3. response continha `x-correlation-id`;
+4. Runtime Logs mostrou `auth.callback.failed` em `warn` com JSON estruturado;
+5. nenhum token real, e-mail, cookie ou secret foi usado.
 
 ## Supabase remoto
 
-Nenhuma alteração estrutural ocorreu na Fase 16.
-
-Estado verificado durante a fase:
+Estado verificado:
 
 - projeto saudável;
 - PostgreSQL 17;
 - organização no plano Free;
-- nenhuma development branch Supabase;
-- histórico remoto ainda termina nas três migrations de importação da Fase 15.
+- logs consultáveis read-only;
+- Log Drains não disponíveis no plano atual;
+- nenhuma migration/DDL/configuração/dado alterado na Fase 17.
 
-No plano Free atual, recuperação de contingência depende de exportação lógica periódica/off-site; backup diário gerenciado/PITR exigem plano/configuração compatíveis.
+Não reaplicar migrations anteriores.
 
-## Próxima frente — Issue #43
+## Limitações intencionais
 
-`REQ-PLAT-006 — Logs e erros` é MUST antes de produção e permanece incompleto.
-
-A Issue #43 foi criada somente depois do fechamento da Fase 16 porque:
-
-- não havia outra Issue aberta;
-- busca no repositório não encontrou Sentry/OpenTelemetry/logger estruturado/error tracking/correlation ID;
-- Vercel e Supabase já compõem o runtime real e devem ser verificados antes de escolher mecanismo/fornecedor.
-
-### Limites da Fase 17
-
-- verificar documentação/capacidades atuais de Vercel e Supabase antes de implementar;
-- não contratar/adotar vendor pago por inferência;
-- começar por contrato de logging estruturado independente do destino;
-- não registrar tokens, passwords, connection strings, payloads financeiros completos ou PII desnecessária;
-- separar mensagem segura para usuário de detalhe técnico server-side;
-- usar correlation/request IDs onde viável;
-- criar redaction explícita e testes;
-- cobrir os principais boundaries do Next.js/runtime sem alterar regras transacionais;
-- validar somente com dados sintéticos/não sensíveis;
-- não prometer SLA/SLO, retenção ou on-call sem decisão/capacidade confirmada.
+- sem Sentry/Datadog/Axiom/vendor pago por padrão;
+- sem telemetria dedicada de browser;
+- erros puramente client-side podem ficar somente no fallback local;
+- chamadas Supabase browser-side não carregam automaticamente correlation ID do Next;
+- retenção, SLA/SLO, alertas e on-call não foram inventados;
+- não houve mudança de regras transacionais/RLS/RPC.
 
 ## Próxima ação exata
 
-1. confirmar Issue #43 e o head atual da `main`;
-2. criar branch `agent/observability` a partir da `main` atual;
-3. ler `AGENTS.md`, `START-HERE`, `CURRENT_STATE`, este `HANDOFF`, `NEXT_ACTION`, `requirements.md`, documentação de runtime/Supabase/Vercel e ADRs relacionados;
-4. verificar documentação oficial vigente e capacidades reais dos projetos/planos Vercel e Supabase para logs, retenção, runtime errors e integração;
-5. inspecionar error handling atual, server actions/route boundaries, adapters/gateways e UI fallbacks antes de definir contrato;
-6. implementar somente a fundação da Issue #43:
-   - logger estruturado server-side;
-   - níveis/event codes;
-   - correlation/request ID;
-   - redaction de campos sensíveis;
-   - mapeamento seguro de erros para UI;
-   - error boundary/fallback apropriado;
-   - instrumentação dos boundaries prioritários;
-7. adicionar testes de estrutura, redaction, correlation e mensagens seguras;
-8. validar logs no runtime Vercel apenas com dados sintéticos/não sensíveis e usar Supabase somente em consultas/log checks read-only quando necessário;
-9. rodar lint, typecheck, Vitest, build e workflows PostgreSQL existentes;
-10. atualizar documentação operacional e continuidade antes do PR/merge.
+1. conferir o head documental atual de `agent/observability` e o PR #44;
+2. confirmar `CI`, `Inventory Count Integration` e `Business Transactions Integration` verdes no SHA documental final;
+3. atualizar o corpo do PR #44 com:
+   - SHA final validado;
+   - CI final;
+   - deployment preview/smoke `auth.callback.failed`;
+   - confirmação de zero alteração remota no Supabase;
+   - limitações conscientes sem vendor pago;
+4. marcar o PR #44 ready for review;
+5. fazer merge normal em `main`;
+6. confirmar Issue #43 como closed/completed; fechar explicitamente se necessário;
+7. somente depois, revisar requisitos MUST/Issues reais e escolher a próxima frente;
+8. atualizar `CURRENT_STATE`, `HANDOFF` e `NEXT_ACTION` na `main` para o estado pós-merge.
 
-## Regras que permanecem
+## Não fazer
 
-- GitHub é fonte de verdade;
-- secrets nunca no browser/Git/log;
-- service role continua server-only;
-- nenhuma questão de negócio é resolvida por inferência;
-- dados reais/planilhas reais continuam fora do GitHub;
-- nenhuma operação destrutiva remota sem necessidade e proteção explícita;
-- migrations continuam forward-only quando houver mudança estrutural.
+- não reimplementar backup/restore;
+- não adicionar vendor pago sem decisão explícita;
+- não logar JWT, password, connection string, cookie ou PII desnecessária;
+- não criar telemetria client-side invasiva sem requisito;
+- não alterar transações/RLS/RPC para “facilitar logs”;
+- não importar dados reais/cutover;
+- não reaplicar migrations antigas;
+- não responder Q-001 a Q-025 por inferência.

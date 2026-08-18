@@ -4,93 +4,83 @@
 
 ## Estado atual
 
-Fase 16 — backup automático, restauração testada e recuperação operacional — **concluída e integrada na `main`**.
+Fase 17 — observabilidade, logs estruturados e rastreabilidade de erros — **implementada e tecnicamente validada; aguardando gate documental/merge do PR #44**.
 
 - Repositório: `synapselab-ia/sistema-lojasaph`
-- PR #42 — merged
-- Issue #41 — closed/completed
-- merge commit: `c1bd48e99f74687622c24a856f193bf47aa35d39`
-- SHA final pré-merge: `efb4b2ca55bf650fa303c57025979f5f5c4d13f8`
-- próxima Issue: #43 — `Fase 17 — observabilidade, logs estruturados e rastreabilidade de erros`
-- nenhuma branch funcional da Fase 17 foi criada ainda.
+- Issue #43 — open até o merge
+- PR #44 — draft
+- branch: `agent/observability`
+- base da branch: `main` em `00e2f3c72c22f571a86b15dd52edd8873c9e5fef`
+- SHA técnico validado: `8d52a03f778c5fa5e66773fef9fe30387a62b5eb`
+- nenhuma migration/DDL da Fase 17 foi necessária.
 
-## Fase 16 — concluído
+## Fase 17 — implementado
 
-A entrega cobre `REQ-PLAT-005` no escopo executável sem operação destrutiva:
+A entrega cobre `REQ-PLAT-006` no escopo atual e reforça `REQ-SEC-004`:
 
-- estratégia em camadas para schema, backup de dados, recuperação gerenciada e contingência;
-- runbook versionado em `docs/operations/backup-restore.md`;
-- `scripts/export-supabase-backup.sh` para exportação lógica controlada com Supabase CLI;
-- helper recusa gravar backup dentro do Git repository;
-- checksum SHA-256 e permissões restritas para artefatos temporários;
-- `/backups/` ignorado pelo Git;
-- `scripts/verify-backup-restore.sh` integrado ao CI;
-- dump lógico e restore em segundo PostgreSQL 17 efêmero;
-- `supabase/tests/backup_restore.sql` valida dados sintéticos, RLS, grants e isolamento após restore;
-- banco restaurado e artefatos temporários removidos automaticamente;
-- RPO/RTO, retenção e destino off-site permanecem explicitamente pendentes, sem inferência.
+- contrato vendor-neutral de log estruturado em JSON;
+- níveis `debug`, `info`, `warn`, `error`;
+- event codes estáveis;
+- `x-correlation-id` validado/gerado no Proxy e devolvido na response;
+- redaction por chave e por padrão de texto para tokens, JWT, cookies, senha, API keys, connection strings e PII comum;
+- `src/instrumentation.ts` com `Instrumentation.onRequestError` para exceções server-side do Next;
+- query string removida de paths registrados;
+- `error.tsx` e `global-error.tsx` com fallback seguro e `digest` como referência quando disponível;
+- `toPublicError()` impede exposição de mensagens de persistência/erros desconhecidos na UI;
+- workspace deixou de devolver `Error.message` bruto ao usuário;
+- eventos explícitos para falhas relevantes de Auth tratadas sem exceção;
+- testes Vitest de envelope, níveis, redaction, correlation ID e error mapping;
+- `ADR-007-observability-contract.md` e `docs/operations/observability.md`.
 
-## CI final da Fase 16
+## Capacidades atuais verificadas
 
-No SHA pré-merge `efb4b2ca55bf650fa303c57025979f5f5c4d13f8` passaram:
+### Vercel
 
-- `CI` #206 — success;
-- `Inventory Count Integration` #125 — success;
-- `Business Transactions Integration` #108 — success.
+O projeto conectado expõe Runtime Logs e Runtime Errors, com filtros por deployment/ambiente/nível/status/origem/texto/request ID.
 
-O `CI` validou lint, typecheck, Vitest, build, helpers shell, migrations/seed, dump/checksum/restore PostgreSQL 17, checks pós-restore e todas as suítes PostgreSQL existentes.
+Antes da implementação não havia runtime errors/logs de aplicação nas últimas 24h.
 
-O drill comprovou no banco restaurado:
+O preview da Fase 17 foi validado no deployment `dpl_DCRih5bSXPSY5ykJ4eSUzbmX8xm9`, estado `READY`.
 
-- fixtures centrais e saldo conhecido preservados;
-- RLS habilitada;
-- `anon` sem leitura operacional indevida;
-- `authenticated` sem INSERT direto no ledger;
-- RPC transacional pública esperada ainda executável;
-- isolamento por Organization preservado.
+Smoke seguro executado em `/auth/callback` sem parâmetros reais:
 
-## Supabase remoto
+- resposta exibiu mensagem genérica de autenticação inválida/expirada;
+- response trouxe `x-correlation-id`;
+- Runtime Logs registrou `auth.callback.failed` em JSON estruturado;
+- nenhum token real, e-mail, cookie ou secret foi usado.
 
-A Fase 16 não criou migration nem alterou DDL no remoto.
+### Supabase
 
-O projeto foi verificado de forma não destrutiva como saudável, PostgreSQL 17, na organização Supabase atualmente no plano Free e sem development branches Supabase.
+Projeto conectado permanece saudável, PostgreSQL 17, organização no plano Free.
 
-O histórico remoto continua terminando nas migrations já homologadas da Fase 15:
+A Fase 17 usou apenas consulta read-only de logs. Nenhuma migration, DDL, dado ou configuração remota foi alterada.
 
-- `20260818180723 / import_staging`;
-- `20260818180738 / import_staging_finalize_fix`;
-- `20260818181051 / import_staging_indexes`.
+Log Drains não foram configurados porque a documentação atual exige plano Pro/Team/Enterprise. Logs Explorer/API permanecem fonte de diagnóstico separada para Postgres/Auth/Data API.
 
-Não reaplicar.
+## CI técnico da Fase 17
 
-No plano Free atual, a estratégia de contingência depende de exportação lógica periódica e armazenamento off-site aprovado. Backup diário gerenciado/PITR dependem de plano/configuração compatíveis e devem ser reavaliados se o plano mudar.
+No SHA `8d52a03f778c5fa5e66773fef9fe30387a62b5eb` passaram:
 
-## Limites que permanecem
+- `CI` #213 — success;
+- `Inventory Count Integration` #128 — success;
+- `Business Transactions Integration` #111 — success.
 
-- nenhum dump real foi criado/versionado;
-- nenhuma planilha real foi importada;
-- nenhum cutover foi executado;
-- nenhum restore foi feito sobre o projeto Supabase ativo;
-- dump PostgreSQL não cobre automaticamente Storage objects, Edge Functions, Auth settings/keys, Realtime e demais recursos de plataforma;
-- frequência real de backup, retenção, destino off-site, RPO e RTO continuam pendentes de decisão operacional antes de produção.
+O CI cobriu lint, typecheck, Vitest, build, backup/restore efêmero e todas as suítes PostgreSQL existentes.
 
-## Próxima frente — Issue #43
+Duas incompatibilidades foram detectadas e corrigidas antes desse gate:
 
-Após o fechamento formal da Fase 16, os requisitos MUST e Issues reais foram revistos. Não havia outra Issue aberta.
+1. a documentação corrente do Next expõe `renderType`, mas os tipos instalados em `next@16.2.12` não; o logger usa somente campos suportados localmente;
+2. o type guard de `Headers | Record` foi tornado explícito após o build da Vercel detectar narrowing insuficiente.
 
-A próxima lacuna executável é `REQ-PLAT-006 — Logs e erros`, MUST antes de produção. Busca no repositório não encontrou infraestrutura de logger estruturado, error tracking ou correlation ID.
+## Limites conscientes
 
-A Issue #43 cobre observabilidade básica e rastreabilidade de erros sem assumir fornecedor externo pago: primeiro deve verificar as capacidades reais de Vercel/Supabase, depois estabelecer logging estruturado, redaction, correlation IDs, error boundaries e cobertura dos principais boundaries do runtime.
-
-## Não repetir
-
-- não reimplementar backup/restore da Fase 16;
-- não executar restore destrutivo no Supabase ativo;
-- não reaplicar migrations das Fases 14/15;
-- não importar dados reais nem executar cutover;
-- não inferir Q-001 a Q-025;
-- não adotar fornecedor pago de observabilidade por inferência.
+- não existe vendor dedicado de browser error tracking nesta fase;
+- erro puramente client-side pode não aparecer em Runtime Logs sem contraparte server-side;
+- chamadas Supabase diretas do browser não recebem automaticamente o correlation ID do Next;
+- retenção, SLA/SLO, alertas e on-call permanecem pendentes;
+- nenhum fornecedor pago foi adotado por inferência;
+- nenhum fluxo transacional, RLS ou RPC homologado foi alterado.
 
 ## Próximo passo
 
-Seguir `docs/ai/NEXT_ACTION.md`: iniciar a Issue #43 em branch própria a partir da `main`, verificar primeiro runtime/planos/logs atuais de Vercel e Supabase e implementar somente a fundação de observabilidade segura prevista na Issue.
+Seguir `docs/ai/NEXT_ACTION.md`: exigir os três workflows verdes no SHA documental final da branch, atualizar o PR #44, marcar ready e fazer merge normal. Confirmar Issue #43 como closed/completed e somente então revisar requisitos MUST/Issues reais para a próxima frente.
