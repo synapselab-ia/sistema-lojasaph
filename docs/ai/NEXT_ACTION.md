@@ -2,57 +2,51 @@
 
 ## Contexto
 
-Fase 14 — Permissões por escopo de unidade/setor e hardening RLS — foi encerrada com sucesso.
+Fase 15 — staging de importação, dry run e reconciliação rastreável — está tecnicamente concluída e homologada na branch `agent/import-staging`.
 
-Estado real:
+Estado real antes do fechamento:
 
-- PR #38 — merged em `main`;
-- Issue #37 — closed/completed;
-- merge commit: `0cbb6ed38add92fb220f575cad17c6983d700ed3`;
-- SHA final pré-merge `8795f4b3aca0d1693da3ede0c4fc68e3f024ba56` teve `CI`, `Inventory Count Integration` e `Business Transactions Integration` verdes;
-- migration remota `20260818150253 / scoped_permissions` já aplicada e homologada;
-- homologação remota final passou com `scoped permission tests passed` e zero resíduos após rollback;
-- próxima Issue criada: #39 — `Fase 15 — staging de importação, dry run e reconciliação rastreável`;
-- nenhuma branch funcional da Fase 15 foi criada ainda.
+- Issue #39 — open;
+- PR #40 — draft;
+- SHA técnico final verde: `8ee091875bdcc7707a7333b1d4c12acdc2a43931`;
+- `CI` #187, `Inventory Count Integration` #110 e `Business Transactions Integration` #93 — success;
+- migrations remotas já aplicadas:
+  - `20260818180723 / import_staging`;
+  - `20260818180738 / import_staging_finalize_fix`;
+  - `20260818181051 / import_staging_indexes`;
+- homologação remota sintética em `BEGIN/ROLLBACK` retornou `import staging tests passed`;
+- checagem pós-rollback confirmou zero resíduos temporários;
+- advisors executados; os dois novos avisos de FK sem índice foram corrigidos;
+- nenhuma planilha real foi importada, nenhum cutover foi executado e nenhuma questão aberta foi inferida.
 
 ## Fazer agora
 
-1. Conferir a Issue #39 e o estado atual da `main` antes de alterar código.
-2. Criar a branch `agent/import-staging` a partir da `main` atual.
-3. Ler antes da implementação:
-   - `docs/product/requirements.md` — especialmente `REQ-IMP-001` a `REQ-IMP-004` e `REQ-ITEM-002`;
-   - `docs/source-data/migration-plan.md`;
-   - `docs/source-data/README.md`, `field-catalog.md` e `spreadsheets-map.md`;
-   - documentação de persistência/Supabase e ADRs relacionados.
-4. Inspecionar migrations, schema, auditoria, autorização scope-aware e padrões de command/repository já existentes.
-5. Implementar **somente** a fundação da Issue #39:
-   - batch de importação rastreável;
-   - staging por arquivo/aba/linha/payload bruto;
-   - validação e estados explícitos;
-   - chave determinística/idempotência;
-   - dry run sem escrita nas tabelas operacionais finais;
-   - relatório estruturado de aceitos, duplicados, warnings, rejeitados e mapeamentos pendentes;
-   - suporte explícito a aliases para futura migração, sem auto-merge inseguro.
-6. Usar apenas fixtures sintéticos/amostras artificiais nos testes. Não adicionar planilhas reais ao repositório.
-7. Qualquer transformação dependente de Q-001 a Q-025 deve resultar em pendência/revisão explícita; não inferir regra de negócio.
-8. Se houver mudança de banco, gerar migration pelo Supabase CLI pinado e manter RLS/auditoria coerentes com a arquitetura atual.
-9. Rodar no mínimo lint, typecheck, Vitest, build e suítes PostgreSQL relevantes; manter os workflows de integração existentes verdes.
-10. Somente após CI verde aplicar/homologar migration nova no Supabase remoto. Não editar regra diretamente no remoto; usar migration forward-only.
-11. Homologar com dados sintéticos e rollback quando aplicável, confirmando ausência de resíduos temporários.
-12. Atualizar `CURRENT_STATE.md`, `HANDOFF.md`, este arquivo e documentação do módulo antes do fechamento da Issue/PR.
+1. Conferir o head atual da branch e o PR #40.
+2. Confirmar que os três workflows (`CI`, `Inventory Count Integration`, `Business Transactions Integration`) passam no **SHA documental final**.
+3. Atualizar o corpo do PR #40 com:
+   - escopo entregue;
+   - SHA final validado;
+   - versões das migrations remotas;
+   - homologação `import staging tests passed`;
+   - zero resíduos após rollback;
+   - resultado dos advisors;
+   - confirmação de que dados reais/cutover continuam fora do escopo.
+4. Marcar o PR #40 ready for review.
+5. Fazer merge normal do PR #40 em `main`, sem squash/rebase se a convenção atual continuar sendo merge commit.
+6. Confirmar que a Issue #39 foi fechada como completed; se o `Closes #39` não fechar automaticamente, fechar explicitamente.
+7. **Somente depois do merge e fechamento da Issue #39**, revisar `docs/product/requirements.md`, questões abertas e Issues reais para escolher a próxima lacuna MUST executável.
+8. Criar/selecionar a próxima Issue sem inferir decisão de negócio.
+9. Atualizar `docs/ai/CURRENT_STATE.md`, `HANDOFF.md` e este arquivo na `main` com o merge real e a próxima ação concreta.
 
 ## Não fazer agora
 
-- não reabrir nem reimplementar a Fase 14;
-- não reaplicar `scoped_permissions`;
+- não reaplicar `scoped_permissions` nem migrations da Fase 15;
 - não importar as seis planilhas reais;
-- não executar cutover nem migração definitiva;
-- não versionar dados reais, segredos ou chaves;
+- não executar cutover ou aplicação do staging nas tabelas operacionais;
+- não versionar arquivos/dados reais ou segredos;
 - não resolver Q-001 a Q-025 por inferência;
-- não criar integração permanente com Google Sheets/Excel nesta fase;
-- não misturar backup/restauração de produção (`REQ-PLAT-005`) na mesma entrega;
-- não alterar fluxos transacionais homologados sem necessidade direta da infraestrutura de importação.
+- não iniciar outra fase antes de concluir formalmente PR #40 / Issue #39.
 
-## Critério para encerrar a Fase 15
+## Critério de encerramento
 
-A fundação deve receber dados sintéticos em staging, preservar origem e rastreabilidade, validar/dry-run sem gravar nas tabelas finais, ser idempotente em reprocessamento, produzir relatório de inconsistências/mapeamentos pendentes, respeitar RLS/autorização e permanecer verde em CI e homologação remota. Dados reais continuam fora desta fase.
+A Fase 15 só está formalmente encerrada quando o SHA documental final estiver verde, PR #40 estiver merged, Issue #39 estiver closed/completed e a continuidade pós-merge na `main` apontar para a próxima lacuna MUST real.
