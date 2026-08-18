@@ -436,7 +436,7 @@ begin
   select (
     v_opening
     + coalesce((select sum(t.gross_amount) from public.payment_method_totals t join public.payment_methods m on m.id=t.payment_method_id and m.organization_id=t.organization_id where t.organization_id=p_organization_id and t.cash_session_id=p_cash_session_id and m.affects_cash_drawer),0)
-    + coalesce((select sum(case when movement_type='cash_in' then amount when movement_type='cash_out' then -amount else 0 end) from public.cash_movements where organization_id=p_organization_id and cash_session_id=p_cash_session_id),0)
+    + coalesce((select sum(case when cm.movement_type='cash_in' then cm.amount when cm.movement_type='cash_out' then -cm.amount else 0 end) from public.cash_movements cm where cm.organization_id=p_organization_id and cm.cash_session_id=p_cash_session_id),0)
   )::numeric(18,2) into v_expected;
 
   update public.cash_sessions set status='closed',expected_cash_amount=v_expected,counted_cash_amount=p_counted_cash_amount,cash_difference=(p_counted_cash_amount-v_expected)::numeric(18,2),closed_at=now(),notes=coalesce(nullif(trim(p_notes),''),notes),updated_at=now() where id=p_cash_session_id and organization_id=p_organization_id;
