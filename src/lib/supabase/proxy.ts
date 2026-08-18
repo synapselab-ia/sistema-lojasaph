@@ -1,15 +1,16 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { getOptionalSupabaseRuntimeConfig } from "@/lib/runtime/server";
 
 export async function updateSupabaseSession(request: NextRequest, requestHeaders = new Headers(request.headers)) {
   let response = NextResponse.next({ request: { headers: requestHeaders } });
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  const config = getOptionalSupabaseRuntimeConfig();
 
-  // CI and static demo builds remain usable before runtime credentials are configured.
-  if (!url || !publishableKey) return response;
+  // Preview/Development remain renderable when an isolated backend is not proven.
+  // Auth and operational data access stay fail-closed because no Supabase client is created.
+  if (!config) return response;
 
-  const supabase = createServerClient(url, publishableKey, {
+  const supabase = createServerClient(config.url, config.publishableKey, {
     cookies: {
       getAll() {
         return request.cookies.getAll();
