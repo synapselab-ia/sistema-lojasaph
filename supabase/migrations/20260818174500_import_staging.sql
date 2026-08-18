@@ -134,16 +134,18 @@ begin
   end if;
 
   v_batch_key := encode(
-    extensions.digest(
-      concat_ws(
-        chr(31),
-        p_organization_id::text,
-        lower(trim(p_source_type)),
-        lower(trim(p_source_file)),
-        lower(p_source_sha256),
-        trim(p_transformation_version)
-      ),
-      'sha256'
+    sha256(
+      convert_to(
+        concat_ws(
+          chr(31),
+          p_organization_id::text,
+          lower(trim(p_source_type)),
+          lower(trim(p_source_file)),
+          lower(p_source_sha256),
+          trim(p_transformation_version)
+        ),
+        'UTF8'
+      )
     ),
     'hex'
   );
@@ -300,21 +302,23 @@ begin
   end if;
 
   v_raw_sha256 := encode(
-    extensions.digest(p_raw_payload::text, 'sha256'),
+    sha256(convert_to(p_raw_payload::text, 'UTF8')),
     'hex'
   );
 
   v_idempotency_key := encode(
-    extensions.digest(
-      concat_ws(
-        chr(31),
-        p_organization_id::text,
-        v_batch.source_sha256,
-        lower(trim(p_source_sheet)),
-        p_source_row::text,
-        v_raw_sha256
-      ),
-      'sha256'
+    sha256(
+      convert_to(
+        concat_ws(
+          chr(31),
+          p_organization_id::text,
+          v_batch.source_sha256,
+          lower(trim(p_source_sheet)),
+          p_source_row::text,
+          v_raw_sha256
+        ),
+        'UTF8'
+      )
     ),
     'hex'
   );
