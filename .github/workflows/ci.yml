@@ -63,13 +63,22 @@ jobs:
       PGUSER: postgres
       PGPASSWORD: postgres
       PGDATABASE: lojasaph
+      PATH: /usr/lib/postgresql/17/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install PostgreSQL 17 client
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-client-17
+
       - name: Show PostgreSQL client
-        run: psql --version
+        run: |
+          psql --version
+          pg_dump --version
+          pg_restore --version
 
       - name: Validate backup scripts
         run: bash -n scripts/export-supabase-backup.sh scripts/verify-backup-restore.sh
