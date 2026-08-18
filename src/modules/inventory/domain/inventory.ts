@@ -118,3 +118,11 @@ export function createStockMovement(input: Omit<StockMovement, "id">): StockMove
 export function createInventoryBatch(input: Omit<InventoryBatch, "id"> & { id?: EntityId }): InventoryBatch {
   return Object.freeze({ ...input, id: input.id ?? newEntityId() });
 }
+
+export function createStockTransfer(input: Omit<StockTransfer, "id" | "status" | "receivedAt">): StockTransfer {
+  return Object.freeze({ id: newEntityId(), status: "dispatched" as const, ...input });
+}
+
+export function createInventoryCount(input: Omit<InventoryCount, "id" | "status" | "confirmedAt">): InventoryCount {
+  return Object.freeze({ id: newEntityId(), status: "counting" as const, ...input });
+}

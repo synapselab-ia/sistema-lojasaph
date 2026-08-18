@@ -2,6 +2,7 @@ import { SupabaseClient } from "@supabase/supabase-js";
 import { EntityId } from "@/domain/common/entity-id";
 import { Money } from "@/domain/common/money";
 import { Quantity } from "@/domain/common/quantity";
+import { RuntimeTransferStatus } from "@/modules/inventory/adapters/supabase-stock-transfer-gateway";
 import { sortBatchesFefo } from "@/modules/inventory/domain/expiry";
 import { InventoryBalance, InventoryBatch, InventoryBatchSource } from "@/modules/inventory/domain/inventory";
 
@@ -22,12 +23,28 @@ export interface RuntimeStockLocation {
   readonly unitName: string;
 }
 
+export interface RuntimeStockTransfer {
+  readonly id: EntityId;
+  readonly stockItemId: EntityId;
+  readonly sourceLocationId: EntityId;
+  readonly destinationLocationId: EntityId;
+  readonly status: RuntimeTransferStatus;
+  readonly requestedAt: string;
+  readonly dispatchedAt?: string;
+  readonly receivedAt?: string;
+  readonly dispatchedQuantity: Quantity;
+  readonly receivedQuantity: Quantity;
+  readonly unitCostSnapshot: Money;
+  readonly notes?: string;
+}
+
 export interface WorkspaceReferenceData {
   readonly categories: readonly RuntimeCategory[];
   readonly unitsOfMeasure: readonly RuntimeUnitOfMeasure[];
   readonly stockLocations: readonly RuntimeStockLocation[];
   readonly balances: readonly InventoryBalance[];
   readonly batches: readonly InventoryBatch[];
+  readonly transfers: readonly RuntimeStockTransfer[];
 }
 
 interface CategoryRow { id: string; name: string }
@@ -53,6 +70,23 @@ interface BatchRow {
   source_type: InventoryBatchSource;
   source_reference_id: string | null;
 }
+interface TransferRow {
+  id: string;
+  source_location_id: string;
+  destination_location_id: string;
+  status: RuntimeTransferStatus;
+  requested_at: string;
+  dispatched_at: string | null;
+  received_at: string | null;
+  notes: string | null;
+}
+interface TransferItemRow {
+  transfer_id: string;
+  stock_item_id: string;
+  dispatched_quantity: number | string;
+  received_quantity: number | string;
+  unit_cost_snapshot: number | string;
+}
 
 function queryError(scope: string, message: string): Error {
   return new Error(`Não foi possível carregar ${scope}: ${message}`);
@@ -62,7 +96,7 @@ export async function loadWorkspaceReferenceData(
   client: SupabaseClient,
   organizationId: EntityId,
 ): Promise<WorkspaceReferenceData> {
-  const [categoriesResult, unitsOfMeasureResult, unitsResult, locationsResult, balancesResult, batchesResult] = await Promise.all([
+  const [categoriesResult, unitsOfMeasureResult, unitsResult, locationsResult, balancesResult, batchesResult, transfersResult] = await Promise.all([
     client.from("item_categories").select("id, name").eq("organization_id", organizationId).eq("active", true).order("name"),
     client.from("units_of_measure").select("id, code, name").eq("organization_id", organizationId).eq("active", true).order("code"),
     client.from("units").select("id, name").eq("organization_id", organizationId).eq("status", "active").order("name"),
@@ -74,6 +108,13 @@ export async function loadWorkspaceReferenceData(
       .eq("organization_id", organizationId)
       .eq("status", "active")
       .gt("remaining_quantity", 0),
+    client
+      .from("stock_transfers")
+      .select("id, source_location_id, destination_location_id, status, requested_at, dispatched_at, received_at, notes")
+      .eq("organization_id", organizationId)
+      .in("status", ["dispatched", "partially_received", "received"])
+      .order("requested_at", { ascending: false })
+      .limit(50),
   ]);
 
   if (categoriesResult.error) throw queryError("as categorias", categoriesResult.error.message);
@@ -82,7 +123,23 @@ export async function loadWorkspaceReferenceData(
   if (locationsResult.error) throw queryError("os locais de estoque", locationsResult.error.message);
   if (balancesResult.error) throw queryError("os saldos", balancesResult.error.message);
   if (batchesResult.error) throw queryError("os lotes", batchesResult.error.message);
+  if (transfersResult.error) throw queryError("as transferências", transfersResult.error.message);
 
+  const transferRows = (transfersResult.data ?? []) as TransferRow[];
+  const transferIds = transferRows.map((transfer) => transfer.id);
+  let transferItemRows: TransferItemRow[] = [];
+
+  if (transferIds.length > 0) {
+    const { data, error } = await client
+      .from("stock_transfer_items")
+      .select("transfer_id, stock_item_id, dispatched_quantity, received_quantity, unit_cost_snapshot")
+      .eq("organization_id", organizationId)
+      .in("transfer_id", transferIds);
+    if (error) throw queryError("os itens das transferências", error.message);
+    transferItemRows = (data ?? []) as TransferItemRow[];
+  }
+
+  const transferItemsByTransfer = new Map(transferItemRows.map((item) => [item.transfer_id, item]));
   const unitNames = new Map(((unitsResult.data ?? []) as UnitRow[]).map((unit) => [unit.id, unit.name]));
   const batches = ((batchesResult.data ?? []) as BatchRow[]).map((batch): InventoryBatch => Object.freeze({
     id: batch.id as EntityId,
@@ -97,6 +154,25 @@ export async function loadWorkspaceReferenceData(
     sourceType: batch.source_type,
     sourceReferenceId: batch.source_reference_id ? (batch.source_reference_id as EntityId) : undefined,
   }));
+
+  const transfers = transferRows.map((transfer): RuntimeStockTransfer => {
+    const item = transferItemsByTransfer.get(transfer.id);
+    if (!item) throw queryError("as transferências", `transferência ${transfer.id} sem item persistido`);
+    return Object.freeze({
+      id: transfer.id as EntityId,
+      stockItemId: item.stock_item_id as EntityId,
+      sourceLocationId: transfer.source_location_id as EntityId,
+      destinationLocationId: transfer.destination_location_id as EntityId,
+      status: transfer.status,
+      requestedAt: transfer.requested_at,
+      dispatchedAt: transfer.dispatched_at ?? undefined,
+      receivedAt: transfer.received_at ?? undefined,
+      dispatchedQuantity: Quantity.fromDecimal(String(item.dispatched_quantity)),
+      receivedQuantity: Quantity.fromDecimal(String(item.received_quantity)),
+      unitCostSnapshot: Money.fromDecimal(String(item.unit_cost_snapshot)),
+      notes: transfer.notes ?? undefined,
+    });
+  });
 
   return {
     categories: ((categoriesResult.data ?? []) as CategoryRow[]).map((category) => ({
@@ -120,5 +196,6 @@ export async function loadWorkspaceReferenceData(
       averageCost: Money.fromDecimal(String(balance.average_cost)),
     })),
     batches: sortBatchesFefo(batches),
+    transfers,
   };
 }
