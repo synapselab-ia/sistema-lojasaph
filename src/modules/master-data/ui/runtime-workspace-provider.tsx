@@ -60,6 +60,8 @@ interface RuntimePermissions {
   readonly recordStockEntry: boolean;
   readonly recordStockWithdrawal: boolean;
   readonly manageStockTransfers: boolean;
+  readonly managePurchases: boolean;
+  readonly receivePurchases: boolean;
 }
 
 interface RuntimeWorkspaceValue {
@@ -146,6 +148,8 @@ export function RuntimeWorkspaceProvider({
     recordStockEntry: can(roles, ["owner", "admin", "manager", "inventory"]),
     recordStockWithdrawal: can(roles, ["owner", "admin", "manager", "inventory"]),
     manageStockTransfers: can(roles, ["owner", "admin", "manager", "inventory"]),
+    managePurchases: can(roles, ["owner", "admin", "manager", "purchases"]),
+    receivePurchases: can(roles, ["owner", "admin", "manager", "purchases", "inventory"]),
   };
 
   async function refresh() {

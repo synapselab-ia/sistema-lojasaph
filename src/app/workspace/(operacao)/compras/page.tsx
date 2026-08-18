@@ -41,25 +41,37 @@ export default function RuntimePurchasesPage() {
   const itemById = useMemo(() => new Map(workspace.stockItems.map((item) => [item.id, item])), [workspace.stockItems]);
   const locationById = useMemo(() => new Map(workspace.stockLocations.map((location) => [location.id, location])), [workspace.stockLocations]);
 
+  const organizationId = workspace.organizationId;
+
   const refreshOrders = useCallback(async () => {
     setLoading(true);
     try {
-      setOrders(await gateway.listOrders(workspace.organizationId));
+      setOrders(await gateway.listOrders(organizationId));
     } catch (error) {
-      setMessage(workspace.errorMessage(error));
+      setMessage(error instanceof Error ? error.message : "Não foi possível carregar os pedidos.");
     } finally {
       setLoading(false);
     }
-  }, [gateway, workspace]);
-
-  useEffect(() => { void refreshOrders(); }, [refreshOrders]);
+  }, [gateway, organizationId]);
 
   useEffect(() => {
-    if (!supplierId) {
-      setSupplierItems([]);
-      setDraftItems({});
-      return;
-    }
+    let active = true;
+    void gateway
+      .listOrders(organizationId)
+      .then((nextOrders) => {
+        if (active) setOrders(nextOrders);
+      })
+      .catch((error) => {
+        if (active) setMessage(error instanceof Error ? error.message : "Não foi possível carregar os pedidos.");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => { active = false; };
+  }, [gateway, organizationId]);
+
+  useEffect(() => {
+    if (!supplierId) return;
     let active = true;
     void gateway.listSupplierItems(workspace.organizationId, supplierId as EntityId)
       .then((items) => {
