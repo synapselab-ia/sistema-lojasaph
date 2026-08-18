@@ -2,51 +2,59 @@
 
 ## Contexto
 
-Fase 15 — staging de importação, dry run e reconciliação rastreável — está tecnicamente concluída e homologada na branch `agent/import-staging`.
+Fase 15 — staging de importação, dry run e reconciliação rastreável — foi encerrada com sucesso.
 
-Estado real antes do fechamento:
+Estado real:
 
-- Issue #39 — open;
-- PR #40 — draft;
-- SHA técnico final verde: `8ee091875bdcc7707a7333b1d4c12acdc2a43931`;
-- `CI` #187, `Inventory Count Integration` #110 e `Business Transactions Integration` #93 — success;
-- migrations remotas já aplicadas:
-  - `20260818180723 / import_staging`;
-  - `20260818180738 / import_staging_finalize_fix`;
-  - `20260818181051 / import_staging_indexes`;
-- homologação remota sintética em `BEGIN/ROLLBACK` retornou `import staging tests passed`;
-- checagem pós-rollback confirmou zero resíduos temporários;
-- advisors executados; os dois novos avisos de FK sem índice foram corrigidos;
-- nenhuma planilha real foi importada, nenhum cutover foi executado e nenhuma questão aberta foi inferida.
+- PR #40 — merged em `main`;
+- Issue #39 — closed/completed;
+- merge commit: `88be9da74b9c3611f533e388c5387ac0f9906d23`;
+- SHA final pré-merge `3ef9e595249885d0e1f0b1567874037377e01aab` teve `CI` #192, `Inventory Count Integration` #115 e `Business Transactions Integration` #98 verdes;
+- migrations remotas da Fase 15 já aplicadas e homologadas;
+- homologação `import staging tests passed`, com zero resíduos após rollback;
+- nenhuma planilha real foi importada e nenhum cutover foi executado;
+- nova Issue criada: #41 — `Fase 16 — backup automático, restauração testada e recuperação operacional`;
+- nenhuma branch funcional da Fase 16 foi criada ainda.
 
 ## Fazer agora
 
-1. Conferir o head atual da branch e o PR #40.
-2. Confirmar que os três workflows (`CI`, `Inventory Count Integration`, `Business Transactions Integration`) passam no **SHA documental final**.
-3. Atualizar o corpo do PR #40 com:
-   - escopo entregue;
-   - SHA final validado;
-   - versões das migrations remotas;
-   - homologação `import staging tests passed`;
-   - zero resíduos após rollback;
-   - resultado dos advisors;
-   - confirmação de que dados reais/cutover continuam fora do escopo.
-4. Marcar o PR #40 ready for review.
-5. Fazer merge normal do PR #40 em `main`, sem squash/rebase se a convenção atual continuar sendo merge commit.
-6. Confirmar que a Issue #39 foi fechada como completed; se o `Closes #39` não fechar automaticamente, fechar explicitamente.
-7. **Somente depois do merge e fechamento da Issue #39**, revisar `docs/product/requirements.md`, questões abertas e Issues reais para escolher a próxima lacuna MUST executável.
-8. Criar/selecionar a próxima Issue sem inferir decisão de negócio.
-9. Atualizar `docs/ai/CURRENT_STATE.md`, `HANDOFF.md` e este arquivo na `main` com o merge real e a próxima ação concreta.
+1. Conferir a Issue #41 e o estado atual da `main` antes de alterar código.
+2. Criar a branch `agent/backup-restore` a partir da `main` atual.
+3. Ler antes da implementação:
+   - `docs/product/requirements.md`, especialmente `REQ-PLAT-005`;
+   - documentação de persistência/Supabase e operação;
+   - ADRs relacionados;
+   - CI, migrations, seed e testes PostgreSQL atuais.
+4. Verificar a documentação oficial vigente do Supabase e as capacidades reais do projeto/plano para backups automáticos, PITR e restauração. Não assumir disponibilidade por memória.
+5. Definir uma estratégia reproduzível em camadas:
+   - migrations versionadas como fonte do schema;
+   - backup de dados separado do replay de migrations;
+   - retenção/recuperação gerenciada pelo provedor quando disponível;
+   - restore de contingência verificável.
+6. Criar runbook versionado de backup/restauração sem dados reais, credenciais ou secrets.
+7. Criar prova automatizada de recuperação PostgreSQL em ambiente efêmero usando somente fixtures sintéticos:
+   - gerar backup temporário;
+   - restaurar em banco limpo;
+   - validar schema/dados esperados;
+   - validar constraints/RLS/checks essenciais;
+   - destruir artefatos temporários ao final.
+8. Não executar restore destrutivo sobre o Supabase remoto ativo.
+9. Não inventar RPO/RTO de negócio. Se não estiverem documentados, manter explicitamente pendentes.
+10. Rodar lint, typecheck, Vitest, build e suítes PostgreSQL relevantes; manter workflows existentes verdes.
+11. Se houver verificação remota, limitar a ações não destrutivas e suportadas pelo ambiente atual.
+12. Atualizar documentação operacional, `CURRENT_STATE.md`, `HANDOFF.md` e este arquivo antes do fechamento do PR/Issue.
 
 ## Não fazer agora
 
 - não reaplicar `scoped_permissions` nem migrations da Fase 15;
 - não importar as seis planilhas reais;
-- não executar cutover ou aplicação do staging nas tabelas operacionais;
-- não versionar arquivos/dados reais ou segredos;
+- não executar cutover;
+- não restaurar por cima do projeto Supabase remoto ativo;
+- não versionar dumps reais, secrets ou credenciais;
 - não resolver Q-001 a Q-025 por inferência;
-- não iniciar outra fase antes de concluir formalmente PR #40 / Issue #39.
+- não misturar observabilidade completa (`REQ-PLAT-006`) nesta mesma fase;
+- não tratar migration replay como substituto de backup de dados.
 
-## Critério de encerramento
+## Critério para encerrar a Fase 16
 
-A Fase 15 só está formalmente encerrada quando o SHA documental final estiver verde, PR #40 estiver merged, Issue #39 estiver closed/completed e a continuidade pós-merge na `main` apontar para a próxima lacuna MUST real.
+O projeto deve possuir estratégia e runbook de backup/restauração documentados, uma prova automatizada de recuperação com dados sintéticos em ambiente seguro, checks de integridade pós-restore e clareza sobre as capacidades/limitações do Supabase atual, sem executar operação destrutiva no ambiente remoto ativo.
