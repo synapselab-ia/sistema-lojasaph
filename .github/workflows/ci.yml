@@ -71,6 +71,9 @@ jobs:
       - name: Show PostgreSQL client
         run: psql --version
 
+      - name: Validate backup scripts
+        run: bash -n scripts/export-supabase-backup.sh scripts/verify-backup-restore.sh
+
       - name: Bootstrap Supabase auth stubs
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/bootstrap.sql
 
