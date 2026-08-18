@@ -1,10 +1,11 @@
-name: Purchases Integration
+name: Business Transactions Integration
 
 on:
   pull_request:
     paths:
       - "supabase/**"
       - "src/modules/purchases/**"
+      - "src/modules/finance/**"
       - "src/modules/suppliers/**"
       - "src/modules/inventory/**"
       - "src/modules/master-data/**"
@@ -16,7 +17,7 @@ permissions:
   contents: read
 
 jobs:
-  purchases-database:
+  business-database:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -69,6 +70,7 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f supabase/tests/stock_transfer.sql
           psql -v ON_ERROR_STOP=1 -f supabase/tests/stock_transfer_multibatch.sql
           psql -v ON_ERROR_STOP=1 -f supabase/tests/inventory_count.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/tests/purchase_orders.sql
 
-      - name: Run purchase order lifecycle suite
-        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/purchase_orders.sql
+      - name: Run finance payables lifecycle suite
+        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/finance_payables.sql
