@@ -4,130 +4,89 @@
 
 ## Estado atual
 
-Fase 13 — Dashboard operacional, alertas e KPIs — concluída tecnicamente no PR #36.
+Fase 14 — Permissões por escopo de unidade/setor e hardening RLS — **implementada e aplicada no Supabase remoto, aguardando apenas homologação funcional remota final + fechamento documental/merge**.
 
 - Repositório: `synapselab-ia/sistema-lojasaph`
-- Branch da entrega: `agent/dashboard-runtime`
-- PR atual: #36 — Fase 13 — dashboard operacional, alertas e KPIs
-- Issue atual: #35 — deve ser encerrada pelo merge do PR #36
-- Próxima Issue registrada: #37 — Fase 14 — Permissões por escopo de unidade/setor e hardening RLS
+- Branch ativa: `agent/scoped-permissions`
+- PR atual: #38 — `Fase 14 — permissões por escopo e hardening RLS` — aberto, draft, mergeable
+- Issue atual: #37 — aberta
+- Head validado: `8bfbc3e397d3eb89ee7bcc55f89b8468985c030b`
 
-## Concluído até aqui
+## O que já foi concluído na Fase 14
 
-- governança, engenharia reversa, domínio e fundação Next.js;
-- PostgreSQL/Supabase, migrations, RLS e Auth SSR;
-- produtos e fornecedores persistentes;
-- entrada, retirada/FEFO, transferência e inventário físico;
-- compras, pedidos e recebimento operacional;
-- documentos financeiros, parcelas, pagamentos e estornos;
-- caixa operacional e fechamento diário;
-- dashboard operacional somente leitura sobre os módulos persistentes.
+- migration canônica no GitHub: `supabase/migrations/20260818143221_scoped_permissions.sql`;
+- helpers privados para Organization-wide, Business, Unit, Sector, StockLocation, PurchaseOrder, PayableDocument, CashRegister e demais recursos operacionais;
+- validação de hierarquia de `organization_memberships` por trigger;
+- RLS operacional scope-aware;
+- commands públicos preservados como wrappers de autorização e implementações transacionais movidas para `private`;
+- implementations privadas sem `EXECUTE` para `authenticated`;
+- wrappers públicos continuam a fronteira RPC e validam role + escopo real;
+- transferências: dispatch exige os dois extremos; receive exige destino;
+- catálogo/fornecedores/configurações globais: mutation exige membership Organization-wide quando a alteração afeta a Organization inteira;
+- UI/runtime distingue role Organization-wide de role operacional escopada;
+- Caixa separa cadastro de caixa local de configuração global de meios/taxas;
+- documentação de arquitetura criada em `docs/architecture/authorization-scopes.md`;
+- suíte `supabase/tests/scoped_permissions.sql` cobre Organization/Business/Unit/Sector, múltiplos memberships, viewer, cross-scope, transferência, Compras, Financeiro, Caixa e acesso às implementações privadas.
 
-O reparo de continuidade da transferência foi concluído no PR #30. Não reabrir o PR #26; detalhes em `docs/ai/RESTORE_TRANSFER_NOTE.md`.
+## Validação CI
 
-## Fase 13 — Dashboard
+No head `8bfbc3e397d3eb89ee7bcc55f89b8468985c030b` os três workflows estão verdes:
 
-Arquivos principais:
+- `CI` — lint, typecheck, Vitest, production build e banco principal;
+- `Inventory Count Integration`;
+- `Business Transactions Integration` — incluindo `scoped_permissions.sql`.
 
-- `src/modules/dashboard/application/dashboard-summary.ts`;
-- `src/modules/dashboard/application/dashboard-summary.test.ts`;
-- `src/modules/dashboard/adapters/supabase-dashboard-query.ts`;
-- `src/app/workspace/(operacao)/page.tsx`;
-- `docs/modules/dashboard.md`.
+A regressão Organization-wide também permanece verde.
 
-Não houve migration nova nesta fase. Consultas simples sobre tabelas/views já protegidas por RLS foram suficientes; não foi criada materialized view prematura.
+## Supabase remoto
 
-## Fontes e regras
+A mudança de escopo **já foi aplicada** no projeto remoto. Não reaplicar a migration.
 
-Financeiro:
+Histórico remoto contém:
 
-- `payable_installment_summary` continua fonte de status e saldo;
-- Dashboard não recalcula `paid/overdue/due_today/upcoming` na UI.
+- versão remota `20260818150253` — `scoped_permissions`.
 
-Caixa:
+Observação: a versão remota é diferente do timestamp do arquivo GitHub porque `apply_migration` registra sua própria versão no projeto remoto. O conteúdo aplicado corresponde à migration canônica validada no PR.
 
-- sessões abertas;
-- fechamentos recentes;
-- divergências não-zero.
+Verificação estrutural remota confirmou:
 
-Compras:
+- wrappers públicos existentes;
+- implementações privadas existentes;
+- helpers de escopo existentes;
+- trigger de hierarquia existente.
 
-- pedidos `ordered` / `partially_received`;
-- entregas previstas atrasadas ou dentro do horizonte.
+Security Advisor: warnings de `SECURITY DEFINER` nos wrappers públicos continuam esperados/intencionais; os wrappers são a API transacional e revalidam `auth.uid()`, role, Organization e escopo antes de chamar a implementação privada.
 
-Estoque:
+Performance Advisor: apenas recomendações de índices/FKs e `auth.uid()` em policy; não são bloqueantes para a Fase 14.
 
-- transferências em trânsito;
-- inventários `counting/review`;
-- lotes ativos com saldo e validade informada.
+## Pendência exata antes do merge
 
-Filtros:
+Falta **somente a homologação funcional remota final em `BEGIN/ROLLBACK`** para provar no Supabase hospedado, com memberships temporários, que:
 
-- todas as unidades ou uma unidade ativa;
-- horizonte de 7, 15 ou 30 dias;
-- timezone da Organization define a data de negócio;
-- transferência pertence ao filtro quando a unidade é origem ou destino.
+- Unit A não lê/opera Unit B;
+- Business limita às Units filhas;
+- Sector não amplia recurso unit-wide sem vínculo;
+- múltiplos memberships formam união segura;
+- transferência respeita origem/destino;
+- membership Organization-wide preserva o comportamento amplo;
+- implementations em `private` continuam inacessíveis ao usuário autenticado;
+- rollback deixa zero resíduos.
 
-## UX
+Depois disso:
 
-`/workspace` agora prioriza `o que precisa de atenção` e liga cada sinal ao módulo transacional correspondente.
+1. atualizar `CURRENT_STATE.md`, `HANDOFF.md` e `NEXT_ACTION.md` com o resultado da homologação;
+2. atualizar corpo do PR #38;
+3. rodar CI final no SHA documental;
+4. marcar PR #38 como ready;
+5. mergear #38;
+6. confirmar Issue #37 como completed;
+7. definir a próxima Issue a partir dos MUST ainda pendentes, sem inventar Q-022.
 
-A fila de atenção só mostra ocorrências reais. KPIs separados cobrem Financeiro, Caixa, Compras e Estoque. Loading/erro são explícitos. Requests concorrentes de filtros usam uma sequência monotônica para impedir resposta antiga de sobrescrever seleção mais recente.
+## Não repetir
 
-## Validação
-
-Head material `64d61c0c3bcf8d6ea25e4b24d079fad9fd6ac94f` passou:
-
-- lint;
-- typecheck;
-- testes unitários, incluindo `dashboard-summary.test.ts`;
-- production build;
-- CI PostgreSQL 17;
-- Inventory Count Integration;
-- Business Transactions Integration com Estoque, Inventário, Compras, Financeiro e Caixa.
-
-Testes do Dashboard cobrem:
-
-- agregação monetária exata;
-- filtro por unidade;
-- horizonte variável;
-- Financeiro/Caixa/Compras/Estoque;
-- timezone da Organization;
-- horizonte inválido.
-
-## Homologação remota
-
-Não houve mudança de schema a aplicar.
-
-Homologação de leitura em `BEGIN/ROLLBACK` no Supabase:
-
-- usuário `viewer` temporário membro da Organization demo;
-- segunda Organization/Unit temporária sem membership;
-- consultas equivalentes às fontes do Dashboard executadas sob `authenticated`;
-- Organization demo visível;
-- Organization/Unit sem membership invisíveis;
-- rollback sem resíduos.
-
-Resíduos: zero usuário, membership, Organization e Unit temporários.
-
-No fixture remoto atual as fontes retornaram 2 lotes com validade e zero registros pendentes de Financeiro/Caixa/Compras/Transferência/Inventário. Esses zeros são resultados reais da consulta, não placeholders da UI.
-
-## Próxima lacuna comprovada
-
-`REQ-SEC-002` exige autorização por função **e escopo de unidade/setor**. `organization_memberships` já possui `business_id`, `unit_id` e `sector_id`, porém os helpers atuais `private.is_org_member` / `private.has_org_role` verificam apenas Organization + role.
-
-Issue #37 foi registrada para tornar esses escopos efetivos nas policies/RPCs sem inventar a distribuição real de pessoas/perfis enquanto Q-022 estiver aberta.
-
-Defaults principais da próxima fase:
-
-- membership sem escopo permanece Organization-wide;
-- Business restringe aos filhos;
-- Unit restringe à própria unidade/filhos;
-- Sector restringe apenas recursos explicitamente relacionados ao setor;
-- recursos globais compartilhados podem continuar legíveis, mas mutation global por membership restrito deve ser bloqueada ou explicitamente autorizada;
-- transferência exige autorização conservadora nos extremos;
-- owner/admin não ignoram escopo explicitamente informado.
-
-## Próxima ação
-
-Rodar o gate final do SHA documental do PR #36. Se CI permanecer verde, integrar o PR #36 e confirmar a Issue #35 como completed. Depois tornar a Issue #37 a única frente e iniciar a Fase 14 conforme `docs/ai/NEXT_ACTION.md`.
+- não recriar a migration;
+- não reaplicar `scoped_permissions` no Supabase;
+- não reimplementar helpers/RLS/wrappers;
+- não refazer a suíte de escopos;
+- não redefinir perfis/pessoas reais enquanto Q-022 estiver aberta;
+- não dar bypass implícito a owner/admin com membership escopado.
