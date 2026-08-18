@@ -374,9 +374,9 @@ create policy stock_locations_member_select on public.stock_locations for select
 drop policy if exists stock_movements_member_select on public.stock_movements;
 create policy stock_movements_member_select on public.stock_movements for select to authenticated using (private.can_read_stock_movement(organization_id,id));
 drop policy if exists stock_movement_items_member_select on public.stock_movement_items;
-create policy stock_movement_items_member_select on public.stock_movement_items for select to authenticated using (exists(select 1 from public.stock_movements m where m.id=movement_id and m.organization_id=organization_id and private.can_read_stock_movement(m.organization_id,m.id)));
+create policy stock_movement_items_member_select on public.stock_movement_items for select to authenticated using (exists(select 1 from public.stock_movements m where m.id=public.stock_movement_items.movement_id and m.organization_id=public.stock_movement_items.organization_id and private.can_read_stock_movement(m.organization_id,m.id)));
 drop policy if exists stock_movement_batch_allocations_member_select on public.stock_movement_batch_allocations;
-create policy stock_movement_batch_allocations_member_select on public.stock_movement_batch_allocations for select to authenticated using (exists(select 1 from public.stock_movement_items mi join public.stock_movements m on m.id=mi.movement_id and m.organization_id=mi.organization_id where mi.id=movement_item_id and mi.organization_id=organization_id and private.can_read_stock_movement(m.organization_id,m.id)));
+create policy stock_movement_batch_allocations_member_select on public.stock_movement_batch_allocations for select to authenticated using (exists(select 1 from public.stock_movement_items mi join public.stock_movements m on m.id=mi.movement_id and m.organization_id=mi.organization_id where mi.id=public.stock_movement_batch_allocations.movement_item_id and mi.organization_id=public.stock_movement_batch_allocations.organization_id and private.can_read_stock_movement(m.organization_id,m.id)));
 drop policy if exists inventory_batches_member_select on public.inventory_batches;
 create policy inventory_batches_member_select on public.inventory_batches for select to authenticated using (private.can_read_stock_location(organization_id,stock_location_id));
 drop policy if exists inventory_balances_member_select on public.inventory_balances;
@@ -386,7 +386,7 @@ create policy stock_transfers_member_select on public.stock_transfers for select
 drop policy if exists stock_transfer_items_member_select on public.stock_transfer_items;
 create policy stock_transfer_items_member_select on public.stock_transfer_items for select to authenticated using (private.can_read_transfer(organization_id,transfer_id));
 drop policy if exists stock_transfer_batch_allocations_member_select on public.stock_transfer_batch_allocations;
-create policy stock_transfer_batch_allocations_member_select on public.stock_transfer_batch_allocations for select to authenticated using (exists(select 1 from public.stock_transfer_items ti where ti.id=transfer_item_id and ti.organization_id=organization_id and private.can_read_transfer(ti.organization_id,ti.transfer_id)));
+create policy stock_transfer_batch_allocations_member_select on public.stock_transfer_batch_allocations for select to authenticated using (exists(select 1 from public.stock_transfer_items ti where ti.id=public.stock_transfer_batch_allocations.transfer_item_id and ti.organization_id=public.stock_transfer_batch_allocations.organization_id and private.can_read_transfer(ti.organization_id,ti.transfer_id)));
 drop policy if exists inventory_counts_member_select on public.inventory_counts;
 create policy inventory_counts_member_select on public.inventory_counts for select to authenticated using (private.can_read_inventory_count(organization_id,id));
 drop policy if exists inventory_count_lines_member_select on public.inventory_count_lines;
@@ -399,16 +399,16 @@ create policy purchase_order_items_select_member on public.purchase_order_items 
 drop policy if exists purchase_receipts_select_member on public.purchase_receipts;
 create policy purchase_receipts_select_member on public.purchase_receipts for select to authenticated using (private.can_read_purchase_order(organization_id,purchase_order_id));
 drop policy if exists purchase_receipt_items_select_member on public.purchase_receipt_items;
-create policy purchase_receipt_items_select_member on public.purchase_receipt_items for select to authenticated using (exists(select 1 from public.purchase_receipts r where r.id=purchase_receipt_id and r.organization_id=organization_id and private.can_read_purchase_order(r.organization_id,r.purchase_order_id)));
+create policy purchase_receipt_items_select_member on public.purchase_receipt_items for select to authenticated using (exists(select 1 from public.purchase_receipts r where r.id=public.purchase_receipt_items.purchase_receipt_id and r.organization_id=public.purchase_receipt_items.organization_id and private.can_read_purchase_order(r.organization_id,r.purchase_order_id)));
 
 drop policy if exists payable_documents_select_member on public.payable_documents;
 create policy payable_documents_select_member on public.payable_documents for select to authenticated using (private.can_read_payable_document(organization_id,id));
 drop policy if exists installments_select_member on public.installments;
 create policy installments_select_member on public.installments for select to authenticated using (private.can_read_payable_document(organization_id,payable_document_id));
 drop policy if exists payment_instructions_select_member on public.payment_instructions;
-create policy payment_instructions_select_member on public.payment_instructions for select to authenticated using (exists(select 1 from public.installments i where i.id=installment_id and i.organization_id=organization_id and private.can_read_payable_document(i.organization_id,i.payable_document_id)));
+create policy payment_instructions_select_member on public.payment_instructions for select to authenticated using (exists(select 1 from public.installments i where i.id=public.payment_instructions.installment_id and i.organization_id=public.payment_instructions.organization_id and private.can_read_payable_document(i.organization_id,i.payable_document_id)));
 drop policy if exists payments_select_member on public.payments;
-create policy payments_select_member on public.payments for select to authenticated using (exists(select 1 from public.installments i where i.id=installment_id and i.organization_id=organization_id and private.can_read_payable_document(i.organization_id,i.payable_document_id)));
+create policy payments_select_member on public.payments for select to authenticated using (exists(select 1 from public.installments i where i.id=public.payments.installment_id and i.organization_id=public.payments.organization_id and private.can_read_payable_document(i.organization_id,i.payable_document_id)));
 
 drop policy if exists cash_registers_select_member on public.cash_registers;
 create policy cash_registers_select_member on public.cash_registers for select to authenticated using (private.has_cash_register_role(organization_id,id,null::text[]));
