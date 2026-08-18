@@ -29,9 +29,9 @@ interface LogRecordInput {
   readonly now?: () => Date;
 }
 
-type HeaderSource =
-  | { get(name: string): string | null }
-  | Record<string, string | string[] | undefined>;
+type HeaderReader = { get(name: string): string | null };
+type HeaderRecord = Record<string, string | string[] | undefined>;
+type HeaderSource = HeaderReader | HeaderRecord;
 
 const MAX_TEXT_LENGTH = 2_000;
 const CORRELATION_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/;
@@ -49,7 +49,6 @@ function isSensitiveKey(key: string): boolean {
     normalized.includes("token") ||
     normalized.includes("secret") ||
     normalized.includes("apikey") ||
-    normalized.includes("service_role") ||
     normalized.includes("servicerole") ||
     normalized.includes("connectionstring") ||
     normalized.includes("databaseurl") ||
@@ -59,6 +58,10 @@ function isSensitiveKey(key: string): boolean {
     normalized === "cnpj" ||
     normalized === "document"
   );
+}
+
+function isHeaderReader(headers: HeaderSource): headers is HeaderReader {
+  return typeof (headers as { get?: unknown }).get === "function";
 }
 
 export function sanitizeLogText(value: string): string {
@@ -112,7 +115,7 @@ export function resolveCorrelationId(value?: string | null): string {
 
 export function correlationIdFromHeaders(headers: HeaderSource): string {
   let raw: string | string[] | undefined | null;
-  if ("get" in headers && typeof headers.get === "function") {
+  if (isHeaderReader(headers)) {
     raw = headers.get(CORRELATION_HEADER);
   } else {
     raw = headers[CORRELATION_HEADER] ?? headers[CORRELATION_HEADER.toLowerCase()];
