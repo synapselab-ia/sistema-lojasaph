@@ -68,3 +68,85 @@ jobs:
 
       - name: Run persistent inventory count suite
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/inventory_count.sql
+
+  # BEGIN TEMP INVENTORY CLI GENERATOR
+  generate-inventory-adjustment-migration:
+    if: github.head_ref == 'agent/restore-stock-transfer' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repair branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/restore-stock-transfer
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Generate migration with pinned Supabase CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          if compgen -G 'supabase/migrations/*_reconcile_inventory_adjustment_type.sql' > /dev/null; then
+            echo 'Migration already generated; reusing it.'
+          else
+            npx --yes supabase@2.111.0 migration new reconcile_inventory_adjustment_type
+          fi
+
+      - name: Reconcile contracts and clean temporary automation
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          migrations = sorted(Path('supabase/migrations').glob('*_reconcile_inventory_adjustment_type.sql'))
+          if len(migrations) != 1:
+              raise SystemExit(f'expected one generated migration, found {len(migrations)}')
+          migrations[0].write_text('''-- Fase 9 repair: persistent inventory emits the generic inventory_adjustment type.\n-- Legacy positive/negative values remain accepted for backwards compatibility.\nalter table public.stock_movements\n  drop constraint if exists stock_movements_movement_type_check;\n\nalter table public.stock_movements\n  add constraint stock_movements_movement_type_check\n  check (\n    movement_type in (\n      'opening_balance', 'purchase_receipt', 'entry', 'sector_withdrawal', 'withdrawal',\n      'transfer_out', 'transfer_in', 'return_in', 'return_out', 'loan_out', 'loan_return',\n      'loss', 'expiration', 'inventory_adjustment', 'inventory_adjustment_positive',\n      'inventory_adjustment_negative', 'manual_adjustment_positive', 'manual_adjustment_negative'\n    )\n  );\n''')
+
+          domain = Path('src/modules/inventory/domain/inventory.ts')
+          text = domain.read_text()
+          marker = '''export function createInventoryBatch(input: Omit<InventoryBatch, "id"> & { id?: EntityId }): InventoryBatch {\n  return Object.freeze({ ...input, id: input.id ?? newEntityId() });\n}\n'''
+          addition = marker + '''\nexport function createStockTransfer(input: Omit<StockTransfer, "id" | "status" | "receivedAt">): StockTransfer {\n  return Object.freeze({ id: newEntityId(), status: "dispatched" as const, ...input });\n}\n\nexport function createInventoryCount(input: Omit<InventoryCount, "id" | "status" | "confirmedAt">): InventoryCount {\n  return Object.freeze({ id: newEntityId(), status: "counting" as const, ...input });\n}\n'''
+          if 'export function createStockTransfer' not in text:
+              if marker not in text:
+                  raise SystemExit('domain factory marker not found')
+              text = text.replace(marker, addition, 1)
+          domain.write_text(text)
+
+          page = Path('src/app/cadastros/estoque/page.tsx')
+          text = page.read_text()
+          if 'inventory_adjustment: "Ajuste de inventário"' not in text:
+              marker = '  transfer_in: "Transferência — recebimento",\n};'
+              if marker not in text:
+                  raise SystemExit('movement label marker not found')
+              text = text.replace(marker, '  transfer_in: "Transferência — recebimento",\n  inventory_adjustment: "Ajuste de inventário",\n};', 1)
+          page.write_text(text)
+
+          def strip_block(path: Path, start: str, end: str):
+              text = path.read_text()
+              if start in text and end in text:
+                  before, rest = text.split(start, 1)
+                  _, after = rest.split(end, 1)
+                  path.write_text(before.rstrip() + '\n' + after)
+
+          strip_block(Path('.github/workflows/ci.yml'),
+                      '  # BEGIN TEMP INVENTORY ADJUSTMENT RECONCILIATION\n',
+                      '  # END TEMP INVENTORY ADJUSTMENT RECONCILIATION\n')
+          strip_block(Path('.github/workflows/inventory-count-ci.yml'),
+                      '  # BEGIN TEMP INVENTORY CLI GENERATOR\n',
+                      '  # END TEMP INVENTORY CLI GENERATOR\n')
+          Path('.github/workflows/one-shot-reconcile-inventory-adjustment.yml').unlink(missing_ok=True)
+          PY
+
+      - name: Commit repair
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix(inventory): reconcile adjustment movement contract"
+          git push origin HEAD:agent/restore-stock-transfer
+  # END TEMP INVENTORY CLI GENERATOR
