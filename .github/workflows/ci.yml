@@ -140,3 +140,6 @@ jobs:
 
       - name: Run import staging and dry-run tests
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/import_staging.sql
+
+      - name: Run employee identity and scope tests
+        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/employees.sql
