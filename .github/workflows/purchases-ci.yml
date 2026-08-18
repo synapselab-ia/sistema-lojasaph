@@ -64,26 +64,3 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f supabase/tests/finance_payables.sql
       - name: Run cash sessions lifecycle suite
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/cash_sessions.sql
-
-  generate-scoped-permissions-migration:
-    if: github.event_name == 'pull_request' && github.head_ref == 'agent/scoped-permissions' && github.actor != 'github-actions[bot]'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: agent/scoped-permissions
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - name: Generate migration with pinned Supabase CLI
-        run: npx --yes supabase@2.111.0 migration new scoped_permissions
-      - name: Commit migration shell
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add supabase/migrations/*_scoped_permissions.sql
-          git commit -m "chore: create scoped permissions migration"
-          git push origin HEAD:agent/scoped-permissions
