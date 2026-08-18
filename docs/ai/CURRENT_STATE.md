@@ -4,125 +4,110 @@
 
 ## Estado atual
 
-Fase 18 — isolamento de ambientes, previews seguros e separação de dados/segredos — **implementada e tecnicamente validada; aguardando homologação do Preview no head final antes do merge**.
+Fase 18 — isolamento de ambientes, previews seguros e separação de dados/segredos — **implementada e tecnicamente validada; PR #46 permanece draft até o gate final de Preview**.
 
 - Repositório: `synapselab-ia/sistema-lojasaph`
 - Issue #45 — open
 - PR #46 — draft/open
 - branch: `agent/environment-isolation`
 - base da branch: `main` em `5c617e7f26c514139be3b6171f38e28ae5ae30af`
-- SHA técnico validado antes dos commits documentais finais: `ba200af6e2343b1b17fdeadfffbee1d4215bf0a0`
+- SHA técnico validado: `ba200af6e2343b1b17fdeadfffbee1d4215bf0a0`
+- último SHA documental já validado antes desta atualização: `ca9aece949988404f33d5ee951ad36a6228f5503`
 - nenhuma migration/DDL da Fase 18 foi necessária.
 
 ## Fase 18 — implementado
 
-A entrega cobre a fundação de `REQ-PLAT-007 — Ambientes separados` e reforça `REQ-SEC-004`:
+A entrega cobre a fundação de `REQ-PLAT-007` e reforça `REQ-SEC-004`:
 
 - política central fail-closed em `src/lib/runtime/environment.ts`;
-- identificação explícita de `development`, `preview`, `production` e estado `unknown`;
-- mismatch entre `LOJASAPH_APP_ENV` e `VERCEL_ENV` bloqueia acesso operacional;
-- Production rejeita backend local e pode fixar a ref esperada do projeto Supabase;
-- Preview fica sem acesso Supabase por padrão até existir backend hospedado próprio, com ref explícita e diferente de Production;
-- Development aceita Supabase local por padrão; backend remoto exige identidade própria distinta de Production;
-- `SUPABASE_SECRET_KEY` continua server-only e o admin client fica bloqueado fora de Production por padrão;
-- opt-in administrativo não-prod exige backend já isolado + `LOJASAPH_ALLOW_NON_PRODUCTION_ADMIN=true`;
-- callbacks de Preview usam o domínio do próprio deployment, não reutilizam silenciosamente a URL de Production;
-- Proxy continua renderizando páginas quando Preview está isolado, mas não cria cliente Supabase;
+- ambientes `development`, `preview`, `production` e `unknown`;
+- mismatch entre `LOJASAPH_APP_ENV` e `VERCEL_ENV` bloqueia acesso;
+- Production rejeita backend local e pode fixar a ref esperada do Supabase;
+- Preview bloqueia Supabase até existir backend próprio comprovado por ref distinta de Production;
+- Development aceita Supabase local e exige identidade própria para backend remoto;
+- `SUPABASE_SECRET_KEY` permanece server-only;
+- admin client fora de Production fica bloqueado por padrão;
+- callbacks de Preview usam o domínio do próprio deployment;
+- Proxy não cria cliente Supabase quando acesso não está comprovado;
 - Auth, callback, password reset, signout, bootstrap e workspace respeitam a política;
-- browser client usa somente variáveis públicas permitidas e também aplica fail-closed nos clientes diretos legados;
-- workspace recebe configuração Supabase já validada pelo servidor;
-- `/health` expõe somente ambiente/estado/reason codes não sensíveis;
-- login e recuperação ficam visualmente desabilitados em ambiente sem backend operacional aprovado;
-- `.env.example` documenta identidade de ambiente e refs públicas sem valores reais;
-- testes cobrem parsing, mismatch, refs distintas, Development local/remoto, admin, callbacks e fronteira client/server de secrets.
+- browser usa apenas `NODE_ENV`/`NEXT_PUBLIC_*` e aplica a mesma política nos clientes diretos;
+- `/health` expõe somente estado não sensível;
+- login/recuperação ficam desabilitados quando não há backend operacional aprovado;
+- `.env.example` documenta a configuração sem valores reais;
+- testes cobrem parsing, refs, fail-closed, admin e fronteira client/server de secrets.
 
-## Documentação da Fase 18
+## Documentação
 
-- decisão: `docs/decisions/ADR-008-environment-isolation.md`;
-- runbook: `docs/operations/environments.md`;
-- runtime Supabase atualizado em `docs/modules/supabase-runtime.md`.
+- `docs/decisions/ADR-008-environment-isolation.md`;
+- `docs/operations/environments.md`;
+- `docs/modules/supabase-runtime.md` atualizado.
 
-## CI técnico da Fase 18
+## CI
 
-No SHA `ba200af6e2343b1b17fdeadfffbee1d4215bf0a0` passaram:
+No SHA técnico `ba200af6e2343b1b17fdeadfffbee1d4215bf0a0` passaram:
 
-- `CI` #229 — success;
-- `Inventory Count Integration` #139 — success;
-- `Business Transactions Integration` #122 — success.
+- `CI` #229;
+- `Inventory Count Integration` #139;
+- `Business Transactions Integration` #122.
 
-O `CI` validou:
+No SHA documental `ca9aece949988404f33d5ee951ad36a6228f5503` passaram novamente:
 
-- lint;
-- typecheck;
-- Vitest, incluindo os testes novos de isolamento;
-- build de produção Next.js;
-- migrations/seed existentes;
-- drill de backup/restore;
-- schema/RLS;
-- Auth/Organization isolation;
-- estoque/transferências;
-- import staging/dry run.
+- `CI` #235;
+- `Inventory Count Integration` #145;
+- `Business Transactions Integration` #128.
 
-Uma primeira execução (`CI` #225) falhou somente porque cinco páginas cliente existentes ainda chamavam `createBrowserSupabaseClient()` sem argumento. A correção preservou esses call sites, adicionando fallback client-side protegido exclusivamente por variáveis públicas e pela mesma política fail-closed. A revalidação completa ficou verde no SHA técnico acima.
+O CI final validou lint, typecheck, Vitest, build, migrations/seed, backup/restore e todas as suítes PostgreSQL existentes.
 
-## Estado externo verificado
-
-### Supabase
+## Supabase remoto
 
 Verificação somente leitura confirmou:
 
-- um único projeto conectado;
-- projeto saudável;
+- um projeto conectado;
+- saudável;
 - PostgreSQL 17;
 - organização no plano Free;
-- zero Supabase branches.
+- zero branches.
 
-A Fase 18 **não**:
+A Fase 18 não criou migration, DDL, branch/projeto, configuração remota ou write de dados. Nenhum dado real foi copiado e nenhum upgrade foi contratado.
 
-- criou migration;
-- executou DDL;
-- criou branch/projeto adicional;
-- alterou configuração remota;
-- escreveu dados;
-- copiou dados reais para ambiente não-prod.
+## Vercel — evidência atual
 
-Nenhum upgrade de plano ou infraestrutura paga foi feito por inferência.
+A plataforma ficou parte do ciclo em `build-rate-limit`, mas voltou a aceitar um build do commit `91738dc6f780c8269cdf9600fc57c64d63e6134d`.
 
-### Vercel
+Esse commit já contém **todo o código funcional final da Fase 18**; depois dele foram alterados somente arquivos de continuidade.
 
-O projeto possui ambientes Preview/Production e suporta identificação de ambiente/variáveis escopadas. O conector disponível nesta sessão não expõe a auditoria segura dos valores/targets das environment variables; portanto o estado anterior foi tratado como **não comprovado**, e não como comprovadamente seguro ou comprovadamente compartilhado.
+Deployment validado:
 
-O primeiro commit da Fase 18 (`7307ccf8dc53295e0bf4c01448eac8bdbcd962db`) chegou a gerar Preview `READY` (`dpl_7f4gBBdmdTsRfWWiAz3ddCVzGnjT`), mas esse deployment **não contém a implementação final** e não serve como homologação da fase.
+- `dpl_7DrbV7VjgHe7SSFPVkwkYQzPfwC2` — `READY`.
 
-Os commits posteriores, incluindo o SHA técnico final, ficaram sem novo deployment porque a Vercel passou a retornar `build-rate-limit`/`upgradeToPro`. Isso é um bloqueio de frequência da plataforma, não uma falha de código identificada.
+Smoke não mutável em `GET /health` retornou:
 
-## Bloqueio restante para fechar a Fase 18
+- `environment=preview`;
+- `supabaseAccess=blocked`;
+- `supabaseReason=preview_backend_unverified`;
+- `adminAccess=blocked`.
 
-A Fase 18 **não deve ser mergeada ainda**.
+Nenhuma autenticação, senha, token, reset ou mutação foi usada.
 
-Falta exclusivamente homologar um Preview criado a partir do **head final atual** quando a Vercel voltar a aceitar builds.
+O SHA documental `ca9aece9...` ainda não recebeu deployment e o status Vercel continuou apontando para `build-rate-limit`. Portanto o PR permanece draft: não criar commit artificial nem fazer upgrade apenas para provocar deployment.
 
-Smoke esperado, sem dados reais e sem mutação:
+## Gate restante
 
-1. `/health` retorna `environment=preview`;
-2. enquanto não houver backend isolado aprovado, `supabaseAccess=blocked` e `adminAccess=blocked`;
-3. `/login` mostra aviso de ambiente isolado e não apresenta formulário operacional;
-4. `/auth/callback` sem credencial real redireciona de forma segura;
-5. nenhuma autenticação real, reset de senha, token ou mutação é usada.
+Antes do merge:
 
-Se `/health` retornar `supabaseAccess=allowed`, **não executar nenhuma mutação**: primeiro comprovar que o backend identificado é realmente distinto de Production.
+1. revalidar os três workflows no head atual desta documentação;
+2. conferir se a Vercel criou Preview `READY` do head atual;
+3. se não criou, manter PR #46 draft e Issue #45 open;
+4. quando houver Preview do head atual, repetir `GET /health` e confirmar o mesmo fail-closed;
+5. se `supabaseAccess=allowed`, não executar mutação: primeiro comprovar backend distinto de Production;
+6. só então atualizar PR, marcar ready, fazer merge normal e confirmar Issue #45 closed/completed.
 
 ## Não repetir
 
-- não reimplementar a política de ambientes;
-- não reimplementar observabilidade da Fase 17;
-- não reabrir backup/restore da Fase 16;
-- não fazer alteração de código para contornar `build-rate-limit` da Vercel;
-- não contratar/ativar plano pago por inferência;
+- não reimplementar Fase 18;
+- não reabrir observabilidade ou backup/restore;
+- não alterar código para contornar rate limit;
+- não contratar recurso pago por inferência;
 - não reaplicar migrations antigas;
 - não importar dados reais/cutover;
 - não inferir Q-001 a Q-025.
-
-## Próximo passo
-
-Seguir `docs/ai/NEXT_ACTION.md`: revalidar o head do PR #46 e o estado da Vercel. Se o rate limit persistir, manter PR/Issue abertos sem alterar código. Quando existir Preview `READY` do head final, executar somente o smoke não mutável documentado, registrar a evidência, exigir os três workflows verdes no SHA final e então fechar corretamente PR #46 / Issue #45.
