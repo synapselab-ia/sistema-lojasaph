@@ -86,6 +86,9 @@ jobs:
       - name: Apply anonymized seed
         run: psql -v ON_ERROR_STOP=1 -f supabase/seed.sql
 
+      - name: Verify logical backup and isolated restore
+        run: bash scripts/verify-backup-restore.sh
+
       - name: Run schema and RLS smoke tests
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/schema_smoke.sql
 
