@@ -2,7 +2,7 @@
 
 ## Estado
 
-Fase 14 — Permissões por escopo de unidade/setor e hardening RLS — está **implementada, com CI verde e migration aplicada no Supabase remoto**.
+Fase 14 — Permissões por escopo de unidade/setor e hardening RLS — está **implementada, aplicada e homologada no Supabase remoto**.
 
 Frente única:
 
@@ -10,7 +10,7 @@ Frente única:
 - branch `agent/scoped-permissions`;
 - PR #38 — aberto, draft, mergeable.
 
-Head técnico validado antes da atualização documental: `8bfbc3e397d3eb89ee7bcc55f89b8468985c030b`.
+Head técnico validado antes do fechamento documental: `8bfbc3e397d3eb89ee7bcc55f89b8468985c030b`.
 
 ## Já concluído — não repetir
 
@@ -25,10 +25,12 @@ Head técnico validado antes da atualização documental: `8bfbc3e397d3eb89ee7bc
 - UI/runtime com distinção entre roles globais e escopadas;
 - `docs/architecture/authorization-scopes.md`;
 - `supabase/tests/scoped_permissions.sql`;
-- CI completo verde;
+- CI técnico completo verde;
 - migration aplicada no Supabase remoto;
 - advisors executados;
-- verificação estrutural do remoto executada.
+- verificação estrutural do remoto executada;
+- homologação funcional remota final executada com sucesso em `BEGIN/ROLLBACK`;
+- verificação pós-rollback confirmou zero resíduos temporários.
 
 Não recriar nem reaplicar `scoped_permissions`.
 
@@ -42,9 +44,13 @@ Security Advisor mantém warnings de RPCs `SECURITY DEFINER` expostos a `authent
 
 Performance Advisor mostra otimizações de índices/FKs e uma policy com `auth.uid()` por linha. Tratar em fase de tuning/hardening posterior, salvo evidência de impacto real.
 
-## Próxima ação exata
+## Homologação funcional remota — concluída
 
-Executar a homologação funcional remota final em **uma transação `BEGIN/ROLLBACK`**, usando memberships temporários e dados temporários, provando:
+Em 2026-08-18 a suíte `supabase/tests/scoped_permissions.sql` foi executada contra o Supabase hospedado em uma única transação `BEGIN/ROLLBACK`.
+
+Resultado: `scoped permission tests passed`.
+
+A homologação provou:
 
 1. Organization-wide preserva comportamento atual;
 2. Business vê/opera apenas Units filhas;
@@ -54,18 +60,21 @@ Executar a homologação funcional remota final em **uma transação `BEGIN/ROLL
 6. dispatch de transferência exige autorização nos dois extremos;
 7. receive exige destino e não amplia acesso à origem;
 8. Compras, Financeiro e Caixa respeitam o recurso real;
-9. acesso direto às implementations `private` por `authenticated` é negado;
-10. rollback deixa zero resíduos.
+9. mutation Organization-wide permanece bloqueada para membership restrito;
+10. acesso direto às implementations `private` por `authenticated` é negado;
+11. viewer permanece read-only;
+12. rollback deixa zero resíduos.
 
-Se a homologação passar:
+A checagem pós-rollback confirmou zero registros temporários nos usuários/memberships e nos artefatos de hierarquia, catálogo, estoque, transferência, compras, financeiro e caixa usados na homologação.
 
-- atualizar os três arquivos de continuidade com o resultado;
-- atualizar PR #38 com evidência de CI + remoto;
-- rodar CI final do SHA documental;
-- marcar PR ready;
-- mergear PR #38;
-- confirmar Issue #37 completed;
-- escolher a próxima Issue com base nos MUST ainda incompletos.
+## Próxima ação exata
+
+1. atualizar o corpo do PR #38 com evidência de CI + remoto;
+2. rodar CI final do SHA documental;
+3. se verde, marcar PR #38 como ready;
+4. mergear PR #38;
+5. confirmar Issue #37 completed;
+6. só depois escolher a próxima Issue com base nos MUST ainda incompletos, sem inferir Q-022.
 
 ## Regras que permanecem
 
