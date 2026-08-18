@@ -9,6 +9,7 @@ export interface RuntimeOrganization {
   readonly id: string;
   readonly name: string;
   readonly roles: readonly string[];
+  readonly organizationWideRoles: readonly string[];
 }
 
 export interface MembershipContext {
@@ -22,6 +23,9 @@ export interface MembershipContext {
 interface MembershipRow {
   organization_id: string;
   role: string;
+  business_id: string | null;
+  unit_id: string | null;
+  sector_id: string | null;
 }
 
 interface OrganizationRow {
@@ -43,7 +47,7 @@ export async function resolveMembershipContext(): Promise<MembershipContext> {
   const email = typeof emailClaim === "string" ? emailClaim : undefined;
   const { data: membershipData, error: membershipError } = await supabase
     .from("organization_memberships")
-    .select("organization_id, role")
+    .select("organization_id, role, business_id, unit_id, sector_id")
     .eq("user_id", userId)
     .eq("active", true);
 
@@ -69,16 +73,24 @@ export async function resolveMembershipContext(): Promise<MembershipContext> {
   }
 
   const rolesByOrganization = new Map<string, Set<string>>();
+  const organizationWideRolesByOrganization = new Map<string, Set<string>>();
   for (const membership of memberships) {
     const roles = rolesByOrganization.get(membership.organization_id) ?? new Set<string>();
     roles.add(membership.role);
     rolesByOrganization.set(membership.organization_id, roles);
+
+    if (membership.business_id === null && membership.unit_id === null && membership.sector_id === null) {
+      const organizationWideRoles = organizationWideRolesByOrganization.get(membership.organization_id) ?? new Set<string>();
+      organizationWideRoles.add(membership.role);
+      organizationWideRolesByOrganization.set(membership.organization_id, organizationWideRoles);
+    }
   }
 
   const organizations = ((organizationData ?? []) as OrganizationRow[]).map((organization) => ({
     id: organization.id,
     name: organization.name,
     roles: [...(rolesByOrganization.get(organization.id) ?? new Set<string>())].sort(),
+    organizationWideRoles: [...(organizationWideRolesByOrganization.get(organization.id) ?? new Set<string>())].sort(),
   }));
 
   const cookieStore = await cookies();
