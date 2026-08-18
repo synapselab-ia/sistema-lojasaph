@@ -197,9 +197,9 @@ export default function RuntimeTransfersPage() {
         </div>
       </section>
 
-      <aside className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm leading-6 text-amber-950">
-        <h2 className="font-semibold">Inventário físico</h2>
-        <p className="mt-1">Inventário ainda permanece fora do workspace persistente. Ele será o próximo fluxo crítico após a homologação desta transferência.</p>
+      <aside className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-sm leading-6 text-emerald-950">
+        <h2 className="font-semibold">Ledger persistente</h2>
+        <p className="mt-1">Transferências e inventário físico já operam no workspace persistente com commands PostgreSQL transacionais e auditados.</p>
       </aside>
     </div>
   );

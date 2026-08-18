@@ -42,8 +42,24 @@ export default function RuntimeInventoriesPage() {
   }, [gateway, workspace]);
 
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    let active = true;
+
+    void gateway
+      .list(workspace.organizationId)
+      .then((nextCounts) => {
+        if (active) setCounts(nextCounts);
+      })
+      .catch((error) => {
+        if (active) setMessage(error instanceof Error ? error.message : "Não foi possível carregar os inventários.");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [gateway, workspace.organizationId]);
 
   async function startCount(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
