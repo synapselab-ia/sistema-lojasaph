@@ -83,4 +83,25 @@ A migration já foi aplicada no Supabase remoto e aparece no histórico como ver
 
 Security Advisor continua sinalizando os wrappers públicos `SECURITY DEFINER`; isso é intencional nesta arquitetura porque eles são a API autorizada e revalidam identidade/role/escopo. Implementações ficam em `private` sem grant de execução para `authenticated`.
 
-Pendência antes do merge: homologação funcional remota em `BEGIN/ROLLBACK` cobrindo Organization/Business/Unit/Sector, múltiplos memberships, transferências, Compras, Financeiro, Caixa e bloqueio das implementations privadas; confirmar zero resíduos após rollback.
+### Homologação funcional remota
+
+A homologação final foi executada em 2026-08-18 no Supabase hospedado usando a suíte versionada `supabase/tests/scoped_permissions.sql` em uma única transação `BEGIN/ROLLBACK`.
+
+Resultado: `scoped permission tests passed`.
+
+Foram comprovados remotamente:
+
+- Organization-wide com acesso amplo preservado;
+- Business limitado às Units filhas;
+- isolamento Unit A/Unit B;
+- Sector limitado a recursos explicitamente vinculados;
+- união segura de múltiplos memberships;
+- regras de origem/destino em transferências;
+- escopo real em Compras, Financeiro e Caixa;
+- bloqueio de mutation Organization-wide para membership restrito;
+- viewer read-only;
+- ausência de `EXECUTE` para `authenticated` nas implementations privadas testadas.
+
+Uma checagem separada após o `ROLLBACK` confirmou zero resíduos temporários nos usuários/memberships e nos artefatos de hierarquia, catálogo, estoque, transferência, compras, financeiro e caixa usados na homologação.
+
+Pendência antes do merge: somente CI final do SHA documental, ready/merge do PR #38 e fechamento da Issue #37.
