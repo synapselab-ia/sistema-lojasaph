@@ -4,80 +4,97 @@
 
 ## Estado atual
 
-Fase 15 — staging de importação, dry run e reconciliação rastreável — **concluída e integrada na `main`**.
+Fase 16 — backup automático, restauração testada e recuperação operacional — **implementada e tecnicamente validada; aguardando gate documental/merge do PR #42**.
 
 - Repositório: `synapselab-ia/sistema-lojasaph`
-- PR #40 — merged
-- Issue #39 — closed/completed
-- merge commit: `88be9da74b9c3611f533e388c5387ac0f9906d23`
-- head final pré-merge: `3ef9e595249885d0e1f0b1567874037377e01aab`
-- próximo trabalho selecionado: Issue #41 — `Fase 16 — backup automático, restauração testada e recuperação operacional`
-- nenhuma branch funcional da Fase 16 foi criada ainda.
+- Issue #41 — open até o merge
+- PR #42 — draft
+- branch: `agent/backup-restore`
+- base da branch: `main` em `b3491e34558c78ce888180098c3dabb0236953c5`
+- SHA técnico validado: `805274c9769323f3b6d9d3961c606d1c69ea922a`
+- Fases 14 e 15 permanecem concluídas; não reaplicar migrations anteriores.
 
-## Fase 15 — concluído
+## Fase 16 — implementado
 
-A fundação cobre `REQ-IMP-001` a `REQ-IMP-004` e o suporte explícito de aliases necessário a `REQ-ITEM-002`:
+A entrega cobre `REQ-PLAT-005` no escopo executável sem operação destrutiva:
 
-- `import_batches` rastreável por Organization, fonte, SHA-256 e versão de transformação;
-- `import_rows` preservando arquivo/aba/linha/payload bruto e resultado de validação;
-- idempotência determinística de batch e linha;
-- estados `accepted`, `duplicate`, `warning`, `rejected` e `pending_mapping`;
-- preview/dry run sem aplicação nas tabelas operacionais;
-- relatório estruturado;
-- matching somente por nome canônico exato normalizado ou alias explícito, sem fuzzy auto-merge;
-- referência ambígua/inexistente e transformação dependente de Q-001 a Q-025 ficam para revisão;
-- RLS Organization-wide e command surface auditada;
-- memberships escopados, outsider e `anon` bloqueados conforme o desenho;
-- Vitest e suíte PostgreSQL `supabase/tests/import_staging.sql` integrados ao CI;
-- documentação em `docs/modules/imports.md` e `docs/source-data/migration-plan.md`.
+- estratégia em camadas para schema, backup de dados, recuperação gerenciada e contingência;
+- runbook versionado em `docs/operations/backup-restore.md`;
+- helper `scripts/export-supabase-backup.sh` para exportação lógica controlada com Supabase CLI;
+- helper recusa gravar backup dentro do Git repository;
+- arquivos de backup temporários usam permissões restritas e checksum SHA-256;
+- `.gitignore` protege o diretório local `/backups/`;
+- prova automatizada `scripts/verify-backup-restore.sh` integrada ao CI;
+- dump PostgreSQL lógico em diretório efêmero;
+- restore em banco limpo separado;
+- `supabase/tests/backup_restore.sql` valida dados sintéticos, RLS e privilégios críticos;
+- banco restaurado e artefatos temporários são destruídos ao final;
+- RPO/RTO permanecem explicitamente pendentes; nenhuma meta de negócio foi inventada.
 
-## CI final da Fase 15
+## Supabase atual — verificação não destrutiva
 
-No SHA pré-merge `3ef9e595249885d0e1f0b1567874037377e01aab` passaram:
+Projeto conectado:
 
-- `CI` #192;
-- `Inventory Count Integration` #115;
-- `Business Transactions Integration` #98.
+- `synapselab-ia's Project`;
+- região `sa-east-1`;
+- PostgreSQL 17;
+- status saudável durante a verificação;
+- organização Supabase no plano `free`;
+- nenhuma development branch Supabase existente.
 
-O `CI` incluiu lint, typecheck, Vitest, build, aplicação integral das migrations e a suíte de staging/dry run.
+A documentação oficial vigente foi conferida antes da implementação. No plano Free atual não há backup diário gerenciado/PITR disponível como nos planos pagos; a estratégia de contingência depende de exportação lógica periódica e armazenamento off-site aprovado até eventual mudança de plano.
 
-## Supabase remoto
-
-Migrations da Fase 15 já aplicadas — **não reaplicar**:
+Nenhum restore remoto, DDL ou migration nova foi executado nesta fase. O histórico remoto permanece terminando em:
 
 - `20260818180723 / import_staging`;
 - `20260818180738 / import_staging_finalize_fix`;
 - `20260818181051 / import_staging_indexes`.
 
-Homologação remota com fixtures sintéticos foi executada em uma única transação `BEGIN/ROLLBACK` e retornou `import staging tests passed`.
+## Prova automatizada de recuperação
 
-Checagem após rollback confirmou zero resíduos em usuários, memberships, batches, rows, audits e itens operacionais temporários.
+O CI sobe PostgreSQL 17 efêmero, aplica bootstrap + migrations + seed sintético, cria dump lógico e restaura em um segundo banco limpo.
 
-Security Advisor manteve somente o padrão intencional de RPCs autenticadas `SECURITY DEFINER` já protegidas por validação interna de identidade/escopo. Performance Advisor inicialmente encontrou dois FKs novos sem índice; ambos foram corrigidos pela migration `import_staging_indexes` e deixaram de aparecer como `unindexed_foreign_keys` nas tabelas novas.
+Após restore, a suíte prova:
 
-## Migração real continua bloqueada
+- fixtures centrais preservadas;
+- saldo conhecido preservado;
+- RLS ainda habilitada;
+- `anon` sem leitura operacional indevida;
+- `authenticated` sem INSERT direto no ledger;
+- RPC transacional esperada continua executável;
+- isolamento de Organization continua funcionando.
 
-Nenhuma das seis planilhas reais foi importada ou versionada. Não houve cutover nem aplicação do staging às tabelas operacionais.
+A primeira rodada do novo drill detectou cliente `pg_dump` 16 contra servidor 17. A segunda confirmou que o pacote 17 não existia no repositório Ubuntu padrão do runner. O CI foi então alinhado ao repositório oficial PGDG para instalar `postgresql-client-17` sem rebaixar o banco de teste.
 
-A migração definitiva continua condicionada a importadores específicos, regras de transformação aprovadas, backup, reconciliação, validação e aceite da data de corte conforme `docs/source-data/migration-plan.md`.
+## CI técnico da Fase 16
 
-## Próxima frente — Issue #41
+No SHA `805274c9769323f3b6d9d3961c606d1c69ea922a` passaram:
 
-Após o fechamento da Fase 15, os requisitos MUST e Issues reais foram revistos. Não havia Issue aberta.
+- `CI` #203 — success;
+- `Inventory Count Integration` #122 — success;
+- `Business Transactions Integration` #105 — success.
 
-A próxima lacuna executável escolhida é `REQ-PLAT-005 — Backup e restauração`, MUST antes de produção e explicitamente fora do escopo da Fase 15.
+O `CI` validou:
 
-A Issue #41 deve construir estratégia/runbook e prova de restauração segura com dados sintéticos, sem executar restore destrutivo sobre o projeto remoto ativo e sem inventar RPO/RTO de negócio.
+- lint;
+- typecheck;
+- Vitest;
+- build de produção;
+- sintaxe dos helpers shell;
+- migrations + seed;
+- dump/checksum/restore PostgreSQL 17;
+- checks pós-restore;
+- todas as suítes PostgreSQL existentes.
 
-## Não repetir
+## Limites que permanecem
 
-- não reaplicar `scoped_permissions`;
-- não reaplicar migrations da Fase 15;
-- não importar dados reais nem executar cutover;
-- não inferir Q-001 a Q-025;
-- não executar restore destrutivo no Supabase remoto ativo;
-- não versionar backups contendo dados reais ou segredos.
+- nenhum dump real foi criado/versionado;
+- nenhuma planilha real foi importada;
+- nenhum cutover foi executado;
+- nenhum restore foi feito sobre o projeto Supabase ativo;
+- Storage objects, Edge Functions, Auth settings/keys, Realtime e demais recursos de plataforma não devem ser tratados como cobertos automaticamente por um dump PostgreSQL;
+- cadência real de backup, retenção, destino off-site, RPO e RTO dependem de decisão operacional antes de produção.
 
 ## Próximo passo
 
-Seguir `docs/ai/NEXT_ACTION.md`: iniciar a Issue #41 em branch própria a partir da `main`, verificar primeiro as capacidades atuais de backup/restauração do Supabase e implementar somente uma estratégia segura, reproduzível e testada com fixtures sintéticos.
+Seguir `docs/ai/NEXT_ACTION.md`: exigir os três workflows verdes no SHA documental final da branch, atualizar o PR #42, marcar ready e fazer merge normal. Confirmar a Issue #41 como closed/completed e somente então escolher a próxima lacuna MUST real.
