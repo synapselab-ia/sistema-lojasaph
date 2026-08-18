@@ -2,96 +2,105 @@
 
 ## Estado
 
-Fase 16 — backup automático, restauração testada e recuperação operacional — **implementada e tecnicamente validada; PR #42 deve ser fechado corretamente**.
+Fase 16 — backup automático, restauração testada e recuperação operacional — **concluída e integrada**.
 
-- Issue #41 — open até o merge;
-- PR #42 — draft;
-- branch: `agent/backup-restore`;
-- base: `main` em `b3491e34558c78ce888180098c3dabb0236953c5`;
-- SHA técnico final verde antes dos commits documentais: `805274c9769323f3b6d9d3961c606d1c69ea922a`;
-- nenhuma migration/DDL da Fase 16 foi necessária no Supabase;
-- nenhum restore remoto foi executado.
+- PR #42 — merged;
+- Issue #41 — closed/completed;
+- merge commit: `c1bd48e99f74687622c24a856f193bf47aa35d39`;
+- SHA final pré-merge: `efb4b2ca55bf650fa303c57025979f5f5c4d13f8`;
+- próxima Issue: #43 — Fase 17 — observabilidade, logs estruturados e rastreabilidade de erros;
+- ainda não existe branch funcional da Fase 17.
 
-## O que já está concluído
+## Fase 16 — não repetir
 
-- capacidade atual do Supabase verificada contra documentação oficial;
-- projeto remoto saudável em PostgreSQL 17;
-- organização Supabase atualmente no plano Free;
-- nenhuma development branch Supabase existente;
-- estratégia de backup/restauração documentada em `docs/operations/backup-restore.md`;
-- migrations continuam fonte de verdade do schema, separadas de backup de dados;
-- `scripts/export-supabase-backup.sh` implementa exportação lógica controlada com Supabase CLI;
-- helper de exportação exige connection string via secret/runtime e diretório fora do repositório;
-- checksum SHA-256 e permissões restritas para artefatos temporários;
-- `/backups/` ignorado pelo Git;
-- `scripts/verify-backup-restore.sh` executa dump/restore efêmero;
-- `supabase/tests/backup_restore.sql` valida dados, RLS, grants e isolamento após restore;
-- CI usa PostgreSQL 17 e cliente 17 do repositório oficial PGDG;
-- RPO/RTO continuam PENDING, sem inferência.
+- estratégia/runbook em `docs/operations/backup-restore.md`;
+- helper de exportação lógica `scripts/export-supabase-backup.sh`;
+- helper impede gravação de dump dentro do Git repository;
+- checksum SHA-256 e permissões restritas;
+- `/backups/` ignorado;
+- drill automatizado `scripts/verify-backup-restore.sh`;
+- checks em `supabase/tests/backup_restore.sql`;
+- PostgreSQL 17 + cliente 17 PGDG no CI;
+- restore apenas em banco efêmero isolado;
+- RLS/grants/Organization isolation comprovados após restore;
+- nenhum DDL/migration/restore remoto na Fase 16;
+- RPO/RTO, retenção e destino off-site continuam pendentes.
 
-## Prova de recuperação
+Não criar outro mecanismo de backup sem requisito novo e não executar restore sobre o Supabase ativo.
 
-No CI, o fluxo executado é:
+## CI final da Fase 16
 
-1. bootstrap Supabase sintético;
-2. aplicação de todas as migrations;
-3. seed anonimizado;
-4. `pg_dump` lógico em diretório temporário;
-5. geração/verificação SHA-256;
-6. criação de segundo banco limpo;
-7. `pg_restore`;
-8. checks pós-restore de dados, RLS, privilégios e Organization isolation;
-9. remoção automática do banco restaurado e arquivos temporários.
+No SHA `efb4b2ca55bf650fa303c57025979f5f5c4d13f8`:
 
-A primeira tentativa detectou incompatibilidade `pg_dump 16` → PostgreSQL 17. A tentativa seguinte mostrou ausência do pacote 17 no APT padrão do runner. A solução final usa o repositório oficial PGDG e mantém servidor/cliente na major 17.
+- `CI` #206 — success;
+- `Inventory Count Integration` #125 — success;
+- `Business Transactions Integration` #108 — success.
 
-## CI técnico verde
-
-No SHA `805274c9769323f3b6d9d3961c606d1c69ea922a`:
-
-- `CI` #203 — success;
-- `Inventory Count Integration` #122 — success;
-- `Business Transactions Integration` #105 — success.
-
-O job de banco passou inclusive por `Verify logical backup and isolated restore` e por todas as suítes PostgreSQL existentes.
+O `CI` passou inclusive por `Verify logical backup and isolated restore` e por todas as suítes PostgreSQL existentes.
 
 ## Supabase remoto
 
-Nenhuma alteração estrutural foi feita nesta fase. O histórico remoto permanece terminando em:
+Nenhuma alteração estrutural ocorreu na Fase 16.
 
-- `20260818180723 / import_staging`;
-- `20260818180738 / import_staging_finalize_fix`;
-- `20260818181051 / import_staging_indexes`.
+Estado verificado durante a fase:
 
-Não reaplicar migrations anteriores.
+- projeto saudável;
+- PostgreSQL 17;
+- organização no plano Free;
+- nenhuma development branch Supabase;
+- histórico remoto ainda termina nas três migrations de importação da Fase 15.
 
-### Capacidade atual
+No plano Free atual, recuperação de contingência depende de exportação lógica periódica/off-site; backup diário gerenciado/PITR exigem plano/configuração compatíveis.
 
-No plano Free atual, a camada de recuperação disponível para esta estratégia é exportação lógica periódica/off-site. Backup diário gerenciado e PITR dependem de plano pago/configuração e devem ser reavaliados antes de produção se o plano mudar.
+## Próxima frente — Issue #43
+
+`REQ-PLAT-006 — Logs e erros` é MUST antes de produção e permanece incompleto.
+
+A Issue #43 foi criada somente depois do fechamento da Fase 16 porque:
+
+- não havia outra Issue aberta;
+- busca no repositório não encontrou Sentry/OpenTelemetry/logger estruturado/error tracking/correlation ID;
+- Vercel e Supabase já compõem o runtime real e devem ser verificados antes de escolher mecanismo/fornecedor.
+
+### Limites da Fase 17
+
+- verificar documentação/capacidades atuais de Vercel e Supabase antes de implementar;
+- não contratar/adotar vendor pago por inferência;
+- começar por contrato de logging estruturado independente do destino;
+- não registrar tokens, passwords, connection strings, payloads financeiros completos ou PII desnecessária;
+- separar mensagem segura para usuário de detalhe técnico server-side;
+- usar correlation/request IDs onde viável;
+- criar redaction explícita e testes;
+- cobrir os principais boundaries do Next.js/runtime sem alterar regras transacionais;
+- validar somente com dados sintéticos/não sensíveis;
+- não prometer SLA/SLO, retenção ou on-call sem decisão/capacidade confirmada.
 
 ## Próxima ação exata
 
-1. conferir o head documental atual de `agent/backup-restore` e o PR #42;
-2. confirmar `CI`, `Inventory Count Integration` e `Business Transactions Integration` verdes no SHA documental final;
-3. atualizar o corpo do PR #42 com:
-   - SHA final validado;
-   - CI final;
-   - resultado do drill de restore;
-   - plano Supabase atual e limitações;
-   - confirmação de zero operação destrutiva/remota;
-   - RPO/RTO ainda pendentes;
-4. marcar o PR #42 ready for review;
-5. fazer merge normal em `main`;
-6. confirmar Issue #41 como closed/completed; fechar explicitamente se necessário;
-7. somente depois, revisar requisitos MUST/Issues reais e escolher a próxima frente;
-8. atualizar `CURRENT_STATE`, `HANDOFF` e `NEXT_ACTION` na `main` para o estado pós-merge.
+1. confirmar Issue #43 e o head atual da `main`;
+2. criar branch `agent/observability` a partir da `main` atual;
+3. ler `AGENTS.md`, `START-HERE`, `CURRENT_STATE`, este `HANDOFF`, `NEXT_ACTION`, `requirements.md`, documentação de runtime/Supabase/Vercel e ADRs relacionados;
+4. verificar documentação oficial vigente e capacidades reais dos projetos/planos Vercel e Supabase para logs, retenção, runtime errors e integração;
+5. inspecionar error handling atual, server actions/route boundaries, adapters/gateways e UI fallbacks antes de definir contrato;
+6. implementar somente a fundação da Issue #43:
+   - logger estruturado server-side;
+   - níveis/event codes;
+   - correlation/request ID;
+   - redaction de campos sensíveis;
+   - mapeamento seguro de erros para UI;
+   - error boundary/fallback apropriado;
+   - instrumentação dos boundaries prioritários;
+7. adicionar testes de estrutura, redaction, correlation e mensagens seguras;
+8. validar logs no runtime Vercel apenas com dados sintéticos/não sensíveis e usar Supabase somente em consultas/log checks read-only quando necessário;
+9. rodar lint, typecheck, Vitest, build e workflows PostgreSQL existentes;
+10. atualizar documentação operacional e continuidade antes do PR/merge.
 
-## Não fazer
+## Regras que permanecem
 
-- não restaurar sobre o Supabase remoto ativo;
-- não criar/versionar dump real;
-- não colocar connection string/secret em workflow ou docs;
-- não inventar RPO/RTO, retenção ou destino off-site;
-- não misturar observabilidade completa (`REQ-PLAT-006`) nesta entrega;
-- não importar dados reais/cutover;
-- não reaplicar migrations das Fases 14/15.
+- GitHub é fonte de verdade;
+- secrets nunca no browser/Git/log;
+- service role continua server-only;
+- nenhuma questão de negócio é resolvida por inferência;
+- dados reais/planilhas reais continuam fora do GitHub;
+- nenhuma operação destrutiva remota sem necessidade e proteção explícita;
+- migrations continuam forward-only quando houver mudança estrutural.
