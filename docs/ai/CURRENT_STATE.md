@@ -4,87 +4,66 @@
 
 ## Estado atual
 
-Fase 16 — backup automático, restauração testada e recuperação operacional — **implementada e tecnicamente validada; aguardando gate documental/merge do PR #42**.
+Fase 16 — backup automático, restauração testada e recuperação operacional — **concluída e integrada na `main`**.
 
 - Repositório: `synapselab-ia/sistema-lojasaph`
-- Issue #41 — open até o merge
-- PR #42 — draft
-- branch: `agent/backup-restore`
-- base da branch: `main` em `b3491e34558c78ce888180098c3dabb0236953c5`
-- SHA técnico validado: `805274c9769323f3b6d9d3961c606d1c69ea922a`
-- Fases 14 e 15 permanecem concluídas; não reaplicar migrations anteriores.
+- PR #42 — merged
+- Issue #41 — closed/completed
+- merge commit: `c1bd48e99f74687622c24a856f193bf47aa35d39`
+- SHA final pré-merge: `efb4b2ca55bf650fa303c57025979f5f5c4d13f8`
+- próxima Issue: #43 — `Fase 17 — observabilidade, logs estruturados e rastreabilidade de erros`
+- nenhuma branch funcional da Fase 17 foi criada ainda.
 
-## Fase 16 — implementado
+## Fase 16 — concluído
 
 A entrega cobre `REQ-PLAT-005` no escopo executável sem operação destrutiva:
 
 - estratégia em camadas para schema, backup de dados, recuperação gerenciada e contingência;
 - runbook versionado em `docs/operations/backup-restore.md`;
-- helper `scripts/export-supabase-backup.sh` para exportação lógica controlada com Supabase CLI;
+- `scripts/export-supabase-backup.sh` para exportação lógica controlada com Supabase CLI;
 - helper recusa gravar backup dentro do Git repository;
-- arquivos de backup temporários usam permissões restritas e checksum SHA-256;
-- `.gitignore` protege o diretório local `/backups/`;
-- prova automatizada `scripts/verify-backup-restore.sh` integrada ao CI;
-- dump PostgreSQL lógico em diretório efêmero;
-- restore em banco limpo separado;
-- `supabase/tests/backup_restore.sql` valida dados sintéticos, RLS e privilégios críticos;
-- banco restaurado e artefatos temporários são destruídos ao final;
-- RPO/RTO permanecem explicitamente pendentes; nenhuma meta de negócio foi inventada.
+- checksum SHA-256 e permissões restritas para artefatos temporários;
+- `/backups/` ignorado pelo Git;
+- `scripts/verify-backup-restore.sh` integrado ao CI;
+- dump lógico e restore em segundo PostgreSQL 17 efêmero;
+- `supabase/tests/backup_restore.sql` valida dados sintéticos, RLS, grants e isolamento após restore;
+- banco restaurado e artefatos temporários removidos automaticamente;
+- RPO/RTO, retenção e destino off-site permanecem explicitamente pendentes, sem inferência.
 
-## Supabase atual — verificação não destrutiva
+## CI final da Fase 16
 
-Projeto conectado:
+No SHA pré-merge `efb4b2ca55bf650fa303c57025979f5f5c4d13f8` passaram:
 
-- `synapselab-ia's Project`;
-- região `sa-east-1`;
-- PostgreSQL 17;
-- status saudável durante a verificação;
-- organização Supabase no plano `free`;
-- nenhuma development branch Supabase existente.
+- `CI` #206 — success;
+- `Inventory Count Integration` #125 — success;
+- `Business Transactions Integration` #108 — success.
 
-A documentação oficial vigente foi conferida antes da implementação. No plano Free atual não há backup diário gerenciado/PITR disponível como nos planos pagos; a estratégia de contingência depende de exportação lógica periódica e armazenamento off-site aprovado até eventual mudança de plano.
+O `CI` validou lint, typecheck, Vitest, build, helpers shell, migrations/seed, dump/checksum/restore PostgreSQL 17, checks pós-restore e todas as suítes PostgreSQL existentes.
 
-Nenhum restore remoto, DDL ou migration nova foi executado nesta fase. O histórico remoto permanece terminando em:
+O drill comprovou no banco restaurado:
+
+- fixtures centrais e saldo conhecido preservados;
+- RLS habilitada;
+- `anon` sem leitura operacional indevida;
+- `authenticated` sem INSERT direto no ledger;
+- RPC transacional pública esperada ainda executável;
+- isolamento por Organization preservado.
+
+## Supabase remoto
+
+A Fase 16 não criou migration nem alterou DDL no remoto.
+
+O projeto foi verificado de forma não destrutiva como saudável, PostgreSQL 17, na organização Supabase atualmente no plano Free e sem development branches Supabase.
+
+O histórico remoto continua terminando nas migrations já homologadas da Fase 15:
 
 - `20260818180723 / import_staging`;
 - `20260818180738 / import_staging_finalize_fix`;
 - `20260818181051 / import_staging_indexes`.
 
-## Prova automatizada de recuperação
+Não reaplicar.
 
-O CI sobe PostgreSQL 17 efêmero, aplica bootstrap + migrations + seed sintético, cria dump lógico e restaura em um segundo banco limpo.
-
-Após restore, a suíte prova:
-
-- fixtures centrais preservadas;
-- saldo conhecido preservado;
-- RLS ainda habilitada;
-- `anon` sem leitura operacional indevida;
-- `authenticated` sem INSERT direto no ledger;
-- RPC transacional esperada continua executável;
-- isolamento de Organization continua funcionando.
-
-A primeira rodada do novo drill detectou cliente `pg_dump` 16 contra servidor 17. A segunda confirmou que o pacote 17 não existia no repositório Ubuntu padrão do runner. O CI foi então alinhado ao repositório oficial PGDG para instalar `postgresql-client-17` sem rebaixar o banco de teste.
-
-## CI técnico da Fase 16
-
-No SHA `805274c9769323f3b6d9d3961c606d1c69ea922a` passaram:
-
-- `CI` #203 — success;
-- `Inventory Count Integration` #122 — success;
-- `Business Transactions Integration` #105 — success.
-
-O `CI` validou:
-
-- lint;
-- typecheck;
-- Vitest;
-- build de produção;
-- sintaxe dos helpers shell;
-- migrations + seed;
-- dump/checksum/restore PostgreSQL 17;
-- checks pós-restore;
-- todas as suítes PostgreSQL existentes.
+No plano Free atual, a estratégia de contingência depende de exportação lógica periódica e armazenamento off-site aprovado. Backup diário gerenciado/PITR dependem de plano/configuração compatíveis e devem ser reavaliados se o plano mudar.
 
 ## Limites que permanecem
 
@@ -92,9 +71,26 @@ O `CI` validou:
 - nenhuma planilha real foi importada;
 - nenhum cutover foi executado;
 - nenhum restore foi feito sobre o projeto Supabase ativo;
-- Storage objects, Edge Functions, Auth settings/keys, Realtime e demais recursos de plataforma não devem ser tratados como cobertos automaticamente por um dump PostgreSQL;
-- cadência real de backup, retenção, destino off-site, RPO e RTO dependem de decisão operacional antes de produção.
+- dump PostgreSQL não cobre automaticamente Storage objects, Edge Functions, Auth settings/keys, Realtime e demais recursos de plataforma;
+- frequência real de backup, retenção, destino off-site, RPO e RTO continuam pendentes de decisão operacional antes de produção.
+
+## Próxima frente — Issue #43
+
+Após o fechamento formal da Fase 16, os requisitos MUST e Issues reais foram revistos. Não havia outra Issue aberta.
+
+A próxima lacuna executável é `REQ-PLAT-006 — Logs e erros`, MUST antes de produção. Busca no repositório não encontrou infraestrutura de logger estruturado, error tracking ou correlation ID.
+
+A Issue #43 cobre observabilidade básica e rastreabilidade de erros sem assumir fornecedor externo pago: primeiro deve verificar as capacidades reais de Vercel/Supabase, depois estabelecer logging estruturado, redaction, correlation IDs, error boundaries e cobertura dos principais boundaries do runtime.
+
+## Não repetir
+
+- não reimplementar backup/restore da Fase 16;
+- não executar restore destrutivo no Supabase ativo;
+- não reaplicar migrations das Fases 14/15;
+- não importar dados reais nem executar cutover;
+- não inferir Q-001 a Q-025;
+- não adotar fornecedor pago de observabilidade por inferência.
 
 ## Próximo passo
 
-Seguir `docs/ai/NEXT_ACTION.md`: exigir os três workflows verdes no SHA documental final da branch, atualizar o PR #42, marcar ready e fazer merge normal. Confirmar a Issue #41 como closed/completed e somente então escolher a próxima lacuna MUST real.
+Seguir `docs/ai/NEXT_ACTION.md`: iniciar a Issue #43 em branch própria a partir da `main`, verificar primeiro runtime/planos/logs atuais de Vercel e Supabase e implementar somente a fundação de observabilidade segura prevista na Issue.
