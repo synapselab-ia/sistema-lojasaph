@@ -62,6 +62,7 @@ interface RuntimePermissions {
   readonly manageStockTransfers: boolean;
   readonly managePurchases: boolean;
   readonly receivePurchases: boolean;
+  readonly manageFinance: boolean;
 }
 
 interface RuntimeWorkspaceValue {
@@ -150,6 +151,7 @@ export function RuntimeWorkspaceProvider({
     manageStockTransfers: can(roles, ["owner", "admin", "manager", "inventory"]),
     managePurchases: can(roles, ["owner", "admin", "manager", "purchases"]),
     receivePurchases: can(roles, ["owner", "admin", "manager", "purchases", "inventory"]),
+    manageFinance: can(roles, ["owner", "admin", "manager", "finance"]),
   };
 
   async function refresh() {
@@ -202,7 +204,16 @@ export function RuntimeWorkspaceProvider({
     notes?: string;
   }) {
     if (!permissions.recordStockEntry) throw new DomainError("INSUFFICIENT_ROLE", "Seu perfil não pode registrar entradas de estoque.");
-    await stockEntryGateway.record({ organizationId, ...input });
+    await stockEntryGateway.record({
+      organizationId,
+      stockItemId: input.stockItemId,
+      stockLocationId: input.stockLocationId,
+      quantity: input.quantity,
+      unitCost: input.unitCost,
+      batchCode: input.batchCode,
+      expirationDate: input.expirationDate,
+      notes: input.notes,
+    });
     await refresh();
   }
 
@@ -214,7 +225,14 @@ export function RuntimeWorkspaceProvider({
     notes?: string;
   }) {
     if (!permissions.recordStockWithdrawal) throw new DomainError("INSUFFICIENT_ROLE", "Seu perfil não pode registrar retiradas de estoque.");
-    await stockWithdrawalGateway.record({ organizationId, ...input });
+    await stockWithdrawalGateway.record({
+      organizationId,
+      stockItemId: input.stockItemId,
+      stockLocationId: input.stockLocationId,
+      quantity: input.quantity,
+      preferredBatchId: input.preferredBatchId,
+      notes: input.notes,
+    });
     await refresh();
   }
 
@@ -226,13 +244,13 @@ export function RuntimeWorkspaceProvider({
     preferredBatchId?: EntityId;
     notes?: string;
   }) {
-    if (!permissions.manageStockTransfers) throw new DomainError("INSUFFICIENT_ROLE", "Seu perfil não pode expedir transferências.");
+    if (!permissions.manageStockTransfers) throw new DomainError("INSUFFICIENT_ROLE", "Seu perfil não pode despachar transferências de estoque.");
     await stockTransferGateway.dispatch({ organizationId, ...input });
     await refresh();
   }
 
   async function receiveTransfer(input: { transferId: EntityId; quantity?: string }) {
-    if (!permissions.manageStockTransfers) throw new DomainError("INSUFFICIENT_ROLE", "Seu perfil não pode receber transferências.");
+    if (!permissions.manageStockTransfers) throw new DomainError("INSUFFICIENT_ROLE", "Seu perfil não pode receber transferências de estoque.");
     await stockTransferGateway.receive({ organizationId, ...input });
     await refresh();
   }
@@ -257,7 +275,7 @@ export function RuntimeWorkspaceProvider({
     recordWithdrawal,
     dispatchTransfer,
     receiveTransfer,
-    errorMessage(error) {
+    errorMessage(error: unknown) {
       if (error instanceof DomainError) return error.message;
       if (error instanceof Error) return error.message;
       return "Não foi possível concluir a operação.";
@@ -268,7 +286,7 @@ export function RuntimeWorkspaceProvider({
 }
 
 export function useRuntimeWorkspace(): RuntimeWorkspaceValue {
-  const context = useContext(RuntimeWorkspaceContext);
-  if (!context) throw new Error("useRuntimeWorkspace must be used inside RuntimeWorkspaceProvider.");
-  return context;
+  const value = useContext(RuntimeWorkspaceContext);
+  if (!value) throw new Error("RuntimeWorkspaceProvider ausente.");
+  return value;
 }

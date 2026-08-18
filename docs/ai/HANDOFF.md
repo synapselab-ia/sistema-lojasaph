@@ -2,108 +2,95 @@
 
 ## Estado
 
-Fase 10 — Compras, pedidos e recebimento operacional — concluída tecnicamente no PR #29.
+Fase 11 — Financeiro: documentos, parcelas e contas a pagar — concluída tecnicamente no PR #32.
 
-Ao integrar o PR #29:
+Ao integrar o PR #32:
 
-- fechar a Issue #28 como completed;
-- manter a Issue #31 como próxima frente única;
-- iniciar Fase 11 — Financeiro: documentos, parcelas e contas a pagar.
-
-## Correção importante de continuidade
-
-Durante a validação da Fase 10 foi detectado que a transferência do PR #26 nunca havia entrado na `main`, apesar de documentação posterior afirmar o contrário.
-
-O PR #30 corrigiu a fonte de verdade:
-
-- restaurou migration/testes/runtime de transferência;
-- conciliou CI com inventário;
-- adicionou a migration forward-only `reconcile_inventory_adjustment_type`;
-- restaurou factories de domínio perdidas;
-- foi validado em PostgreSQL limpo e Supabase remoto;
-- Issue #24 voltou a completed;
-- PR #26 foi fechado como superseded.
-
-Não reabrir esse incidente nem tentar mergear o PR #26. Consulte `docs/ai/RESTORE_TRANSFER_NOTE.md` se necessário.
+- fechar a Issue #31 como completed;
+- manter a Issue #33 como próxima frente única;
+- iniciar Fase 12 — Caixa: sessões, meios de pagamento e fechamento diário.
 
 ## Não repetir
 
-- engenharia reversa/modelagem já consolidada;
-- Auth SSR/membership;
-- fundação PostgreSQL/Supabase/RLS;
-- entrada, retirada, transferência ou inventário já persistidos;
-- módulo de Compras do PR #29 após integração;
-- edição direta de saldo;
-- write direto do cliente no ledger ou nas tabelas críticas de compras;
-- criação de lote/validade desconhecidos;
-- conversão automática de embalagem/unidade de compra sem regra explícita.
+- engenharia reversa e modelo lógico consolidados;
+- Auth SSR/membership/RLS base;
+- estoque, transferência e inventário persistentes;
+- Compras da Fase 10;
+- Financeiro da Fase 11 após o merge do PR #32;
+- reparo da transferência do PR #30;
+- write direto em tabelas críticas;
+- inferência de juros/multa/desconto a partir de diferença financeira;
+- transformação da referência Pix/Boleto histórica em tipo inventado.
 
-## Compras — estado consolidado
+## Financeiro — arquivos principais
 
-Arquivos principais:
+- `supabase/migrations/20260818123554_finance_payables_flow.sql`;
+- `supabase/tests/finance_payables.sql`;
+- `src/modules/finance/adapters/supabase-finance-gateway.ts`;
+- `src/app/workspace/(operacao)/financeiro/page.tsx`;
+- `docs/modules/finance.md`.
 
-- `supabase/migrations/20260817234222_purchases_operational_flow.sql`;
-- `supabase/tests/purchase_orders.sql`;
-- `src/modules/purchases/adapters/supabase-purchase-gateway.ts`;
-- `src/app/workspace/(operacao)/compras/page.tsx`;
-- `docs/modules/purchases.md`.
+## Regras que devem permanecer
 
-Regras que devem permanecer:
+- documento pertence a Organization/Unit, setor opcional e Supplier;
+- múltiplas parcelas são explícitas e numeradas;
+- status de pagamento é derivado, não editável;
+- pagamento é evento append-only;
+- estorno cria outro evento e não apaga o original;
+- sobrepagamento pode gerar saldo negativo e não recebe causa automática;
+- `payment_instructions.raw_reference` preserva o conteúdo histórico sem inferir Pix/Boleto;
+- documento cancelado exige pagamentos líquidos zerados por estornos;
+- command IDs com payload diferente conflitam;
+- RLS permite leitura por membership, mas mutations ficam em RPCs validados.
 
-- quantidade de pedido usa unidade-base do estoque na Fase 10;
-- `purchase_unit_snapshot` é informativo;
-- pedido: `draft → ordered → partially_received → received`;
-- recebimento multi-item é uma única transação;
-- saldo/custo/lote só mudam pelo command de recebimento;
-- retry não duplica pedido, preço, recibo, movimento, lote ou saldo;
-- `received` não é cancelável pelo command simples;
-- cancelamento parcial preserva o que já foi recebido;
-- payload `NULL` é inválido;
-- motivo diferente no retry de cancelamento gera conflito de idempotência;
-- RLS limita leitura à Organization;
-- mutations críticas permanecem RPCs auditados.
+## Validação da Fase 11
 
-## Validação da Fase 10
+PostgreSQL limpo:
 
-CI verde em aplicação e PostgreSQL limpo:
+- migrations + seed;
+- schema/RLS/roles;
+- estoque/transferência/inventário;
+- compras;
+- financeiro.
+
+Aplicação:
 
 - lint;
 - typecheck;
 - Vitest;
-- build;
-- schema/RLS/roles;
-- retirada;
-- transferência simples/multi-lote;
-- inventário;
-- compras.
+- production build.
 
 Supabase remoto:
 
-- migration `purchases_operational_flow` aplicada;
+- `finance_payables_flow` aplicada;
 - advisors sem nova vulnerabilidade crítica;
-- homologação em `BEGIN/ROLLBACK` passou criação, emissão, parcial/final, retries, custo, lote e cancelamento;
-- após rollback não restou dado de teste e os saldos/custos demo voltaram ao baseline.
+- homologação em rollback passou criação/retry, status derivados, pagamentos múltiplos, sobrepagamento, estornos, cancelamento e auditoria;
+- zero resíduos após rollback.
 
-## Próxima fase — Issue #31
+Observação de segurança: `audit_logs` não é legível pela role `authenticated` comum; a asserção administrativa de homologação precisou de `reset role`. Isso é comportamento esperado de RLS, não falta de trilha.
 
-Financeiro deve partir de:
+## Próxima fase — Issue #33
 
-- `docs/product/requirements.md` — REQ-FIN-001 a REQ-FIN-009;
-- `docs/architecture/data-model.md` — `payable_documents`, `installments`, `payments`, `payment_instructions`;
-- `docs/product/open-questions.md` — Q-013 a Q-017;
-- engenharia reversa do `Controle NFs Espeticho.xlsx`.
+Caixa deve partir de:
 
-Defaults reversíveis já registrados na Issue #31:
+- REQ-CASH-001 a REQ-CASH-008;
+- `cash_registers`, `cash_sessions`, `cash_movements`, `payment_method_totals`, `fee_rules` e `payment_methods` do modelo lógico;
+- engenharia reversa de `Caixa Empório Espeticho Tabatinga.xlsx`;
+- Q-007 e Q-009 a Q-012.
 
-- `payments` é entidade separada da parcela e o modelo pode suportar múltiplos eventos sem obrigar a UI a expor casos avançados imediatamente;
-- não inferir juros/multa/desconto a partir da diferença entre nominal e pago enquanto Q-015 estiver aberta;
-- referência Pix/boleto é separada do pagamento efetivo e não deve receber tipo inventado enquanto Q-016 estiver aberta;
-- status financeiro é derivado de vencimento/saldo, não digitado livremente;
-- correção de pagamento deve preservar trilha via estorno/cancelamento, não delete físico.
+Defaults reversíveis da Issue #33:
+
+- trabalhar inicialmente com totais consolidados, não vendas individuais;
+- `fundo de caixa` = valor inicial da sessão, sem inferir caixa financeiro da empresa;
+- valor esperado e contado ficam separados; divergência é derivada;
+- taxas ficam configuráveis/versionadas, sem regra hardcoded de adquirente/bandeira;
+- Voucher é meio habilitável, não obrigatório;
+- Consumo Funcionários fica categoria operacional separada do faturamento até Q-009 ser resolvida;
+- correções usam cancelamento/estorno auditado, não delete físico.
 
 ## Regra de eficiência
 
-Continuar automaticamente enquanto houver trabalho seguro e reversível. Não pedir confirmação para decisões já cobertas por ADR/requisitos/defaults profissionais. Escalar somente decisão de negócio estrutural realmente aberta, credencial externa inevitável ou custo relevante.
+Continuar automaticamente enquanto houver trabalho seguro/reversível. Escalar apenas decisão estrutural realmente aberta, custo relevante ou credencial externa inevitável.
 
 ## Próxima ação
 
