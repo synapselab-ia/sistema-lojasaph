@@ -11,6 +11,7 @@ const movementLabels: Record<StockMovementType, string> = {
   withdrawal: "Retirada",
   transfer_out: "Transferência — saída",
   transfer_in: "Transferência — recebimento",
+  inventory_adjustment: "Ajuste de inventário",
 };
 
 export default function EstoquePage() {
