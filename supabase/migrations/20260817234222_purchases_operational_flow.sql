@@ -165,7 +165,7 @@ declare
 begin
   if v_user_id is null then raise exception 'AUTH_REQUIRED' using errcode='42501'; end if;
   if not private.has_org_role(p_organization_id,array['owner','admin','manager','purchases']) then raise exception 'INSUFFICIENT_ROLE' using errcode='42501'; end if;
-  if jsonb_typeof(p_items) <> 'array' or jsonb_array_length(p_items)=0 then raise exception 'PURCHASE_ORDER_ITEMS_REQUIRED' using errcode='22023'; end if;
+  if p_items is null or jsonb_typeof(p_items) <> 'array' or jsonb_array_length(p_items)=0 then raise exception 'PURCHASE_ORDER_ITEMS_REQUIRED' using errcode='22023'; end if;
   if (select count(*) from jsonb_array_elements(p_items)) <> (select count(distinct value->>'supplier_item_id') from jsonb_array_elements(p_items)) then raise exception 'DUPLICATE_PURCHASE_ORDER_ITEM' using errcode='22023'; end if;
 
   select jsonb_agg(jsonb_build_object(
@@ -312,7 +312,7 @@ declare
 begin
   if v_user_id is null then raise exception 'AUTH_REQUIRED' using errcode='42501'; end if;
   if not private.has_org_role(p_organization_id,array['owner','admin','manager','purchases','inventory']) then raise exception 'INSUFFICIENT_ROLE' using errcode='42501'; end if;
-  if jsonb_typeof(p_items)<>'array' or jsonb_array_length(p_items)=0 then raise exception 'PURCHASE_RECEIPT_ITEMS_REQUIRED' using errcode='22023'; end if;
+  if p_items is null or jsonb_typeof(p_items)<>'array' or jsonb_array_length(p_items)=0 then raise exception 'PURCHASE_RECEIPT_ITEMS_REQUIRED' using errcode='22023'; end if;
   if (select count(*) from jsonb_array_elements(p_items))<>(select count(distinct value->>'purchase_order_item_id') from jsonb_array_elements(p_items)) then raise exception 'DUPLICATE_PURCHASE_RECEIPT_ITEM' using errcode='22023'; end if;
   select jsonb_agg(jsonb_build_object(
     'purchase_order_item_id',(value->>'purchase_order_item_id')::uuid,
@@ -393,14 +393,14 @@ create or replace function public.cancel_purchase_order(
 returns table(purchase_order_id uuid,purchase_order_status text)
 language plpgsql security definer set search_path=''
 as $$
-declare v_user_id uuid:=auth.uid(); v_status text; v_existing_order_id uuid;
+declare v_user_id uuid:=auth.uid(); v_status text; v_existing_order_id uuid v_existing_reason text;
 begin
   if v_user_id is null then raise exception 'AUTH_REQUIRED' using errcode='42501'; end if;
   if not private.has_org_role(p_organization_id,array['owner','admin','manager','purchases']) then raise exception 'INSUFFICIENT_ROLE' using errcode='42501'; end if;
   perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(p_command_id::text,0));
-  select a.entity_id into v_existing_order_id from public.audit_logs a where a.organization_id=p_organization_id and a.action='purchase_order.cancelled' and a.metadata->>'command_id'=p_command_id::text order by a.occurred_at desc limit 1;
+  select a.entity_id,a.after_data->>'reason' into v_existing_order_id,v_existing_reason from public.audit_logs a where a.organization_id=p_organization_id and a.action='purchase_order.cancelled' and a.metadata->>'command_id'=p_command_id::text order by a.occurred_at desc limit 1;
   if found then
-    if v_existing_order_id<>p_purchase_order_id then raise exception 'IDEMPOTENCY_KEY_CONFLICT' using errcode='23505'; end if;
+    if v_existing_order_id<>p_purchase_order_id or v_existing_reason is distinct from nullif(trim(p_reason),'') then raise exception 'IDEMPOTENCY_KEY_CONFLICT' using errcode='23505'; end if;
     return query select p_purchase_order_id,'cancelled'::text; return;
   end if;
   perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('purchase_order:'||p_purchase_order_id::text,0));

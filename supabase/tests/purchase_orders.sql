@@ -74,6 +74,25 @@ begin
 end;
 $$;
 
+-- Null item payload is invalid and must not create a draft.
+do $$
+begin
+  begin
+    perform public.create_purchase_order(
+      '71000000-0000-4000-8000-000000000090',
+      '00000000-0000-4000-8000-000000000001',
+      '00000000-0000-4000-8000-000000000500',
+      '00000000-0000-4000-8000-000000000120',
+      null,
+      'null items denied',
+      null
+    );
+    raise exception 'null purchase order items unexpectedly succeeded';
+  exception when invalid_parameter_value then null;
+  end;
+end;
+$$;
+
 -- Create a two-line draft order. Quantities are base-stock-unit quantities in Fase 10 v1.
 select * from public.create_purchase_order(
   '71000000-0000-4000-8000-000000000001',
@@ -185,6 +204,23 @@ begin
   if (select count(*) from public.supplier_prices where source='purchase_order' and supplier_item_id in ('00000000-0000-4000-8000-000000000520','70000000-0000-4000-8000-000000000200')) <> 2 then
     raise exception 'purchase issue retry duplicated or missed supplier price history';
   end if;
+end;
+$$;
+
+-- Null receipt payload is invalid while the order is receivable.
+do $$
+begin
+  begin
+    perform public.receive_purchase_order(
+      '71000000-0000-4000-8000-000000000091',
+      '00000000-0000-4000-8000-000000000001',
+      '71000000-0000-4000-8000-000000000001',
+      null,
+      'null receipt items denied'
+    );
+    raise exception 'null purchase receipt items unexpectedly succeeded';
+  exception when invalid_parameter_value then null;
+  end;
 end;
 $$;
 
@@ -396,6 +432,22 @@ select * from public.cancel_purchase_order(
   '71000000-0000-4000-8000-000000000040',
   'cancel draft'
 );
+
+-- Same cancel command with a different reason is an idempotency conflict.
+do $$
+begin
+  begin
+    perform public.cancel_purchase_order(
+      '71000000-0000-4000-8000-000000000041',
+      '00000000-0000-4000-8000-000000000001',
+      '71000000-0000-4000-8000-000000000040',
+      'different cancel reason'
+    );
+    raise exception 'cancel idempotency conflict unexpectedly succeeded';
+  exception when unique_violation then null;
+  end;
+end;
+$$;
 
 -- Partial order may be cancelled; already received stock is retained.
 select * from public.create_purchase_order(
