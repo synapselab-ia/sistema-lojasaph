@@ -2,103 +2,76 @@
 
 ## Estado
 
-Fase 18 — isolamento de ambientes, previews seguros e separação de dados/segredos — **implementada; falta apenas o gate final do head atual e o fechamento do PR #46**.
+A Fase 18 foi encerrada e integrada.
 
-- Issue #45 — open;
-- PR #46 — draft/open;
-- branch: `agent/environment-isolation`;
-- a branch foi reconciliada com a `main` após os PRs #47/#48;
-- `vercel.json` está em modo `git.deploymentEnabled=false` tanto na `main` quanto na branch;
-- nenhuma migration/DDL/write/config change remoto no Supabase na Fase 18.
+- PR #46 — merged;
+- Issue #45 — closed/completed;
+- merge commit: `7aa98ebacb8eaed1587245fa04e19fc6a4e16f9c`;
+- head final pré-merge: `596127843c671aea5ceca6a6abc1f79e3172fbc5`;
+- `CI` #243 — success;
+- `Inventory Count Integration` #149 — success;
+- `Business Transactions Integration` #132 — success.
 
-## Já concluído — não refazer
+## Decisão operacional de Vercel
 
-### Política e runtime
+Não gastar tempo/quota tentando obter Preview para cada commit.
 
-- política fail-closed em `src/lib/runtime/environment.ts`;
-- runtime server-only em `src/lib/runtime/server.ts`;
-- `development`, `preview`, `production` e `unknown`;
-- mismatch de identidade de ambiente bloqueia acesso;
-- Preview só permite Supabase quando backend próprio e Production têm refs explícitas e distintas;
-- Development aceita Supabase local; remoto exige identidade própria;
-- Production rejeita backend local e pode fixar ref esperada;
-- `SUPABASE_SECRET_KEY` continua server-only;
-- admin não-prod bloqueado por padrão.
+`vercel.json` mantém `git.deploymentEnabled=false` após os PRs #47/#48. A Fase 18 pôde fechar porque:
 
-### Browser/Auth/UI
+1. todo o código funcional do isolamento já havia sido homologado em Preview `READY` no commit `91738dc6f780c8269cdf9600fc57c64d63e6134d`;
+2. `/health` comprovou Preview fail-closed (`preview`, Supabase bloqueado, admin bloqueado);
+3. não houve drift funcional posterior nesse código;
+4. o head final passou 3/3 no CI.
 
-- browser usa apenas `NODE_ENV`/`NEXT_PUBLIC_*` permitidas;
-- workspace recebe configuração validada pelo servidor;
-- Proxy/Auth/callback/reset/signout/bootstrap respeitam a política;
-- login/recuperação mostram estado isolado sem formulário operacional quando bloqueado;
-- `/health` não expõe URL, ref, key ou secret.
+Daqui em diante, **CI é o gate principal de desenvolvimento**. Usar Vercel manualmente apenas quando a validação dependa de hosting/browser real ou em milestone de release/produção.
 
-### Testes e docs
+## Supabase
 
-- `src/lib/runtime/environment.test.ts`;
-- `src/lib/runtime/client-boundary.test.ts`;
-- `.env.example` sem valores reais;
-- ADR-008;
-- `docs/operations/environments.md`;
-- `docs/modules/supabase-runtime.md`.
+Última checagem read-only: projeto `ACTIVE_HEALTHY`, PostgreSQL 17, zero branches. A Fase 18 não alterou banco/configuração/dados remotamente.
 
-## CI
+## Próxima frente — Issue #49
 
-O último head completo antes da política Vercel, `0979a33f05fefb75f554219d8552e9f7b74c3601`, ficou 3/3 verde:
+Título: `Fase 19 — funcionários operacionais e separação de identidade de acesso`.
 
-- `CI` #236;
-- `Inventory Count Integration` #146;
-- `Business Transactions Integration` #129.
+Motivo objetivo:
 
-O próximo chat deve sempre conferir os workflows do **head atual**, porque a política manual-only e a reconciliação com `main` criaram commits posteriores.
+- `REQ-ORG-004` é MUST;
+- escopo MVP inclui funcionários básicos;
+- modelo lógico possui `employees` separado de `users`;
+- schema físico atual não possui `employees` na migration de fundação;
+- autenticação hoje usa `auth.users` + `organization_memberships`;
+- não existe módulo de funcionários dedicado.
 
-## Vercel
+### Defaults já registrados na Issue
 
-Os PRs #47 e #48 desligaram deployments automáticos Git para evitar consumo acidental da quota Hobby. A política vigente é manual-only.
+- Employee é pessoa operacional e não identidade de login;
+- cadastrar/inativar Employee não concede/revoga acesso automaticamente;
+- vínculo com usuário autenticado é opcional e explícito;
+- campos mínimos, sem folha/RH/dados sensíveis não requeridos;
+- Unit/Sector padrão podem ser opcionais quando coerentes;
+- Q-022 continua aberta;
+- fixtures somente sintéticas;
+- migration + RLS + testes antes de qualquer homologação remota.
 
-Não esperar que um push gere Preview. Não reativar deploy automático para cumprir o gate.
+## Próximo chat deve fazer
 
-Último Preview homologado:
+1. confirmar Issue #49 e estado real da `main`;
+2. trabalhar em `agent/employees` (criar se ainda não existir);
+3. ler `docs/architecture/data-model.md`, `docs/modules/master-data.md`, migrations de foundation/RLS/scoped permissions e contracts atuais de `src/modules/master-data`/`organization`;
+4. definir a menor representação física coerente para `employees` e vínculo opcional com `auth.users`;
+5. criar migration versionada e testes PostgreSQL primeiro;
+6. implementar domínio/repository/adapter/UI administrativa mínima;
+7. validar lint, typecheck, Vitest, build e suites PostgreSQL;
+8. só após CI verde considerar aplicação remota no Supabase com fixtures sintéticas;
+9. não usar Vercel salvo necessidade concreta de validação hospedada;
+10. atualizar continuidade ao encerrar.
 
-- `dpl_7DrbV7VjgHe7SSFPVkwkYQzPfwC2` — `READY`;
-- commit `91738dc6f780c8269cdf9600fc57c64d63e6134d`;
-- `GET /health` confirmou `environment=preview`, `supabaseAccess=blocked`, `preview_backend_unverified` e `adminAccess=blocked`;
-- zero autenticação, senha, token ou mutação.
-
-## Supabase remoto
-
-Último estado read-only conhecido:
-
-- projeto saudável;
-- PostgreSQL 17;
-- zero development branches.
-
-Não criar branch/projeto pago, não executar migration/DDL e não usar dados reais para fechar esta fase.
-
-## Próxima ação exata
-
-1. conferir Issue #45, PR #46 e o head atual da branch;
-2. confirmar que a branch contém a `main` atual e que não há drift funcional além da política de deployment/documentação;
-3. exigir `CI`, `Inventory Count Integration` e `Business Transactions Integration` verdes no head atual;
-4. somente após 3/3 verde, executar **um único deployment manual de Preview** do head atual;
-5. fazer smoke não mutável:
-   - `GET /health`;
-   - esperar `environment=preview`;
-   - enquanto não houver backend Preview isolado, esperar `supabaseAccess=blocked` e `adminAccess=blocked`;
-   - abrir `/login` se a proteção Vercel permitir e confirmar estado isolado;
-   - callback somente sem credenciais reais, se necessário;
-6. se `/health` indicar `supabaseAccess=allowed`, não testar escrita; primeiro comprovar backend distinto de Production;
-7. após smoke aprovado, atualizar PR #46, marcar ready e fazer merge normal;
-8. confirmar Issue #45 closed/completed;
-9. revisar os MUST/Issues reais e selecionar a próxima frente;
-10. atualizar `CURRENT_STATE`, `HANDOFF` e `NEXT_ACTION` na `main` pós-merge.
-
-## Regras
+## Não fazer
 
 - não reimplementar Fase 18;
-- não reabrir Fase 17/backup;
-- não reativar deployments automáticos;
-- secrets nunca no browser/Git/log;
-- dados reais nunca em Preview/Development;
-- nenhuma questão Q-001..Q-025 por inferência;
-- nenhuma contratação/operação destrutiva sem autorização explícita.
+- não reativar auto-deploy Vercel;
+- não criar RH/folha/ponto/cargos e salários;
+- não cadastrar/importar pessoas reais;
+- não resolver Q-022 por inferência;
+- não associar Employee a role/permissão automaticamente;
+- não alterar módulos transacionais sem necessidade direta da Issue #49.

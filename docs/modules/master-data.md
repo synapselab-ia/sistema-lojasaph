@@ -1,35 +1,45 @@
 # Módulo — Cadastros base
 
-Status: Fase 4 em implementação
+Status: núcleo cadastral persistente; funcionários operacionais pendentes na Fase 19.
 
 ## Objetivo
 
-Fornecer os dados mestres usados posteriormente por estoque, compras, financeiro e caixa.
+Fornecer os dados mestres usados por estoque, compras, financeiro, caixa e administração.
 
-## Escopo inicial
+## Escopo já implementado
 
-- visualização da estrutura Organization → Business → Unit → Sector/StockLocation;
+- estrutura Organization → Business → Unit → Sector/StockLocation;
 - StockItem com categoria, unidade, tipo e flags operacionais;
 - Supplier com múltiplos contatos;
-- SupplierItem/offer básico com preço observado;
-- UI responsiva de demonstração;
-- repositories/adapters in-memory.
+- SupplierItem/offer e histórico de preço observado;
+- persistência PostgreSQL/Supabase protegida por RLS;
+- autenticação e memberships por Organization/escopo;
+- UI integrada ao workspace;
+- adapters in-memory preservados onde úteis para testes isolados.
 
-## Persistência desta fase
+## Persistência
 
-A UI usa um workspace em memória no navegador. Alterações não sobrevivem a reload e isso é intencional.
+Migrations versionadas no GitHub são a fonte de verdade do schema. Operações do workspace persistente usam adapters Supabase/PostgreSQL e respeitam RLS; credenciais privilegiadas permanecem server-only.
 
-O objetivo é validar fluxo, domínio e separação de camadas antes de adotar banco real. Não usar esta implementação como armazenamento de produção.
+## Regras consolidadas
 
-## Regras
+- IDs de domínio são estáveis;
+- fornecedor pode ter múltiplos contatos;
+- catálogo e fornecedores são compartilhados conforme autorização da Organization;
+- escopos Business/Unit/Sector são aplicados conforme a política homologada na Fase 14;
+- dados de demonstração/teste devem ser sintéticos;
+- correções críticas preservam rastreabilidade em vez de apagar histórico material.
 
-- dados de demonstração são anonimizados;
-- produtos e fornecedores têm IDs estáveis no domínio;
-- fornecedor pode ter vários contatos, no máximo um marcado como principal;
-- preço negativo é rejeitado;
-- edição preserva ID da entidade;
-- categorias/unidades atuais são fixtures e serão cadastros persistentes quando a camada de dados real for introduzida.
+## Lacuna atual — Employee
 
-## Próximo módulo
+`REQ-ORG-004` exige separar funcionário operacional de usuário autenticado. O modelo lógico prevê `employees`, mas o schema físico atual usa `auth.users` + `organization_memberships` e ainda não materializa o cadastro de funcionários.
 
-Após concluir estes cadastros, implementar estoque transacional começando por entrada, retirada e transferência em duas etapas, conforme ADR-002.
+A Issue #49 / Fase 19 deve adicionar:
+
+- Employee persistente separado de autenticação;
+- vínculo opcional e explícito com usuário;
+- status e escopo operacional padrão mínimo;
+- RLS e UI administrativa básica;
+- sem RH/folha/dados pessoais não requeridos.
+
+Cadastrar Employee não deve conceder acesso ao sistema; autorização continua pertencendo a `organization_memberships`.
