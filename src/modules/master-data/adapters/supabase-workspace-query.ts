@@ -17,6 +17,18 @@ export interface RuntimeUnitOfMeasure {
   readonly name: string;
 }
 
+export interface RuntimeUnit {
+  readonly id: EntityId;
+  readonly name: string;
+}
+
+export interface RuntimeSector {
+  readonly id: EntityId;
+  readonly name: string;
+  readonly unitId: EntityId;
+  readonly unitName: string;
+}
+
 export interface RuntimeStockLocation {
   readonly id: EntityId;
   readonly name: string;
@@ -41,6 +53,8 @@ export interface RuntimeStockTransfer {
 export interface WorkspaceReferenceData {
   readonly categories: readonly RuntimeCategory[];
   readonly unitsOfMeasure: readonly RuntimeUnitOfMeasure[];
+  readonly units: readonly RuntimeUnit[];
+  readonly sectors: readonly RuntimeSector[];
   readonly stockLocations: readonly RuntimeStockLocation[];
   readonly balances: readonly InventoryBalance[];
   readonly batches: readonly InventoryBatch[];
@@ -50,6 +64,7 @@ export interface WorkspaceReferenceData {
 interface CategoryRow { id: string; name: string }
 interface UnitOfMeasureRow { id: string; code: string; name: string }
 interface UnitRow { id: string; name: string }
+interface SectorRow { id: string; name: string; unit_id: string }
 interface LocationRow { id: string; name: string; unit_id: string }
 interface BalanceRow {
   stock_item_id: string;
@@ -96,10 +111,11 @@ export async function loadWorkspaceReferenceData(
   client: SupabaseClient,
   organizationId: EntityId,
 ): Promise<WorkspaceReferenceData> {
-  const [categoriesResult, unitsOfMeasureResult, unitsResult, locationsResult, balancesResult, batchesResult, transfersResult] = await Promise.all([
+  const [categoriesResult, unitsOfMeasureResult, unitsResult, sectorsResult, locationsResult, balancesResult, batchesResult, transfersResult] = await Promise.all([
     client.from("item_categories").select("id, name").eq("organization_id", organizationId).eq("active", true).order("name"),
     client.from("units_of_measure").select("id, code, name").eq("organization_id", organizationId).eq("active", true).order("code"),
     client.from("units").select("id, name").eq("organization_id", organizationId).eq("status", "active").order("name"),
+    client.from("sectors").select("id, name, unit_id").eq("organization_id", organizationId).eq("status", "active").order("name"),
     client.from("stock_locations").select("id, name, unit_id").eq("organization_id", organizationId).eq("status", "active").order("name"),
     client.from("inventory_balances").select("stock_item_id, stock_location_id, quantity_on_hand, average_cost").eq("organization_id", organizationId),
     client
@@ -120,6 +136,7 @@ export async function loadWorkspaceReferenceData(
   if (categoriesResult.error) throw queryError("as categorias", categoriesResult.error.message);
   if (unitsOfMeasureResult.error) throw queryError("as unidades de medida", unitsOfMeasureResult.error.message);
   if (unitsResult.error) throw queryError("as unidades", unitsResult.error.message);
+  if (sectorsResult.error) throw queryError("os setores", sectorsResult.error.message);
   if (locationsResult.error) throw queryError("os locais de estoque", locationsResult.error.message);
   if (balancesResult.error) throw queryError("os saldos", balancesResult.error.message);
   if (batchesResult.error) throw queryError("os lotes", batchesResult.error.message);
@@ -140,7 +157,8 @@ export async function loadWorkspaceReferenceData(
   }
 
   const transferItemsByTransfer = new Map(transferItemRows.map((item) => [item.transfer_id, item]));
-  const unitNames = new Map(((unitsResult.data ?? []) as UnitRow[]).map((unit) => [unit.id, unit.name]));
+  const unitRows = (unitsResult.data ?? []) as UnitRow[];
+  const unitNames = new Map(unitRows.map((unit) => [unit.id, unit.name]));
   const batches = ((batchesResult.data ?? []) as BatchRow[]).map((batch): InventoryBatch => Object.freeze({
     id: batch.id as EntityId,
     stockItemId: batch.stock_item_id as EntityId,
@@ -183,6 +201,13 @@ export async function loadWorkspaceReferenceData(
       id: unit.id as EntityId,
       code: unit.code,
       name: unit.name,
+    })),
+    units: unitRows.map((unit) => ({ id: unit.id as EntityId, name: unit.name })),
+    sectors: ((sectorsResult.data ?? []) as SectorRow[]).map((sector) => ({
+      id: sector.id as EntityId,
+      name: sector.name,
+      unitId: sector.unit_id as EntityId,
+      unitName: unitNames.get(sector.unit_id) ?? "Unidade indisponível",
     })),
     stockLocations: ((locationsResult.data ?? []) as LocationRow[]).map((location) => ({
       id: location.id as EntityId,

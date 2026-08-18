@@ -13,6 +13,9 @@ import {
   createStockItem,
   updateStockItem,
 } from "@/modules/catalog/domain/stock-item";
+import { SupabaseEmployeeRepository } from "@/modules/employees/adapters/supabase-employee-repository";
+import { EmployeeService } from "@/modules/employees/application/employee-service";
+import { Employee } from "@/modules/employees/domain/employee";
 import { SupabaseStockEntryGateway } from "@/modules/inventory/adapters/supabase-stock-entry-gateway";
 import { SupabaseStockTransferGateway } from "@/modules/inventory/adapters/supabase-stock-transfer-gateway";
 import { SupabaseStockWithdrawalGateway } from "@/modules/inventory/adapters/supabase-stock-withdrawal-gateway";
@@ -26,8 +29,10 @@ import {
 } from "@/modules/suppliers/domain/supplier";
 import {
   RuntimeCategory,
+  RuntimeSector,
   RuntimeStockLocation,
   RuntimeStockTransfer,
+  RuntimeUnit,
   RuntimeUnitOfMeasure,
   WorkspaceReferenceData,
   loadWorkspaceReferenceData,
@@ -51,14 +56,26 @@ interface SupplierDraft {
   contacts: readonly SupplierContactInput[];
 }
 
+interface EmployeeDraft {
+  name: string;
+  code?: string;
+  active?: boolean;
+  defaultUnitId?: EntityId;
+  defaultSectorId?: EntityId;
+  linkedUserId?: EntityId;
+}
+
 export interface RuntimeWorkspaceInitialData extends WorkspaceReferenceData {
   readonly stockItems: readonly StockItem[];
   readonly suppliers: readonly Supplier[];
+  readonly employees: readonly Employee[];
 }
 
 interface RuntimePermissions {
   readonly manageCatalog: boolean;
   readonly manageSuppliers: boolean;
+  readonly manageEmployees: boolean;
+  readonly manageEmployeesOrganizationWide: boolean;
   readonly recordStockEntry: boolean;
   readonly recordStockWithdrawal: boolean;
   readonly manageStockTransfers: boolean;
@@ -75,9 +92,12 @@ interface RuntimeWorkspaceValue {
   readonly organizationName: string;
   readonly categories: readonly RuntimeCategory[];
   readonly unitsOfMeasure: readonly RuntimeUnitOfMeasure[];
+  readonly units: readonly RuntimeUnit[];
+  readonly sectors: readonly RuntimeSector[];
   readonly stockLocations: readonly RuntimeStockLocation[];
   readonly stockItems: readonly StockItem[];
   readonly suppliers: readonly Supplier[];
+  readonly employees: readonly Employee[];
   readonly balances: readonly InventoryBalance[];
   readonly batches: readonly InventoryBatch[];
   readonly transfers: readonly RuntimeStockTransfer[];
@@ -86,6 +106,8 @@ interface RuntimeWorkspaceValue {
   updateStockItem(id: EntityId, input: StockItemDraft): Promise<void>;
   createSupplier(input: SupplierDraft): Promise<void>;
   updateSupplier(id: EntityId, input: SupplierDraft): Promise<void>;
+  createEmployee(input: EmployeeDraft): Promise<void>;
+  updateEmployee(id: EntityId, input: EmployeeDraft): Promise<void>;
   recordEntry(input: {
     stockItemId: EntityId;
     stockLocationId: EntityId;
@@ -144,17 +166,22 @@ export function RuntimeWorkspaceProvider({
   const client = useMemo(() => createBrowserSupabaseClient(supabaseConfig), [supabaseConfig]);
   const stockItemsRepository = useMemo(() => new SupabaseStockItemRepository(client), [client]);
   const suppliersRepository = useMemo(() => new SupabaseSupplierRepository(client), [client]);
+  const employeesRepository = useMemo(() => new SupabaseEmployeeRepository(client), [client]);
+  const employeeService = useMemo(() => new EmployeeService(employeesRepository), [employeesRepository]);
   const stockEntryGateway = useMemo(() => new SupabaseStockEntryGateway(client), [client]);
   const stockWithdrawalGateway = useMemo(() => new SupabaseStockWithdrawalGateway(client), [client]);
   const stockTransferGateway = useMemo(() => new SupabaseStockTransferGateway(client), [client]);
 
   const [stockItems, setStockItems] = useState<readonly StockItem[]>(initialData.stockItems);
   const [suppliers, setSuppliers] = useState<readonly Supplier[]>(initialData.suppliers);
+  const [employees, setEmployees] = useState<readonly Employee[]>(initialData.employees);
   const [referenceData, setReferenceData] = useState<WorkspaceReferenceData>(initialData);
 
   const permissions: RuntimePermissions = {
     manageCatalog: can(organizationWideRoles, ["owner", "admin", "manager", "inventory"]),
     manageSuppliers: can(organizationWideRoles, ["owner", "admin", "manager", "purchases"]),
+    manageEmployees: can(roles, ["owner", "admin", "manager"]),
+    manageEmployeesOrganizationWide: can(organizationWideRoles, ["owner", "admin", "manager"]),
     recordStockEntry: can(roles, ["owner", "admin", "manager", "inventory"]),
     recordStockWithdrawal: can(roles, ["owner", "admin", "manager", "inventory"]),
     manageStockTransfers: can(roles, ["owner", "admin", "manager", "inventory"]),
@@ -167,13 +194,15 @@ export function RuntimeWorkspaceProvider({
   };
 
   async function refresh() {
-    const [nextItems, nextSuppliers, nextReferences] = await Promise.all([
+    const [nextItems, nextSuppliers, nextEmployees, nextReferences] = await Promise.all([
       stockItemsRepository.listByOrganization(organizationId),
       suppliersRepository.listByOrganization(organizationId),
+      employeeService.listByOrganization(organizationId),
       loadWorkspaceReferenceData(client, organizationId),
     ]);
     setStockItems(nextItems);
     setSuppliers(nextSuppliers);
+    setEmployees(nextEmployees);
     setReferenceData(nextReferences);
   }
 
@@ -203,6 +232,32 @@ export function RuntimeWorkspaceProvider({
     const current = await suppliersRepository.findById(id);
     if (!current) throw new DomainError("SUPPLIER_NOT_FOUND", "Fornecedor não encontrado.");
     await suppliersRepository.save(updateSupplier(current, { ...input, active: input.active ?? true }));
+    await refresh();
+  }
+
+  async function createEmployeeRecord(input: EmployeeDraft) {
+    if (!permissions.manageEmployees) throw new DomainError("INSUFFICIENT_ROLE", "Seu vínculo não pode manter funcionários.");
+    await employeeService.create({
+      organizationId,
+      name: input.name,
+      code: input.code,
+      defaultUnitId: input.defaultUnitId,
+      defaultSectorId: input.defaultSectorId,
+      linkedUserId: input.linkedUserId,
+    });
+    await refresh();
+  }
+
+  async function editEmployee(id: EntityId, input: EmployeeDraft) {
+    if (!permissions.manageEmployees) throw new DomainError("INSUFFICIENT_ROLE", "Seu vínculo não pode manter funcionários.");
+    await employeeService.update(id, {
+      name: input.name,
+      code: input.code,
+      active: input.active ?? true,
+      defaultUnitId: input.defaultUnitId,
+      defaultSectorId: input.defaultSectorId,
+      linkedUserId: input.linkedUserId,
+    });
     await refresh();
   }
 
@@ -272,9 +327,12 @@ export function RuntimeWorkspaceProvider({
     organizationName,
     categories: referenceData.categories,
     unitsOfMeasure: referenceData.unitsOfMeasure,
+    units: referenceData.units,
+    sectors: referenceData.sectors,
     stockLocations: referenceData.stockLocations,
     stockItems,
     suppliers,
+    employees,
     balances: referenceData.balances,
     batches: referenceData.batches,
     transfers: referenceData.transfers,
@@ -283,6 +341,8 @@ export function RuntimeWorkspaceProvider({
     updateStockItem: editItem,
     createSupplier: createSupplierRecord,
     updateSupplier: editSupplier,
+    createEmployee: createEmployeeRecord,
+    updateEmployee: editEmployee,
     recordEntry,
     recordWithdrawal,
     dispatchTransfer,
