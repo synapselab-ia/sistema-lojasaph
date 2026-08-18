@@ -100,3 +100,6 @@ jobs:
 
       - name: Run multi-batch transfer tests
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/stock_transfer_multibatch.sql
+
+      - name: Run import staging and dry-run tests
+        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/import_staging.sql
