@@ -68,15 +68,6 @@ begin
   ) <> 1 then
     raise exception 'same source/version created duplicate import batch';
   end if;
-
-  if (
-    select count(*)
-    from public.audit_logs
-    where entity_id = '95000000-0000-4000-8000-000000000100'
-      and action = 'import_batch_staged'
-  ) <> 1 then
-    raise exception 'batch staging audit must be written exactly once';
-  end if;
 end;
 $$;
 
@@ -208,15 +199,6 @@ begin
      or report.pending_mapping_rows <> 1
      or report.duplicate_rows <> 0 then
     raise exception 'unexpected import preview report: %', row_to_json(report);
-  end if;
-
-  if (
-    select count(*)
-    from public.audit_logs
-    where entity_id = '95000000-0000-4000-8000-000000000100'
-      and action = 'import_preview_finalized'
-  ) <> 1 then
-    raise exception 'preview finalization audit must be written exactly once';
   end if;
 end;
 $$;
@@ -366,6 +348,30 @@ end;
 $$;
 
 reset role;
+
+-- Audit assertions run as the database test administrator because the existing
+-- audit_logs RLS intentionally restricts direct audit visibility to owner/admin.
+do $$
+begin
+  if (
+    select count(*)
+    from public.audit_logs
+    where entity_id = '95000000-0000-4000-8000-000000000100'
+      and action = 'import_batch_staged'
+  ) <> 1 then
+    raise exception 'batch staging audit must be written exactly once';
+  end if;
+
+  if (
+    select count(*)
+    from public.audit_logs
+    where entity_id = '95000000-0000-4000-8000-000000000100'
+      and action = 'import_preview_finalized'
+  ) <> 1 then
+    raise exception 'preview finalization audit must be written exactly once';
+  end if;
+end;
+$$;
 
 -- Anonymous callers do not have EXECUTE on the import command surface.
 set role anon;
