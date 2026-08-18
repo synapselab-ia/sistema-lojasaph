@@ -70,7 +70,29 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install PostgreSQL 17 client
+        shell: bash
         run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes curl ca-certificates
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl \
+            --fail \
+            --silent \
+            --show-error \
+            --location \
+            --output /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          . /etc/os-release
+          ARCH="$(dpkg --print-architecture)"
+          cat <<EOF | sudo tee /etc/apt/sources.list.d/pgdg.sources >/dev/null
+          Types: deb
+          URIs: https://apt.postgresql.org/pub/repos/apt
+          Suites: ${VERSION_CODENAME}-pgdg
+          Architectures: ${ARCH}
+          Components: main
+          Signed-By: /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
+          EOF
           sudo apt-get update
           sudo apt-get install --yes postgresql-client-17
 
