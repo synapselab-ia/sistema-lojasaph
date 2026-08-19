@@ -17,20 +17,35 @@ export interface DashboardUnit {
   readonly name: string;
 }
 
+export interface DashboardSector {
+  readonly id: EntityId;
+  readonly unitId: EntityId;
+  readonly name: string;
+}
+
+export interface DashboardQueryInput {
+  readonly unitId?: EntityId;
+  readonly sectorId?: EntityId;
+  readonly horizonDays: number;
+}
+
 export interface DashboardSnapshot {
   readonly timeZone: string;
   readonly today: string;
   readonly units: readonly DashboardUnit[];
+  readonly sectors: readonly DashboardSector[];
   readonly data: DashboardRawData;
 }
 
 interface OrganizationRow { timezone: string }
 interface UnitRow { id: string; name: string }
-interface LocationRow { id: string; unit_id: string }
+interface SectorRow { id: string; unit_id: string; name: string }
+interface LocationRow { id: string; unit_id: string; sector_id: string | null }
 interface RegisterRow { id: string; unit_id: string }
 interface FinanceRow {
   installment_id: string;
   unit_id: string;
+  sector_id: string | null;
   nominal_amount: number | string;
   net_paid_amount: number | string;
   balance_amount: number | string;
@@ -80,43 +95,90 @@ function money(value: number | string): Money {
   return Money.fromDecimal(String(value));
 }
 
+export function validateDashboardSelection(
+  units: readonly DashboardUnit[],
+  sectors: readonly DashboardSector[],
+  input: Pick<DashboardQueryInput, "unitId" | "sectorId">,
+): void {
+  if (input.unitId && !units.some((unit) => unit.id === input.unitId)) {
+    throw new Error("DASHBOARD_UNIT_NOT_AVAILABLE");
+  }
+
+  if (!input.sectorId) return;
+
+  const sector = sectors.find((candidate) => candidate.id === input.sectorId);
+  if (!sector) {
+    // The list was loaded through the authenticated client and RLS. A Sector that
+    // is not visible here cannot be accepted as a filter supplied by the browser.
+    throw new Error("DASHBOARD_SECTOR_NOT_AVAILABLE");
+  }
+
+  if (input.unitId && sector.unitId !== input.unitId) {
+    throw new Error("DASHBOARD_SECTOR_UNIT_MISMATCH");
+  }
+}
+
 export class SupabaseDashboardQuery {
   constructor(private readonly client: SupabaseClient) {}
 
   async load(
     organizationId: EntityId,
-    input: { readonly unitId?: EntityId; readonly horizonDays: number },
+    input: DashboardQueryInput,
   ): Promise<DashboardSnapshot> {
-    const [organizationResult, unitsResult, locationsResult, registersResult] = await Promise.all([
+    const [organizationResult, unitsResult, sectorsResult, locationsResult, registersResult] = await Promise.all([
       this.client.from("organizations").select("timezone").eq("id", organizationId).single(),
       this.client.from("units").select("id, name").eq("organization_id", organizationId).eq("status", "active").order("name"),
-      this.client.from("stock_locations").select("id, unit_id").eq("organization_id", organizationId).eq("status", "active"),
+      this.client.from("sectors").select("id, unit_id, name").eq("organization_id", organizationId).eq("status", "active").order("name"),
+      this.client.from("stock_locations").select("id, unit_id, sector_id").eq("organization_id", organizationId).eq("status", "active"),
       this.client.from("cash_registers").select("id, unit_id").eq("organization_id", organizationId).eq("status", "active"),
     ]);
 
     if (organizationResult.error) throw queryError("o timezone da organização", organizationResult.error.message);
     if (unitsResult.error) throw queryError("as unidades", unitsResult.error.message);
+    if (sectorsResult.error) throw queryError("os Setores", sectorsResult.error.message);
     if (locationsResult.error) throw queryError("os locais de estoque", locationsResult.error.message);
     if (registersResult.error) throw queryError("os caixas", registersResult.error.message);
 
     const organization = organizationResult.data as OrganizationRow;
-    const units = ((unitsResult.data ?? []) as UnitRow[]).map((row) => Object.freeze({ id: row.id as EntityId, name: row.name }));
+    const units = ((unitsResult.data ?? []) as UnitRow[]).map((row) => Object.freeze({
+      id: row.id as EntityId,
+      name: row.name,
+    }));
+    const sectors = ((sectorsResult.data ?? []) as SectorRow[]).map((row) => Object.freeze({
+      id: row.id as EntityId,
+      unitId: row.unit_id as EntityId,
+      name: row.name,
+    }));
+
+    validateDashboardSelection(units, sectors, input);
+
     const locations = (locationsResult.data ?? []) as LocationRow[];
     const registers = (registersResult.data ?? []) as RegisterRow[];
-    const locationUnit = new Map(locations.map((row) => [row.id, row.unit_id as EntityId]));
+    const locationById = new Map(locations.map((row) => [row.id, row]));
     const registerUnit = new Map(registers.map((row) => [row.id, row.unit_id as EntityId]));
-    const locationIds = input.unitId ? locations.filter((row) => row.unit_id === input.unitId).map((row) => row.id) : locations.map((row) => row.id);
-    const registerIds = input.unitId ? registers.filter((row) => row.unit_id === input.unitId).map((row) => row.id) : registers.map((row) => row.id);
+
+    const scopedLocations = locations.filter((row) => {
+      if (input.unitId && row.unit_id !== input.unitId) return false;
+      if (input.sectorId && row.sector_id !== input.sectorId) return false;
+      return true;
+    });
+    const scopedLocationIds = scopedLocations.map((row) => row.id);
+    const registerIds = input.unitId
+      ? registers.filter((row) => row.unit_id === input.unitId).map((row) => row.id)
+      : registers.map((row) => row.id);
+
     const today = localIsoDate(new Date(), organization.timezone);
     const historyStart = shiftIsoDate(today, -input.horizonDays);
     const horizonEnd = shiftIsoDate(today, input.horizonDays);
 
     let financeQuery = this.client
       .from("payable_installment_summary")
-      .select("installment_id, unit_id, nominal_amount, net_paid_amount, balance_amount, payment_status, due_date")
+      .select("installment_id, unit_id, sector_id, nominal_amount, net_paid_amount, balance_amount, payment_status, due_date")
       .eq("organization_id", organizationId);
     if (input.unitId) financeQuery = financeQuery.eq("unit_id", input.unitId);
+    if (input.sectorId) financeQuery = financeQuery.eq("sector_id", input.sectorId);
 
+    // Cash intentionally ignores sectorId: cash_registers has no Sector relation.
     const cashPromise = registerIds.length === 0
       ? Promise.resolve({ data: [] as unknown[], error: null })
       : this.client
@@ -127,17 +189,17 @@ export class SupabaseDashboardQuery {
           .or(`status.eq.open,business_date.gte.${historyStart}`)
           .order("business_date", { ascending: false });
 
-    const purchasesPromise = locationIds.length === 0
+    const purchasesPromise = scopedLocationIds.length === 0
       ? Promise.resolve({ data: [] as unknown[], error: null })
       : this.client
           .from("purchase_orders")
           .select("id, stock_location_id, status, expected_delivery_date")
           .eq("organization_id", organizationId)
-          .in("stock_location_id", locationIds)
+          .in("stock_location_id", scopedLocationIds)
           .in("status", ["ordered", "partially_received"])
           .order("expected_delivery_date", { ascending: true, nullsFirst: false });
 
-    const transfersPromise = locationIds.length === 0
+    const transfersPromise = (input.unitId || input.sectorId) && scopedLocationIds.length === 0
       ? Promise.resolve({ data: [] as unknown[], error: null })
       : this.client
           .from("stock_transfers")
@@ -145,22 +207,22 @@ export class SupabaseDashboardQuery {
           .eq("organization_id", organizationId)
           .in("status", ["dispatched", "partially_received"]);
 
-    const countsPromise = locationIds.length === 0
+    const countsPromise = scopedLocationIds.length === 0
       ? Promise.resolve({ data: [] as unknown[], error: null })
       : this.client
           .from("inventory_counts")
           .select("id, stock_location_id, status")
           .eq("organization_id", organizationId)
-          .in("stock_location_id", locationIds)
+          .in("stock_location_id", scopedLocationIds)
           .in("status", ["counting", "review"]);
 
-    const expiriesPromise = locationIds.length === 0
+    const expiriesPromise = scopedLocationIds.length === 0
       ? Promise.resolve({ data: [] as unknown[], error: null })
       : this.client
           .from("inventory_batches")
           .select("id, stock_location_id, expiration_date")
           .eq("organization_id", organizationId)
-          .in("stock_location_id", locationIds)
+          .in("stock_location_id", scopedLocationIds)
           .eq("status", "active")
           .gt("remaining_quantity", 0)
           .not("expiration_date", "is", null)
@@ -186,6 +248,7 @@ export class SupabaseDashboardQuery {
     const finance: DashboardFinanceRow[] = ((financeResult.data ?? []) as FinanceRow[]).map((row) => Object.freeze({
       id: row.installment_id as EntityId,
       unitId: row.unit_id as EntityId,
+      sectorId: row.sector_id ? row.sector_id as EntityId : undefined,
       nominalAmount: money(row.nominal_amount),
       netPaidAmount: money(row.net_paid_amount),
       balanceAmount: money(row.balance_amount),
@@ -206,35 +269,65 @@ export class SupabaseDashboardQuery {
     });
 
     const purchases: DashboardPurchaseRow[] = ((purchasesResult.data ?? []) as PurchaseRow[]).flatMap((row) => {
-      const unitId = locationUnit.get(row.stock_location_id);
-      if (!unitId) return [];
-      return [Object.freeze({ id: row.id as EntityId, unitId, status: row.status, expectedDeliveryDate: row.expected_delivery_date ?? undefined })];
+      const location = locationById.get(row.stock_location_id);
+      if (!location) return [];
+      return [Object.freeze({
+        id: row.id as EntityId,
+        unitId: location.unit_id as EntityId,
+        sectorId: location.sector_id ? location.sector_id as EntityId : undefined,
+        status: row.status,
+        expectedDeliveryDate: row.expected_delivery_date ?? undefined,
+      })];
     });
 
     const transfers: DashboardTransferRow[] = ((transfersResult.data ?? []) as TransferRow[]).flatMap((row) => {
-      const sourceUnitId = locationUnit.get(row.source_location_id);
-      const destinationUnitId = locationUnit.get(row.destination_location_id);
-      if (!sourceUnitId || !destinationUnitId) return [];
-      if (input.unitId && sourceUnitId !== input.unitId && destinationUnitId !== input.unitId) return [];
-      return [Object.freeze({ id: row.id as EntityId, sourceUnitId, destinationUnitId, status: row.status })];
+      const source = locationById.get(row.source_location_id);
+      const destination = locationById.get(row.destination_location_id);
+      if (!source || !destination) return [];
+
+      const sourceMatches = (!input.unitId || source.unit_id === input.unitId)
+        && (!input.sectorId || source.sector_id === input.sectorId);
+      const destinationMatches = (!input.unitId || destination.unit_id === input.unitId)
+        && (!input.sectorId || destination.sector_id === input.sectorId);
+      if ((input.unitId || input.sectorId) && !sourceMatches && !destinationMatches) return [];
+
+      return [Object.freeze({
+        id: row.id as EntityId,
+        sourceUnitId: source.unit_id as EntityId,
+        sourceSectorId: source.sector_id ? source.sector_id as EntityId : undefined,
+        destinationUnitId: destination.unit_id as EntityId,
+        destinationSectorId: destination.sector_id ? destination.sector_id as EntityId : undefined,
+        status: row.status,
+      })];
     });
 
     const inventoryCounts: DashboardInventoryCountRow[] = ((countsResult.data ?? []) as InventoryCountRow[]).flatMap((row) => {
-      const unitId = locationUnit.get(row.stock_location_id);
-      if (!unitId) return [];
-      return [Object.freeze({ id: row.id as EntityId, unitId, status: row.status })];
+      const location = locationById.get(row.stock_location_id);
+      if (!location) return [];
+      return [Object.freeze({
+        id: row.id as EntityId,
+        unitId: location.unit_id as EntityId,
+        sectorId: location.sector_id ? location.sector_id as EntityId : undefined,
+        status: row.status,
+      })];
     });
 
     const expiries: DashboardExpiryRow[] = ((expiriesResult.data ?? []) as ExpiryRow[]).flatMap((row) => {
-      const unitId = locationUnit.get(row.stock_location_id);
-      if (!unitId) return [];
-      return [Object.freeze({ id: row.id as EntityId, unitId, expirationDate: row.expiration_date })];
+      const location = locationById.get(row.stock_location_id);
+      if (!location) return [];
+      return [Object.freeze({
+        id: row.id as EntityId,
+        unitId: location.unit_id as EntityId,
+        sectorId: location.sector_id ? location.sector_id as EntityId : undefined,
+        expirationDate: row.expiration_date,
+      })];
     });
 
     return Object.freeze({
       timeZone: organization.timezone,
       today,
       units: Object.freeze(units),
+      sectors: Object.freeze(sectors),
       data: Object.freeze({
         finance: Object.freeze(finance),
         cash: Object.freeze(cash),
