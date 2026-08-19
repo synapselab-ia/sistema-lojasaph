@@ -1,6 +1,6 @@
 # Módulo — Dashboard operacional, alertas e KPIs
 
-Status: Fase 13 concluída tecnicamente no PR #36.
+Status: Fase 24 — filtro gerencial por Setor implementado sobre as fontes persistentes existentes.
 
 ## Objetivo
 
@@ -16,7 +16,9 @@ Transformar `/workspace` em uma visão orientada a ação, consolidando sinais j
 - Caixa usa sessões/fechamentos persistidos;
 - timezone da Organization define a data de negócio do painel;
 - RLS permanece a fronteira de isolamento; o dashboard não usa service role nem bypass;
-- não foi criada migration/read model materializado nesta fase porque as consultas simples foram suficientes.
+- filtro de Setor só atua onde existe relacionamento setorial explícito;
+- registro sem `sector_id` comprovado não é atribuído a Setor por nome, Unit, usuário ou heurística;
+- não foi necessária migration/read model novo para a Fase 24 porque as fontes existentes já carregam as relações necessárias.
 
 ## Fontes consultadas
 
@@ -24,13 +26,14 @@ Transformar `/workspace` em uma visão orientada a ação, consolidando sinais j
 
 `payable_installment_summary` fornece:
 
+- `unit_id` e `sector_id` do documento financeiro;
 - valor nominal;
 - total líquido pago;
 - saldo;
 - vencimento;
 - status `cancelled`, `paid`, `overdue`, `due_today`, `upcoming`.
 
-O Dashboard não recalcula esse status no React.
+O Dashboard não recalcula esse status no React. Quando Setor é selecionado, somente linhas cujo `sector_id` corresponde explicitamente ao filtro entram nos KPIs.
 
 ### Caixa
 
@@ -40,7 +43,7 @@ O Dashboard não recalcula esse status no React.
 - sessões fechadas no período;
 - divergências não-zero.
 
-A relação com unidade é resolvida por `cash_registers`.
+A relação com unidade é resolvida por `cash_registers`. `cash_registers` não possui `sector_id` no modelo atual, portanto **Caixa permanece Unit-level mesmo quando existe Setor selecionado**. A interface sinaliza essa limitação em vez de simular granularidade setorial.
 
 ### Compras
 
@@ -51,7 +54,7 @@ A relação com unidade é resolvida por `cash_registers`.
 - pedidos com previsão atrasada;
 - entregas dentro do horizonte selecionado.
 
-A relação com unidade é resolvida pelo local de estoque.
+A relação com Unit e Setor é resolvida pelo `stock_location`. Sob filtro de Setor, só entram pedidos cujo local possui `stock_locations.sector_id` explicitamente igual ao filtro. Local sem Setor fica fora do resultado setorial.
 
 ### Estoque
 
@@ -59,14 +62,42 @@ A relação com unidade é resolvida pelo local de estoque.
 - `inventory_counts`: contagens `counting` / `review`;
 - `inventory_batches`: lotes ativos com saldo e validade informada.
 
+Inventários e validades herdam Unit/Setor exclusivamente de `stock_locations`.
+
+Para transferências, o vínculo setorial é avaliado separadamente em origem e destino. Uma transferência pertence ao filtro quando **o mesmo endpoint** satisfaz os filtros ativos de Unit e Setor. Isso impede combinar a Unit de uma ponta com o Setor da outra. Endpoints sem `stock_locations.sector_id` não são classificados em Setor.
+
 Lotes sem validade continuam desconhecidos e não viram alerta fictício.
 
 ## Filtros
 
-A primeira versão oferece:
+O Dashboard oferece:
 
-- unidade: todas ou uma unidade ativa;
+- unidade: todas ou uma Unit ativa autorizada;
+- Setor: todos os Setores autorizados ou um Setor explícito;
 - horizonte: 7, 15 ou 30 dias.
+
+### Autorização do Setor
+
+A lista de Setores é carregada pelo mesmo client Supabase autenticado do Dashboard. A policy `sectors_member_select`/RLS decide quais linhas são visíveis; não há service role, lista hardcoded ou bypass.
+
+O adapter rejeita:
+
+- Unit que não apareceu na leitura autenticada;
+- Setor que não apareceu na leitura autenticada;
+- combinação Unit + Setor em que o Setor não pertence à Unit selecionada.
+
+Na UI, trocar a Unit remove automaticamente um Setor selecionado que se torne incompatível. Quando nenhuma Unit está selecionada, a lista pode conter todos os Setores que o RLS daquele usuário permitir.
+
+### Semântica por fonte
+
+Com Setor ativo:
+
+- Financeiro: filtra por `payable_installment_summary.sector_id`;
+- Compras: filtra pelo `sector_id` explícito do local do pedido;
+- Inventários: filtra pelo `sector_id` explícito do local contado;
+- Validades: filtra pelo `sector_id` explícito do local do lote;
+- Transferências: filtra quando origem ou destino possui o Setor explícito, respeitando Unit + Setor no mesmo endpoint;
+- Caixa: **não** é filtrado por Setor; continua usando Unit + horizonte e recebe indicação visual de “escopo Unidade”.
 
 O horizonte afeta:
 
@@ -75,9 +106,7 @@ O horizonte afeta:
 - lotes próximos da validade;
 - período de fechamentos recentes de Caixa.
 
-Ele é um filtro de visualização, não substitui futura configuração persistente de janelas de alerta.
-
-Transferências entram no filtro quando a unidade selecionada é origem **ou** destino.
+Ele é um filtro de visualização, não substitui futura decisão sobre intervalo de datas gerencial arbitrário.
 
 ## KPIs atuais
 
@@ -109,6 +138,8 @@ Transferências entram no filtro quando a unidade selecionada é origem **ou** d
 - lotes vencidos com saldo;
 - lotes vencendo dentro do horizonte.
 
+A Fase 24 não cria KPI novo nem altera fórmula/status existente.
+
 ## Fila de atenção
 
 A fila não mostra cards vazios. Um sinal só aparece quando sua contagem é maior que zero.
@@ -130,7 +161,7 @@ Prioridade média:
 - transferências em trânsito;
 - inventários em andamento.
 
-Cada item navega diretamente para o módulo de origem.
+Cada item navega diretamente para o módulo de origem. Com Setor ativo, a interface informa que sinais de Caixa permanecem Unit-level.
 
 ## Implementação
 
@@ -138,7 +169,10 @@ Cada item navega diretamente para o módulo de origem.
 
 Camada pura, sem dependência de Supabase/React:
 
-- filtra unidade;
+- filtra Unit;
+- filtra Setor apenas nos rows com relação explícita;
+- trata Transferência por endpoint;
+- mantém Caixa fora do filtro setorial;
 - aplica horizonte;
 - agrega Money sem float binário;
 - produz KPIs;
@@ -151,7 +185,10 @@ Adapter de leitura:
 - usa o client autenticado normal;
 - consulta somente tabelas/views já protegidas;
 - resolve Organization timezone;
-- carrega unidades/locais/caixas para relacionar dados aos escopos;
+- carrega Units, Setores, locais e caixas para relacionar dados aos escopos;
+- valida Unit/Setor contra as linhas retornadas pelo RLS;
+- restringe Financeiro pelo `sector_id` do read model quando selecionado;
+- restringe fontes de estoque aos IDs de locais explicitamente vinculados ao Setor;
 - não realiza mutation;
 - não usa chave privilegiada.
 
@@ -160,11 +197,14 @@ Adapter de leitura:
 Interface responsiva com:
 
 - data de negócio + timezone;
-- filtro de unidade;
+- filtro de Unit;
+- filtro de Setor;
 - filtro de horizonte;
+- explicação de granularidade quando Setor está ativo;
 - fila de atenção;
 - KPIs financeiros;
 - KPIs operacionais;
+- identificação explícita dos cards de Caixa que permanecem Unit-level;
 - estados explícitos de loading/erro;
 - links para os módulos transacionais.
 
@@ -175,59 +215,44 @@ Requests concorrentes de filtro usam sequência monotônica: uma resposta antiga
 `dashboard-summary.test.ts` cobre:
 
 - agregação financeira exata;
-- isolamento lógico do filtro por unidade;
-- Caixa/Compras/Estoque;
+- isolamento lógico do filtro por Unit;
+- filtro por Setor sem absorver registros sem vínculo;
+- Unit + Setor no mesmo endpoint de Transferência;
+- Caixa permanecendo Unit-level sob Setor;
 - horizonte variável;
 - timezone da Organization;
 - rejeição de horizonte inválido.
 
-CI do head material passou:
+`supabase-dashboard-query.test.ts` cobre a fronteira de seleção autenticada:
 
-- lint;
-- typecheck;
-- testes unitários;
-- production build;
-- CI PostgreSQL 17;
-- Inventory Count Integration;
-- Business Transactions Integration, incluindo Caixa.
+- Setor visível + Unit compatível;
+- Setor visível sem Unit obrigatória;
+- Setor ausente da lista RLS rejeitado;
+- Unit + Setor incompatíveis rejeitados;
+- Unit ausente da leitura autenticada rejeitada.
 
-## Homologação remota
+## Estado remoto observado antes da Fase 24
 
-Não houve migration nova nesta fase.
+No Supabase hospedado atual:
 
-A homologação no Supabase foi somente de leitura, em `BEGIN/ROLLBACK`:
+- existem 3 Setores ativos;
+- `payable_installment_summary` expõe `sector_id`;
+- `stock_locations` possui coluna `sector_id`;
+- os 3 locais ativos atuais estão sem Setor explícito;
+- `cash_registers` não possui `sector_id`;
+- `authenticated` possui SELECT nas fontes necessárias;
+- a leitura de Setores é protegida por `private.can_read_sector(...)` via RLS.
 
-- criou usuário `viewer` temporário membro da Organization demo;
-- criou segunda Organization/Unit sem membership;
-- executou as consultas equivalentes às fontes do Dashboard sob role `authenticated`;
-- confirmou visibilidade da Organization demo;
-- confirmou que Organization/Unit sem membership não eram visíveis;
-- confirmou acesso às fontes Financeiro, Caixa, Compras, Transferências, Inventários e Validades;
-- rollback removeu usuário, membership e Organization/Unit temporários.
+Esses fatos determinam o comportamento: o sistema suporta granularidade setorial quando o dado possuir vínculo, mas não classifica os locais atuais em Setor artificialmente.
 
-Resíduos após rollback: zero.
+## Fora do escopo da Fase 24
 
-No fixture remoto atual, as consultas retornaram:
-
-- Financeiro: 0 linhas;
-- Caixa: 0 sessões;
-- Compras pendentes: 0;
-- Transferências em trânsito: 0;
-- Inventários abertos: 0;
-- lotes ativos com validade: 2.
-
-Esses zeros são resultados reais do dataset demo atual; não são placeholders produzidos pela interface.
-
-## Fora do escopo da Fase 13
-
-- previsão de demanda/IA;
-- estoque mínimo sem regra persistida;
-- vendas individuais/POS;
+- novos KPIs ou gráficos;
+- estoque mínimo/previsão de demanda;
+- atribuir Caixa a Setor sem modelagem explícita;
+- redefinir roles/memberships/Q-022;
+- resolver toda a semântica de intervalo de datas arbitrário de `REQ-DASH-002`;
+- dados reais/importação;
 - BI/data warehouse;
 - notificações externas;
-- métricas contábeis não existentes no domínio;
-- materialized views prematuras.
-
-## Próxima lacuna estrutural
-
-`REQ-SEC-002` exige permissões por função e escopo de unidade/setor. Hoje a membership já possui `business_id`, `unit_id` e `sector_id`, mas os helpers de autorização consolidados verificam apenas Organization + role. A próxima fase deve tornar esses escopos efetivos sem redefinir perfis reais enquanto Q-022 estiver aberta.
+- deployment Vercel rotineiro.
