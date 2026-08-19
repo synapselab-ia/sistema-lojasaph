@@ -22,6 +22,8 @@ export default function InviteAuthPage() {
       };
     }
 
+    const tokens = parsed.tokens;
+
     async function establishSession() {
       try {
         const response = await fetch("/auth/invite/session", {
@@ -29,7 +31,7 @@ export default function InviteAuthPage() {
           credentials: "same-origin",
           cache: "no-store",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(parsed.tokens),
+          body: JSON.stringify(tokens),
         });
 
         if (!response.ok) {
