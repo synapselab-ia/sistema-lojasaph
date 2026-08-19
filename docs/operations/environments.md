@@ -34,7 +34,9 @@ Project ref não é secret: ela já é observável na URL pública do Supabase. 
 - `LOJASAPH_ALLOW_NON_PRODUCTION_ADMIN` — opt-in excepcional para admin em backend já isolado;
 - `LOJASAPH_BOOTSTRAP_OWNER_EMAIL` — primeiro owner explicitamente autorizado;
 - `LOJASAPH_BOOTSTRAP_ORGANIZATION_ID` — Organization alvo quando necessária para eliminar ambiguidade;
-- `LOJASAPH_BOOTSTRAP_INVITE_TEMPLATE_READY` — gate temporário que só deve ser `true` após verificar template SSR/redirect/entrega do convite.
+- `LOJASAPH_BOOTSTRAP_INVITE_READY` — gate temporário que só deve ser `true` após verificar redirect e entrega do convite.
+
+`LOJASAPH_BOOTSTRAP_INVITE_TEMPLATE_READY` é aceito somente como compatibilidade temporária com o primeiro patch da Fase 26 e não deve ser usado em instalação nova.
 
 ## Regras de liberação
 
@@ -44,7 +46,7 @@ O runtime aceita backend hospedado. Quando `NEXT_PUBLIC_LOJASAPH_PRODUCTION_SUPA
 
 Recomendação antes de produção real: fixar a ref esperada para transformar troca acidental de backend em falha explícita.
 
-Rotinas administrativas, inclusive bootstrap, continuam exigindo `SUPABASE_SECRET_KEY` apenas server-side. A presença do secret não habilita por si só o convite: o bootstrap também exige e-mail autorizado, Organization resolvida, ausência de owner e o gate de template pronto.
+Rotinas administrativas, inclusive bootstrap, continuam exigindo `SUPABASE_SECRET_KEY` apenas server-side. A presença do secret não habilita por si só o convite: o bootstrap também exige e-mail autorizado, Organization resolvida, ausência de owner e o gate de convite pronto.
 
 ### Preview
 
@@ -88,13 +90,16 @@ A janela de bootstrap deve ser curta e explícita:
 
 1. receber do operador o e-mail exato;
 2. configurar apenas no target Production necessário;
-3. confirmar callback canônico na Auth Redirect URL Allow List;
-4. confirmar o template hospedado `Invite user` usando `TokenHash` + `type=invite` para `/auth/callback`;
-5. confirmar entrega de e-mail;
-6. somente então definir `LOJASAPH_BOOTSTRAP_INVITE_TEMPLATE_READY=true`;
-7. enviar um convite controlado;
-8. concluir membership/audit pelo `bootstrapOwnerAction` após autenticação;
-9. remover/desabilitar as variáveis temporárias.
+3. confirmar o redirect canônico `https://<dominio>/auth/invite` na Auth Redirect URL Allow List;
+4. confirmar que o SMTP vigente consegue entregar ao endereço autorizado;
+5. somente então definir `LOJASAPH_BOOTSTRAP_INVITE_READY=true`;
+6. enviar um convite controlado;
+7. o fluxo padrão recebe o fragmento implícito apenas no browser em `/auth/invite`, remove-o da URL e estabelece sessão SSR via POST same-origin validado;
+8. o usuário define a própria senha;
+9. concluir membership/audit pelo `bootstrapOwnerAction` após autenticação;
+10. remover/desabilitar as variáveis temporárias.
+
+No projeto hospedado observado em 2026-08-19, o plano Supabase é Free e o projeto foi criado após a mudança de 2026-06-03 que restringe customização de Auth Email Templates para novos projetos Free usando SMTP padrão. Portanto template customizado não é pré-condição do bootstrap padrão. Se houver SMTP customizado futuramente, o callback `TokenHash` existente pode continuar sendo usado como alternativa SSR.
 
 Não copiar valores de e-mail, secret, token ou senha para Issue, log ou documentação. O app não oferece campo de e-mail para o convite inicial.
 
