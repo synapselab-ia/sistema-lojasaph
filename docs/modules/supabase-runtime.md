@@ -1,6 +1,6 @@
 # Runtime Supabase — persistência, Auth e RLS
 
-Status: Auth/runtime estabilizados, núcleo transacional persistente, observabilidade e isolamento de ambientes documentados.
+Status: Auth/runtime estabilizados, núcleo transacional persistente, observabilidade, isolamento de ambientes e bootstrap seguro do primeiro owner documentados.
 
 ## Sessão e autorização
 
@@ -48,6 +48,30 @@ A Fase 18 adiciona uma política fail-closed antes da criação de clientes Supa
 Project refs usadas no guardrail não são tratadas como secret porque já fazem parte da URL pública do Supabase. Chaves privilegiadas continuam server-only.
 
 Runbook: `docs/operations/environments.md`. Decisão: `docs/decisions/ADR-008-environment-isolation.md`.
+
+## Bootstrap do primeiro owner — Fase 26
+
+O acesso persistente inicial usa dois passos separados:
+
+1. Supabase Auth Admin cria/convida apenas a identidade cujo e-mail foi explicitamente configurado em `LOJASAPH_BOOTSTRAP_OWNER_EMAIL`;
+2. depois que essa identidade autentica e define sua própria senha, `bootstrapOwnerAction` continua sendo o único caminho que cria `organization_memberships.role = 'owner'` e o audit `membership.bootstrap_owner`.
+
+Guardrails:
+
+- signup público continua ausente;
+- não existe campo de e-mail no formulário de convite; o destinatário vem somente de env server-only;
+- não existe senha padrão ou senha conhecida pelo operador/agente;
+- a identidade não é inserida por SQL em `auth.users`;
+- `inviteUserByEmail` roda somente no admin client server-side;
+- antes do convite são revalidados runtime/admin, Organization alvo, ausência de owner ativo e estado da identidade Auth;
+- identidade pendente ou confirmada não recebe novo convite automaticamente;
+- owner ativo encerra o bootstrap;
+- `LOJASAPH_BOOTSTRAP_INVITE_TEMPLATE_READY=true` é um gate explícito e temporário; sem ele o app não envia convite;
+- nenhum DDL, policy ou grant é necessário para esse fluxo.
+
+Como convites Admin não usam PKCE, o template hospedado `Invite user` precisa entregar `TokenHash` + `type=invite` ao `/auth/callback`. O callback existente usa `verifyOtp()` para estabelecer a sessão SSR em cookie antes de enviar o usuário ao formulário de senha. O `next` é sempre validado por `safeInternalPath`.
+
+Runbook operacional completo: `docs/operations/bootstrap-owner.md`.
 
 ## Commands críticos do ledger
 
@@ -98,7 +122,7 @@ A Fase 18 não cria migration, DDL, branch, projeto adicional nem escreve dados 
 
 As migrations da Fase 9 foram aplicadas ao projeto homologado em `sa-east-1`. Entrada, retirada, transferência e inventário foram validados com dados demo em transações `BEGIN/ROLLBACK`; os cenários de teste não deixam usuários/movimentos artificiais.
 
-Fases posteriores aplicaram migrations adicionais conforme seus handoffs. Fases 17 e 18 não criam migration nem executam DDL no projeto remoto.
+Fases posteriores aplicaram migrations adicionais conforme seus handoffs. Fases 17, 18, 24, 25 e a implementação técnica da Fase 26 não criam migration nem executam DDL no projeto remoto.
 
 ## Advisors
 

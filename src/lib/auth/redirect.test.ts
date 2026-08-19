@@ -6,6 +6,11 @@ describe("safeInternalPath", () => {
     expect(safeInternalPath("/workspace/produtos?tab=ativos#lista")).toBe("/workspace/produtos?tab=ativos#lista");
   });
 
+  it("accepts the nested internal continuation used by the bootstrap invite", () => {
+    expect(safeInternalPath("/auth/atualizar-senha?next=/bootstrap"))
+      .toBe("/auth/atualizar-senha?next=/bootstrap");
+  });
+
   it("rejects external and protocol-relative redirects", () => {
     expect(safeInternalPath("https://example.com/steal")).toBe("/workspace");
     expect(safeInternalPath("//example.com/steal")).toBe("/workspace");

@@ -73,8 +73,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install --yes curl ca-certificates
           sudo install -d /usr/share/postgresql-common/pgdg
           sudo curl \
             --fail \
@@ -93,8 +91,20 @@ jobs:
           Components: main
           Signed-By: /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
           EOF
-          sudo apt-get update
-          sudo apt-get install --yes postgresql-client-17
+          if [[ -f /etc/apt/apt-mirrors.txt ]]; then
+            sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/apt-mirrors.txt
+          fi
+          sudo apt-get update \
+            -o Dir::Etc::sourcelist="/etc/apt/sources.list.d/pgdg.sources" \
+            -o Dir::Etc::sourceparts="-" \
+            -o APT::Get::List-Cleanup="0" \
+            -o Acquire::Retries=3 \
+            -o Acquire::https::Timeout=30
+          sudo apt-get install --yes --no-install-recommends \
+            -o Acquire::Retries=3 \
+            -o Acquire::http::Timeout=30 \
+            -o Acquire::https::Timeout=30 \
+            postgresql-client-17
 
       - name: Show PostgreSQL client
         run: |

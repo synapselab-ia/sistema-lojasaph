@@ -1,9 +1,13 @@
 import { redirect } from "next/navigation";
 import { updatePasswordAction } from "@/lib/auth/actions";
+import { safeInternalPath } from "@/lib/auth/redirect";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 interface UpdatePasswordPageProps {
-  searchParams: Promise<{ error?: string | string[] }>;
+  searchParams: Promise<{
+    error?: string | string[];
+    next?: string | string[];
+  }>;
 }
 
 function first(value: string | string[] | undefined): string | undefined {
@@ -13,9 +17,12 @@ function first(value: string | string[] | undefined): string | undefined {
 export default async function UpdatePasswordPage({ searchParams }: UpdatePasswordPageProps) {
   const supabase = await createServerSupabaseClient();
   const { data } = await supabase.auth.getClaims();
-  if (!data?.claims?.sub) redirect("/login?error=O+link+de+recuperação+expirou.+Solicite+um+novo.");
+  if (!data?.claims?.sub) redirect("/login?error=O+link+de+autenticação+expirou.+Solicite+um+novo.");
 
-  const error = first((await searchParams).error);
+  const params = await searchParams;
+  const error = first(params.error);
+  const next = safeInternalPath(first(params.next), "/workspace");
+
   return (
     <main className="mx-auto flex min-h-screen max-w-md items-center px-5 py-10">
       <section className="w-full rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm sm:p-8">
@@ -24,6 +31,7 @@ export default async function UpdatePasswordPage({ searchParams }: UpdatePasswor
         <p className="mt-2 text-sm leading-6 text-neutral-600">Use uma senha exclusiva para o Sistema Lojasaph.</p>
         {error && <p className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{error}</p>}
         <form action={updatePasswordAction} className="mt-6 space-y-4">
+          <input type="hidden" name="next" value={next} />
           <label className="block text-sm font-medium">Nova senha<input name="password" type="password" minLength={8} autoComplete="new-password" required className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2.5 font-normal" /></label>
           <label className="block text-sm font-medium">Confirmar nova senha<input name="passwordConfirmation" type="password" minLength={8} autoComplete="new-password" required className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2.5 font-normal" /></label>
           <button type="submit" className="w-full rounded-lg bg-neutral-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-neutral-700">Atualizar senha</button>
