@@ -7,7 +7,7 @@ import { useRuntimeWorkspace } from "@/modules/master-data/ui/runtime-workspace-
 export default function RuntimeStockPage() {
   const workspace = useRuntimeWorkspace();
   const [entry, setEntry] = useState({ stockItemId: "", stockLocationId: "", quantity: "", unitCost: "", batchCode: "", expirationDate: "", notes: "" });
-  const [withdrawal, setWithdrawal] = useState({ stockItemId: "", stockLocationId: "", quantity: "", preferredBatchId: "", notes: "" });
+  const [withdrawal, setWithdrawal] = useState({ stockItemId: "", stockLocationId: "", sectorId: "", quantity: "", preferredBatchId: "", notes: "" });
   const [message, setMessage] = useState<string | null>(null);
   const [savingOperation, setSavingOperation] = useState<"entry" | "withdrawal" | null>(null);
 
@@ -48,12 +48,13 @@ export default function RuntimeStockPage() {
       await workspace.recordWithdrawal({
         stockItemId: withdrawal.stockItemId as EntityId,
         stockLocationId: withdrawal.stockLocationId as EntityId,
+        sectorId: withdrawal.sectorId as EntityId,
         quantity: withdrawal.quantity,
         preferredBatchId: withdrawal.preferredBatchId ? (withdrawal.preferredBatchId as EntityId) : undefined,
         notes: withdrawal.notes || undefined,
       });
-      setWithdrawal({ stockItemId: "", stockLocationId: "", quantity: "", preferredBatchId: "", notes: "" });
-      setMessage("Retirada persistida. Saldo, lotes, movimento e auditoria foram atualizados na mesma transação.");
+      setWithdrawal({ stockItemId: "", stockLocationId: "", sectorId: "", quantity: "", preferredBatchId: "", notes: "" });
+      setMessage("Retirada persistida com Setor explícito. Saldo, lotes, movimento e auditoria foram atualizados na mesma transação.");
     } catch (error) {
       setMessage(workspace.errorMessage(error));
     } finally {
@@ -92,15 +93,16 @@ export default function RuntimeStockPage() {
 
         {workspace.permissions.recordStockWithdrawal ? (
           <form onSubmit={submitWithdrawal} className="space-y-4 rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-            <div><h2 className="text-lg font-semibold">Registrar retirada</h2><p className="mt-1 text-xs text-neutral-500">Sem lote escolhido, itens rastreados consomem automaticamente por FEFO. Um lote preferido é consumido primeiro e o restante volta ao FEFO.</p></div>
+            <div><h2 className="text-lg font-semibold">Registrar retirada</h2><p className="mt-1 text-xs text-neutral-500">A retirada exige Setor de consumo explícito. Sem lote escolhido, itens rastreados consomem automaticamente por FEFO.</p></div>
             <label className="block text-sm font-medium">Produto<select required value={withdrawal.stockItemId} onChange={(event) => setWithdrawal({ ...withdrawal, stockItemId: event.target.value, preferredBatchId: "" })} className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 font-normal"><option value="">Selecione</option>{workspace.stockItems.filter((item) => item.active).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
             <label className="block text-sm font-medium">Origem<select required value={withdrawal.stockLocationId} onChange={(event) => setWithdrawal({ ...withdrawal, stockLocationId: event.target.value, preferredBatchId: "" })} className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 font-normal"><option value="">Selecione</option>{workspace.stockLocations.map((location) => <option key={location.id} value={location.id}>{location.unitName} — {location.name}</option>)}</select></label>
+            <label className="block text-sm font-medium">Setor de consumo<select required value={withdrawal.sectorId} onChange={(event) => setWithdrawal({ ...withdrawal, sectorId: event.target.value })} className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 font-normal"><option value="">Selecione um Setor</option>{workspace.sectors.map((sector) => <option key={sector.id} value={sector.id}>{sector.unitName} — {sector.name}</option>)}</select><span className="mt-1 block text-xs font-normal text-neutral-500">Somente Setores autorizados para o seu vínculo são listados.</span></label>
             <label className="block text-sm font-medium">Quantidade<input required inputMode="decimal" value={withdrawal.quantity} onChange={(event) => setWithdrawal({ ...withdrawal, quantity: event.target.value })} className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 font-normal" /></label>
             {(selectedWithdrawalItem?.trackBatch || selectedWithdrawalItem?.trackExpiration) && (
               <label className="block text-sm font-medium">Lote preferido (opcional)<select value={withdrawal.preferredBatchId} onChange={(event) => setWithdrawal({ ...withdrawal, preferredBatchId: event.target.value })} className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 font-normal"><option value="">Automático — FEFO</option>{withdrawalBatches.map((batch) => <option key={batch.id} value={batch.id}>{batch.batchCode || "Lote sem código"} · {batch.expirationDate ? `validade ${batch.expirationDate}` : "validade desconhecida"} · saldo {batch.remainingQuantity.toDecimal()}</option>)}</select><span className="mt-1 block text-xs font-normal text-neutral-500">A ordem exibida já segue validade mais próxima e recebimento mais antigo.</span></label>
             )}
             <label className="block text-sm font-medium">Observação (opcional)<textarea value={withdrawal.notes} onChange={(event) => setWithdrawal({ ...withdrawal, notes: event.target.value })} rows={3} className="mt-1 w-full resize-y rounded-lg border border-neutral-300 px-3 py-2 font-normal" /></label>
-            <button disabled={savingOperation !== null || workspace.stockItems.length === 0 || workspace.stockLocations.length === 0} type="submit" className="w-full rounded-lg bg-neutral-900 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{savingOperation === "withdrawal" ? "Registrando..." : "Registrar retirada"}</button>
+            <button disabled={savingOperation !== null || workspace.stockItems.length === 0 || workspace.stockLocations.length === 0 || workspace.sectors.length === 0 || !withdrawal.sectorId} type="submit" className="w-full rounded-lg bg-neutral-900 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{savingOperation === "withdrawal" ? "Registrando..." : "Registrar retirada"}</button>
           </form>
         ) : <aside className="rounded-2xl border border-neutral-200 bg-white p-5 text-sm leading-6 text-neutral-600 shadow-sm"><h2 className="font-semibold text-neutral-900">Retirada não autorizada</h2><p className="mt-1">Seu perfil pode consultar o estoque, mas não possui papel permitido pelo RPC de retirada.</p></aside>}
       </section>
