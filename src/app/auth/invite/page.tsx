@@ -9,13 +9,18 @@ export default function InviteAuthPage() {
   useEffect(() => {
     const parsed = parseImplicitInviteFragment(window.location.hash);
     window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+    let cancelled = false;
 
     if (!parsed.ok) {
-      setError("O convite é inválido ou expirou. Solicite uma nova emissão controlada.");
-      return;
+      queueMicrotask(() => {
+        if (!cancelled) {
+          setError("O convite é inválido ou expirou. Solicite uma nova emissão controlada.");
+        }
+      });
+      return () => {
+        cancelled = true;
+      };
     }
-
-    let cancelled = false;
 
     async function establishSession() {
       try {
