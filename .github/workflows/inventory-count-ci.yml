@@ -63,6 +63,7 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f supabase/tests/schema_smoke.sql
           psql -v ON_ERROR_STOP=1 -f supabase/tests/auth_runtime_roles.sql
           psql -v ON_ERROR_STOP=1 -f supabase/tests/stock_withdrawal.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/tests/stock_return.sql
           psql -v ON_ERROR_STOP=1 -f supabase/tests/stock_transfer.sql
           psql -v ON_ERROR_STOP=1 -f supabase/tests/stock_transfer_multibatch.sql
 

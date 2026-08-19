@@ -1,6 +1,6 @@
 # Módulo — Estoque transacional
 
-Status: ledger persistente com entrada, retirada, transferências, inventário físico e baixas por perda/quebra/vencimento.
+Status: ledger persistente com entrada, retirada, devolução relacionada, transferências, inventário físico e baixas por perda/quebra/vencimento.
 
 ## Princípios
 
@@ -18,6 +18,25 @@ Status: ledger persistente com entrada, retirada, transferências, inventário f
 ## Retirada
 
 `record_stock_withdrawal` bloqueia saldo/lotes, usa lote preferido quando informado e FEFO para o restante, registra custo médio vigente e respeita a política configurável de estoque negativo. Item rastreado nunca cria lote negativo.
+
+## Devolução relacionada de retirada
+
+A Fase 21 fecha `REQ-STK-006` para o caso comprovado pelo domínio atual: devolver ao estoque quantidade de uma retirada `withdrawal` confirmada.
+
+`record_stock_return`:
+
+1. recebe apenas a retirada original, quantidade e observação; local, item, custo e lote não são escolhidos livremente pelo cliente;
+2. cria um novo `stock_movements.movement_type='return_in'` e mantém a retirada original imutável;
+3. usa `reversal_of_movement_id` para relacionar explicitamente o retorno ao movimento original; a relação não é única e suporta múltiplos retornos parciais;
+4. bloqueia a retirada original antes de calcular o total já retornado, serializando retornos concorrentes e impedindo over-return;
+5. deriva o custo de `stock_movement_items.unit_cost_snapshot` da retirada histórica e o incorpora à projeção pelo custo médio móvel;
+6. para item rastreado, restaura somente os mesmos `inventory_batches` comprovados pelas alocações históricas da retirada, sem fabricar código, validade ou custo;
+7. registra movimento, item, alocações, saldo e `audit_logs` atomicamente;
+8. é idempotente por command ID e rejeita reuso com payload semântico diferente;
+9. exige os mesmos papéis e o mesmo escopo do local usados pelas operações de estoque já homologadas;
+10. não implementa empréstimo, prazo ou componente financeiro; Q-003, Q-004 e Q-005 permanecem separadas.
+
+O índice parcial `stock_movements_reversal_org_idx` dá suporte à apuração cumulativa dos retornos relacionados. A função pública tem EXECUTE explícito somente para `authenticated`; `anon`/`PUBLIC` permanecem sem acesso.
 
 ## Baixas por perda, quebra e vencimento
 
@@ -92,17 +111,18 @@ O saldo esperado pode ser negativo quando a exceção do local permitir; a conta
 
 ## Concorrência
 
-Entrada, retirada, baixas, transferência e inventário usam row locks/advisory transaction locks no PostgreSQL. Retirada e baixa compartilham o núcleo privado de saída para que FEFO, custo, negativo e idempotência não tenham implementações concorrentes.
+Entrada, retirada, devolução, baixas, transferência e inventário usam row locks/advisory transaction locks no PostgreSQL. Retirada e baixa compartilham o núcleo privado de saída; devoluções serializam pela retirada original e seguem a mesma ordem saldo → lote para evitar over-return e deadlocks com saídas concorrentes.
 
 ## Interfaces persistentes
 
 - `/workspace/estoque` — saldo, entrada, retirada, lotes;
 - `/workspace/baixas` — perda, quebra, vencimento, motivos e histórico recente;
+- `/workspace/devolucoes` — retiradas elegíveis, saldo retornável e histórico de `return_in`;
 - `/workspace/transferencias` — dispatch/receive;
 - `/workspace/inventarios` — iniciar, contar, confirmar/cancelar e histórico.
 
 ## Testes
 
-O CI cobre migrations/RLS, entrada, retirada, baixas, transferências base/multi-lote e inventário físico. A suíte de baixas valida motivo estruturado, custo, FEFO, vencimento com lote explícito, idempotência, política de estoque negativo, roles, escopo, cross-Organization, anon e rollback.
+O CI cobre migrations/RLS, entrada, retirada, devolução, baixas, transferências base/multi-lote e inventário físico. A suíte de devolução valida retorno parcial/total, múltiplos retornos, over-return, retry/idempotência, custo histórico, restauração de lote, papéis/escopo, cross-Organization, anon e rollback. A suíte de baixas continua cobrindo motivo estruturado, custo, FEFO, vencimento com lote explícito, política de estoque negativo e isolamento.
 
-`REQ-STK-006` (devolução/retorno relacionado) permanece separado. Empréstimos continuam pendentes de Q-005.
+Empréstimos continuam pendentes de Q-005; esta fase não interpreta Q-003/Q-004.

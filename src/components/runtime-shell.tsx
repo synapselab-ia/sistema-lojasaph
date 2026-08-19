@@ -11,6 +11,7 @@ const links = [
   { href: "/workspace/funcionarios", label: "Funcionários" },
   { href: "/workspace/estoque", label: "Estoque" },
   { href: "/workspace/baixas", label: "Baixas" },
+  { href: "/workspace/devolucoes", label: "Devoluções" },
   { href: "/workspace/transferencias", label: "Transferências" },
   { href: "/workspace/inventarios", label: "Inventários" },
   { href: "/workspace/compras", label: "Compras" },
