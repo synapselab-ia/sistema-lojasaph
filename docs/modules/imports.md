@@ -1,6 +1,6 @@
 # Importação — staging e dry run
 
-Status: **Fase 15 implementada e homologada**.
+Status: **Fase 15 implementada e homologada**; contrato de categoria obrigatória de StockItem alinhado na Fase 22.
 
 ## Escopo atual
 
@@ -84,6 +84,17 @@ São aceitos:
 2. alias explicitamente cadastrado.
 
 Não existe fuzzy matching nem auto-merge por similaridade. Referência inexistente ou ambígua fica `pending_mapping` para revisão humana. Qualquer transformação dependente de Q-001 a Q-025 também deve resultar em pendência/revisão, não em regra inferida.
+
+### Categoria obrigatória de StockItem
+
+Importadores específicos que futuramente produzam StockItem canônico devem resolver uma categoria explícita da mesma Organization antes de considerar a linha pronta para escrita operacional.
+
+- categoria ausente não recebe default;
+- categoria desconhecida ou ambígua permanece `pending_mapping` ou `rejected`, conforme a validação específica da fonte;
+- o preview não deve sintetizar categoria genérica para transformar inconsistência em dado aparentemente válido;
+- `ready` continua significando apenas preview validado, nunca autorização para ignorar o contrato `REQ-ITEM-001`.
+
+A suíte unitária da fundação mantém uma linha de StockItem sem categoria em `pending_mapping` com resolução `ITEM_CATEGORY_REQUIRED`, preservando a ausência no payload normalizado em vez de inventar um `categoryId`.
 
 ## Segurança e auditoria
 

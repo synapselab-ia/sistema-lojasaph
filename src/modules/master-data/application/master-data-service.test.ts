@@ -16,6 +16,7 @@ describe("MasterDataService", () => {
 
     const item = await service.createStockItem({
       organizationId,
+      categoryId: asEntityId("category-test"),
       name: "Água",
       baseUnitCode: "un",
       type: "merchandise",

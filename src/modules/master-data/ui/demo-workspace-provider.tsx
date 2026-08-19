@@ -40,7 +40,7 @@ import {
 } from "../fixtures/demo-data";
 
 interface StockItemDraft {
-  categoryId?: EntityId;
+  categoryId: EntityId;
   name: string;
   baseUnitCode: string;
   type: StockItemType;

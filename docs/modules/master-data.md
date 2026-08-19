@@ -1,6 +1,6 @@
 # Módulo — Cadastros base
 
-Status: núcleo cadastral persistente; Fase 19 implementa funcionários operacionais separados da identidade de acesso.
+Status: núcleo cadastral persistente; Fase 19 implementa funcionários operacionais separados da identidade de acesso; Fase 22 torna categoria obrigatória no item canônico.
 
 ## Objetivo
 
@@ -9,7 +9,7 @@ Fornecer os dados mestres usados por estoque, compras, financeiro, caixa e admin
 ## Escopo implementado
 
 - estrutura Organization → Business → Unit → Sector/StockLocation;
-- StockItem com categoria, unidade, tipo e flags operacionais;
+- StockItem com categoria obrigatória, unidade, tipo e flags operacionais;
 - Supplier com múltiplos contatos;
 - SupplierItem/offer e histórico de preço observado;
 - Employee operacional separado de `auth.users`;
@@ -23,6 +23,8 @@ Fornecer os dados mestres usados por estoque, compras, financeiro, caixa e admin
 ## Persistência
 
 Migrations versionadas no GitHub são a fonte de verdade do schema. Operações do workspace persistente usam adapters Supabase/PostgreSQL e respeitam RLS; credenciais privilegiadas permanecem server-only.
+
+`public.stock_items.category_id` é obrigatório. O FK composto existente continua exigindo que item e categoria pertençam à mesma Organization. A migration da Fase 22 não cria categoria genérica nem faz backfill silencioso: se houver qualquer item legado com `category_id IS NULL`, ela aborta com `STOCK_ITEM_CATEGORY_REQUIRED_PRECONDITION` e exige classificação explícita antes de prosseguir.
 
 Employee é persistido em `public.employees` com:
 
@@ -50,6 +52,9 @@ A autorização continua pertencendo exclusivamente a `organization_memberships`
 ## Regras consolidadas
 
 - IDs de domínio são estáveis;
+- todo StockItem canônico deve possuir categoria explícita, válida e da mesma Organization;
+- criação e edição de StockItem sem categoria falham antes da persistência;
+- a UI não oferece estado `Sem categoria` para item canônico e bloqueia submit sem opção válida;
 - fornecedor pode ter múltiplos contatos;
 - catálogo e fornecedores são compartilhados conforme autorização da Organization;
 - escopos Business/Unit/Sector são aplicados conforme a política homologada na Fase 14;
@@ -59,6 +64,8 @@ A autorização continua pertencendo exclusivamente a `organization_memberships`
 - Q-022 continua aberta para definir pessoas/perfis reais e não é respondida pela existência do cadastro.
 
 ## UI
+
+`/workspace/produtos` exige seleção de categoria tanto na criação quanto na edição. Quando não há categorias disponíveis, a gravação fica bloqueada em vez de criar classificação implícita.
 
 `/workspace/funcionarios` oferece listagem e manutenção administrativa mínima, responsiva e persistente para `owner`, `admin` e `manager`. As opções de Unit/Sector já chegam filtradas por RLS, e o banco reaplica a autorização na gravação.
 

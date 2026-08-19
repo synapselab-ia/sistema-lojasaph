@@ -68,7 +68,7 @@ export class SupabaseStockItemRepository implements StockItemRepository {
     const { error } = await this.client.from("stock_items").upsert({
       id: item.id,
       organization_id: item.organizationId,
-      category_id: item.categoryId ?? null,
+      category_id: item.categoryId,
       base_unit_id: baseUnitId,
       name: item.name,
       item_type: item.type,
@@ -82,10 +82,14 @@ export class SupabaseStockItemRepository implements StockItemRepository {
   }
 
   private mapRow(row: StockItemRow, baseUnitCode: string): StockItem {
+    if (!row.category_id) {
+      throw persistenceError(`Stock item ${row.id} has no category`);
+    }
+
     return Object.freeze({
       id: row.id as EntityId,
       organizationId: row.organization_id as EntityId,
-      categoryId: row.category_id ? (row.category_id as EntityId) : undefined,
+      categoryId: row.category_id as EntityId,
       name: row.name,
       baseUnitCode,
       type: row.item_type,
