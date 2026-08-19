@@ -1,6 +1,6 @@
 # Módulo — Estoque transacional
 
-Status: Fase 9 concluída tecnicamente no PR #27. Entrada, retirada, transferência e inventário físico possuem caminho PostgreSQL/Supabase real.
+Status: ledger persistente com entrada, retirada, transferências, inventário físico e baixas por perda/quebra/vencimento.
 
 ## Princípios
 
@@ -18,6 +18,36 @@ Status: Fase 9 concluída tecnicamente no PR #27. Entrada, retirada, transferên
 ## Retirada
 
 `record_stock_withdrawal` bloqueia saldo/lotes, usa lote preferido quando informado e FEFO para o restante, registra custo médio vigente e respeita a política configurável de estoque negativo. Item rastreado nunca cria lote negativo.
+
+## Baixas por perda, quebra e vencimento
+
+A Fase 20 adiciona `stock_loss_reasons` e `record_stock_loss` para fechar `REQ-STK-008` e reforçar `REQ-STK-003`.
+
+### Motivos estruturados
+
+Cada Organization recebe quatro motivos conservadores:
+
+- `loss` — Perda → movimento `loss`;
+- `breakage` — Quebra → movimento `loss`;
+- `expiration` — Vencimento → movimento `expiration`;
+- `other` — Outro → movimento `loss`.
+
+O catálogo é Organization-wide. Usuários autorizados no estoque podem ler os motivos, mas configuração exige membership Organization-wide com `owner`, `admin`, `manager` ou `inventory`. Os códigos/tipos dos quatro motivos-base não podem ser alterados; motivos adicionais podem ser criados sem inventar taxonomia específica do cliente.
+
+### Comando transacional
+
+`record_stock_loss`:
+
+1. valida autenticação, role e escopo do local;
+2. resolve `movement_type` no banco a partir do motivo ativo — a UI não escolhe o tipo livremente;
+3. reutiliza o mesmo núcleo transacional de saída da retirada para lock do saldo, custo, política de negativo, lote preferido e FEFO;
+4. registra `stock_movements` com `reason_code`, `stock_movement_items`, alocações de lote e `audit_logs` atomicamente;
+5. preserva o custo médio vigente como snapshot e não recalcula custo em uma saída;
+6. é idempotente por command ID e rejeita reuso com payload semântico diferente;
+7. para vencimento de item rastreado exige lote explícito, com validade conhecida já atingida e quantidade suficiente no próprio lote — a operação não pode derramar para lote futuro;
+8. falhas fazem rollback integral, sem movimento/audit/saldo parcial.
+
+A tabela de motivos usa RLS e grants explícitos. `anon` não acessa o catálogo e `authenticated` não possui `DELETE`; ciclo de vida é por ativação/inativação.
 
 ## Transferência
 
@@ -50,7 +80,7 @@ O saldo esperado pode ser negativo quando a exceção do local permitir; a conta
 3. compara quantidade **e custo médio** atuais com o snapshot;
 4. qualquer divergência externa gera `INVENTORY_COUNT_STALE` e rollback integral;
 5. diferença zero não gera movimento;
-6. diferenças positivas/negativas geram movimentos `inventory_adjustment` separados e auditados;
+6. diferenças positivas/negativas geram movimentos de ajuste separados e auditados;
 7. ajuste negativo rastreado consome lotes por FEFO;
 8. ajuste positivo não rastreado sem custo-base exige custo explícito;
 9. ajuste positivo de item rastreado é bloqueado nesta versão, pois o sistema não inventa lote/validade desconhecidos;
@@ -62,14 +92,17 @@ O saldo esperado pode ser negativo quando a exceção do local permitir; a conta
 
 ## Concorrência
 
-Entrada, retirada, transferência e inventário usam row locks/advisory transaction locks no PostgreSQL. A fila in-memory continua apenas como mecanismo de demonstração/teste isolado.
+Entrada, retirada, baixas, transferência e inventário usam row locks/advisory transaction locks no PostgreSQL. Retirada e baixa compartilham o núcleo privado de saída para que FEFO, custo, negativo e idempotência não tenham implementações concorrentes.
 
 ## Interfaces persistentes
 
 - `/workspace/estoque` — saldo, entrada, retirada, lotes;
+- `/workspace/baixas` — perda, quebra, vencimento, motivos e histórico recente;
 - `/workspace/transferencias` — dispatch/receive;
 - `/workspace/inventarios` — iniciar, contar, confirmar/cancelar e histórico.
 
 ## Testes
 
-O CI cobre migrations/RLS, entrada, retirada, transferências base/multi-lote e inventário físico: snapshot, incompleto, stale, ajuste positivo/negativo, custo, FEFO, idempotência, cancelamento/reabertura, roles, anon e isolamento por Organization.
+O CI cobre migrations/RLS, entrada, retirada, baixas, transferências base/multi-lote e inventário físico. A suíte de baixas valida motivo estruturado, custo, FEFO, vencimento com lote explícito, idempotência, política de estoque negativo, roles, escopo, cross-Organization, anon e rollback.
+
+`REQ-STK-006` (devolução/retorno relacionado) permanece separado. Empréstimos continuam pendentes de Q-005.

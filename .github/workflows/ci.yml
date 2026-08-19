@@ -132,6 +132,9 @@ jobs:
       - name: Run transactional withdrawal tests
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/stock_withdrawal.sql
 
+      - name: Run stock loss and expiration tests
+        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/stock_loss.sql
+
       - name: Run transactional transfer tests
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/stock_transfer.sql
 

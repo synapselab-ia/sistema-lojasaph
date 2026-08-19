@@ -6,6 +6,7 @@ import { getSupabasePublicEnv } from "@/lib/supabase/env";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { SupabaseStockItemRepository } from "@/modules/catalog/adapters/supabase-stock-item-repository";
 import { SupabaseEmployeeRepository } from "@/modules/employees/adapters/supabase-employee-repository";
+import { SupabaseStockLossGateway } from "@/modules/inventory/adapters/supabase-stock-loss-gateway";
 import { loadWorkspaceReferenceData } from "@/modules/master-data/adapters/supabase-workspace-query";
 import { RuntimeWorkspaceProvider } from "@/modules/master-data/ui/runtime-workspace-provider";
 import { SupabaseSupplierRepository } from "@/modules/suppliers/adapters/supabase-supplier-repository";
@@ -25,12 +26,15 @@ export default async function PersistentWorkspaceLayout({ children }: Readonly<{
   const stockItemsRepository = new SupabaseStockItemRepository(supabase);
   const suppliersRepository = new SupabaseSupplierRepository(supabase);
   const employeesRepository = new SupabaseEmployeeRepository(supabase);
+  const stockLossGateway = new SupabaseStockLossGateway(supabase);
 
-  const [stockItems, suppliers, employees, referenceData] = await Promise.all([
+  const [stockItems, suppliers, employees, referenceData, stockLossReasons, stockLosses] = await Promise.all([
     stockItemsRepository.listByOrganization(organizationId),
     suppliersRepository.listByOrganization(organizationId),
     employeesRepository.listByOrganization(organizationId),
     loadWorkspaceReferenceData(supabase, organizationId),
+    stockLossGateway.listReasons(organizationId),
+    stockLossGateway.listRecent(organizationId),
   ]);
 
   return (
@@ -39,7 +43,7 @@ export default async function PersistentWorkspaceLayout({ children }: Readonly<{
       organizationName={organization.name}
       roles={organization.roles}
       organizationWideRoles={organization.organizationWideRoles}
-      initialData={{ ...referenceData, stockItems, suppliers, employees }}
+      initialData={{ ...referenceData, stockItems, suppliers, employees, stockLossReasons, stockLosses }}
       supabaseConfig={supabaseConfig}
     >
       <RuntimeShell

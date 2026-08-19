@@ -17,6 +17,11 @@ import { SupabaseEmployeeRepository } from "@/modules/employees/adapters/supabas
 import { EmployeeService } from "@/modules/employees/application/employee-service";
 import { Employee } from "@/modules/employees/domain/employee";
 import { SupabaseStockEntryGateway } from "@/modules/inventory/adapters/supabase-stock-entry-gateway";
+import {
+  RuntimeStockLoss,
+  RuntimeStockLossReason,
+  SupabaseStockLossGateway,
+} from "@/modules/inventory/adapters/supabase-stock-loss-gateway";
 import { SupabaseStockTransferGateway } from "@/modules/inventory/adapters/supabase-stock-transfer-gateway";
 import { SupabaseStockWithdrawalGateway } from "@/modules/inventory/adapters/supabase-stock-withdrawal-gateway";
 import { InventoryBalance, InventoryBatch } from "@/modules/inventory/domain/inventory";
@@ -69,6 +74,8 @@ export interface RuntimeWorkspaceInitialData extends WorkspaceReferenceData {
   readonly stockItems: readonly StockItem[];
   readonly suppliers: readonly Supplier[];
   readonly employees: readonly Employee[];
+  readonly stockLossReasons: readonly RuntimeStockLossReason[];
+  readonly stockLosses: readonly RuntimeStockLoss[];
 }
 
 interface RuntimePermissions {
@@ -78,6 +85,7 @@ interface RuntimePermissions {
   readonly manageEmployeesOrganizationWide: boolean;
   readonly recordStockEntry: boolean;
   readonly recordStockWithdrawal: boolean;
+  readonly recordStockLoss: boolean;
   readonly manageStockTransfers: boolean;
   readonly managePurchases: boolean;
   readonly receivePurchases: boolean;
@@ -101,6 +109,8 @@ interface RuntimeWorkspaceValue {
   readonly balances: readonly InventoryBalance[];
   readonly batches: readonly InventoryBatch[];
   readonly transfers: readonly RuntimeStockTransfer[];
+  readonly stockLossReasons: readonly RuntimeStockLossReason[];
+  readonly stockLosses: readonly RuntimeStockLoss[];
   readonly permissions: RuntimePermissions;
   createStockItem(input: StockItemDraft): Promise<void>;
   updateStockItem(id: EntityId, input: StockItemDraft): Promise<void>;
@@ -121,6 +131,14 @@ interface RuntimeWorkspaceValue {
     stockItemId: EntityId;
     stockLocationId: EntityId;
     quantity: string;
+    preferredBatchId?: EntityId;
+    notes?: string;
+  }): Promise<void>;
+  recordStockLoss(input: {
+    stockItemId: EntityId;
+    stockLocationId: EntityId;
+    quantity: string;
+    reasonCode: string;
     preferredBatchId?: EntityId;
     notes?: string;
   }): Promise<void>;
@@ -170,11 +188,14 @@ export function RuntimeWorkspaceProvider({
   const employeeService = useMemo(() => new EmployeeService(employeesRepository), [employeesRepository]);
   const stockEntryGateway = useMemo(() => new SupabaseStockEntryGateway(client), [client]);
   const stockWithdrawalGateway = useMemo(() => new SupabaseStockWithdrawalGateway(client), [client]);
+  const stockLossGateway = useMemo(() => new SupabaseStockLossGateway(client), [client]);
   const stockTransferGateway = useMemo(() => new SupabaseStockTransferGateway(client), [client]);
 
   const [stockItems, setStockItems] = useState<readonly StockItem[]>(initialData.stockItems);
   const [suppliers, setSuppliers] = useState<readonly Supplier[]>(initialData.suppliers);
   const [employees, setEmployees] = useState<readonly Employee[]>(initialData.employees);
+  const [stockLossReasons, setStockLossReasons] = useState<readonly RuntimeStockLossReason[]>(initialData.stockLossReasons);
+  const [stockLosses, setStockLosses] = useState<readonly RuntimeStockLoss[]>(initialData.stockLosses);
   const [referenceData, setReferenceData] = useState<WorkspaceReferenceData>(initialData);
 
   const permissions: RuntimePermissions = {
@@ -184,6 +205,7 @@ export function RuntimeWorkspaceProvider({
     manageEmployeesOrganizationWide: can(organizationWideRoles, ["owner", "admin", "manager"]),
     recordStockEntry: can(roles, ["owner", "admin", "manager", "inventory"]),
     recordStockWithdrawal: can(roles, ["owner", "admin", "manager", "inventory"]),
+    recordStockLoss: can(roles, ["owner", "admin", "manager", "inventory"]),
     manageStockTransfers: can(roles, ["owner", "admin", "manager", "inventory"]),
     managePurchases: can(roles, ["owner", "admin", "manager", "purchases"]),
     receivePurchases: can(roles, ["owner", "admin", "manager", "purchases", "inventory"]),
@@ -194,16 +216,20 @@ export function RuntimeWorkspaceProvider({
   };
 
   async function refresh() {
-    const [nextItems, nextSuppliers, nextEmployees, nextReferences] = await Promise.all([
+    const [nextItems, nextSuppliers, nextEmployees, nextReferences, nextLossReasons, nextLosses] = await Promise.all([
       stockItemsRepository.listByOrganization(organizationId),
       suppliersRepository.listByOrganization(organizationId),
       employeeService.listByOrganization(organizationId),
       loadWorkspaceReferenceData(client, organizationId),
+      stockLossGateway.listReasons(organizationId),
+      stockLossGateway.listRecent(organizationId),
     ]);
     setStockItems(nextItems);
     setSuppliers(nextSuppliers);
     setEmployees(nextEmployees);
     setReferenceData(nextReferences);
+    setStockLossReasons(nextLossReasons);
+    setStockLosses(nextLosses);
   }
 
   async function createItem(input: StockItemDraft) {
@@ -303,6 +329,19 @@ export function RuntimeWorkspaceProvider({
     await refresh();
   }
 
+  async function recordStockLoss(input: {
+    stockItemId: EntityId;
+    stockLocationId: EntityId;
+    quantity: string;
+    reasonCode: string;
+    preferredBatchId?: EntityId;
+    notes?: string;
+  }) {
+    if (!permissions.recordStockLoss) throw new DomainError("INSUFFICIENT_ROLE", "Seu perfil não pode registrar baixas de estoque.");
+    await stockLossGateway.record({ organizationId, ...input });
+    await refresh();
+  }
+
   async function dispatchTransfer(input: {
     stockItemId: EntityId;
     sourceLocationId: EntityId;
@@ -336,6 +375,8 @@ export function RuntimeWorkspaceProvider({
     balances: referenceData.balances,
     batches: referenceData.batches,
     transfers: referenceData.transfers,
+    stockLossReasons,
+    stockLosses,
     permissions,
     createStockItem: createItem,
     updateStockItem: editItem,
@@ -345,6 +386,7 @@ export function RuntimeWorkspaceProvider({
     updateEmployee: editEmployee,
     recordEntry,
     recordWithdrawal,
+    recordStockLoss,
     dispatchTransfer,
     receiveTransfer,
     errorMessage(error: unknown) {

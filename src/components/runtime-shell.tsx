@@ -10,6 +10,7 @@ const links = [
   { href: "/workspace/fornecedores", label: "Fornecedores" },
   { href: "/workspace/funcionarios", label: "Funcionários" },
   { href: "/workspace/estoque", label: "Estoque" },
+  { href: "/workspace/baixas", label: "Baixas" },
   { href: "/workspace/transferencias", label: "Transferências" },
   { href: "/workspace/inventarios", label: "Inventários" },
   { href: "/workspace/compras", label: "Compras" },
