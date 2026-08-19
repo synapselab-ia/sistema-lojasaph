@@ -5,17 +5,20 @@ import { buildDashboardSummary, DashboardRawData, localIsoDate } from "./dashboa
 
 const unitA = "10000000-0000-4000-8000-000000000001" as EntityId;
 const unitB = "10000000-0000-4000-8000-000000000002" as EntityId;
+const sectorA = "11000000-0000-4000-8000-000000000001" as EntityId;
+const sectorA2 = "11000000-0000-4000-8000-000000000002" as EntityId;
+const sectorB = "11000000-0000-4000-8000-000000000003" as EntityId;
 const id = (value: number) => `20000000-0000-4000-8000-${String(value).padStart(12, "0")}` as EntityId;
 
 function demoData(): DashboardRawData {
   return {
     finance: [
-      { id: id(1), unitId: unitA, nominalAmount: Money.fromDecimal("1000.00"), netPaidAmount: Money.fromDecimal("0.00"), balanceAmount: Money.fromDecimal("1000.00"), status: "overdue", dueDate: "2026-08-17" },
-      { id: id(2), unitId: unitA, nominalAmount: Money.fromDecimal("500.00"), netPaidAmount: Money.fromDecimal("100.00"), balanceAmount: Money.fromDecimal("400.00"), status: "due_today", dueDate: "2026-08-18" },
-      { id: id(3), unitId: unitA, nominalAmount: Money.fromDecimal("300.00"), netPaidAmount: Money.fromDecimal("300.00"), balanceAmount: Money.fromDecimal("0.00"), status: "paid", dueDate: "2026-08-10" },
+      { id: id(1), unitId: unitA, sectorId: sectorA, nominalAmount: Money.fromDecimal("1000.00"), netPaidAmount: Money.fromDecimal("0.00"), balanceAmount: Money.fromDecimal("1000.00"), status: "overdue", dueDate: "2026-08-17" },
+      { id: id(2), unitId: unitA, sectorId: sectorA2, nominalAmount: Money.fromDecimal("500.00"), netPaidAmount: Money.fromDecimal("100.00"), balanceAmount: Money.fromDecimal("400.00"), status: "due_today", dueDate: "2026-08-18" },
+      { id: id(3), unitId: unitA, sectorId: sectorA, nominalAmount: Money.fromDecimal("300.00"), netPaidAmount: Money.fromDecimal("300.00"), balanceAmount: Money.fromDecimal("0.00"), status: "paid", dueDate: "2026-08-10" },
       { id: id(4), unitId: unitA, nominalAmount: Money.fromDecimal("200.00"), netPaidAmount: Money.fromDecimal("0.00"), balanceAmount: Money.fromDecimal("200.00"), status: "upcoming", dueDate: "2026-08-22" },
-      { id: id(5), unitId: unitB, nominalAmount: Money.fromDecimal("999.00"), netPaidAmount: Money.zero(), balanceAmount: Money.fromDecimal("999.00"), status: "overdue", dueDate: "2026-08-01" },
-      { id: id(6), unitId: unitA, nominalAmount: Money.fromDecimal("700.00"), netPaidAmount: Money.zero(), balanceAmount: Money.fromDecimal("700.00"), status: "cancelled", dueDate: "2026-08-01" },
+      { id: id(5), unitId: unitB, sectorId: sectorB, nominalAmount: Money.fromDecimal("999.00"), netPaidAmount: Money.zero(), balanceAmount: Money.fromDecimal("999.00"), status: "overdue", dueDate: "2026-08-01" },
+      { id: id(6), unitId: unitA, sectorId: sectorA, nominalAmount: Money.fromDecimal("700.00"), netPaidAmount: Money.zero(), balanceAmount: Money.fromDecimal("700.00"), status: "cancelled", dueDate: "2026-08-01" },
     ],
     cash: [
       { id: id(10), unitId: unitA, businessDate: "2026-08-18", status: "open" },
@@ -23,22 +26,22 @@ function demoData(): DashboardRawData {
       { id: id(12), unitId: unitB, businessDate: "2026-08-17", status: "closed", cashDifference: Money.fromDecimal("50.00") },
     ],
     purchases: [
-      { id: id(20), unitId: unitA, status: "ordered", expectedDeliveryDate: "2026-08-17" },
+      { id: id(20), unitId: unitA, sectorId: sectorA, status: "ordered", expectedDeliveryDate: "2026-08-17" },
       { id: id(21), unitId: unitA, status: "partially_received", expectedDeliveryDate: "2026-08-20" },
-      { id: id(22), unitId: unitB, status: "ordered", expectedDeliveryDate: "2026-08-17" },
+      { id: id(22), unitId: unitB, sectorId: sectorB, status: "ordered", expectedDeliveryDate: "2026-08-17" },
     ],
     transfers: [
-      { id: id(30), sourceUnitId: unitA, destinationUnitId: unitB, status: "dispatched" },
-      { id: id(31), sourceUnitId: unitB, destinationUnitId: unitB, status: "received" },
+      { id: id(30), sourceUnitId: unitA, sourceSectorId: sectorA, destinationUnitId: unitB, destinationSectorId: sectorB, status: "dispatched" },
+      { id: id(31), sourceUnitId: unitB, sourceSectorId: sectorB, destinationUnitId: unitB, destinationSectorId: sectorB, status: "received" },
     ],
     inventoryCounts: [
-      { id: id(40), unitId: unitA, status: "counting" },
-      { id: id(41), unitId: unitB, status: "confirmed" },
+      { id: id(40), unitId: unitA, sectorId: sectorA, status: "counting" },
+      { id: id(41), unitId: unitB, sectorId: sectorB, status: "confirmed" },
     ],
     expiries: [
-      { id: id(50), unitId: unitA, expirationDate: "2026-08-17" },
+      { id: id(50), unitId: unitA, sectorId: sectorA, expirationDate: "2026-08-17" },
       { id: id(51), unitId: unitA, expirationDate: "2026-08-21" },
-      { id: id(52), unitId: unitB, expirationDate: "2026-08-17" },
+      { id: id(52), unitId: unitB, sectorId: sectorB, expirationDate: "2026-08-17" },
     ],
   };
 }
@@ -63,6 +66,59 @@ describe("dashboard summary", () => {
     expect(summary.attention.map((item) => item.key)).toContain("finance-overdue");
     expect(summary.attention.map((item) => item.key)).toContain("cash-discrepancy");
     expect(summary.attention.map((item) => item.key)).toContain("expiry-expired");
+  });
+
+  it("filters only records explicitly related to the selected Sector", () => {
+    const summary = buildDashboardSummary(demoData(), {
+      today: "2026-08-18",
+      horizonDays: 7,
+      unitId: unitA,
+      sectorId: sectorA,
+    });
+
+    expect(summary.finance.nominal.toDecimal()).toBe("1300.00");
+    expect(summary.finance.paid.toDecimal()).toBe("300.00");
+    expect(summary.finance.openBalance.toDecimal()).toBe("1000.00");
+    expect(summary.finance.overdueCount).toBe(1);
+    expect(summary.finance.dueTodayCount).toBe(0);
+    expect(summary.finance.dueSoonCount).toBe(0);
+    expect(summary.purchases).toEqual({ pendingCount: 1, lateDeliveryCount: 1, deliverySoonCount: 0 });
+    expect(summary.stock).toEqual({ transfersInTransitCount: 1, openInventoryCount: 1, expiredBatchCount: 1, expiringSoonCount: 0 });
+
+    // The unassigned finance/purchase/expiry rows are not inferred into sectorA.
+    expect(summary.attention.map((item) => item.key)).not.toContain("finance-soon");
+    expect(summary.attention.map((item) => item.key)).not.toContain("purchase-soon");
+    expect(summary.attention.map((item) => item.key)).not.toContain("expiry-soon");
+  });
+
+  it("keeps Cash at Unit scope when a Sector filter is active", () => {
+    const sectorAResult = buildDashboardSummary(demoData(), {
+      today: "2026-08-18",
+      horizonDays: 7,
+      unitId: unitA,
+      sectorId: sectorA,
+    });
+    const sectorA2Result = buildDashboardSummary(demoData(), {
+      today: "2026-08-18",
+      horizonDays: 7,
+      unitId: unitA,
+      sectorId: sectorA2,
+    });
+
+    expect(sectorAResult.cash).toEqual({ openCount: 1, discrepancyCount: 1, recentClosedCount: 1 });
+    expect(sectorA2Result.cash).toEqual(sectorAResult.cash);
+    expect(sectorAResult.attention.map((item) => item.key)).toContain("cash-discrepancy");
+  });
+
+  it("requires transfer Unit and Sector to match on the same endpoint", () => {
+    const mismatched = buildDashboardSummary(demoData(), {
+      today: "2026-08-18",
+      horizonDays: 7,
+      unitId: unitB,
+      sectorId: sectorA,
+    });
+
+    expect(mismatched.stock.transfersInTransitCount).toBe(0);
   });
 
   it("uses the configured horizon for upcoming and recent signals", () => {

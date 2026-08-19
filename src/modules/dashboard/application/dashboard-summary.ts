@@ -14,6 +14,7 @@ export interface DashboardAttentionItem {
 export interface DashboardFinanceRow {
   readonly id: EntityId;
   readonly unitId: EntityId;
+  readonly sectorId?: EntityId;
   readonly nominalAmount: Money;
   readonly netPaidAmount: Money;
   readonly balanceAmount: Money;
@@ -32,6 +33,7 @@ export interface DashboardCashRow {
 export interface DashboardPurchaseRow {
   readonly id: EntityId;
   readonly unitId: EntityId;
+  readonly sectorId?: EntityId;
   readonly status: "draft" | "ordered" | "partially_received" | "received" | "cancelled";
   readonly expectedDeliveryDate?: string;
 }
@@ -39,19 +41,23 @@ export interface DashboardPurchaseRow {
 export interface DashboardTransferRow {
   readonly id: EntityId;
   readonly sourceUnitId: EntityId;
+  readonly sourceSectorId?: EntityId;
   readonly destinationUnitId: EntityId;
+  readonly destinationSectorId?: EntityId;
   readonly status: "dispatched" | "partially_received" | "received";
 }
 
 export interface DashboardInventoryCountRow {
   readonly id: EntityId;
   readonly unitId: EntityId;
+  readonly sectorId?: EntityId;
   readonly status: "counting" | "review" | "confirmed" | "cancelled";
 }
 
 export interface DashboardExpiryRow {
   readonly id: EntityId;
   readonly unitId: EntityId;
+  readonly sectorId?: EntityId;
   readonly expirationDate: string;
 }
 
@@ -68,6 +74,7 @@ export interface DashboardFilter {
   readonly today: string;
   readonly horizonDays: number;
   readonly unitId?: EntityId;
+  readonly sectorId?: EntityId;
 }
 
 export interface DashboardSummary {
@@ -112,8 +119,24 @@ function matchesUnit(unitId: EntityId, filterUnitId?: EntityId): boolean {
   return !filterUnitId || unitId === filterUnitId;
 }
 
-function matchesTransferUnit(row: DashboardTransferRow, filterUnitId?: EntityId): boolean {
-  return !filterUnitId || row.sourceUnitId === filterUnitId || row.destinationUnitId === filterUnitId;
+function matchesScopedRow(
+  unitId: EntityId,
+  sectorId: EntityId | undefined,
+  filter: Pick<DashboardFilter, "unitId" | "sectorId">,
+): boolean {
+  if (filter.unitId && unitId !== filter.unitId) return false;
+  if (filter.sectorId && sectorId !== filter.sectorId) return false;
+  return true;
+}
+
+function matchesTransferScope(
+  row: DashboardTransferRow,
+  filter: Pick<DashboardFilter, "unitId" | "sectorId">,
+): boolean {
+  if (!filter.unitId && !filter.sectorId) return true;
+
+  return matchesScopedRow(row.sourceUnitId, row.sourceSectorId, filter)
+    || matchesScopedRow(row.destinationUnitId, row.destinationSectorId, filter);
 }
 
 function pushAttention(
@@ -145,7 +168,7 @@ export function buildDashboardSummary(
   const horizonEnd = addIsoDays(filter.today, filter.horizonDays);
   const historyStart = addIsoDays(filter.today, -filter.horizonDays);
 
-  const finance = data.finance.filter((row) => matchesUnit(row.unitId, filter.unitId));
+  const finance = data.finance.filter((row) => matchesScopedRow(row.unitId, row.sectorId, filter));
   const activeFinance = finance.filter((row) => row.status !== "cancelled");
   const nominal = sumMoney(activeFinance.map((row) => row.nominalAmount));
   const paid = sumMoney(activeFinance.map((row) => row.netPaidAmount));
@@ -160,6 +183,8 @@ export function buildDashboardSummary(
     (row) => row.status === "upcoming" && row.dueDate > filter.today && row.dueDate <= horizonEnd,
   ).length;
 
+  // Cash has no explicit Sector relationship in the current model. Sector filters
+  // therefore never narrow it; only the existing Unit/horizon scope applies.
   const cash = data.cash.filter((row) => matchesUnit(row.unitId, filter.unitId));
   const openCashCount = cash.filter((row) => row.status === "open").length;
   const discrepancyCount = cash.filter(
@@ -169,7 +194,7 @@ export function buildDashboardSummary(
     (row) => row.status === "closed" && row.businessDate >= historyStart && row.businessDate <= filter.today,
   ).length;
 
-  const purchases = data.purchases.filter((row) => matchesUnit(row.unitId, filter.unitId));
+  const purchases = data.purchases.filter((row) => matchesScopedRow(row.unitId, row.sectorId, filter));
   const pendingPurchases = purchases.filter(
     (row) => row.status === "ordered" || row.status === "partially_received",
   );
@@ -183,14 +208,14 @@ export function buildDashboardSummary(
   ).length;
 
   const transfersInTransitCount = data.transfers.filter(
-    (row) => matchesTransferUnit(row, filter.unitId)
+    (row) => matchesTransferScope(row, filter)
       && (row.status === "dispatched" || row.status === "partially_received"),
   ).length;
   const openInventoryCount = data.inventoryCounts.filter(
-    (row) => matchesUnit(row.unitId, filter.unitId)
+    (row) => matchesScopedRow(row.unitId, row.sectorId, filter)
       && (row.status === "counting" || row.status === "review"),
   ).length;
-  const expiries = data.expiries.filter((row) => matchesUnit(row.unitId, filter.unitId));
+  const expiries = data.expiries.filter((row) => matchesScopedRow(row.unitId, row.sectorId, filter));
   const expiredBatchCount = expiries.filter((row) => row.expirationDate < filter.today).length;
   const expiringSoonCount = expiries.filter(
     (row) => row.expirationDate >= filter.today && row.expirationDate <= horizonEnd,
