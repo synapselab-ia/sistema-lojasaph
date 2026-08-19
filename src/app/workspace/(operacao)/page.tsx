@@ -27,6 +27,10 @@ export default function WorkspacePage() {
   const [unitId, setUnitId] = useState("");
   const [sectorId, setSectorId] = useState("");
   const [horizonDays, setHorizonDays] = useState(7);
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [appliedDateFrom, setAppliedDateFrom] = useState("");
+  const [appliedDateTo, setAppliedDateTo] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -50,7 +54,13 @@ export default function WorkspacePage() {
     return () => { active = false; };
   }, [gateway, organizationId]);
 
-  function reload(nextUnitId: string, nextSectorId: string, nextHorizonDays: number) {
+  function reload(
+    nextUnitId: string,
+    nextSectorId: string,
+    nextHorizonDays: number,
+    nextDateFrom: string,
+    nextDateTo: string,
+  ) {
     const requestId = ++requestSequence.current;
     setLoading(true);
     setError(null);
@@ -58,6 +68,8 @@ export default function WorkspacePage() {
       unitId: nextUnitId ? nextUnitId as EntityId : undefined,
       sectorId: nextSectorId ? nextSectorId as EntityId : undefined,
       horizonDays: nextHorizonDays,
+      dateFrom: nextDateFrom || undefined,
+      dateTo: nextDateTo || undefined,
     })
       .then((next) => {
         if (requestId === requestSequence.current) setSnapshot(next);
@@ -70,35 +82,61 @@ export default function WorkspacePage() {
       });
   }
 
+  function applyPeriod() {
+    if (!dateFrom || !dateTo) {
+      setError("Informe a data inicial e a data final para aplicar o período gerencial.");
+      return;
+    }
+    if (dateFrom > dateTo) {
+      setError("A data inicial do período não pode ser posterior à data final.");
+      return;
+    }
+
+    setAppliedDateFrom(dateFrom);
+    setAppliedDateTo(dateTo);
+    reload(unitId, sectorId, horizonDays, dateFrom, dateTo);
+  }
+
+  function clearPeriod() {
+    setDateFrom("");
+    setDateTo("");
+    setAppliedDateFrom("");
+    setAppliedDateTo("");
+    reload(unitId, sectorId, horizonDays, "", "");
+  }
+
   const availableSectors = (snapshot?.sectors ?? []).filter((sector) => !unitId || sector.unitId === unitId);
   const selectedSector = (snapshot?.sectors ?? []).find((sector) => sector.id === sectorId);
+  const hasAppliedPeriod = Boolean(appliedDateFrom && appliedDateTo);
 
   const summary = snapshot ? buildDashboardSummary(snapshot.data, {
     today: snapshot.today,
     horizonDays,
     unitId: unitId ? unitId as EntityId : undefined,
     sectorId: sectorId ? sectorId as EntityId : undefined,
+    dateFrom: appliedDateFrom || undefined,
+    dateTo: appliedDateTo || undefined,
   }) : null;
 
   const financeCards = summary ? [
     { label: "Total nominal", value: formatMoney(summary.finance.nominal), href: "/workspace/financeiro" },
-    { label: "Pago líquido", value: formatMoney(summary.finance.paid), href: "/workspace/financeiro" },
+    { label: hasAppliedPeriod ? "Pago líquido acumulado" : "Pago líquido", value: formatMoney(summary.finance.paid), href: "/workspace/financeiro" },
     { label: "Saldo em aberto", value: formatMoney(summary.finance.openBalance), href: "/workspace/financeiro" },
     { label: "Parcelas vencidas", value: String(summary.finance.overdueCount), href: "/workspace/financeiro" },
   ] : [];
 
   const operationalCards = summary ? [
-    { label: "Caixas abertos", value: String(summary.cash.openCount), href: "/workspace/caixa", unitOnly: true },
-    { label: "Divergências no período", value: String(summary.cash.discrepancyCount), href: "/workspace/caixa", unitOnly: true },
-    { label: "Pedidos pendentes", value: String(summary.purchases.pendingCount), href: "/workspace/compras", unitOnly: false },
-    { label: "Transferências em trânsito", value: String(summary.stock.transfersInTransitCount), href: "/workspace/transferencias", unitOnly: false },
-    { label: "Inventários em andamento", value: String(summary.stock.openInventoryCount), href: "/workspace/inventarios", unitOnly: false },
-    { label: "Lotes vencidos", value: String(summary.stock.expiredBatchCount), href: "/workspace/estoque", unitOnly: false },
+    { label: "Caixas abertos", value: String(summary.cash.openCount), href: "/workspace/caixa", unitOnly: true, currentState: true },
+    { label: hasAppliedPeriod ? "Divergências no período" : "Divergências no horizonte", value: String(summary.cash.discrepancyCount), href: "/workspace/caixa", unitOnly: true, currentState: false },
+    { label: "Pedidos pendentes", value: String(summary.purchases.pendingCount), href: "/workspace/compras", unitOnly: false, currentState: true },
+    { label: "Transferências em trânsito", value: String(summary.stock.transfersInTransitCount), href: "/workspace/transferencias", unitOnly: false, currentState: true },
+    { label: "Inventários em andamento", value: String(summary.stock.openInventoryCount), href: "/workspace/inventarios", unitOnly: false, currentState: true },
+    { label: hasAppliedPeriod ? "Lotes vencidos no período" : "Lotes vencidos", value: String(summary.stock.expiredBatchCount), href: "/workspace/estoque", unitOnly: false, currentState: false },
   ] : [];
 
   return (
     <div className="mx-auto max-w-7xl space-y-8">
-      <header className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+      <header className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
         <div>
           <p className="text-sm font-medium text-emerald-700">Atenção operacional</p>
           <h1 className="mt-1 text-3xl font-semibold tracking-tight">{workspace.organizationName}</h1>
@@ -106,7 +144,7 @@ export default function WorkspacePage() {
           {snapshot && <p className="mt-2 text-xs text-neutral-500">Data de negócio: {snapshot.today} · timezone {snapshot.timeZone}</p>}
         </div>
 
-        <div className="grid gap-3 rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm sm:grid-cols-3 xl:min-w-[660px]">
+        <div className="grid gap-3 rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm sm:grid-cols-3 xl:min-w-[700px]">
           <label className="text-xs font-semibold text-neutral-600">Unidade
             <select
               value={unitId}
@@ -117,7 +155,7 @@ export default function WorkspacePage() {
                 const nextSectorId = sectorRemainsCompatible ? sectorId : "";
                 setUnitId(nextUnitId);
                 setSectorId(nextSectorId);
-                reload(nextUnitId, nextSectorId, horizonDays);
+                reload(nextUnitId, nextSectorId, horizonDays, appliedDateFrom, appliedDateTo);
               }}
               className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm font-normal text-neutral-950"
             >
@@ -131,7 +169,7 @@ export default function WorkspacePage() {
               onChange={(event) => {
                 const nextSectorId = event.target.value;
                 setSectorId(nextSectorId);
-                reload(unitId, nextSectorId, horizonDays);
+                reload(unitId, nextSectorId, horizonDays, appliedDateFrom, appliedDateTo);
               }}
               className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm font-normal text-neutral-950"
             >
@@ -139,13 +177,13 @@ export default function WorkspacePage() {
               {availableSectors.map((sector) => <option key={sector.id} value={sector.id}>{sector.name}</option>)}
             </select>
           </label>
-          <label className="text-xs font-semibold text-neutral-600">Horizonte
+          <label className="text-xs font-semibold text-neutral-600">Horizonte de alertas
             <select
               value={horizonDays}
               onChange={(event) => {
                 const next = Number(event.target.value);
                 setHorizonDays(next);
-                reload(unitId, sectorId, next);
+                reload(unitId, sectorId, next, appliedDateFrom, appliedDateTo);
               }}
               className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm font-normal text-neutral-950"
             >
@@ -154,9 +192,37 @@ export default function WorkspacePage() {
               <option value={30}>30 dias</option>
             </select>
           </label>
+
+          <div className="grid gap-3 border-t border-neutral-100 pt-3 sm:col-span-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+            <label className="text-xs font-semibold text-neutral-600">Período — de
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={(event) => setDateFrom(event.target.value)}
+                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm font-normal text-neutral-950"
+              />
+            </label>
+            <label className="text-xs font-semibold text-neutral-600">Período — até
+              <input
+                type="date"
+                value={dateTo}
+                onChange={(event) => setDateTo(event.target.value)}
+                className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm font-normal text-neutral-950"
+              />
+            </label>
+            <div className="flex gap-2">
+              <button type="button" onClick={applyPeriod} disabled={loading} className="rounded-lg bg-neutral-950 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">Aplicar período</button>
+              {hasAppliedPeriod && <button type="button" onClick={clearPeriod} disabled={loading} className="rounded-lg border border-neutral-300 px-3 py-2 text-xs font-semibold text-neutral-700 disabled:opacity-50">Limpar</button>}
+            </div>
+          </div>
+
+          <div className="sm:col-span-3 rounded-lg bg-neutral-50 px-3 py-2 text-xs leading-5 text-neutral-600">
+            <strong>Horizonte</strong> controla janelas relativas de alertas próximos/recentes. <strong>Período</strong> é um intervalo gerencial explícito e só atua em métricas com data de negócio comprovada.
+            {hasAppliedPeriod && <> Período ativo: <strong className="text-neutral-800">{appliedDateFrom} a {appliedDateTo}</strong>.</>}
+          </div>
           {sectorId && (
             <div className="sm:col-span-3 rounded-lg bg-neutral-50 px-3 py-2 text-xs leading-5 text-neutral-600">
-              Setor ativo: <strong className="text-neutral-800">{selectedSector?.name ?? "selecionado"}</strong>. Financeiro, Compras e Estoque usam somente vínculos setoriais explícitos. Caixa não possui relação com Setor no modelo atual e continua seguindo apenas Unidade + horizonte.
+              Setor ativo: <strong className="text-neutral-800">{selectedSector?.name ?? "selecionado"}</strong>. Financeiro, Compras e Estoque usam somente vínculos setoriais explícitos. Caixa continua no escopo de Unidade; quando há período, seus fechamentos usam `business_date`.
             </div>
           )}
         </div>
@@ -168,7 +234,7 @@ export default function WorkspacePage() {
       {summary && (
         <>
           <section className="space-y-4">
-            <div className="flex items-end justify-between gap-4"><div><h2 className="text-xl font-semibold">O que precisa de atenção</h2><p className="mt-1 text-sm text-neutral-500">Somente sinais com ocorrência aparecem nesta fila.{sectorId ? " Sinais de Caixa permanecem no escopo de Unidade, não de Setor." : ""}</p></div>{loading && <span className="text-xs text-neutral-500">Atualizando...</span>}</div>
+            <div className="flex items-end justify-between gap-4"><div><h2 className="text-xl font-semibold">O que precisa de atenção</h2><p className="mt-1 text-sm text-neutral-500">Somente sinais com ocorrência aparecem nesta fila.{sectorId ? " Sinais de Caixa permanecem no escopo de Unidade." : ""}{hasAppliedPeriod ? " Caixas abertos, pedidos pendentes, transferências e inventários permanecem indicadores de estado atual." : ""}</p></div>{loading && <span className="text-xs text-neutral-500">Atualizando...</span>}</div>
             {summary.attention.length === 0 ? (
               <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-sm text-emerald-950">Nenhuma pendência disponível para os filtros atuais.</div>
             ) : (
@@ -184,26 +250,26 @@ export default function WorkspacePage() {
           </section>
 
           <section className="space-y-4">
-            <div><h2 className="text-xl font-semibold">Financeiro</h2><p className="mt-1 text-sm text-neutral-500">Valores usam o read model de parcelas; status não é recalculado na interface.{sectorId ? " O filtro de Setor usa o sector_id explícito do documento financeiro." : ""}</p></div>
+            <div><h2 className="text-xl font-semibold">Financeiro</h2><p className="mt-1 text-sm text-neutral-500">Valores usam o read model de parcelas; status não é recalculado na interface.{sectorId ? " O filtro de Setor usa o sector_id explícito do documento financeiro." : ""}{hasAppliedPeriod ? " O período seleciona obrigações pelo vencimento. Pago líquido continua sendo o acumulado dessas obrigações, não pagamentos efetuados dentro do período." : ""}</p></div>
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               {financeCards.map((card) => <Link key={card.label} href={card.href} className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm hover:border-neutral-300"><p className="text-sm text-neutral-500">{card.label}</p><p className="mt-2 text-2xl font-semibold">{card.value}</p></Link>)}
             </div>
             <div className="grid gap-3 sm:grid-cols-3">
-              <Link href="/workspace/financeiro" className="rounded-xl border border-neutral-200 bg-white p-4 text-sm"><span className="text-neutral-500">Vencendo hoje</span><strong className="mt-1 block text-xl">{summary.finance.dueTodayCount}</strong></Link>
-              <Link href="/workspace/financeiro" className="rounded-xl border border-neutral-200 bg-white p-4 text-sm"><span className="text-neutral-500">Próximos {horizonDays} dias</span><strong className="mt-1 block text-xl">{summary.finance.dueSoonCount}</strong></Link>
-              <Link href="/workspace/caixa" className="rounded-xl border border-neutral-200 bg-white p-4 text-sm"><span className="text-neutral-500">Caixas fechados no período{sectorId ? " · escopo Unidade" : ""}</span><strong className="mt-1 block text-xl">{summary.cash.recentClosedCount}</strong></Link>
+              <Link href="/workspace/financeiro" className="rounded-xl border border-neutral-200 bg-white p-4 text-sm"><span className="text-neutral-500">Vencendo hoje{hasAppliedPeriod ? " · dentro do período" : ""}</span><strong className="mt-1 block text-xl">{summary.finance.dueTodayCount}</strong></Link>
+              <Link href="/workspace/financeiro" className="rounded-xl border border-neutral-200 bg-white p-4 text-sm"><span className="text-neutral-500">Próximos {horizonDays} dias{hasAppliedPeriod ? " · dentro do período" : ""}</span><strong className="mt-1 block text-xl">{summary.finance.dueSoonCount}</strong></Link>
+              <Link href="/workspace/caixa" className="rounded-xl border border-neutral-200 bg-white p-4 text-sm"><span className="text-neutral-500">Caixas fechados no horizonte{hasAppliedPeriod ? " · dentro do período" : ""}{sectorId ? " · escopo Unidade" : ""}</span><strong className="mt-1 block text-xl">{summary.cash.recentClosedCount}</strong></Link>
             </div>
           </section>
 
           <section className="space-y-4">
-            <div><h2 className="text-xl font-semibold">Operação</h2><p className="mt-1 text-sm text-neutral-500">Contagens apontam diretamente para os módulos responsáveis pela correção.</p></div>
+            <div><h2 className="text-xl font-semibold">Operação</h2><p className="mt-1 text-sm text-neutral-500">Contagens apontam diretamente para os módulos responsáveis pela correção. Indicadores marcados como estado atual não são artificialmente recortados pelo período.</p></div>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {operationalCards.map((card) => <Link key={card.label} href={card.href} className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm hover:border-neutral-300"><p className="text-sm text-neutral-500">{card.label}</p><p className="mt-2 text-2xl font-semibold">{card.value}</p>{sectorId && card.unitOnly && <p className="mt-2 text-xs text-neutral-500">Escopo: Unidade + horizonte</p>}</Link>)}
+              {operationalCards.map((card) => <Link key={card.label} href={card.href} className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm hover:border-neutral-300"><p className="text-sm text-neutral-500">{card.label}</p><p className="mt-2 text-2xl font-semibold">{card.value}</p>{hasAppliedPeriod && card.currentState && <p className="mt-2 text-xs text-neutral-500">Escopo temporal: estado atual</p>}{sectorId && card.unitOnly && <p className="mt-2 text-xs text-neutral-500">Escopo organizacional: Unidade</p>}</Link>)}
             </div>
             <div className="grid gap-3 sm:grid-cols-3">
-              <Link href="/workspace/compras" className="rounded-xl border border-neutral-200 bg-white p-4 text-sm"><span className="text-neutral-500">Entregas atrasadas</span><strong className="mt-1 block text-xl">{summary.purchases.lateDeliveryCount}</strong></Link>
-              <Link href="/workspace/compras" className="rounded-xl border border-neutral-200 bg-white p-4 text-sm"><span className="text-neutral-500">Entregas em até {horizonDays} dias</span><strong className="mt-1 block text-xl">{summary.purchases.deliverySoonCount}</strong></Link>
-              <Link href="/workspace/estoque" className="rounded-xl border border-neutral-200 bg-white p-4 text-sm"><span className="text-neutral-500">Lotes vencendo em até {horizonDays} dias</span><strong className="mt-1 block text-xl">{summary.stock.expiringSoonCount}</strong></Link>
+              <Link href="/workspace/compras" className="rounded-xl border border-neutral-200 bg-white p-4 text-sm"><span className="text-neutral-500">Entregas atrasadas{hasAppliedPeriod ? " no período" : ""}</span><strong className="mt-1 block text-xl">{summary.purchases.lateDeliveryCount}</strong></Link>
+              <Link href="/workspace/compras" className="rounded-xl border border-neutral-200 bg-white p-4 text-sm"><span className="text-neutral-500">Entregas em até {horizonDays} dias{hasAppliedPeriod ? " · dentro do período" : ""}</span><strong className="mt-1 block text-xl">{summary.purchases.deliverySoonCount}</strong></Link>
+              <Link href="/workspace/estoque" className="rounded-xl border border-neutral-200 bg-white p-4 text-sm"><span className="text-neutral-500">Lotes vencendo em até {horizonDays} dias{hasAppliedPeriod ? " · dentro do período" : ""}</span><strong className="mt-1 block text-xl">{summary.stock.expiringSoonCount}</strong></Link>
             </div>
           </section>
         </>
