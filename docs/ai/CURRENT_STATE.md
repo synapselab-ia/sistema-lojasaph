@@ -4,43 +4,52 @@
 
 ## Estado atual
 
-Fase 19 — funcionários operacionais e separação de identidade de acesso — **concluída e integrada na `main`**.
+Fase 20 — perdas, quebras e vencimentos como baixas rastreáveis — **concluída e integrada na `main`**.
 
 - Repositório: `synapselab-ia/sistema-lojasaph`
-- PR #50 — merged
-- Issue #49 — closed/completed
-- merge commit: `f9eae62dd7e2de062c7a48eae326aeec51f6cee0`
-- head final validado pré-merge: `2ed1317bd6b8a74e99d8deaa907d2645f6e414fa`
-- próxima Issue: #51 — `Fase 20 — perdas, quebras e vencimentos como baixas rastreáveis`
+- PR #52 — merged
+- Issue #51 — closed/completed
+- merge commit: `a6da7e46e340763c2cf724c2c3b625616c149a80`
+- head final validado pré-merge: `e5d3b2e0f6752f732ae86c32c66fd488f633eb90`
+- `CI` #253 — success
+- `Inventory Count Integration` #155 — success
+- `Business Transactions Integration` #138 — success
+- próxima Issue: #53 — `Fase 21 — devolução relacionada de retiradas no ledger`
 
-## Fase 19 — entregue
+## Fase 20 — concluído
 
-A entrega fecha `REQ-ORG-004` no escopo MVP atual:
+`REQ-STK-008` foi fechado e `REQ-STK-003` reforçado com caminho persistente real:
 
-- `public.employees` separado de `auth.users`;
-- Employee pode existir sem login;
-- vínculo opcional `auth_user_id` identifica a pessoa, mas não cria/edita `organization_memberships`;
-- Organization obrigatória, nome, código opcional, status e Unit/Sector padrão opcionais;
-- hierarquia Unit/Sector validada no banco;
-- diretório administrativo restrito por RLS a `owner`, `admin` e `manager` dentro do escopo efetivo;
-- Employee Organization-wide exige membership administrativo Organization-wide;
-- sem `DELETE` para cliente autenticado; ciclo de vida usa inativação;
-- domínio, service, repository e adapter Supabase dedicados;
-- UI persistente `/workspace/funcionarios`;
-- navegação e workspace carregam Employees/Unit/Sector respeitando RLS;
-- suíte PostgreSQL e testes unitários específicos.
+- catálogo `stock_loss_reasons` por Organization;
+- motivos-base conservadores `loss`, `breakage`, `expiration` e `other`;
+- `record_stock_loss` transacional/idempotente;
+- `movement_type` derivado do motivo estruturado no banco, não escolhido livremente pela UI;
+- retirada e baixa compartilham o mesmo núcleo privado para locks, saldo, custo, política de negativo, lote preferido e FEFO;
+- baixa grava movimento, item, alocação de lote e auditoria atomicamente;
+- vencimento de item rastreado exige lote explícito já vencido e quantidade suficiente no próprio lote;
+- UI persistente `/workspace/baixas` com formulário e histórico recente;
+- suíte PostgreSQL dedicada integrada ao CI.
 
-Fora do escopo continuam RH/folha/ponto/cargos e salários, CPF/dados sensíveis não requeridos, pessoas reais e resolução de Q-022.
+### Correção encontrada pelo CI
 
-## Validação final da Fase 19
+O primeiro head revelou que a policy de leitura do catálogo usava `private.has_org_role(..., NULL)`, embora esse helper exija uma lista de roles. O fix foi versionado separadamente em `stock_loss_reason_read_scope_fix`, usando `private.is_org_member` para leitura.
 
-No head `2ed1317bd6b8a74e99d8deaa907d2645f6e414fa` passaram:
+Semântica final:
 
-- `CI` #249 — success;
-- `Inventory Count Integration` #153 — success;
-- `Business Transactions Integration` #136 — success.
+- membership ativa pode ler o catálogo de motivos da Organization;
+- configurar motivos continua exigindo membership Organization-wide com `owner`, `admin`, `manager` ou `inventory`;
+- `anon` não possui acesso;
+- `authenticated` não possui `DELETE` na tabela.
 
-O CI confirmou lint, typecheck, Vitest, build, migrations em PostgreSQL 17 limpo, seed, backup/restore, suites PostgreSQL anteriores e `supabase/tests/employees.sql`.
+## Validação final da Fase 20
+
+No head `e5d3b2e0f6752f732ae86c32c66fd488f633eb90` passaram:
+
+- `CI` #253 — success;
+- `Inventory Count Integration` #155 — success;
+- `Business Transactions Integration` #138 — success.
+
+O CI validou lint, typecheck, Vitest, build, todas as migrations, seed, backup/restore, retirada existente, perda/vencimento, transferências, multi-lote, importação e Employee.
 
 ## Supabase remoto
 
@@ -50,56 +59,53 @@ Projeto conectado:
 - PostgreSQL 17;
 - zero branches de desenvolvimento.
 
-Migrations da Fase 19 aplicadas:
+Migrations da Fase 20 aplicadas após CI verde:
 
-- `20260818215813` — `employees`;
-- `20260818220222` — `employee_privilege_hardening`.
+- `stock_loss_flow` — versão remota `20260819004720`;
+- `stock_loss_reason_read_scope_fix` — versão remota `20260819004730`.
 
-A homologação remota encontrou uma diferença importante em relação ao PostgreSQL limpo do CI: default privileges do projeto hospedado deixavam `authenticated` com `DELETE` na tabela recém-criada. A correção foi versionada em migration separada, sem reescrever migration aplicada:
+Homologação pós-DDL:
 
-- `anon` sem privilégios em `employees`;
-- `authenticated` somente com `SELECT`, `INSERT` e `UPDATE` em nível de tabela;
-- `DELETE=false`;
-- RLS ativo com `employees_admin_select`, `employees_admin_insert` e `employees_admin_update`;
-- índices explícitos cobrindo FKs de `auth_user_id`, Unit e Sector.
+- RLS ativo em `stock_loss_reasons`;
+- 4 motivos-base para a Organization existente;
+- policies de select/insert/update presentes;
+- `anon`: sem SELECT/INSERT/UPDATE/DELETE e sem EXECUTE de `record_stock_loss`;
+- `authenticated`: SELECT/INSERT/UPDATE em nível de tabela, `DELETE=false`;
+- `record_stock_loss` executável por `authenticated`, revalidando `auth.uid()`, role e escopo no próprio RPC;
+- smoke sintético confirmou `breakage -> loss`, saldo, custo snapshot e audit log;
+- transação revertida e zero resíduo sintético.
 
-Smoke sintético de inserção/hierarquia foi executado dentro de transação e revertido. `public.employees` permaneceu com zero linhas e nenhum dado real foi criado.
+O advisor de segurança sinaliza o RPC público pelo lint genérico de `SECURITY DEFINER` executável por `authenticated`, padrão já presente nos RPCs transacionais existentes. Neste caso o EXECUTE é intencional e protegido por validações internas; `anon` não possui EXECUTE. O advisor de performance não apontou FK sem índice na nova tabela.
 
-Os advisors finais não apontaram warning de segurança específico de Employee nem FK Employee sem índice. Warnings restantes pertencem a objetos preexistentes e não foram ampliados nesta fase.
+## Vercel
 
-## Vercel — política vigente
+`vercel.json` continua com `git.deploymentEnabled=false`.
 
-`vercel.json` mantém `git.deploymentEnabled=false`.
-
-- Vercel não é gate rotineiro de desenvolvimento;
-- CI é o gate principal;
-- deployment manual só quando uma validação realmente depender de ambiente hospedado ou em milestone/release apropriada;
-- não reativar auto-deploy para validar commits comuns.
+**Política vigente:** CI é o gate principal de desenvolvimento. Deployment manual somente quando uma validação realmente depender de hosting/browser real ou em milestone/release apropriada. A Fase 20 não usou Vercel.
 
 ## Próxima lacuna MUST real
 
-`REQ-STK-008 — Perdas e vencimentos` permanece incompleto e `REQ-STK-003` exige motivo estruturado.
+`REQ-STK-006 — Devolução/retorno relacionado` continua incompleto.
 
-O schema já reserva `stock_movements.movement_type = loss | expiration` e possui `reason_code`, mas o módulo persistente documentado cobre entrada, retirada, transferência e inventário — não existe fluxo transacional/UI de baixa por perda, quebra ou vencimento.
+O schema já prevê `return_in`, `return_out` e `reversal_of_movement_id`, mas não existe comando/UI persistente para relacionar uma devolução a movimento anterior. A Issue #53 foi aberta com escopo conservador:
 
-Issue #51 foi aberta para a Fase 20 com escopo conservador:
-
-- baixa sempre pelo ledger;
-- motivo estruturado, observação apenas complementar;
-- perda/quebra/vencimento sem inventar categorias do cliente;
-- lote/validade e custo preservados;
-- idempotência, auditoria, RLS e escopo existentes;
-- fixtures exclusivamente sintéticas;
-- `REQ-STK-006` devolução/retorno relacionado permanece separado;
-- Q-005 empréstimo x transferência não será inferida.
+- começar pelo retorno ao estoque de uma retirada existente;
+- novo movimento `return_in`, sem editar/apagar a retirada histórica;
+- permitir retorno parcial/total sem over-return;
+- derivar custo do snapshot histórico;
+- preservar/restaurar lote identificado quando aplicável;
+- idempotência, RLS/escopo, concorrência e auditoria;
+- sem empréstimo enquanto Q-005 estiver aberta;
+- sem componente financeiro de Q-004 ou interpretação do checkbox de Q-003;
+- fixtures exclusivamente sintéticas.
 
 ## Não repetir
 
-- não reabrir Fases 18 ou 19;
-- não misturar Employee com autorização/membership;
+- não reabrir Fase 20;
+- não criar segundo mecanismo de saída de estoque fora do ledger;
 - não reativar auto-deploy Vercel;
+- não resolver advisors antigos fora de escopo por oportunismo;
+- não implementar empréstimo enquanto Q-005 estiver aberta;
+- não inferir Q-003/Q-004 ou demais Q-001..Q-025;
 - não importar dados reais;
-- não reaplicar migrations antigas;
-- não corrigir advisors preexistentes fora da Issue ativa por oportunismo;
-- não inferir Q-001 a Q-025;
-- não implementar devolução/empréstimo dentro da Fase 20 sem requisito específico.
+- não reaplicar migrations já homologadas.
