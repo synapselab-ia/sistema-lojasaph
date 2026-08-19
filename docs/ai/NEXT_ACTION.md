@@ -2,33 +2,31 @@
 
 ## Contexto
 
-A Fase 23 / Issue #59 está concluída e mergeada na `main` pelo PR #60.
+A Fase 24 / Issue #61 está concluída e mergeada na `main` pelo PR #62.
 
 Estado funcional final comprovado:
 
-- head validado: `608541980cc5264d17cbb847c13919d805699518`;
-- `CI` #273 — success;
-- `Inventory Count Integration` #165 — success;
-- `Business Transactions Integration` #148 — success;
-- merge commit funcional: `bdfc450c1095bd42e814fa1fee50dfcaad51a37e`.
+- head validado: `44e47e92a3594757c08c5bd242872b3f5ecc2dbf`;
+- `CI` #278 — success;
+- `Inventory Count Integration` #166 — success;
+- `Business Transactions Integration` #149 — success;
+- merge commit funcional: `e3eb02918f8fe95307b1728e6c2d27608cebc9d1`.
 
 Supabase remoto:
 
-- projeto `fhbvwyttikrbeaanatlr`, PostgreSQL 17;
-- `stock_withdrawal_sector` — `20260819184424`;
-- nova retirada exige Setor explícito e autorizado;
-- assinatura legada sem Setor foi removida;
-- `stock_movements.sector_id` permanece nullable globalmente;
-- 0 retiradas reais antes/depois da migration;
-- smoke sintético validado em rollback com zero resíduo;
-- `security_hardening.sql` permaneceu verde e o remoto continua 45/45 tabelas `public` com RLS.
+- projeto `fhbvwyttikrbeaanatlr`, `ACTIVE_HEALTHY`, PostgreSQL 17;
+- nenhuma migration/DDL na Fase 24;
+- 3 Setores ativos;
+- os 3 locais ativos atuais têm `sector_id IS NULL`;
+- RLS de Setores comprovado com smoke sintético em `BEGIN/ROLLBACK`, zero resíduo;
+- Caixa continua sem relação setorial explícita.
 
-A próxima lacuna MUST objetiva é a dimensão Setor de `REQ-DASH-002`, registrada na Issue #61 — `Fase 24 — filtro de Setor no dashboard gerencial`.
+A próxima lacuna MUST objetiva é a dimensão **período** de `REQ-DASH-002`, registrada na Issue #63 — `Fase 25 — período gerencial explícito no dashboard`.
 
 ## Fazer agora
 
-1. Confirmar estado real da Issue #61, `main`, branch `agent/dashboard-sector-filter` (se já existir), PRs e CI.
-2. Se a branch ainda não existir, criá-la a partir da `main` atual; não reutilizar a branch da Fase 23.
+1. Confirmar estado real da Issue #63, `main`, branch `agent/dashboard-period-filter` (se já existir), PRs e CI.
+2. Se a branch ainda não existir, criá-la a partir da `main` atual; não reutilizar a branch da Fase 24.
 3. Ler antes de editar:
    - `AGENTS.md`;
    - `docs/00-START-HERE.md`;
@@ -38,55 +36,66 @@ A próxima lacuna MUST objetiva é a dimensão Setor de `REQ-DASH-002`, registra
    - `docs/ai/WORKFLOW.md`;
    - `docs/product/requirements.md` — `REQ-DASH-002`;
    - `docs/modules/dashboard.md`;
-   - `src/modules/dashboard/application/dashboard-summary.ts`;
-   - testes do resumo do Dashboard;
-   - `src/modules/dashboard/adapters/supabase-dashboard-query.ts`;
-   - testes do adapter/query quando existentes;
-   - a rota/componente persistente que renderiza `/workspace` e seus filtros.
+   - `src/modules/dashboard/application/dashboard-summary.ts` e testes;
+   - `src/modules/dashboard/adapters/supabase-dashboard-query.ts` e testes;
+   - `src/app/workspace/(operacao)/page.tsx`;
+   - read model/tabelas/adapters relevantes de Financeiro (`payable_installment_summary`, `payments`), Caixa, Compras, Transferências, Inventários e Validades.
 4. Confirmar a lacuna antes do patch:
-   - `DashboardFilter` possui `today`, `horizonDays`, `unitId?`, mas não `sectorId`;
-   - `SupabaseDashboardQuery.load(...)` recebe `unitId?` + `horizonDays`, sem Setor;
-   - a UI/documentação oferece Unidade + horizonte;
-   - a Fase 23 deixou filtro de Dashboard por Setor fora de escopo.
-5. Confirmar a matriz real de granularidade antes de filtrar:
-   - `payable_installment_summary` expõe `sector_id`;
-   - `stock_locations` possui `sector_id`;
-   - `cash_registers` não possui `sector_id`;
-   - verificar no código as relações usadas por Compras, Transferências, Inventários e Validades; não deduzir Setor onde a FK explícita não existir.
-6. Adicionar `sectorId?` ao filtro e disponibilizar Setores autorizados pela mesma leitura autenticada/RLS usada pelo Dashboard.
-7. Manter Unit + Setor coerentes:
-   - se ambos forem selecionados, o Setor deve pertencer à Unit selecionada;
-   - impedir/rejeitar combinação incompatível;
-   - nunca ampliar a consulta silenciosamente.
-8. Aplicar filtro setorial somente às fontes com vínculo explícito:
-   - Financeiro: usar `sector_id` do read model existente;
-   - Compras/Inventários/Validades: usar Setor do `stock_location` quando explicitamente presente;
-   - Transferências: definir e documentar semântica baseada apenas em origem/destino explicitamente vinculados;
-   - Caixa: manter Unit-level enquanto não houver `sector_id`; a interface deve deixar claro que esse bloco não foi filtrado por Setor, em vez de simular granularidade inexistente.
-9. Não criar KPI/gráfico novo e não mudar fórmulas/status já homologados.
-10. Preservar timezone da Organization, `horizonDays`, filtro por Unit, links da fila de atenção e tratamento de respostas concorrentes.
-11. Cobrir por testes pelo menos:
-    - Setor autorizado filtra dados setoriais corretamente;
-    - Unit + Setor coerentes funcionam;
-    - combinação incompatível é rejeitada/impedida;
-    - Setor de outra Organization/fora do RLS não é utilizável;
-    - registros sem vínculo setorial não são atribuídos artificialmente;
-    - Caixa não é apresentado como setorial;
-    - filtro por Unit e horizonte existentes continuam sem regressão.
-12. Preferir zero DDL: as fontes atuais já possuem relações suficientes para iniciar. Criar migration/view somente se uma lacuna física real for comprovada durante a implementação.
-13. Manter RLS/grants atuais; Dashboard continua usando client autenticado normal, sem service role.
-14. Rodar lint, typecheck, Vitest, production build e os workflows aplicáveis.
-15. Se não houver DDL, homologar no Supabase somente por consultas/read-only com usuário/escopo sintético quando necessário. Se houver DDL, aplicar somente após CI verde e usar smoke `BEGIN/ROLLBACK`.
-16. Rodar Security/Performance Advisors somente se houver DDL; corrigir apenas problema novo causado pela Fase 24.
-17. Abrir/atualizar PR, marcar ready, mergear, fechar Issue #61 e atualizar continuidade.
+   - o filtro atual possui `unitId?`, `sectorId?` e `horizonDays`;
+   - não existe `dateFrom/dateTo` gerencial explícito;
+   - `horizonDays` é janela relativa de alertas e não deve ser confundido com período.
+5. Inventariar a semântica temporal de cada KPI/fila atual e registrar a decisão no módulo antes de generalizar qualquer filtro.
+6. Usar somente campos temporais canônicos já comprovados:
+   - Financeiro/obrigações: `due_date` quando a métrica é de vencimento/obrigação;
+   - pagamentos efetivos: `payments.paid_at` se e somente se for necessário representar pagamento realizado no período;
+   - Caixa: `cash_sessions.business_date`;
+   - Compras/entrega: `expected_delivery_date`;
+   - Validades: `inventory_batches.expiration_date`;
+   - revisar `ordered_at`, `requested_at`, `dispatched_at`, `received_at`, `started_at`, `confirmed_at` apenas conforme a semântica real da métrica existente.
+7. Adicionar período opcional `dateFrom`/`dateTo`:
+   - aceitar ambos ausentes para preservar comportamento atual;
+   - validar formato ISO `YYYY-MM-DD`;
+   - exigir par completo ou definir explicitamente a política de intervalo aberto antes de implementar; preferir par completo para evitar ambiguidade;
+   - exigir `dateFrom <= dateTo`;
+   - boundaries inclusivos;
+   - preservar timezone da Organization para datas de negócio.
+8. Não transformar valores cumulativos/snapshots em valores de período por rótulo:
+   - `net_paid_amount` do read model é cumulativo; não chamá-lo de “pago no período” sem eventos de `payments.paid_at`;
+   - Transferências em trânsito e Inventários em andamento permanecem current-state enquanto não houver semântica temporal específica aprovada;
+   - se uma métrica não obedecer ao período, a UI deve declarar isso claramente.
+9. Preservar integralmente o filtro de Unit + Setor da Fase 24, inclusive:
+   - Setores limitados por RLS;
+   - Unit + Setor no mesmo endpoint para Transferências;
+   - Caixa sem filtro de Setor.
+10. Preservar `horizonDays` como conceito separado. Não removê-lo nem alterar seus cálculos silenciosamente.
+11. Preferir zero DDL. Se uma fonte adicional de leitura for realmente necessária:
+   - provar a lacuna física primeiro;
+   - versionar migration;
+   - view pública deve usar `security_invoker=true`;
+   - manter grants mínimos e RLS das fontes;
+   - aplicar remotamente somente depois de CI verde.
+12. Atualizar testes cobrindo pelo menos:
+   - intervalo válido e boundaries inclusivos;
+   - datas inválidas e `dateFrom > dateTo`;
+   - timezone;
+   - Financeiro/obrigações;
+   - Caixa por `business_date`;
+   - Compras por data de entrega conhecida;
+   - Validades;
+   - ausência de data sem fabricação;
+   - métricas current-state/cumulativas explicitamente preservadas;
+   - regressões de Unit, Setor e `horizonDays`.
+13. Rodar lint, typecheck, Vitest, production build e os três workflows aplicáveis.
+14. Se não houver DDL, homologar no Supabase por consultas/RLS somente leitura. Se houver DDL indispensável, aplicar somente após CI verde, executar smoke sintético `BEGIN/ROLLBACK` e Security/Performance Advisors.
+15. Abrir/atualizar PR, marcar ready, mergear, fechar Issue #63 e atualizar continuidade.
 
 ## Política de segurança
 
 - `supabase/tests/security_hardening.sql` continua obrigatório;
 - não ampliar grants/RLS para facilitar Dashboard;
-- não usar service role no read path do Dashboard;
-- não fabricar relacionamento Setor para fonte que só possui Unit;
-- qualquer view pública nova deve usar `security_invoker=true`, RLS das fontes e grant mínimo para `authenticated`.
+- não usar service role no read path;
+- não usar `created_at` como data de negócio genérica quando existe campo canônico;
+- qualquer view pública nova deve usar `security_invoker=true` e grant mínimo.
 
 ## Política de Vercel
 
@@ -96,17 +105,18 @@ A próxima lacuna MUST objetiva é a dimensão Setor de `REQ-DASH-002`, registra
 
 ## Não fazer
 
-- não reabrir Fase 23/Issue #59;
-- não reabrir Fase 22/Issue #57 ou hardening/Issue #54;
-- não alterar novamente a retirada sem regressão comprovada;
-- não atribuir Caixa a Setor por inferência;
-- não criar novos KPIs/gráficos;
-- não resolver nesta fase toda a semântica de período arbitrário de `REQ-DASH-002`;
-- não redefinir roles/perfis reais/Q-022;
+- não reabrir Fase 24/Issue #61;
+- não reabrir Fase 23/Issue #59 ou hardening/Issue #54;
+- não regredir o filtro Setor nem inferir vínculos para locais nulos;
+- não atribuir Caixa a Setor;
+- não substituir `horizonDays` por período sem preservar sua semântica;
+- não inventar um campo temporal único para todos os módulos;
+- não apresentar valores cumulativos/current-state como “do período” sem base de dados apropriada;
+- não criar novos KPIs/gráficos por conveniência;
 - não inferir Q-001..Q-025;
 - não importar dados reais;
 - não fazer sweep de advisors antigos sem causalidade.
 
 ## Critério de conclusão da próxima fase
 
-O Dashboard deve aceitar um Setor autorizado como filtro e aplicar esse escopo somente às fontes/KPIs com relação setorial explícita, mantendo transparentes os blocos que continuam Unit-level. Unit + Setor não podem formar escopo inconsistente; filtros atuais, cálculos, RLS e isolamento entre Organizations/Setores devem permanecer corretos.
+O Dashboard aceita um intervalo gerencial explícito e o aplica apenas segundo campos temporais canônicos e documentados. Métricas cumulativas ou de estado atual que não sejam semanticamente “do período” permanecem corretas e transparentes; `horizonDays`, Unit, Setor, timezone, RLS e isolamento continuam sem regressão.
