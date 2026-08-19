@@ -4,74 +4,108 @@
 
 ## Estado atual
 
-A Fase 22 foi concluída, homologada e integrada na `main`.
+A Fase 23 foi concluída, homologada e integrada na `main`.
 
 - Repositório: `synapselab-ia/sistema-lojasaph`
-- PR #58 — merged
-- Issue #57 — closed/completed
-- merge commit funcional: `26cf2a40e7c2c3948f5d82678408fe49e213ca16`
-- head funcional final validado pré-merge: `4459de528de9dd0fa68e83a867ce866f3fb5b23e`
-- `CI` #270 — success
-- `Inventory Count Integration` #164 — success
-- `Business Transactions Integration` #147 — success
-- próxima Issue: #59 — `Fase 23 — vincular retirada de estoque ao Setor operacional`
+- PR #60 — merged
+- Issue #59 — closed/completed
+- merge commit funcional: `bdfc450c1095bd42e814fa1fee50dfcaad51a37e`
+- head funcional final validado pré-merge: `608541980cc5264d17cbb847c13919d805699518`
+- `CI` #273 — success
+- `Inventory Count Integration` #165 — success
+- `Business Transactions Integration` #148 — success
+- próxima Issue: #61 — `Fase 24 — filtro de Setor no dashboard gerencial`
 
-## Fase 22 — categoria obrigatória no item canônico
+## Fase 23 — retirada de estoque vinculada ao Setor operacional
 
-`REQ-ITEM-001` está fechado para a obrigatoriedade de categoria no StockItem canônico.
+`REQ-STK-004` foi fechado na command surface persistente para registrar explicitamente o Setor de consumo/operação, preservando data, quantidade e responsável já existentes.
 
 Implementado:
 
-- `StockItem.categoryId`, criação e edição agora exigem categoria;
-- validação defensiva de domínio usa o código estável `STOCK_ITEM_CATEGORY_REQUIRED`;
-- adapter Supabase não grava nem materializa item sem categoria;
-- `/workspace/produtos` e a rota demo de produtos exigem seleção explícita e não oferecem estado persistível `Sem categoria`;
-- providers runtime/demo usam o mesmo contrato obrigatório;
-- importação/dry run não inventa categoria: ausência permanece `pending_mapping` com `ITEM_CATEGORY_REQUIRED`;
-- migration fail-fast rejeita ambiente com legado `category_id IS NULL` antes do DDL;
-- `public.stock_items.category_id` passou a `NOT NULL`, sem default;
-- FK composto `(category_id, organization_id)` foi preservado;
-- fixtures sintéticas de inventário, perdas, devoluções, escopo e cadastros foram alinhadas;
-- suíte `supabase/tests/stock_item_category_required.sql` foi integrada aos três workflows PostgreSQL.
+- `record_stock_withdrawal` agora exige `p_sector_id` explícito;
+- Setor deve estar ativo, pertencer à mesma Organization e estar dentro do escopo autorizado pelo helper `private.has_sector_role`;
+- o local de origem continua validado independentemente por `private.has_stock_location_role`;
+- `stock_movements.sector_id` é persistido na retirada, mas permanece nullable no ledger global;
+- `sector_id` entra no `audit_logs.after_data` e na semântica do command ID;
+- retry com mesmo payload/Setor permanece idempotente; reutilização da chave com Setor divergente gera `IDEMPOTENCY_KEY_CONFLICT`;
+- assinaturas pública e privada legadas sem Setor foram removidas, eliminando bypass autenticado;
+- implementação privada permanece sem EXECUTE para `authenticated`;
+- gateway, runtime provider e `/workspace/estoque` exigem `sectorId`;
+- a UI lista somente `workspace.sectors` já filtrados pela autorização vigente e não cria/inventa Setor default;
+- o núcleo `private.record_stock_outflow` continua responsável por saldo, custo, lote preferido, FEFO, política de estoque negativo, locks e rollback;
+- `stock_return.sql` foi alinhado para criar a retirada de origem com Setor explícito;
+- nova suíte `stock_withdrawal_sector_scope.sql` comprova escopo setorial sem duplicar a semântica da Fase 14;
+- os três workflows PostgreSQL executam a nova regressão.
 
-## Achados de validação
+## Validação funcional
 
-O primeiro ciclo de CI revelou fixtures SQL antigas que criavam StockItem sintético sem categoria em `stock_return.sql`, `stock_loss.sql` e `scoped_permissions.sql`. Elas foram corrigidas sem afrouxar o `NOT NULL`.
+Head `608541980cc5264d17cbb847c13919d805699518` passou 3/3:
 
-O CI principal também revelou três callers TypeScript restantes: a rota demo `/cadastros/produtos`, o teste de `InventoryService` e a inferência do callback no teste de importação. Esses pontos foram alinhados antes do head final.
+- `CI` #273 — lint, typecheck, Vitest, production build, backup/restore e suites PostgreSQL — success;
+- `Inventory Count Integration` #165 — success;
+- `Business Transactions Integration` #148 — success.
+
+O gate `supabase/tests/security_hardening.sql` permaneceu verde. As regressões de retirada, devolução, perdas, transferências e inventário continuaram passando após a mudança.
 
 ## Supabase remoto
 
-Projeto `fhbvwyttikrbeaanatlr`, `ACTIVE_HEALTHY`, PostgreSQL 17.
+Projeto `fhbvwyttikrbeaanatlr`, PostgreSQL 17.
 
-Migration da Fase 22:
+Migration da Fase 23:
 
-- `stock_item_category_required` — versão remota `20260819181239`.
+- `stock_withdrawal_sector` — versão remota `20260819184424`.
 
-Antes do DDL remoto:
+Baseline antes do DDL:
 
-- 3 StockItems reais;
-- 0 itens sem categoria;
-- os três itens já tinham `category_id` explícito;
-- `category_id` ainda era nullable.
+- 0 retiradas reais persistidas;
+- `stock_movements.sector_id` nullable;
+- assinatura pública legada sem Setor presente;
+- assinatura nova ausente.
 
-Depois do DDL remoto:
+Depois do DDL:
 
-- os mesmos 3 IDs mantiveram exatamente os mesmos `category_id`;
-- 0 itens sem categoria;
-- `category_id` está `NOT NULL` e sem default;
-- `stock_items_category_id_organization_id_fkey` continua exigindo categoria da mesma Organization;
-- não houve alteração em RLS, grants ou RPCs.
+- 0 retiradas reais, sem alteração histórica/backfill;
+- `stock_movements.sector_id` continua nullable globalmente;
+- assinatura pública/privada legada sem Setor não existe;
+- nova assinatura setorial existe;
+- `authenticated` possui EXECUTE somente na superfície pública necessária;
+- `anon` não possui EXECUTE;
+- `PUBLIC` não possui grant explícito;
+- `authenticated` não executa a implementação privada.
 
-Smoke sintético executado em `BEGIN/ROLLBACK` confirmou:
+Smoke sintético em `BEGIN/ROLLBACK` confirmou:
 
-- item com categoria válida é aceito;
-- insert sem categoria é rejeitado;
-- update removendo categoria é rejeitado;
-- categoria de outra Organization é rejeitada pelo FK;
-- rollback deixou zero Organization, categoria ou StockItem sintético.
+- retirada válida persiste Setor e responsável;
+- audit `stock_withdrawal.recorded` contém `sector_id` e não duplica em retry;
+- retry idêntico é idempotente;
+- mesmo command ID com Setor diferente conflita;
+- Setor ausente é rejeitado;
+- Setor de outra Organization é rejeitado;
+- Setor fora do membership autorizado é rejeitado com `INSUFFICIENT_SCOPE`;
+- saldo e custo médio permanecem corretos;
+- falhas não deixam movimento/audit parcial;
+- rollback deixou zero Organization, movimento ou audit sintético.
 
-Security e Performance Advisors foram executados após o DDL. Nenhum finding novo foi causado pelo `NOT NULL`; avisos históricos permanecem fora de escopo.
+Security e Performance Advisors foram executados após a migration. O novo wrapper aparece no warning genérico já conhecido de RPC `SECURITY DEFINER` executável por `authenticated`; sua exposição é intencional e continua protegida por auth, papel, escopo de local e Setor, `search_path=''` e implementação privada não executável pelo cliente. Nenhum sweep oportunista de débitos históricos foi feito.
+
+A verificação de hardening remoto continua mostrando 45/45 tabelas `public` com RLS habilitado e o novo RPC sem EXECUTE para `anon`.
+
+## Próxima lacuna MUST real
+
+A Issue #61 registra a próxima lacuna objetiva: `REQ-DASH-002` exige escopos gerenciais relevantes por unidade/setor, enquanto o Dashboard atual possui apenas `unitId?` + `horizonDays`.
+
+Evidência atual:
+
+- `DashboardFilter` não possui `sectorId`;
+- `SupabaseDashboardQuery.load(...)` não recebe Setor;
+- a UI/documentação do Dashboard oferece Unidade + horizonte, sem filtro setorial;
+- `payable_installment_summary` já expõe `sector_id`;
+- `stock_locations` possui `sector_id` explícito;
+- `cash_registers` não possui `sector_id`, portanto Caixa não deve ser artificialmente atribuído a Setor;
+- existem 3 Setores ativos no dataset remoto atual;
+- filtros de Dashboard por Setor ficaram explicitamente fora do escopo da Fase 23.
+
+A Fase 24 deve fechar somente a dimensão Setor de `REQ-DASH-002`, sem inventar vínculos para fontes sem granularidade setorial e sem criar novos KPIs.
 
 ## Hardening vigente
 
@@ -79,29 +113,18 @@ A Issue #54 permanece concluída e `supabase/tests/security_hardening.sql` conti
 
 ## Vercel
 
-`vercel.json` continua com `git.deploymentEnabled=false`. Nenhum deploy manual foi usado na Fase 22. CI permanece o gate principal.
-
-## Próxima lacuna MUST real
-
-`REQ-STK-004` exige registrar retirada de estoque para consumo/operação em um Setor, com data, quantidade e responsável.
-
-A implementação persistente atual já registra `occurred_at`, quantidade e `responsible_user_id`, porém:
-
-- `public.record_stock_withdrawal(...)` não recebe Setor;
-- o insert da retirada não preenche `stock_movements.sector_id`, embora a coluna exista;
-- `SupabaseStockWithdrawalGateway` não modela `sectorId`;
-- `/workspace/estoque` não solicita Setor para retirada.
-
-A Fase 23 / Issue #59 deve fechar somente essa rastreabilidade: Setor explícito, válido, da mesma Organization e autorizado pelo escopo; sem default/inferência e sem alterar FEFO, custo médio, política de estoque negativo ou movimentos históricos.
+`vercel.json` continua com `git.deploymentEnabled=false`. Nenhum deploy Vercel foi usado na Fase 23. CI permanece o gate principal.
 
 ## Não repetir
 
-- não reabrir Fases 21/22, Issues #53/#57 ou hardening/Issue #54;
+- não reabrir Fases 22/23, Issues #57/#59 ou hardening/Issue #54;
 - não reaplicar migrations antigas;
+- não alterar/backfillar retiradas históricas;
+- não tornar `stock_movements.sector_id` globalmente `NOT NULL`;
 - não remover/afrouxar `security_hardening.sql`;
 - não reativar auto-deploy Vercel;
-- não criar categoria ou Setor genérico/default;
-- não alterar os 3 itens reais existentes nem movimentos históricos;
+- não inventar Setor para Caixa ou outra fonte sem relação explícita;
+- não criar novos KPIs na Fase 24;
 - não implementar empréstimo enquanto Q-005 estiver aberta;
 - não inferir Q-001..Q-025;
 - não importar dados reais;
