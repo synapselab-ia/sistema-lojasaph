@@ -13,7 +13,7 @@ import {
   buildBootstrapInviteRedirectUrl,
   classifyBootstrapIdentity,
   determineBootstrapInvitationState,
-  isBootstrapInviteTemplateReady,
+  isBootstrapInviteReady,
   normalizeBootstrapOwnerEmail,
   resolveBootstrapOrganizationId,
   type BootstrapIdentityState,
@@ -39,6 +39,11 @@ const MAX_AUTH_USER_PAGES = 100;
 
 function configuredOwnerEmail(): string | undefined {
   return normalizeBootstrapOwnerEmail(process.env.LOJASAPH_BOOTSTRAP_OWNER_EMAIL);
+}
+
+function configuredInviteReadiness(): string | undefined {
+  return process.env.LOJASAPH_BOOTSTRAP_INVITE_READY
+    ?? process.env.LOJASAPH_BOOTSTRAP_INVITE_TEMPLATE_READY;
 }
 
 function organizationErrorMessage(error: unknown): string {
@@ -161,7 +166,7 @@ export async function getBootstrapStatus(): Promise<BootstrapStatus> {
       const identityState = await readBootstrapIdentityState(admin, expectedEmail);
       invitationState = determineBootstrapInvitationState({
         configured: true,
-        templateReady: isBootstrapInviteTemplateReady(process.env.LOJASAPH_BOOTSTRAP_INVITE_TEMPLATE_READY),
+        inviteReady: isBootstrapInviteReady(configuredInviteReadiness()),
         appUrlReady: Boolean(optionalApplicationBaseUrl()),
         ownerExists: false,
         identityState,
@@ -238,11 +243,11 @@ export async function inviteBootstrapOwnerAction() {
     ));
   }
 
-  if (!isBootstrapInviteTemplateReady(process.env.LOJASAPH_BOOTSTRAP_INVITE_TEMPLATE_READY)) {
+  if (!isBootstrapInviteReady(configuredInviteReadiness())) {
     redirect(urlWithMessage(
       "/bootstrap",
       "error",
-      "O convite permanece bloqueado até o template SSR de convite ser confirmado no ambiente.",
+      "O convite permanece bloqueado até redirect e entrega de e-mail serem confirmados no ambiente.",
     ));
   }
 

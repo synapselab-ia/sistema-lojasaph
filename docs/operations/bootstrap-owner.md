@@ -23,8 +23,8 @@ Antes de habilitar qualquer convite real:
 3. confirmar que não existe owner ativo;
 4. receber do operador o e-mail exato que será autorizado;
 5. manter signup público ausente;
-6. confirmar que o domínio/URL pública da aplicação está correto;
-7. confirmar a configuração Auth de redirect e template descrita abaixo.
+6. confirmar o domínio HTTPS canônico da aplicação;
+7. confirmar a Auth Redirect URL Allow List e a capacidade real de entrega do e-mail.
 
 Nunca inferir o e-mail do primeiro owner a partir de GitHub, Vercel, conta conectada, commit ou outro metadado.
 
@@ -35,47 +35,28 @@ No ambiente Production necessário para a inicialização:
 - `SUPABASE_SECRET_KEY` — chave administrativa server-only;
 - `LOJASAPH_BOOTSTRAP_OWNER_EMAIL` — e-mail explicitamente autorizado pelo operador;
 - `LOJASAPH_BOOTSTRAP_ORGANIZATION_ID` — opcional quando existe exatamente uma Organization ativa;
-- `LOJASAPH_BOOTSTRAP_INVITE_TEMPLATE_READY=true` — somente depois das verificações de template/redirect abaixo.
+- `LOJASAPH_BOOTSTRAP_INVITE_READY=true` — somente depois das verificações de redirect e entrega descritas abaixo.
 
 `NEXT_PUBLIC_APP_URL`/URL pública também precisa resolver para o domínio HTTPS canônico conforme o guardrail de ambientes.
 
 Nenhuma senha deve ser armazenada em variável, Issue, commit, log ou documentação.
 
-## Por que o template padrão não basta para SSR
+`LOJASAPH_BOOTSTRAP_INVITE_TEMPLATE_READY` é aceito apenas como compatibilidade temporária com o primeiro patch da Fase 26. Instalações novas devem usar `LOJASAPH_BOOTSTRAP_INVITE_READY`.
 
-O convite Admin do Supabase não é um fluxo PKCE. No template padrão, a confirmação pode entregar a sessão via fragmento de URL, que não chega ao servidor.
+## Fluxo hospedado padrão — default
 
-O Sistema Lojasaph já possui `/auth/callback`, que aceita `token_hash` + `type` e chama `verifyOtp()`. Para estabelecer a sessão em cookies no servidor, o template hospedado **Invite user** deve usar `TokenHash` e enviar o usuário diretamente para esse callback.
+Convites enviados por `auth.admin.inviteUserByEmail()` usam o fluxo implícito do Supabase Auth, não PKCE. Depois que o Supabase valida o link do e-mail, o redirect para a aplicação recebe a sessão no fragmento do navegador (`#access_token=...&refresh_token=...&type=invite`). Fragmentos não são enviados ao servidor HTTP.
 
-## Configuração do Supabase Auth hospedado
-
-### Redirect URL Allow List
-
-Na configuração de URL do Auth, incluir a URL canônica do callback da aplicação, por exemplo:
+O Sistema Lojasaph suporta esse fluxo sem expor a escolha do destinatário:
 
 ```text
-https://<dominio-canonico>/auth/callback
-```
-
-Não usar wildcard mais amplo do que o necessário apenas para facilitar o bootstrap.
-
-### Template `Invite user`
-
-No Supabase Dashboard, em Authentication > Email Templates > Invite user, o link de aceitação deve encaminhar o `TokenHash` ao callback server-side. O formato esperado é:
-
-```html
-<a href="{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=invite&next=%2Fauth%2Fatualizar-senha%3Fnext%3D%2Fbootstrap">
-  Aceitar convite
-</a>
-```
-
-A ação do Sistema Lojasaph passa `redirectTo` como a URL canônica `/auth/callback`. Assim o fluxo é:
-
-```text
-convite
-  → /auth/callback?token_hash=...&type=invite&next=/auth/atualizar-senha?next=/bootstrap
-  → verifyOtp(type=invite)
-  → sessão SSR em cookie
+inviteUserByEmail(e-mail server-only)
+  → Supabase valida o link do e-mail
+  → /auth/invite#access_token=...&refresh_token=...&type=invite
+  → browser remove o fragmento imediatamente da URL
+  → POST same-origin /auth/invite/session
+  → servidor valida access token + e-mail autorizado
+  → servidor estabelece a sessão SSR em cookie
   → /auth/atualizar-senha?next=/bootstrap
   → usuário define sua própria senha
   → /bootstrap
@@ -83,33 +64,67 @@ convite
   → membership owner + audit
 ```
 
-O parâmetro `next` é validado por `safeInternalPath`; destinos externos e URLs protocol-relative são rejeitados.
+Guardrails do handoff implícito:
 
-### Entrega de e-mail
+- `/auth/invite` aceita somente `type=invite` com access + refresh token completos;
+- o fragmento é removido do endereço do navegador antes da chamada ao servidor;
+- o POST exige `Origin` exatamente igual ao origin da aplicação;
+- o servidor valida o access token contra o Supabase antes de persistir sessão;
+- o usuário validado precisa ter exatamente o e-mail configurado server-side para bootstrap;
+- resposta é `no-store` e nenhum token é devolvido;
+- nenhuma etapa cria membership até o usuário autenticado executar `bootstrapOwnerAction`.
 
-Antes de marcar `LOJASAPH_BOOTSTRAP_INVITE_TEMPLATE_READY=true`, confirmar que o provedor de e-mail do projeto consegue entregar ao endereço autorizado. A configuração padrão do Supabase pode impor limitações/rate limits; revalidar a documentação atual e usar SMTP apropriado quando necessário.
+## Por que o template customizado não é requisito
 
-A flag `LOJASAPH_BOOTSTRAP_INVITE_TEMPLATE_READY` é deliberadamente fail-closed: ela não configura o Supabase. Ela apenas registra que um operador já conferiu o template hospedado, a allowlist e a capacidade de entrega.
+Na homologação de 2026-08-19, o projeto hospedado estava no plano Free e havia sido criado em 2026-07-06. A documentação vigente do Supabase informa que novos projetos Free usando o SMTP padrão não podem customizar Auth Email Templates. Por isso o fluxo operacional padrão do Sistema Lojasaph **não depende de template customizado**.
+
+Se futuramente houver SMTP customizado ou plano que permita editar templates, o fluxo já existente de `/auth/callback` com `TokenHash` + `verifyOtp()` continua válido para callbacks SSR. Não substituir o fluxo padrão por template customizado apenas para concluir este bootstrap.
+
+## Auth Redirect URL Allow List
+
+Antes do convite real, incluir exatamente o redirect canônico usado pelo fluxo padrão:
+
+```text
+https://<dominio-canonico>/auth/invite
+```
+
+Evitar wildcard amplo apenas para facilitar o bootstrap.
+
+O código passa essa URL em `redirectTo` para `inviteUserByEmail`. Se a URL não estiver autorizada no Supabase Auth, o provedor pode cair no Site URL e o convite não chegará ao fluxo correto.
+
+## Entrega de e-mail
+
+O SMTP padrão do Supabase é limitado e, conforme a documentação vigente, só entrega mensagens Auth a endereços previamente autorizados como membros da Supabase Organization. Também possui rate limit baixo.
+
+Antes de `LOJASAPH_BOOTSTRAP_INVITE_READY=true`:
+
+1. confirmar que o e-mail explicitamente autorizado está apto a receber pelo SMTP atual; ou
+2. configurar SMTP próprio antes do convite, se necessário.
+
+Não fazer tentativas repetidas para descobrir capacidade de entrega: cada tentativa pode criar uma identidade `pending` e consumir rate limit.
 
 ## Execução controlada
 
 1. fazer a verificação remota read-only de Organization/Auth/membership/owner;
-2. configurar temporariamente as variáveis server-only necessárias;
-3. confirmar o template/allowlist e marcar `LOJASAPH_BOOTSTRAP_INVITE_TEMPLATE_READY=true`;
-4. abrir `/bootstrap` no código da Fase 26;
-5. o estado deve indicar que o convite está pronto somente se:
+2. configurar temporariamente as variáveis server-only necessárias em Production;
+3. confirmar `/auth/invite` na Redirect URL Allow List;
+4. confirmar capacidade de entrega do e-mail autorizado;
+5. somente então definir `LOJASAPH_BOOTSTRAP_INVITE_READY=true`;
+6. publicar uma única vez a versão da Fase 26 se Production ainda estiver antiga;
+7. abrir `/bootstrap`;
+8. o estado deve indicar que o convite está pronto somente se:
    - não existe owner ativo;
    - não existe identidade Auth com o e-mail autorizado;
    - runtime/admin estão permitidos;
    - URL pública está validada;
-   - flag do template está pronta;
-6. clicar uma única vez em **Enviar convite ao owner autorizado**;
-7. nenhum campo de e-mail é enviado pelo formulário; o destinatário vem apenas da env server-side;
-8. o Supabase Auth Admin cria a identidade e envia o convite;
-9. o usuário abre o link e define a própria senha;
-10. ao retornar a `/bootstrap`, a sessão precisa corresponder exatamente ao e-mail autorizado;
-11. clicar em **Criar vínculo owner inicial**;
-12. somente nesse ponto `bootstrapOwnerAction` cria o membership e o audit.
+   - readiness está habilitado;
+9. clicar uma única vez em **Enviar convite ao owner autorizado**;
+10. nenhum campo de e-mail é enviado pelo formulário; o destinatário vem apenas da env server-side;
+11. o Supabase Auth Admin cria a identidade e envia o convite;
+12. o usuário abre o link e define a própria senha;
+13. ao retornar a `/bootstrap`, a sessão precisa corresponder exatamente ao e-mail autorizado;
+14. clicar em **Criar vínculo owner inicial**;
+15. somente nesse ponto `bootstrapOwnerAction` cria o membership e o audit.
 
 ## Idempotência e reenvio
 
@@ -119,7 +134,7 @@ A aplicação diferencia três estados Auth para o e-mail autorizado:
 - `pending`: já existe identidade não confirmada; o app **não reenvia automaticamente**;
 - `confirmed`: a identidade já existe; o app orienta login/recuperação em vez de criar outra conta.
 
-Se um convite pendente expirar, não criar outro usuário nem alterar membership por SQL. Revalidar ausência de owner e tratar a reemissão de forma administrativa e controlada no Supabase Auth antes de tentar novamente. Evitar loops automáticos de e-mail.
+Se um convite pendente expirar, não criar outro usuário nem alterar membership por SQL. Revalidar ausência de owner e tratar a reemissão de forma administrativa e controlada. Evitar loops automáticos de e-mail.
 
 ## Verificação pós-bootstrap
 
@@ -137,7 +152,7 @@ Confirmar, sem expor PII além do necessário:
 Após a primeira inicialização:
 
 1. remover/desabilitar `LOJASAPH_BOOTSTRAP_OWNER_EMAIL`;
-2. remover/desabilitar `LOJASAPH_BOOTSTRAP_INVITE_TEMPLATE_READY`;
+2. remover/desabilitar `LOJASAPH_BOOTSTRAP_INVITE_READY` e a compatibilidade antiga, se presente;
 3. remover `LOJASAPH_BOOTSTRAP_ORGANIZATION_ID` se não houver mais necessidade operacional;
 4. remover `SUPABASE_SECRET_KEY` do target se nenhuma outra rotina administrativa aprovada depender dela;
 5. confirmar que `/bootstrap` aparece desabilitado/encerrado;

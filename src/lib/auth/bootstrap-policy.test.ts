@@ -3,7 +3,7 @@ import {
   buildBootstrapInviteRedirectUrl,
   classifyBootstrapIdentity,
   determineBootstrapInvitationState,
-  isBootstrapInviteTemplateReady,
+  isBootstrapInviteReady,
   normalizeBootstrapOwnerEmail,
   resolveBootstrapOrganizationId,
 } from "./bootstrap-policy";
@@ -15,11 +15,11 @@ describe("bootstrap owner policy", () => {
     expect(normalizeBootstrapOwnerEmail("not-an-email")).toBeUndefined();
   });
 
-  it("requires an explicit server-side readiness flag for the SSR invite template", () => {
-    expect(isBootstrapInviteTemplateReady("true")).toBe(true);
-    expect(isBootstrapInviteTemplateReady(" TRUE ")).toBe(true);
-    expect(isBootstrapInviteTemplateReady(undefined)).toBe(false);
-    expect(isBootstrapInviteTemplateReady("false")).toBe(false);
+  it("requires an explicit server-side readiness flag for invite delivery", () => {
+    expect(isBootstrapInviteReady("true")).toBe(true);
+    expect(isBootstrapInviteReady(" TRUE ")).toBe(true);
+    expect(isBootstrapInviteReady(undefined)).toBe(false);
+    expect(isBootstrapInviteReady("false")).toBe(false);
   });
 
   it("resolves the configured Organization only when it is active", () => {
@@ -48,7 +48,7 @@ describe("bootstrap owner policy", () => {
   it("never offers another invite for an existing owner or Auth identity", () => {
     expect(determineBootstrapInvitationState({
       configured: true,
-      templateReady: true,
+      inviteReady: true,
       appUrlReady: true,
       ownerExists: true,
       identityState: "confirmed",
@@ -56,7 +56,7 @@ describe("bootstrap owner policy", () => {
 
     expect(determineBootstrapInvitationState({
       configured: true,
-      templateReady: true,
+      inviteReady: true,
       appUrlReady: true,
       ownerExists: false,
       identityState: "pending",
@@ -64,7 +64,7 @@ describe("bootstrap owner policy", () => {
 
     expect(determineBootstrapInvitationState({
       configured: true,
-      templateReady: true,
+      inviteReady: true,
       appUrlReady: true,
       ownerExists: false,
       identityState: "confirmed",
@@ -74,7 +74,7 @@ describe("bootstrap owner policy", () => {
   it("offers the invite only after all server-side prerequisites are ready", () => {
     expect(determineBootstrapInvitationState({
       configured: true,
-      templateReady: false,
+      inviteReady: false,
       appUrlReady: true,
       ownerExists: false,
       identityState: "missing",
@@ -82,15 +82,15 @@ describe("bootstrap owner policy", () => {
 
     expect(determineBootstrapInvitationState({
       configured: true,
-      templateReady: true,
+      inviteReady: true,
       appUrlReady: true,
       ownerExists: false,
       identityState: "missing",
     })).toBe("ready");
   });
 
-  it("uses the canonical app callback as the Auth Admin redirect", () => {
+  it("uses the dedicated implicit invite page as the Auth Admin redirect", () => {
     expect(buildBootstrapInviteRedirectUrl("https://sistema.example/"))
-      .toBe("https://sistema.example/auth/callback");
+      .toBe("https://sistema.example/auth/invite");
   });
 });
