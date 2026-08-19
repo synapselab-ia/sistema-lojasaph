@@ -45,7 +45,7 @@ export default function ProdutosPage() {
     setEditingId(item.id);
     setForm({
       name: item.name,
-      categoryId: item.categoryId ?? "",
+      categoryId: item.categoryId,
       baseUnitCode: item.baseUnitCode,
       type: item.type,
       trackExpiration: item.trackExpiration,
@@ -64,9 +64,15 @@ export default function ProdutosPage() {
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessage(null);
+
+    if (!form.categoryId) {
+      setMessage("Selecione uma categoria para o produto.");
+      return;
+    }
+
     try {
       const payload = {
-        categoryId: form.categoryId ? (form.categoryId as EntityId) : undefined,
+        categoryId: form.categoryId as EntityId,
         name: form.name,
         baseUnitCode: form.baseUnitCode,
         type: form.type,
@@ -115,7 +121,7 @@ export default function ProdutosPage() {
                 {workspace.stockItems.map((item) => (
                   <tr key={item.id}>
                     <td className="px-4 py-3 font-medium">{item.name}</td>
-                    <td className="px-4 py-3 text-neutral-600">{item.categoryId ? categoryNames.get(item.categoryId) : "—"}</td>
+                    <td className="px-4 py-3 text-neutral-600">{categoryNames.get(item.categoryId) ?? "Categoria indisponível"}</td>
                     <td className="px-4 py-3 text-neutral-600">{item.baseUnitCode}</td>
                     <td className="px-4 py-3 text-neutral-600">{itemTypeLabels[item.type]}</td>
                     <td className="px-4 py-3 text-neutral-600">{item.trackExpiration ? "Controlada" : "Não"}</td>
@@ -135,9 +141,9 @@ export default function ProdutosPage() {
           </div>
 
           <label className="block text-sm font-medium">Nome<input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 font-normal outline-none focus:border-neutral-800" /></label>
-          <label className="block text-sm font-medium">Categoria<select value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })} className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 font-normal"><option value="">Sem categoria</option>{workspace.categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
+          <label className="block text-sm font-medium">Categoria<select required value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })} className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 font-normal"><option value="" disabled>Selecione uma categoria</option>{workspace.categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
           <div className="grid grid-cols-2 gap-3">
-            <label className="block text-sm font-medium">Unidade<select value={form.baseUnitCode} onChange={(e) => setForm({ ...form, baseUnitCode: e.target.value })} className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 font-normal">{workspace.unitsOfMeasure.map((unit) => <option key={unit.code} value={unit.code}>{unit.code} — {unit.name}</option>)}</select></label>
+            <label className="block text-sm font-medium">Unidade<select required value={form.baseUnitCode} onChange={(e) => setForm({ ...form, baseUnitCode: e.target.value })} className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 font-normal">{workspace.unitsOfMeasure.map((unit) => <option key={unit.code} value={unit.code}>{unit.code} — {unit.name}</option>)}</select></label>
             <label className="block text-sm font-medium">Tipo<select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value as StockItemType })} className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 font-normal">{Object.entries(itemTypeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
           </div>
 
@@ -150,7 +156,7 @@ export default function ProdutosPage() {
 
           {message && <p className="rounded-lg bg-neutral-100 px-3 py-2 text-sm">{message}</p>}
           <div className="flex gap-2">
-            <button type="submit" className="flex-1 rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white hover:bg-neutral-700">{editingId ? "Salvar" : "Criar produto"}</button>
+            <button disabled={workspace.unitsOfMeasure.length === 0 || workspace.categories.length === 0 || !form.categoryId} type="submit" className="flex-1 rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white hover:bg-neutral-700 disabled:opacity-50">{editingId ? "Salvar" : "Criar produto"}</button>
             {editingId && <button type="button" onClick={reset} className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium">Cancelar</button>}
           </div>
         </form>

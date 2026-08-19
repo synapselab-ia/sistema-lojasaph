@@ -14,6 +14,7 @@ function setup(options?: { tracked?: boolean }) {
   const organizationId = asEntityId("org-test");
   const item = createStockItem({
     organizationId,
+    categoryId: asEntityId("category-test"),
     name: "Água",
     baseUnitCode: "un",
     type: "merchandise",

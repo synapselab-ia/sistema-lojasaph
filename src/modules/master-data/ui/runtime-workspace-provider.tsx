@@ -44,7 +44,7 @@ import {
 } from "../adapters/supabase-workspace-query";
 
 interface StockItemDraft {
-  categoryId?: EntityId;
+  categoryId: EntityId;
   name: string;
   baseUnitCode: string;
   type: StockItemType;

@@ -83,8 +83,8 @@ begin
   end if;
 end $$;
 
-insert into public.stock_items(organization_id,base_unit_id,name,internal_code,item_type)
-values('00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000200','Orgwide temporary item','SCOPE-ORG-WIDE','supply');
+insert into public.stock_items(organization_id,category_id,base_unit_id,name,internal_code,item_type)
+values('00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000302','00000000-0000-4000-8000-000000000200','Orgwide temporary item','SCOPE-ORG-WIDE','supply');
 reset role;
 
 -- Business-scoped membership sees only children of the selected Business.
@@ -115,8 +115,8 @@ begin
   if (select count(*) from public.stock_items where organization_id='00000000-0000-4000-8000-000000000001') < 3 then raise exception 'scoped member lost shared catalog read'; end if;
 
   begin
-    insert into public.stock_items(organization_id,base_unit_id,name,internal_code,item_type)
-    values('00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000200','Scoped forbidden item','SCOPE-DENIED','supply');
+    insert into public.stock_items(organization_id,category_id,base_unit_id,name,internal_code,item_type)
+    values('00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000302','00000000-0000-4000-8000-000000000200','Scoped forbidden item','SCOPE-DENIED','supply');
     raise exception 'scoped inventory unexpectedly mutated global catalog';
   exception when insufficient_privilege then null;
   end;

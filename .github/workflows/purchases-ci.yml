@@ -55,6 +55,7 @@ jobs:
       - name: Replay stabilized database suites
         run: |
           psql -v ON_ERROR_STOP=1 -f supabase/tests/schema_smoke.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/tests/stock_item_category_required.sql
           psql -v ON_ERROR_STOP=1 -f supabase/tests/auth_runtime_roles.sql
           psql -v ON_ERROR_STOP=1 -f supabase/tests/stock_withdrawal.sql
           psql -v ON_ERROR_STOP=1 -f supabase/tests/stock_return.sql

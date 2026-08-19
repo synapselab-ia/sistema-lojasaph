@@ -6,6 +6,7 @@ import {
   parseTabularRows,
   prepareImportPreview,
   resolveStockItemReference,
+  type ImportRowEvaluation,
   type ImportSourceRow,
 } from "./import-preview";
 
@@ -102,6 +103,39 @@ describe("import preview foundation", () => {
         ],
       }),
     ).toEqual({ status: "pending_mapping", reason: "ambiguous" });
+  });
+
+  it("keeps stock item rows without an explicit category as pending mapping", () => {
+    const rows = parseTabularRows("Produtos", [
+      { nome: "Água 500 ml", categoria: null },
+    ]);
+
+    const preview = prepareImportPreview({
+      organizationId,
+      sourceSha256,
+      rows,
+      evaluateRow: (row): ImportRowEvaluation => {
+        const category = row.rawPayload.categoria;
+
+        if (typeof category !== "string" || !category.trim()) {
+          return {
+            state: "pending_mapping",
+            normalizedPayload: { name: row.rawPayload.nome },
+            resolution: "ITEM_CATEGORY_REQUIRED",
+          };
+        }
+
+        return {
+          state: "accepted",
+          normalizedPayload: { name: row.rawPayload.nome, category },
+        };
+      },
+    });
+
+    expect(preview.rows[0]?.state).toBe("pending_mapping");
+    expect(preview.rows[0]?.resolution).toBe("ITEM_CATEGORY_REQUIRED");
+    expect(preview.rows[0]?.normalizedPayload).toEqual({ name: "Água 500 ml" });
+    expect(preview.report.pendingMappingRows).toBe(1);
   });
 
   it("reports accepted, duplicate, warning, rejected and pending mappings without writes", () => {

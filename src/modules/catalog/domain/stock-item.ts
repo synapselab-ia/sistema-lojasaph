@@ -6,7 +6,7 @@ export type StockItemType = "consumable" | "merchandise" | "reusable" | "supply"
 export interface StockItem {
   readonly id: EntityId;
   readonly organizationId: EntityId;
-  readonly categoryId?: EntityId;
+  readonly categoryId: EntityId;
   readonly name: string;
   readonly baseUnitCode: string;
   readonly type: StockItemType;
@@ -18,7 +18,7 @@ export interface StockItem {
 
 export interface CreateStockItemInput {
   organizationId: EntityId;
-  categoryId?: EntityId;
+  categoryId: EntityId;
   name: string;
   baseUnitCode: string;
   type: StockItemType;
@@ -28,7 +28,7 @@ export interface CreateStockItemInput {
 }
 
 export interface UpdateStockItemInput {
-  categoryId?: EntityId;
+  categoryId: EntityId;
   name: string;
   baseUnitCode: string;
   type: StockItemType;
@@ -36,6 +36,13 @@ export interface UpdateStockItemInput {
   trackExpiration: boolean;
   trackBatch: boolean;
   isReturnable: boolean;
+}
+
+function normalizeCategoryId(value: EntityId | null | undefined): EntityId {
+  if (!value || !value.trim()) {
+    throw new DomainError("STOCK_ITEM_CATEGORY_REQUIRED", "Stock item category is required.");
+  }
+  return value.trim() as EntityId;
 }
 
 function normalizeName(value: string): string {
@@ -58,7 +65,7 @@ export function createStockItem(input: CreateStockItemInput): StockItem {
   return Object.freeze({
     id: newEntityId(),
     organizationId: input.organizationId,
-    categoryId: input.categoryId,
+    categoryId: normalizeCategoryId(input.categoryId),
     name: normalizeName(input.name),
     baseUnitCode: normalizeUnit(input.baseUnitCode),
     type: input.type,
@@ -72,7 +79,7 @@ export function createStockItem(input: CreateStockItemInput): StockItem {
 export function updateStockItem(item: StockItem, input: UpdateStockItemInput): StockItem {
   return Object.freeze({
     ...item,
-    categoryId: input.categoryId,
+    categoryId: normalizeCategoryId(input.categoryId),
     name: normalizeName(input.name),
     baseUnitCode: normalizeUnit(input.baseUnitCode),
     type: input.type,

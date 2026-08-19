@@ -24,11 +24,15 @@ insert into public.stock_locations(id,organization_id,unit_id,name,code,location
 insert into public.units_of_measure(id,organization_id,code,name,decimal_scale,active)
 values ('97000000-0000-4000-8000-000000000300','97000000-0000-4000-8000-000000000001','UN','Unidade',3,true);
 
+insert into public.item_categories(id,organization_id,name,code)
+values ('97000000-0000-4000-8000-000000000350','97000000-0000-4000-8000-000000000001','Categoria devoluções CI','return-fixture');
+
 insert into public.stock_items(
-  id,organization_id,base_unit_id,name,item_type,active,track_expiration,track_batch,is_returnable
+  id,organization_id,category_id,base_unit_id,name,item_type,active,track_expiration,track_batch,is_returnable
 ) values (
   '97000000-0000-4000-8000-000000000400',
   '97000000-0000-4000-8000-000000000001',
+  '97000000-0000-4000-8000-000000000350',
   '97000000-0000-4000-8000-000000000300',
   'Item rastreado devoluções CI',
   'consumable',

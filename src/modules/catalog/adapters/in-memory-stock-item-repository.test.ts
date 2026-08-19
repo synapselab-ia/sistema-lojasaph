@@ -12,6 +12,7 @@ describe("InMemoryStockItemRepository", () => {
     await repository.save(
       createStockItem({
         organizationId: organizationA,
+        categoryId: asEntityId("category-a"),
         name: "Água 500 ml",
         baseUnitCode: "un",
         type: "merchandise",
@@ -21,6 +22,7 @@ describe("InMemoryStockItemRepository", () => {
     await repository.save(
       createStockItem({
         organizationId: organizationB,
+        categoryId: asEntityId("category-b"),
         name: "Carvão",
         baseUnitCode: "pct",
         type: "supply",

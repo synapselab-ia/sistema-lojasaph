@@ -23,9 +23,12 @@ insert into public.stock_locations(id,organization_id,unit_id,name,code,location
 insert into public.units_of_measure(id,organization_id,code,name,decimal_scale,active)
 values ('96000000-0000-4000-8000-000000000300','96000000-0000-4000-8000-000000000001','UN','Unidade',3,true);
 
-insert into public.stock_items(id,organization_id,base_unit_id,name,item_type,active,track_expiration,track_batch,is_returnable) values
- ('96000000-0000-4000-8000-000000000400','96000000-0000-4000-8000-000000000001','96000000-0000-4000-8000-000000000300','Item rastreado perdas CI','consumable',true,true,true,false),
- ('96000000-0000-4000-8000-000000000401','96000000-0000-4000-8000-000000000001','96000000-0000-4000-8000-000000000300','Item simples perdas CI','consumable',true,false,false,false);
+insert into public.item_categories(id,organization_id,name,code)
+values ('96000000-0000-4000-8000-000000000350','96000000-0000-4000-8000-000000000001','Categoria perdas CI','loss-fixture');
+
+insert into public.stock_items(id,organization_id,category_id,base_unit_id,name,item_type,active,track_expiration,track_batch,is_returnable) values
+ ('96000000-0000-4000-8000-000000000400','96000000-0000-4000-8000-000000000001','96000000-0000-4000-8000-000000000350','96000000-0000-4000-8000-000000000300','Item rastreado perdas CI','consumable',true,true,true,false),
+ ('96000000-0000-4000-8000-000000000401','96000000-0000-4000-8000-000000000001','96000000-0000-4000-8000-000000000350','96000000-0000-4000-8000-000000000300','Item simples perdas CI','consumable',true,false,false,false);
 
 insert into public.inventory_balances(organization_id,stock_item_id,stock_location_id,quantity_on_hand,average_cost) values
  ('96000000-0000-4000-8000-000000000001','96000000-0000-4000-8000-000000000400','96000000-0000-4000-8000-000000000120',10.000,5.00),
