@@ -2,31 +2,33 @@
 
 ## Contexto
 
-A Fase 22 / Issue #57 está concluída e mergeada na `main` pelo PR #58.
+A Fase 23 / Issue #59 está concluída e mergeada na `main` pelo PR #60.
 
 Estado funcional final comprovado:
 
-- head validado: `4459de528de9dd0fa68e83a867ce866f3fb5b23e`;
-- `CI` #270 — success;
-- `Inventory Count Integration` #164 — success;
-- `Business Transactions Integration` #147 — success;
-- merge commit funcional: `26cf2a40e7c2c3948f5d82678408fe49e213ca16`.
+- head validado: `608541980cc5264d17cbb847c13919d805699518`;
+- `CI` #273 — success;
+- `Inventory Count Integration` #165 — success;
+- `Business Transactions Integration` #148 — success;
+- merge commit funcional: `bdfc450c1095bd42e814fa1fee50dfcaad51a37e`.
 
 Supabase remoto:
 
-- projeto `fhbvwyttikrbeaanatlr`, `ACTIVE_HEALTHY`, PostgreSQL 17;
-- `stock_item_category_required` — `20260819181239`;
-- `stock_items.category_id` está `NOT NULL`, sem default;
-- os 3 itens reais mantiveram os mesmos IDs e categorias;
-- smoke sintético em transação validado e rollback com zero resíduo;
-- nenhuma alteração de RLS, grants ou RPCs na Fase 22.
+- projeto `fhbvwyttikrbeaanatlr`, PostgreSQL 17;
+- `stock_withdrawal_sector` — `20260819184424`;
+- nova retirada exige Setor explícito e autorizado;
+- assinatura legada sem Setor foi removida;
+- `stock_movements.sector_id` permanece nullable globalmente;
+- 0 retiradas reais antes/depois da migration;
+- smoke sintético validado em rollback com zero resíduo;
+- `security_hardening.sql` permaneceu verde e o remoto continua 45/45 tabelas `public` com RLS.
 
-A próxima lacuna MUST objetiva é `REQ-STK-004`: registrar a retirada para consumo/operação em um Setor. Está registrada na Issue #59.
+A próxima lacuna MUST objetiva é a dimensão Setor de `REQ-DASH-002`, registrada na Issue #61 — `Fase 24 — filtro de Setor no dashboard gerencial`.
 
 ## Fazer agora
 
-1. Confirmar estado real da Issue #59, `main`, branch `agent/stock-withdrawal-sector` (se já existir), PRs e CI.
-2. Se a branch ainda não existir, criá-la a partir da `main` atual; não reutilizar branch antiga da Fase 22.
+1. Confirmar estado real da Issue #61, `main`, branch `agent/dashboard-sector-filter` (se já existir), PRs e CI.
+2. Se a branch ainda não existir, criá-la a partir da `main` atual; não reutilizar a branch da Fase 23.
 3. Ler antes de editar:
    - `AGENTS.md`;
    - `docs/00-START-HERE.md`;
@@ -34,63 +36,57 @@ A próxima lacuna MUST objetiva é `REQ-STK-004`: registrar a retirada para cons
    - `docs/ai/HANDOFF.md`;
    - este `NEXT_ACTION.md`;
    - `docs/ai/WORKFLOW.md`;
-   - `docs/product/requirements.md` — `REQ-STK-004`;
-   - `docs/modules/inventory.md`;
-   - migration que define `record_stock_withdrawal`;
-   - migrations/helpers de autorização escopada da Fase 14;
-   - `supabase/tests/stock_withdrawal.sql` e `supabase/tests/scoped_permissions.sql`;
-   - `src/modules/inventory/adapters/supabase-stock-withdrawal-gateway.ts`;
-   - `src/modules/master-data/ui/runtime-workspace-provider.tsx`;
-   - `src/app/workspace/(operacao)/estoque/page.tsx`.
+   - `docs/product/requirements.md` — `REQ-DASH-002`;
+   - `docs/modules/dashboard.md`;
+   - `src/modules/dashboard/application/dashboard-summary.ts`;
+   - testes do resumo do Dashboard;
+   - `src/modules/dashboard/adapters/supabase-dashboard-query.ts`;
+   - testes do adapter/query quando existentes;
+   - a rota/componente persistente que renderiza `/workspace` e seus filtros.
 4. Confirmar a lacuna antes do patch:
-   - assinatura atual `record_stock_withdrawal(uuid, uuid, uuid, uuid, numeric, uuid, text)` não recebe Setor;
-   - insert em `stock_movements` não preenche `sector_id`;
-   - gateway/provider/UI não enviam `sectorId`;
-   - `stock_movements.sector_id` já existe e deve continuar nullable para movimentos que não representam consumo por Setor.
-5. Verificar e reutilizar o helper escopado existente apropriado para autorizar Setor; não criar semântica paralela se a Fase 14 já oferece função equivalente.
-6. Criar migration versionada para a command surface de retirada:
-   - nova assinatura exige `p_sector_id uuid` sem default;
-   - validar Setor existente e pertencente à mesma Organization;
-   - validar que o usuário autenticado alcança esse Setor conforme memberships vigentes;
-   - persistir `sector_id` em `stock_movements`;
-   - manter `occurred_at=now()` e `responsible_user_id=auth.uid()`;
-   - incluir Setor na comparação de retry/idempotência e em `audit_logs.after_data`;
-   - remover ou revogar EXECUTE da assinatura legada para `authenticated`, evitando bypass.
-7. Não tornar `stock_movements.sector_id` globalmente obrigatório e não backfillar movimentos antigos.
-8. Atualizar `SupabaseStockWithdrawalGateway`, provider runtime e `/workspace/estoque` para `sectorId` obrigatório.
-9. Na UI, exigir escolha explícita dentre `workspace.sectors`; não inferir Setor automaticamente pelo StockLocation e não criar opção default persistível.
-10. Preservar sem alteração as regras de:
-    - saldo projetado;
-    - custo médio móvel;
-    - lock/concurrency;
-    - command ID idempotente;
-    - lote preferido + FEFO;
-    - política de estoque negativo;
-    - atomicidade/rollback.
-11. Atualizar testes cobrindo pelo menos:
-    - retirada válida grava `stock_movements.sector_id`;
-    - assinatura antiga não é executável por `authenticated`;
-    - Setor de outra Organization é rejeitado;
-    - Setor fora do escopo é rejeitado;
-    - retry com mesmo Setor permanece idempotente;
-    - retry com Setor diferente gera `IDEMPOTENCY_KEY_CONFLICT`;
-    - falhas não deixam movimento, saldo, lote ou audit residual;
-    - regressões existentes de withdrawal/return/loss/transfer/inventory continuam verdes.
-12. Manter grants/RLS mínimos. Qualquer assinatura pública nova deve revogar `PUBLIC/anon` e conceder somente `authenticated`, seguindo o hardening vigente.
-13. Rodar lint, typecheck, Vitest, production build e os três workflows PostgreSQL.
-14. Só após CI verde aplicar a migration no Supabase remoto.
-15. Na homologação remota, usar dados exclusivamente sintéticos dentro de `BEGIN/ROLLBACK`; comprovar Setor persistido, escopo, idempotência e zero resíduo.
-16. Rodar Security/Performance Advisors e corrigir somente problemas novos causados pela Fase 23.
-17. Abrir/atualizar PR, marcar ready, mergear, fechar Issue #59 e atualizar continuidade.
+   - `DashboardFilter` possui `today`, `horizonDays`, `unitId?`, mas não `sectorId`;
+   - `SupabaseDashboardQuery.load(...)` recebe `unitId?` + `horizonDays`, sem Setor;
+   - a UI/documentação oferece Unidade + horizonte;
+   - a Fase 23 deixou filtro de Dashboard por Setor fora de escopo.
+5. Confirmar a matriz real de granularidade antes de filtrar:
+   - `payable_installment_summary` expõe `sector_id`;
+   - `stock_locations` possui `sector_id`;
+   - `cash_registers` não possui `sector_id`;
+   - verificar no código as relações usadas por Compras, Transferências, Inventários e Validades; não deduzir Setor onde a FK explícita não existir.
+6. Adicionar `sectorId?` ao filtro e disponibilizar Setores autorizados pela mesma leitura autenticada/RLS usada pelo Dashboard.
+7. Manter Unit + Setor coerentes:
+   - se ambos forem selecionados, o Setor deve pertencer à Unit selecionada;
+   - impedir/rejeitar combinação incompatível;
+   - nunca ampliar a consulta silenciosamente.
+8. Aplicar filtro setorial somente às fontes com vínculo explícito:
+   - Financeiro: usar `sector_id` do read model existente;
+   - Compras/Inventários/Validades: usar Setor do `stock_location` quando explicitamente presente;
+   - Transferências: definir e documentar semântica baseada apenas em origem/destino explicitamente vinculados;
+   - Caixa: manter Unit-level enquanto não houver `sector_id`; a interface deve deixar claro que esse bloco não foi filtrado por Setor, em vez de simular granularidade inexistente.
+9. Não criar KPI/gráfico novo e não mudar fórmulas/status já homologados.
+10. Preservar timezone da Organization, `horizonDays`, filtro por Unit, links da fila de atenção e tratamento de respostas concorrentes.
+11. Cobrir por testes pelo menos:
+    - Setor autorizado filtra dados setoriais corretamente;
+    - Unit + Setor coerentes funcionam;
+    - combinação incompatível é rejeitada/impedida;
+    - Setor de outra Organization/fora do RLS não é utilizável;
+    - registros sem vínculo setorial não são atribuídos artificialmente;
+    - Caixa não é apresentado como setorial;
+    - filtro por Unit e horizonte existentes continuam sem regressão.
+12. Preferir zero DDL: as fontes atuais já possuem relações suficientes para iniciar. Criar migration/view somente se uma lacuna física real for comprovada durante a implementação.
+13. Manter RLS/grants atuais; Dashboard continua usando client autenticado normal, sem service role.
+14. Rodar lint, typecheck, Vitest, production build e os workflows aplicáveis.
+15. Se não houver DDL, homologar no Supabase somente por consultas/read-only com usuário/escopo sintético quando necessário. Se houver DDL, aplicar somente após CI verde e usar smoke `BEGIN/ROLLBACK`.
+16. Rodar Security/Performance Advisors somente se houver DDL; corrigir apenas problema novo causado pela Fase 24.
+17. Abrir/atualizar PR, marcar ready, mergear, fechar Issue #61 e atualizar continuidade.
 
 ## Política de segurança
 
 - `supabase/tests/security_hardening.sql` continua obrigatório;
-- não reaplicar migrations antigas;
-- não depender de default privileges do provedor;
-- não criar objeto manualmente no Dashboard;
-- não conceder `anon` sem requisito explícito;
-- não deixar assinatura RPC legada executável como caminho alternativo sem Setor.
+- não ampliar grants/RLS para facilitar Dashboard;
+- não usar service role no read path do Dashboard;
+- não fabricar relacionamento Setor para fonte que só possui Unit;
+- qualquer view pública nova deve usar `security_invoker=true`, RLS das fontes e grant mínimo para `authenticated`.
 
 ## Política de Vercel
 
@@ -100,17 +96,17 @@ A próxima lacuna MUST objetiva é `REQ-STK-004`: registrar a retirada para cons
 
 ## Não fazer
 
-- não reabrir Fase 22/Issue #57;
-- não reabrir hardening/Issue #54;
-- não criar/inferir Setor default;
-- não alterar movimentos históricos;
-- não tornar `stock_movements.sector_id` globalmente `NOT NULL`;
-- não implementar empréstimo/retorno por funcionário;
-- não implementar filtros de dashboard por Setor nesta fase;
+- não reabrir Fase 23/Issue #59;
+- não reabrir Fase 22/Issue #57 ou hardening/Issue #54;
+- não alterar novamente a retirada sem regressão comprovada;
+- não atribuir Caixa a Setor por inferência;
+- não criar novos KPIs/gráficos;
+- não resolver nesta fase toda a semântica de período arbitrário de `REQ-DASH-002`;
+- não redefinir roles/perfis reais/Q-022;
 - não inferir Q-001..Q-025;
 - não importar dados reais;
 - não fazer sweep de advisors antigos sem causalidade.
 
 ## Critério de conclusão da próxima fase
 
-Toda nova retirada operacional persistente deve registrar um Setor explícito, válido, da mesma Organization e autorizado pelo escopo do usuário. A assinatura legada sem Setor não pode permanecer como bypass autenticado; data/responsável atuais, saldo, custo, FEFO, política de estoque negativo, idempotência e atomicidade devem continuar preservados.
+O Dashboard deve aceitar um Setor autorizado como filtro e aplicar esse escopo somente às fontes/KPIs com relação setorial explícita, mantendo transparentes os blocos que continuam Unit-level. Unit + Setor não podem formar escopo inconsistente; filtros atuais, cálculos, RLS e isolamento entre Organizations/Setores devem permanecer corretos.
