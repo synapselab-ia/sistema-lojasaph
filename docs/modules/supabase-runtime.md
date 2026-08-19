@@ -66,10 +66,23 @@ Guardrails:
 - antes do convite são revalidados runtime/admin, Organization alvo, ausência de owner ativo e estado da identidade Auth;
 - identidade pendente ou confirmada não recebe novo convite automaticamente;
 - owner ativo encerra o bootstrap;
-- `LOJASAPH_BOOTSTRAP_INVITE_TEMPLATE_READY=true` é um gate explícito e temporário; sem ele o app não envia convite;
+- `LOJASAPH_BOOTSTRAP_INVITE_READY=true` é um gate explícito e temporário; sem ele o app não envia convite;
 - nenhum DDL, policy ou grant é necessário para esse fluxo.
 
-Como convites Admin não usam PKCE, o template hospedado `Invite user` precisa entregar `TokenHash` + `type=invite` ao `/auth/callback`. O callback existente usa `verifyOtp()` para estabelecer a sessão SSR em cookie antes de enviar o usuário ao formulário de senha. O `next` é sempre validado por `safeInternalPath`.
+### Convite hospedado padrão
+
+`inviteUserByEmail` usa fluxo implícito, não PKCE. O redirect padrão chega a `/auth/invite` com access/refresh tokens apenas no fragmento do browser. A página dedicada:
+
+1. exige `type=invite` e tokens completos;
+2. remove imediatamente o fragmento da URL;
+3. envia os tokens por POST same-origin para `/auth/invite/session`;
+4. o servidor revalida o access token no Supabase e exige que o e-mail autenticado coincida exatamente com `LOJASAPH_BOOTSTRAP_OWNER_EMAIL`;
+5. somente então `auth.setSession()` grava a sessão SSR em cookie;
+6. o usuário segue para definir a própria senha e depois `/bootstrap`.
+
+Esse handoff não cria membership, não escolhe destinatário e não devolve tokens na resposta. A rota responde `no-store`.
+
+O `/auth/callback` com `TokenHash` + `verifyOtp()` permanece disponível para fluxos que usem template customizado. Porém, na homologação de 2026-08-19, o projeto hospedado estava no plano Free, criado após a restrição de 2026-06-03 para customização de Auth Email Templates em novos projetos Free com SMTP padrão. Por isso customizar `Invite user` não é requisito do fluxo operacional padrão.
 
 Runbook operacional completo: `docs/operations/bootstrap-owner.md`.
 
