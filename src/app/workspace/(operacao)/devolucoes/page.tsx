@@ -18,6 +18,8 @@ const EMPTY_OVERVIEW: RuntimeStockReturnOverview = Object.freeze({
 
 export default function StockReturnsPage() {
   const workspace = useRuntimeWorkspace();
+  const organizationId = workspace.organizationId;
+  const errorMessage = workspace.errorMessage;
   const client = useMemo(() => createBrowserSupabaseClient(), []);
   const service = useMemo(
     () => new StockReturnService(new SupabaseStockReturnGateway(client)),
@@ -48,14 +50,13 @@ export default function StockReturnsPage() {
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
 
-    service.loadOverview(workspace.organizationId)
+    service.loadOverview(organizationId)
       .then((next) => {
         if (!cancelled) setOverview(next);
       })
       .catch((error) => {
-        if (!cancelled) setMessage(workspace.errorMessage(error));
+        if (!cancelled) setMessage(errorMessage(error));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -64,10 +65,10 @@ export default function StockReturnsPage() {
     return () => {
       cancelled = true;
     };
-  }, [service, workspace]);
+  }, [errorMessage, organizationId, service]);
 
   async function reloadOverview() {
-    const next = await service.loadOverview(workspace.organizationId);
+    const next = await service.loadOverview(organizationId);
     setOverview(next);
     if (!next.candidates.some((candidate) => candidate.withdrawalMovementId === selectedWithdrawalId)) {
       setSelectedWithdrawalId("");
@@ -82,7 +83,7 @@ export default function StockReturnsPage() {
     setMessage(null);
     try {
       const result = await service.record({
-        organizationId: workspace.organizationId,
+        organizationId,
         withdrawalMovementId: selectedCandidate.withdrawalMovementId,
         quantity,
         notes: notes || undefined,
@@ -94,7 +95,7 @@ export default function StockReturnsPage() {
         `Devolução registrada. Restam ${result.remainingReturnableQuantity.toDecimal()} da retirada selecionada para eventual retorno.`,
       );
     } catch (error) {
-      setMessage(workspace.errorMessage(error));
+      setMessage(errorMessage(error));
     } finally {
       setSaving(false);
     }
@@ -106,27 +107,22 @@ export default function StockReturnsPage() {
         <p className="text-sm font-medium text-emerald-700">Ledger de estoque</p>
         <h1 className="mt-1 text-3xl font-semibold tracking-tight">Devoluções de retiradas</h1>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-neutral-600">
-          Registre o retorno parcial ou total de uma retirada já confirmada. O sistema cria um novo movimento
+          Registre retorno parcial ou total de uma retirada confirmada. O sistema cria um novo movimento
           <code className="mx-1 rounded bg-neutral-100 px-1 py-0.5 text-xs">return_in</code>
-          relacionado ao original; a retirada histórica não é editada.
+          relacionado ao original; a retirada histórica permanece imutável.
         </p>
       </header>
 
       {message && (
-        <p className="rounded-xl border border-neutral-200 bg-white px-4 py-3 text-sm shadow-sm">
-          {message}
-        </p>
+        <p className="rounded-xl border border-neutral-200 bg-white px-4 py-3 text-sm shadow-sm">{message}</p>
       )}
 
       {workspace.permissions.recordStockWithdrawal ? (
-        <form
-          onSubmit={submit}
-          className="grid gap-5 rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm lg:grid-cols-2"
-        >
+        <form onSubmit={submit} className="grid gap-5 rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm lg:grid-cols-2">
           <div className="lg:col-span-2">
             <h2 className="text-lg font-semibold">Registrar devolução</h2>
             <p className="mt-1 text-xs text-neutral-500">
-              Local, produto, custo e lote são derivados da retirada original. A tela não aceita substituir esses dados manualmente.
+              Local, produto, custo e lote são derivados da retirada original e não podem ser substituídos pela tela.
             </p>
           </div>
 
@@ -159,10 +155,7 @@ export default function StockReturnsPage() {
               <Summary label="Retirado" value={selectedCandidate.withdrawnQuantity.toDecimal()} />
               <Summary label="Já devolvido" value={selectedCandidate.returnedQuantity.toDecimal()} />
               <Summary label="Pendente" value={selectedCandidate.remainingQuantity.toDecimal()} />
-              <Summary
-                label="Custo histórico"
-                value={`R$ ${selectedCandidate.unitCostSnapshot.toDecimal().replace(".", ",")}`}
-              />
+              <Summary label="Custo histórico" value={`R$ ${selectedCandidate.unitCostSnapshot.toDecimal().replace(".", ",")}`} />
             </div>
           )}
 
@@ -183,9 +176,7 @@ export default function StockReturnsPage() {
 
           <div className="rounded-xl border border-neutral-200 p-3 text-xs leading-5 text-neutral-600">
             <span className="font-semibold text-neutral-900">Destino fixo:</span>{" "}
-            {selectedCandidate
-              ? locationNames.get(selectedCandidate.stockLocationId) ?? "Local da retirada"
-              : "selecione uma retirada"}.
+            {selectedCandidate ? locationNames.get(selectedCandidate.stockLocationId) ?? "Local da retirada" : "selecione uma retirada"}.
             O PostgreSQL impede que a soma dos retornos ultrapasse a quantidade retirada.
           </div>
 
@@ -210,9 +201,7 @@ export default function StockReturnsPage() {
       ) : (
         <aside className="rounded-2xl border border-neutral-200 bg-white p-5 text-sm leading-6 text-neutral-600 shadow-sm">
           <h2 className="font-semibold text-neutral-900">Devolução não autorizada</h2>
-          <p className="mt-1">
-            Seu perfil pode consultar retiradas visíveis no escopo, mas não possui papel autorizado para devolver estoque.
-          </p>
+          <p className="mt-1">Seu perfil pode consultar retiradas permitidas pelo escopo, mas não pode devolver estoque.</p>
         </aside>
       )}
 
@@ -220,20 +209,17 @@ export default function StockReturnsPage() {
         <div className="mb-3 flex items-end justify-between gap-4">
           <div>
             <h2 className="text-xl font-semibold">Devoluções recentes</h2>
-            <p className="text-sm text-neutral-500">
-              Movimentos de retorno relacionados a retiradas visíveis no seu escopo.
-            </p>
+            <p className="text-sm text-neutral-500">Retornos relacionados a retiradas visíveis no seu escopo.</p>
           </div>
           <span className="text-xs text-neutral-500">{overview.recent.length} movimentos</span>
         </div>
-
         <div className="overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[900px] text-left text-sm">
               <thead className="bg-neutral-50 text-neutral-600">
                 <tr>
                   <th className="px-4 py-3 font-medium">Data</th>
-                  <th className="px-4 py-3 font-medium">Retirada relacionada</th>
+                  <th className="px-4 py-3 font-medium">Retirada</th>
                   <th className="px-4 py-3 font-medium">Produto</th>
                   <th className="px-4 py-3 font-medium">Local</th>
                   <th className="px-4 py-3 font-medium">Quantidade</th>
@@ -251,18 +237,10 @@ export default function StockReturnsPage() {
                   />
                 ))}
                 {!loading && overview.recent.length === 0 && (
-                  <tr>
-                    <td colSpan={7} className="px-4 py-8 text-center text-neutral-500">
-                      Ainda não há devoluções relacionadas visíveis neste escopo.
-                    </td>
-                  </tr>
+                  <tr><td colSpan={7} className="px-4 py-8 text-center text-neutral-500">Ainda não há devoluções relacionadas neste escopo.</td></tr>
                 )}
                 {loading && (
-                  <tr>
-                    <td colSpan={7} className="px-4 py-8 text-center text-neutral-500">
-                      Carregando devoluções...
-                    </td>
-                  </tr>
+                  <tr><td colSpan={7} className="px-4 py-8 text-center text-neutral-500">Carregando devoluções...</td></tr>
                 )}
               </tbody>
             </table>
@@ -273,37 +251,23 @@ export default function StockReturnsPage() {
   );
 }
 
-function CandidateOption({
-  candidate,
-  itemName,
-  locationName,
-}: {
+function CandidateOption({ candidate, itemName, locationName }: {
   candidate: RuntimeStockReturnCandidate;
   itemName?: string;
   locationName?: string;
 }) {
   return (
     <option value={candidate.withdrawalMovementId}>
-      {new Date(candidate.occurredAt).toLocaleString("pt-BR")} · {itemName ?? "Item indisponível"} ·{" "}
-      {locationName ?? "Local indisponível"} · pendente {candidate.remainingQuantity.toDecimal()}
+      {new Date(candidate.occurredAt).toLocaleString("pt-BR")} · {itemName ?? "Item indisponível"} · {locationName ?? "Local indisponível"} · pendente {candidate.remainingQuantity.toDecimal()}
     </option>
   );
 }
 
 function Summary({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <p className="text-xs text-neutral-500">{label}</p>
-      <p className="mt-1 font-semibold">{value}</p>
-    </div>
-  );
+  return <div><p className="text-xs text-neutral-500">{label}</p><p className="mt-1 font-semibold">{value}</p></div>;
 }
 
-function ReturnRow({
-  stockReturn,
-  itemName,
-  locationName,
-}: {
+function ReturnRow({ stockReturn, itemName, locationName }: {
   stockReturn: RuntimeStockReturn;
   itemName?: string;
   locationName?: string;
