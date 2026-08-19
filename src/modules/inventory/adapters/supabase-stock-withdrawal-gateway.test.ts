@@ -1,6 +1,5 @@
-import { SupabaseClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { describe, expect, it, vi } from "vitest";
-import { DomainError } from "@/domain/common/domain-error";
 import { EntityId } from "@/domain/common/entity-id";
 import { SupabaseStockWithdrawalGateway } from "./supabase-stock-withdrawal-gateway";
 
@@ -51,7 +50,7 @@ describe("SupabaseStockWithdrawalGateway", () => {
       stockLocationId,
       sectorId: "" as EntityId,
       quantity: "1.000",
-    })).rejects.toMatchObject<Partial<DomainError>>({ code: "STOCK_WITHDRAWAL_SECTOR_REQUIRED" });
+    })).rejects.toMatchObject({ code: "STOCK_WITHDRAWAL_SECTOR_REQUIRED" });
 
     expect(rpc).not.toHaveBeenCalled();
   });
