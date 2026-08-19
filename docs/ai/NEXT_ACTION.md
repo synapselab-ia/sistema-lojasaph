@@ -2,31 +2,39 @@
 
 ## Contexto
 
-A Fase 24 / Issue #61 está concluída e mergeada na `main` pelo PR #62.
+A Fase 25 / Issue #63 está concluída e mergeada na `main` pelo PR #64.
 
 Estado funcional final comprovado:
 
-- head validado: `44e47e92a3594757c08c5bd242872b3f5ecc2dbf`;
-- `CI` #278 — success;
-- `Inventory Count Integration` #166 — success;
-- `Business Transactions Integration` #149 — success;
-- merge commit funcional: `e3eb02918f8fe95307b1728e6c2d27608cebc9d1`.
+- head validado: `7040d7ec7faf356504ce3dd10f2dd4628ea69ca0`;
+- `CI` #281 — success;
+- `Inventory Count Integration` #167 — success;
+- `Business Transactions Integration` #150 — success;
+- merge commit funcional: `e345401fa80e98c6c3433fc98843c44c146a74fb`.
 
 Supabase remoto:
 
-- projeto `fhbvwyttikrbeaanatlr`, `ACTIVE_HEALTHY`, PostgreSQL 17;
-- nenhuma migration/DDL na Fase 24;
-- 3 Setores ativos;
-- os 3 locais ativos atuais têm `sector_id IS NULL`;
-- RLS de Setores comprovado com smoke sintético em `BEGIN/ROLLBACK`, zero resíduo;
-- Caixa continua sem relação setorial explícita.
+- projeto `fhbvwyttikrbeaanatlr`, PostgreSQL 17;
+- nenhuma migration/DDL na Fase 25;
+- período gerencial validado read-only com boundaries inclusivos nos 2 lotes reais;
+- `security_hardening.sql` permanece verde;
+- auditoria RLS recente: 45/45 tabelas public com RLS, sem leak para authenticated sem membership.
 
-A próxima lacuna MUST objetiva é a dimensão **período** de `REQ-DASH-002`, registrada na Issue #63 — `Fase 25 — período gerencial explícito no dashboard`.
+A próxima lacuna objetiva é o acesso inicial ao Workspace persistente, registrada na Issue #65 — `Fase 26 — convite seguro do primeiro owner para homologação persistente`.
+
+Estado remoto de acesso:
+
+- 1 Organization ativa;
+- 0 usuários Supabase Auth reais;
+- 0 memberships ativos;
+- 0 owners ativos.
+
+O código já possui login, recuperação e bootstrap owner, mas o bootstrap exige uma conta Auth já existente e autenticada.
 
 ## Fazer agora
 
-1. Confirmar estado real da Issue #63, `main`, branch `agent/dashboard-period-filter` (se já existir), PRs e CI.
-2. Se a branch ainda não existir, criá-la a partir da `main` atual; não reutilizar a branch da Fase 24.
+1. Confirmar estado real da Issue #65, `main`, branch `agent/bootstrap-owner-invite` (se já existir), PRs, CI e deployment Vercel atual.
+2. Se a branch ainda não existir, criá-la a partir da `main` atual; não reutilizar branch do Dashboard.
 3. Ler antes de editar:
    - `AGENTS.md`;
    - `docs/00-START-HERE.md`;
@@ -34,89 +42,106 @@ A próxima lacuna MUST objetiva é a dimensão **período** de `REQ-DASH-002`, r
    - `docs/ai/HANDOFF.md`;
    - este `NEXT_ACTION.md`;
    - `docs/ai/WORKFLOW.md`;
-   - `docs/product/requirements.md` — `REQ-DASH-002`;
-   - `docs/modules/dashboard.md`;
-   - `src/modules/dashboard/application/dashboard-summary.ts` e testes;
-   - `src/modules/dashboard/adapters/supabase-dashboard-query.ts` e testes;
-   - `src/app/workspace/(operacao)/page.tsx`;
-   - read model/tabelas/adapters relevantes de Financeiro (`payable_installment_summary`, `payments`), Caixa, Compras, Transferências, Inventários e Validades.
-4. Confirmar a lacuna antes do patch:
-   - o filtro atual possui `unitId?`, `sectorId?` e `horizonDays`;
-   - não existe `dateFrom/dateTo` gerencial explícito;
-   - `horizonDays` é janela relativa de alertas e não deve ser confundido com período.
-5. Inventariar a semântica temporal de cada KPI/fila atual e registrar a decisão no módulo antes de generalizar qualquer filtro.
-6. Usar somente campos temporais canônicos já comprovados:
-   - Financeiro/obrigações: `due_date` quando a métrica é de vencimento/obrigação;
-   - pagamentos efetivos: `payments.paid_at` se e somente se for necessário representar pagamento realizado no período;
-   - Caixa: `cash_sessions.business_date`;
-   - Compras/entrega: `expected_delivery_date`;
-   - Validades: `inventory_batches.expiration_date`;
-   - revisar `ordered_at`, `requested_at`, `dispatched_at`, `received_at`, `started_at`, `confirmed_at` apenas conforme a semântica real da métrica existente.
-7. Adicionar período opcional `dateFrom`/`dateTo`:
-   - aceitar ambos ausentes para preservar comportamento atual;
-   - validar formato ISO `YYYY-MM-DD`;
-   - exigir par completo ou definir explicitamente a política de intervalo aberto antes de implementar; preferir par completo para evitar ambiguidade;
-   - exigir `dateFrom <= dateTo`;
-   - boundaries inclusivos;
-   - preservar timezone da Organization para datas de negócio.
-8. Não transformar valores cumulativos/snapshots em valores de período por rótulo:
-   - `net_paid_amount` do read model é cumulativo; não chamá-lo de “pago no período” sem eventos de `payments.paid_at`;
-   - Transferências em trânsito e Inventários em andamento permanecem current-state enquanto não houver semântica temporal específica aprovada;
-   - se uma métrica não obedecer ao período, a UI deve declarar isso claramente.
-9. Preservar integralmente o filtro de Unit + Setor da Fase 24, inclusive:
-   - Setores limitados por RLS;
-   - Unit + Setor no mesmo endpoint para Transferências;
-   - Caixa sem filtro de Setor.
-10. Preservar `horizonDays` como conceito separado. Não removê-lo nem alterar seus cálculos silenciosamente.
-11. Preferir zero DDL. Se uma fonte adicional de leitura for realmente necessária:
-   - provar a lacuna física primeiro;
-   - versionar migration;
-   - view pública deve usar `security_invoker=true`;
-   - manter grants mínimos e RLS das fontes;
-   - aplicar remotamente somente depois de CI verde.
-12. Atualizar testes cobrindo pelo menos:
-   - intervalo válido e boundaries inclusivos;
-   - datas inválidas e `dateFrom > dateTo`;
-   - timezone;
-   - Financeiro/obrigações;
-   - Caixa por `business_date`;
-   - Compras por data de entrega conhecida;
-   - Validades;
-   - ausência de data sem fabricação;
-   - métricas current-state/cumulativas explicitamente preservadas;
-   - regressões de Unit, Setor e `horizonDays`.
+   - `docs/product/requirements.md` — `REQ-SEC-001` e `REQ-SEC-002` apenas para preservar os limites atuais;
+   - `docs/modules/supabase-runtime.md`;
+   - `docs/operations/environments.md`;
+   - `.env.example`;
+   - `src/app/login/page.tsx`;
+   - `src/app/bootstrap/page.tsx`;
+   - `src/lib/auth/actions.ts`;
+   - `src/lib/auth/bootstrap.ts`;
+   - callback/update-password Auth existentes;
+   - `src/lib/supabase/server.ts` e runtime environment guardrails.
+4. Consultar a documentação oficial atual do Supabase antes do patch, especialmente:
+   - Auth Admin `inviteUserByEmail` ou mecanismo oficial equivalente;
+   - comportamento de convite quando usuário já existe;
+   - redirect/callback e estabelecimento de senha/sessão;
+   - requisitos server-only da secret key.
+5. Confirmar a lacuna antes de implementar:
+   - `/login` não possui signup público;
+   - `/bootstrap` depende de `LOJASAPH_BOOTSTRAP_OWNER_EMAIL` e sessão autenticada correspondente;
+   - `bootstrapOwnerAction` cria membership/audit, mas não identidade Auth;
+   - remoto ainda possui 0 Auth users/owners.
+6. Implementar o menor fluxo seguro para criar a primeira identidade Auth por convite:
+   - ação exclusivamente server-side;
+   - destinatário lido somente de `LOJASAPH_BOOTSTRAP_OWNER_EMAIL`;
+   - nenhum campo de e-mail arbitrário vindo do browser;
+   - usar `createServerAdminSupabaseClient()` e API oficial Auth Admin;
+   - não fazer SQL direto em `auth.users`;
+   - não gerar/expor senha padrão.
+7. Antes de enviar/reenviar convite, validar fail-closed:
+   - backend/admin access permitido pelo runtime;
+   - e-mail autorizado configurado;
+   - Organization alvo resolvida com as mesmas regras existentes;
+   - nenhum owner ativo já encerrou o bootstrap;
+   - usuário já existente/convite repetido tratado de forma segura e compreensível.
+8. Preservar `bootstrapOwnerAction` como única criação do membership owner + audit. Não duplicar role/membership dentro da ação de convite.
+9. O callback deve levar o usuário ao fluxo seguro já existente para estabelecer sessão/senha e depois permitir concluir `/bootstrap`. Não criar callback alternativo inseguro.
+10. Adicionar testes para guardrails extraídos/pure helpers, cobrindo pelo menos:
+    - sem env => convite indisponível;
+    - e-mail nunca vem do form;
+    - owner existente => bootstrap encerrado;
+    - resolução de Organization permanece fail-closed;
+    - retry/usuário existente não cria membership prematuro;
+    - redirect interno/callback seguro.
+11. Atualizar documentação/runbook explicando:
+    - configuração temporária das envs server-only;
+    - convite do primeiro owner;
+    - autenticação e conclusão do bootstrap;
+    - verificação do audit/membership;
+    - remoção/desabilitação das variáveis de bootstrap após conclusão;
+    - nunca registrar senha/secret.
+12. Preferir zero DDL. Não criar migration/RLS/policy/grant para esta fase salvo lacuna física real comprovada.
 13. Rodar lint, typecheck, Vitest, production build e os três workflows aplicáveis.
-14. Se não houver DDL, homologar no Supabase por consultas/RLS somente leitura. Se houver DDL indispensável, aplicar somente após CI verde, executar smoke sintético `BEGIN/ROLLBACK` e Security/Performance Advisors.
-15. Abrir/atualizar PR, marcar ready, mergear, fechar Issue #63 e atualizar continuidade.
+14. Antes de qualquer convite real, homologar somente leitura no Supabase e confirmar 0 owner/0 membership e hardening intacto.
+15. **Não enviar convite real enquanto o operador não tiver fornecido explicitamente o e-mail que deve ser autorizado.** Não inferir e-mail de GitHub/Vercel/conta conectada.
+16. Após código/CI verde e e-mail explícito disponível, configurar somente as variáveis necessárias no target Production de forma server-only e executar um único convite controlado.
+17. Deployment Vercel não é parte do loop de desenvolvimento. O último Production observado está no commit `a0ab92bbc6cff25527e684a0e37a87450aa265ca`; se a homologação real exigir o código da Fase 26, fazer deployment intencional somente no ponto final, sem reativar deploy por commit.
+18. Confirmar no fim:
+    - identidade Auth criada pelo fluxo oficial;
+    - sessão pertence ao e-mail autorizado;
+    - membership owner criado apenas pelo bootstrap existente;
+    - audit `membership.bootstrap_owner` presente;
+    - RLS efetivo no Workspace;
+    - nenhuma credencial/secret exposta;
+    - bootstrap desabilitado/removido após inicialização.
+19. Abrir/atualizar PR, mergear quando os gates técnicos estiverem verdes e atualizar continuidade. Se a etapa de convite real depender do e-mail ainda não fornecido, não falsificar conclusão operacional: registrar claramente a pendência.
 
 ## Política de segurança
 
-- `supabase/tests/security_hardening.sql` continua obrigatório;
-- não ampliar grants/RLS para facilitar Dashboard;
-- não usar service role no read path;
-- não usar `created_at` como data de negócio genérica quando existe campo canônico;
-- qualquer view pública nova deve usar `security_invoker=true` e grant mínimo.
+- signup público continua ausente/desabilitado;
+- secret/admin client continua `server-only`;
+- convite só pode usar o e-mail autorizado em env server-only;
+- não aceitar e-mail do request/form como destino do primeiro-owner invite;
+- não criar senha automática conhecida pelo operador/agente;
+- não inserir diretamente em `auth.users`;
+- não ampliar RLS/grants;
+- `supabase/tests/security_hardening.sql` continua gate permanente;
+- depois do primeiro owner, bootstrap deve ficar indisponível.
 
 ## Política de Vercel
 
-- `git.deploymentEnabled=false` continua vigente;
+- `vercel.json` mantém `git.deploymentEnabled=false`;
 - CI é o gate principal;
-- não fazer deployment rotineiro para esta fase.
+- não fazer deployment rotineiro;
+- não copiar valores de env/secrets para chat, logs ou GitHub;
+- deployment Production somente quando necessário para homologar o fluxo completo.
 
 ## Não fazer
 
-- não reabrir Fase 24/Issue #61;
-- não reabrir Fase 23/Issue #59 ou hardening/Issue #54;
-- não regredir o filtro Setor nem inferir vínculos para locais nulos;
-- não atribuir Caixa a Setor;
-- não substituir `horizonDays` por período sem preservar sua semântica;
-- não inventar um campo temporal único para todos os módulos;
-- não apresentar valores cumulativos/current-state como “do período” sem base de dados apropriada;
-- não criar novos KPIs/gráficos por conveniência;
-- não inferir Q-001..Q-025;
+- não reabrir Fase 25/Issue #63 ou Fase 24/Issue #61;
+- não alterar Dashboard como parte desta fase;
+- não habilitar signup público;
+- não criar usuário por SQL em `auth.users`;
+- não inventar o e-mail do owner a partir de GitHub, Vercel ou metadados conectados;
+- não pedir/guardar senha de produção no repositório;
+- não colocar `SUPABASE_SECRET_KEY` no browser/NEXT_PUBLIC;
+- não criar gestão geral de usuários/roles;
+- não redefinir Q-022;
 - não importar dados reais;
-- não fazer sweep de advisors antigos sem causalidade.
+- não fazer sweep de advisors antigos sem causalidade;
+- não reativar auto-deploy Vercel.
 
 ## Critério de conclusão da próxima fase
 
-O Dashboard aceita um intervalo gerencial explícito e o aplica apenas segundo campos temporais canônicos e documentados. Métricas cumulativas ou de estado atual que não sejam semanticamente “do período” permanecem corretas e transparentes; `horizonDays`, Unit, Setor, timezone, RLS e isolamento continuam sem regressão.
+O sistema possui um caminho seguro, restrito e documentado para o primeiro e-mail explicitamente autorizado receber um convite oficial Supabase, estabelecer sua própria sessão/credencial e então concluir o `bootstrapOwnerAction` existente. Nenhum usuário arbitrário consegue acionar o fluxo, nenhum segredo/senha é exposto, membership/audit continuam centralizados no bootstrap, RLS permanece intacto e a rotina pode ser desabilitada após a inicialização.
