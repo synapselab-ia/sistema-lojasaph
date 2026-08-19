@@ -22,7 +22,7 @@ export function normalizeBootstrapOwnerEmail(value: string | undefined): string 
   return normalized;
 }
 
-export function isBootstrapInviteTemplateReady(value: string | undefined): boolean {
+export function isBootstrapInviteReady(value: string | undefined): boolean {
   return value?.trim().toLowerCase() === "true";
 }
 
@@ -58,7 +58,7 @@ export function classifyBootstrapIdentity(
 
 export function determineBootstrapInvitationState(input: {
   readonly configured: boolean;
-  readonly templateReady: boolean;
+  readonly inviteReady: boolean;
   readonly appUrlReady: boolean;
   readonly ownerExists: boolean;
   readonly identityState: BootstrapIdentityState;
@@ -68,10 +68,10 @@ export function determineBootstrapInvitationState(input: {
   if (input.identityState === "unknown") return "unavailable";
   if (input.identityState === "pending") return "pending";
   if (input.identityState === "confirmed") return "confirmed";
-  if (!input.templateReady || !input.appUrlReady) return "configuration_required";
+  if (!input.inviteReady || !input.appUrlReady) return "configuration_required";
   return "ready";
 }
 
 export function buildBootstrapInviteRedirectUrl(appBaseUrl: string): string {
-  return new URL("/auth/callback", appBaseUrl).toString();
+  return new URL("/auth/invite", appBaseUrl).toString();
 }
