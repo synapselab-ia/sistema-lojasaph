@@ -75,6 +75,8 @@ export interface DashboardFilter {
   readonly horizonDays: number;
   readonly unitId?: EntityId;
   readonly sectorId?: EntityId;
+  readonly dateFrom?: string;
+  readonly dateTo?: string;
 }
 
 export interface DashboardSummary {
@@ -111,6 +113,29 @@ function addIsoDays(value: string, days: number): string {
   return date.toISOString().slice(0, 10);
 }
 
+function isIsoDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year
+    && date.getUTCMonth() === month - 1
+    && date.getUTCDate() === day;
+}
+
+export function validateDashboardPeriod(
+  input: Pick<DashboardFilter, "dateFrom" | "dateTo">,
+): void {
+  const hasFrom = input.dateFrom !== undefined;
+  const hasTo = input.dateTo !== undefined;
+
+  if (!hasFrom && !hasTo) return;
+  if (!hasFrom || !hasTo) throw new Error("DASHBOARD_PERIOD_INCOMPLETE");
+  if (!isIsoDate(input.dateFrom!) || !isIsoDate(input.dateTo!)) {
+    throw new Error("DASHBOARD_PERIOD_INVALID_DATE");
+  }
+  if (input.dateFrom! > input.dateTo!) throw new Error("DASHBOARD_PERIOD_INVALID_RANGE");
+}
+
 function sumMoney(values: readonly Money[]): Money {
   return values.reduce((total, value) => total.add(value), Money.zero());
 }
@@ -139,6 +164,15 @@ function matchesTransferScope(
     || matchesScopedRow(row.destinationUnitId, row.destinationSectorId, filter);
 }
 
+function matchesPeriod(
+  value: string | undefined,
+  filter: Pick<DashboardFilter, "dateFrom" | "dateTo">,
+): boolean {
+  if (!filter.dateFrom && !filter.dateTo) return true;
+  if (!value || !filter.dateFrom || !filter.dateTo) return false;
+  return value >= filter.dateFrom && value <= filter.dateTo;
+}
+
 function pushAttention(
   target: DashboardAttentionItem[],
   item: DashboardAttentionItem,
@@ -164,11 +198,17 @@ export function buildDashboardSummary(
   if (!Number.isInteger(filter.horizonDays) || filter.horizonDays < 1 || filter.horizonDays > 365) {
     throw new Error("Dashboard horizon must be an integer between 1 and 365 days.");
   }
+  validateDashboardPeriod(filter);
 
   const horizonEnd = addIsoDays(filter.today, filter.horizonDays);
   const historyStart = addIsoDays(filter.today, -filter.horizonDays);
 
-  const finance = data.finance.filter((row) => matchesScopedRow(row.unitId, row.sectorId, filter));
+  // Finance period semantics are based on installment due_date. netPaidAmount is
+  // still cumulative for each obligation; it is not a payment-event total.
+  const finance = data.finance.filter(
+    (row) => matchesScopedRow(row.unitId, row.sectorId, filter)
+      && matchesPeriod(row.dueDate, filter),
+  );
   const activeFinance = finance.filter((row) => row.status !== "cancelled");
   const nominal = sumMoney(activeFinance.map((row) => row.nominalAmount));
   const paid = sumMoney(activeFinance.map((row) => row.netPaidAmount));
@@ -183,30 +223,41 @@ export function buildDashboardSummary(
     (row) => row.status === "upcoming" && row.dueDate > filter.today && row.dueDate <= horizonEnd,
   ).length;
 
-  // Cash has no explicit Sector relationship in the current model. Sector filters
-  // therefore never narrow it; only the existing Unit/horizon scope applies.
+  // Open cash is current-state. Closed/discrepancy metrics use business_date and
+  // are narrowed by an explicit managerial period when present. Cash has no
+  // explicit Sector relationship, so Sector never narrows it.
   const cash = data.cash.filter((row) => matchesUnit(row.unitId, filter.unitId));
   const openCashCount = cash.filter((row) => row.status === "open").length;
-  const discrepancyCount = cash.filter(
-    (row) => row.status === "closed" && (row.cashDifference?.cents ?? 0) !== 0,
+  const closedCashInPeriod = cash.filter(
+    (row) => row.status === "closed" && matchesPeriod(row.businessDate, filter),
+  );
+  const discrepancyCount = closedCashInPeriod.filter(
+    (row) => (row.cashDifference?.cents ?? 0) !== 0,
   ).length;
-  const recentClosedCount = cash.filter(
-    (row) => row.status === "closed" && row.businessDate >= historyStart && row.businessDate <= filter.today,
+  const recentClosedCount = closedCashInPeriod.filter(
+    (row) => row.businessDate >= historyStart && row.businessDate <= filter.today,
   ).length;
 
+  // Pending purchase orders are current-state. Delivery signals use the canonical
+  // expected_delivery_date and exclude unknown dates from a selected period.
   const purchases = data.purchases.filter((row) => matchesScopedRow(row.unitId, row.sectorId, filter));
   const pendingPurchases = purchases.filter(
     (row) => row.status === "ordered" || row.status === "partially_received",
   );
-  const lateDeliveryCount = pendingPurchases.filter(
+  const datedDeliveries = pendingPurchases.filter(
+    (row) => matchesPeriod(row.expectedDeliveryDate, filter),
+  );
+  const lateDeliveryCount = datedDeliveries.filter(
     (row) => row.expectedDeliveryDate !== undefined && row.expectedDeliveryDate < filter.today,
   ).length;
-  const deliverySoonCount = pendingPurchases.filter(
+  const deliverySoonCount = datedDeliveries.filter(
     (row) => row.expectedDeliveryDate !== undefined
       && row.expectedDeliveryDate >= filter.today
       && row.expectedDeliveryDate <= horizonEnd,
   ).length;
 
+  // Transfers in transit and open inventory counts are snapshots of current state;
+  // there is no single event timestamp that truthfully turns them into period KPIs.
   const transfersInTransitCount = data.transfers.filter(
     (row) => matchesTransferScope(row, filter)
       && (row.status === "dispatched" || row.status === "partially_received"),
@@ -215,7 +266,12 @@ export function buildDashboardSummary(
     (row) => matchesScopedRow(row.unitId, row.sectorId, filter)
       && (row.status === "counting" || row.status === "review"),
   ).length;
-  const expiries = data.expiries.filter((row) => matchesScopedRow(row.unitId, row.sectorId, filter));
+
+  // Expiry metrics use expiration_date as their canonical business date.
+  const expiries = data.expiries.filter(
+    (row) => matchesScopedRow(row.unitId, row.sectorId, filter)
+      && matchesPeriod(row.expirationDate, filter),
+  );
   const expiredBatchCount = expiries.filter((row) => row.expirationDate < filter.today).length;
   const expiringSoonCount = expiries.filter(
     (row) => row.expirationDate >= filter.today && row.expirationDate <= horizonEnd,

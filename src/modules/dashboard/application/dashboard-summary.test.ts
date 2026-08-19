@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { Money } from "@/domain/common/money";
 import { EntityId } from "@/domain/common/entity-id";
-import { buildDashboardSummary, DashboardRawData, localIsoDate } from "./dashboard-summary";
+import {
+  buildDashboardSummary,
+  DashboardRawData,
+  localIsoDate,
+  validateDashboardPeriod,
+} from "./dashboard-summary";
 
 const unitA = "10000000-0000-4000-8000-000000000001" as EntityId;
 const unitB = "10000000-0000-4000-8000-000000000002" as EntityId;
@@ -23,11 +28,13 @@ function demoData(): DashboardRawData {
     cash: [
       { id: id(10), unitId: unitA, businessDate: "2026-08-18", status: "open" },
       { id: id(11), unitId: unitA, businessDate: "2026-08-17", status: "closed", cashDifference: Money.fromDecimal("-10.00") },
+      { id: id(13), unitId: unitA, businessDate: "2026-08-12", status: "closed" },
       { id: id(12), unitId: unitB, businessDate: "2026-08-17", status: "closed", cashDifference: Money.fromDecimal("50.00") },
     ],
     purchases: [
       { id: id(20), unitId: unitA, sectorId: sectorA, status: "ordered", expectedDeliveryDate: "2026-08-17" },
       { id: id(21), unitId: unitA, status: "partially_received", expectedDeliveryDate: "2026-08-20" },
+      { id: id(23), unitId: unitA, sectorId: sectorA, status: "ordered" },
       { id: id(22), unitId: unitB, sectorId: sectorB, status: "ordered", expectedDeliveryDate: "2026-08-17" },
     ],
     transfers: [
@@ -60,8 +67,8 @@ describe("dashboard summary", () => {
     expect(summary.finance.overdueCount).toBe(1);
     expect(summary.finance.dueTodayCount).toBe(1);
     expect(summary.finance.dueSoonCount).toBe(1);
-    expect(summary.cash).toEqual({ openCount: 1, discrepancyCount: 1, recentClosedCount: 1 });
-    expect(summary.purchases).toEqual({ pendingCount: 2, lateDeliveryCount: 1, deliverySoonCount: 1 });
+    expect(summary.cash).toEqual({ openCount: 1, discrepancyCount: 1, recentClosedCount: 2 });
+    expect(summary.purchases).toEqual({ pendingCount: 3, lateDeliveryCount: 1, deliverySoonCount: 1 });
     expect(summary.stock).toEqual({ transfersInTransitCount: 1, openInventoryCount: 1, expiredBatchCount: 1, expiringSoonCount: 1 });
     expect(summary.attention.map((item) => item.key)).toContain("finance-overdue");
     expect(summary.attention.map((item) => item.key)).toContain("cash-discrepancy");
@@ -82,10 +89,9 @@ describe("dashboard summary", () => {
     expect(summary.finance.overdueCount).toBe(1);
     expect(summary.finance.dueTodayCount).toBe(0);
     expect(summary.finance.dueSoonCount).toBe(0);
-    expect(summary.purchases).toEqual({ pendingCount: 1, lateDeliveryCount: 1, deliverySoonCount: 0 });
+    expect(summary.purchases).toEqual({ pendingCount: 2, lateDeliveryCount: 1, deliverySoonCount: 0 });
     expect(summary.stock).toEqual({ transfersInTransitCount: 1, openInventoryCount: 1, expiredBatchCount: 1, expiringSoonCount: 0 });
 
-    // The unassigned finance/purchase/expiry rows are not inferred into sectorA.
     expect(summary.attention.map((item) => item.key)).not.toContain("finance-soon");
     expect(summary.attention.map((item) => item.key)).not.toContain("purchase-soon");
     expect(summary.attention.map((item) => item.key)).not.toContain("expiry-soon");
@@ -105,7 +111,7 @@ describe("dashboard summary", () => {
       sectorId: sectorA2,
     });
 
-    expect(sectorAResult.cash).toEqual({ openCount: 1, discrepancyCount: 1, recentClosedCount: 1 });
+    expect(sectorAResult.cash).toEqual({ openCount: 1, discrepancyCount: 1, recentClosedCount: 2 });
     expect(sectorA2Result.cash).toEqual(sectorAResult.cash);
     expect(sectorAResult.attention.map((item) => item.key)).toContain("cash-discrepancy");
   });
@@ -121,6 +127,61 @@ describe("dashboard summary", () => {
     expect(mismatched.stock.transfersInTransitCount).toBe(0);
   });
 
+  it("applies an explicit period inclusively only to canonical period metrics", () => {
+    const summary = buildDashboardSummary(demoData(), {
+      today: "2026-08-18",
+      horizonDays: 7,
+      unitId: unitA,
+      dateFrom: "2026-08-17",
+      dateTo: "2026-08-17",
+    });
+
+    expect(summary.finance.nominal.toDecimal()).toBe("1000.00");
+    expect(summary.finance.paid.toDecimal()).toBe("0.00");
+    expect(summary.finance.openBalance.toDecimal()).toBe("1000.00");
+    expect(summary.finance.overdueCount).toBe(1);
+    expect(summary.finance.dueTodayCount).toBe(0);
+    expect(summary.cash).toEqual({ openCount: 1, discrepancyCount: 1, recentClosedCount: 1 });
+    expect(summary.purchases).toEqual({ pendingCount: 3, lateDeliveryCount: 1, deliverySoonCount: 0 });
+    expect(summary.stock).toEqual({ transfersInTransitCount: 1, openInventoryCount: 1, expiredBatchCount: 1, expiringSoonCount: 0 });
+  });
+
+  it("does not manufacture a delivery date for pending purchases without one", () => {
+    const summary = buildDashboardSummary(demoData(), {
+      today: "2026-08-18",
+      horizonDays: 7,
+      unitId: unitA,
+      dateFrom: "2026-08-19",
+      dateTo: "2026-08-21",
+    });
+
+    expect(summary.purchases.pendingCount).toBe(3);
+    expect(summary.purchases.lateDeliveryCount).toBe(0);
+    expect(summary.purchases.deliverySoonCount).toBe(1);
+  });
+
+  it("keeps horizon semantics separate from the explicit period", () => {
+    const wideHorizon = buildDashboardSummary(demoData(), {
+      today: "2026-08-18",
+      horizonDays: 7,
+      unitId: unitA,
+      dateFrom: "2026-08-20",
+      dateTo: "2026-08-22",
+    });
+    const narrowHorizon = buildDashboardSummary(demoData(), {
+      today: "2026-08-18",
+      horizonDays: 2,
+      unitId: unitA,
+      dateFrom: "2026-08-20",
+      dateTo: "2026-08-22",
+    });
+
+    expect(wideHorizon.finance.dueSoonCount).toBe(1);
+    expect(narrowHorizon.finance.dueSoonCount).toBe(0);
+    expect(wideHorizon.purchases.deliverySoonCount).toBe(1);
+    expect(narrowHorizon.purchases.deliverySoonCount).toBe(1);
+  });
+
   it("uses the configured horizon for upcoming and recent signals", () => {
     const sevenDays = buildDashboardSummary(demoData(), { today: "2026-08-18", horizonDays: 7, unitId: unitA });
     const twoDays = buildDashboardSummary(demoData(), { today: "2026-08-18", horizonDays: 2, unitId: unitA });
@@ -129,6 +190,15 @@ describe("dashboard summary", () => {
     expect(twoDays.finance.dueSoonCount).toBe(0);
     expect(sevenDays.stock.expiringSoonCount).toBe(1);
     expect(twoDays.stock.expiringSoonCount).toBe(0);
+  });
+
+  it("validates explicit period completeness, dates and ordering", () => {
+    expect(() => validateDashboardPeriod({})).not.toThrow();
+    expect(() => validateDashboardPeriod({ dateFrom: "2026-08-01", dateTo: "2026-08-31" })).not.toThrow();
+    expect(() => validateDashboardPeriod({ dateFrom: "2026-08-01" })).toThrow("DASHBOARD_PERIOD_INCOMPLETE");
+    expect(() => validateDashboardPeriod({ dateFrom: "2026-02-30", dateTo: "2026-03-01" })).toThrow("DASHBOARD_PERIOD_INVALID_DATE");
+    expect(() => validateDashboardPeriod({ dateFrom: "18/08/2026", dateTo: "2026-08-20" })).toThrow("DASHBOARD_PERIOD_INVALID_DATE");
+    expect(() => validateDashboardPeriod({ dateFrom: "2026-08-20", dateTo: "2026-08-19" })).toThrow("DASHBOARD_PERIOD_INVALID_RANGE");
   });
 
   it("resolves the business date using Organization timezone", () => {
