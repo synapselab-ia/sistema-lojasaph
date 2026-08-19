@@ -6,6 +6,7 @@ import {
   parseTabularRows,
   prepareImportPreview,
   resolveStockItemReference,
+  type ImportRowEvaluation,
   type ImportSourceRow,
 } from "./import-preview";
 
@@ -113,7 +114,7 @@ describe("import preview foundation", () => {
       organizationId,
       sourceSha256,
       rows,
-      evaluateRow: (row) => {
+      evaluateRow: (row): ImportRowEvaluation => {
         const category = row.rawPayload.categoria;
 
         if (typeof category !== "string" || !category.trim()) {
