@@ -10,6 +10,27 @@ Status: Auth/runtime estabilizados, núcleo transacional persistente, observabil
 - secret/admin client somente `server-only`;
 - operações normais usam JWT do usuário + RLS.
 
+## RLS, grants e least privilege
+
+O schema `public` usa duas barreiras independentes:
+
+1. privilégios de objeto (`GRANT`/`REVOKE`) decidem se o papel da API pode executar um comando na relação ou função;
+2. RLS decide quais linhas são acessíveis depois que o comando está autorizado no nível do objeto.
+
+A Issue #54 formaliza a política de least privilege após auditoria do projeto hospedado:
+
+- toda tabela de aplicação em `public` deve ter RLS habilitado;
+- `anon` não recebe privilégios em tabelas/views operacionais nem EXECUTE de RPCs privados/transacionais;
+- `authenticated` recebe somente `SELECT`, `INSERT` e/ou `UPDATE` quando existe policy explícita correspondente;
+- não existe `DELETE` direto no schema operacional atual; cancelamento/estorno e RPCs transacionais preservam rastreabilidade;
+- views expostas devem usar `security_invoker=true` para respeitar RLS das tabelas subjacentes;
+- funções `SECURITY DEFINER` públicas são APIs controladas: `PUBLIC`/`anon` sem EXECUTE e validação interna de `auth.uid()`, role e escopo;
+- helpers de trigger, como `set_updated_at`, não são RPC público e não precisam de EXECUTE para papéis da API;
+- migrations executadas pelo owner `postgres` usam default privileges fechados para tabelas, sequences e functions; qualquer exposição nova deve receber grant explícito na própria migration;
+- o CI emula os defaults permissivos históricos do Supabase e executa uma suíte dedicada que falha se RLS/grants/default privileges regredirem.
+
+O role gerenciado `supabase_admin` pertence ao provedor e não é controlado pelas migrations da aplicação executadas como `postgres`. Por isso mudanças de schema do Sistema Lojasaph devem ocorrer exclusivamente pelas migrations versionadas do repositório; objetos criados manualmente pelo Dashboard não podem ser presumidos seguros e precisam de auditoria explícita de grants/RLS.
+
 ## Isolamento de ambientes
 
 A Fase 18 adiciona uma política fail-closed antes da criação de clientes Supabase.
