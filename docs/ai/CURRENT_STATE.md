@@ -1,55 +1,53 @@
 # Current State — Sistema Lojasaph
 
-Última atualização: 2026-08-18
+Última atualização: 2026-08-19
 
 ## Estado atual
 
-Fase 20 — perdas, quebras e vencimentos como baixas rastreáveis — **concluída e integrada na `main`**.
+O hardening preventivo de RLS/grants da Issue #54 foi **concluído e integrado na `main`**, sem alterar regras de negócio. A próxima frente funcional continua sendo a Fase 21 / Issue #53.
 
 - Repositório: `synapselab-ia/sistema-lojasaph`
-- PR #52 — merged
-- Issue #51 — closed/completed
-- merge commit: `a6da7e46e340763c2cf724c2c3b625616c149a80`
-- head final validado pré-merge: `e5d3b2e0f6752f732ae86c32c66fd488f633eb90`
-- `CI` #253 — success
-- `Inventory Count Integration` #155 — success
-- `Business Transactions Integration` #138 — success
-- próxima Issue: #53 — `Fase 21 — devolução relacionada de retiradas no ledger`
+- PR #55 — merged
+- Issue #54 — closed/completed
+- merge commit do hardening: `c6b24c6cef935ae9652dbcc476e9131dcd2259cd`
+- head final validado pré-merge: `d456abb02aef92a5f2f1295b1b03a2b760a5e2f1`
+- `CI` #258 — success
+- `Inventory Count Integration` #158 — success
+- `Business Transactions Integration` #141 — success
+- próxima Issue funcional: #53 — `Fase 21 — devolução relacionada de retiradas no ledger`
 
-## Fase 20 — concluído
+## Hardening de RLS/grants — concluído
 
-`REQ-STK-008` foi fechado e `REQ-STK-003` reforçado com caminho persistente real:
+A auditoria pré-fix não encontrou vazamento ativo por RLS, mas encontrou privilégios de objeto legados/permissivos no Supabase hospedado. O hardening agora estabelece duas barreiras independentes: grants mínimos no objeto + RLS por linha.
 
-- catálogo `stock_loss_reasons` por Organization;
-- motivos-base conservadores `loss`, `breakage`, `expiration` e `other`;
-- `record_stock_loss` transacional/idempotente;
-- `movement_type` derivado do motivo estruturado no banco, não escolhido livremente pela UI;
-- retirada e baixa compartilham o mesmo núcleo privado para locks, saldo, custo, política de negativo, lote preferido e FEFO;
-- baixa grava movimento, item, alocação de lote e auditoria atomicamente;
-- vencimento de item rastreado exige lote explícito já vencido e quantidade suficiente no próprio lote;
-- UI persistente `/workspace/baixas` com formulário e histórico recente;
-- suíte PostgreSQL dedicada integrada ao CI.
+Estado final do schema `public` homologado no Supabase remoto:
 
-### Correção encontrada pelo CI
+- 45/45 tabelas com RLS habilitado;
+- 78 policies;
+- 0 policies destinadas a `anon`/`PUBLIC`;
+- 0 grants de relação para `anon`;
+- 0 mismatches entre `SELECT`/`INSERT`/`UPDATE` concedidos a `authenticated` e policies correspondentes;
+- `authenticated` sem `DELETE`, `TRUNCATE`, `REFERENCES` ou `TRIGGER` direto nas tabelas da aplicação;
+- 0 funções `SECURITY DEFINER` de `public` executáveis por `anon`;
+- `public.set_updated_at()` sem EXECUTE para `anon`, `authenticated` e `service_role`;
+- `payable_installment_summary` permanece `security_invoker=true`, legível por `authenticated` e não por `anon`.
 
-O primeiro head revelou que a policy de leitura do catálogo usava `private.has_org_role(..., NULL)`, embora esse helper exija uma lista de roles. O fix foi versionado separadamente em `stock_loss_reason_read_scope_fix`, usando `private.is_org_member` para leitura.
+### Default privileges
 
-Semântica final:
+A migration `20260819110500_rls_grant_hardening.sql` fecha os defaults do owner de migrations `postgres`:
 
-- membership ativa pode ler o catálogo de motivos da Organization;
-- configurar motivos continua exigindo membership Organization-wide com `owner`, `admin`, `manager` ou `inventory`;
-- `anon` não possui acesso;
-- `authenticated` não possui `DELETE` na tabela.
+- tabelas novas em `public` não recebem grants automáticos para papéis de API;
+- sequences novas em `public` não recebem grants automáticos;
+- functions novas não recebem EXECUTE por `PUBLIC`, `anon`, `authenticated` ou `service_role` sem grant explícito;
+- qualquer API nova deve receber grant explícito na própria migration.
 
-## Validação final da Fase 20
+O CI agora emula os defaults permissivos históricos do Supabase antes de aplicar migrations e executa `supabase/tests/security_hardening.sql`. A suíte cria probes temporários de tabela/function/sequence e falha se houver exposição automática, tabela sem RLS, policy insegura, grant de `anon`, grant de `authenticated` sem policy correspondente, view sem `security_invoker` ou `SECURITY DEFINER` executável por `anon`.
 
-No head `e5d3b2e0f6752f732ae86c32c66fd488f633eb90` passaram:
+### Limitação gerenciada pelo provedor
 
-- `CI` #253 — success;
-- `Inventory Count Integration` #155 — success;
-- `Business Transactions Integration` #138 — success.
+O role `supabase_admin` é gerenciado pelo Supabase e `postgres` não é membro dele. Seus default ACLs em `public` permanecem sob controle do provedor e não podem ser alterados pela migration da aplicação.
 
-O CI validou lint, typecheck, Vitest, build, todas as migrations, seed, backup/restore, retirada existente, perda/vencimento, transferências, multi-lote, importação e Employee.
+Política resultante: objetos do Sistema Lojasaph devem ser criados por migrations versionadas do repositório, executadas pelo owner `postgres`. Objetos criados manualmente pelo Dashboard não podem ser presumidos seguros e exigem auditoria explícita de grants/RLS.
 
 ## Supabase remoto
 
@@ -59,53 +57,54 @@ Projeto conectado:
 - PostgreSQL 17;
 - zero branches de desenvolvimento.
 
-Migrations da Fase 20 aplicadas após CI verde:
+Migration de hardening aplicada após CI 3/3 verde:
 
-- `stock_loss_flow` — versão remota `20260819004720`;
-- `stock_loss_reason_read_scope_fix` — versão remota `20260819004730`.
+- `rls_grant_hardening` — versão remota `20260819141546`.
 
 Homologação pós-DDL:
 
-- RLS ativo em `stock_loss_reasons`;
-- 4 motivos-base para a Organization existente;
-- policies de select/insert/update presentes;
-- `anon`: sem SELECT/INSERT/UPDATE/DELETE e sem EXECUTE de `record_stock_loss`;
-- `authenticated`: SELECT/INSERT/UPDATE em nível de tabela, `DELETE=false`;
-- `record_stock_loss` executável por `authenticated`, revalidando `auth.uid()`, role e escopo no próprio RPC;
-- smoke sintético confirmou `breakage -> loss`, saldo, custo snapshot e audit log;
-- transação revertida e zero resíduo sintético.
+- catálogo de RLS/grants conferido diretamente no PostgreSQL;
+- probe remoto em `BEGIN/ROLLBACK` criou tabela + identity sequence + function e confirmou ausência de grants implícitos para `anon`, `authenticated` e `service_role`;
+- rollback deixou zero objetos de probe;
+- default ACL de `postgres` em `public` contém somente o próprio owner para tabelas/sequences/functions;
+- default global de functions de `postgres` também contém somente `postgres`.
 
-O advisor de segurança sinaliza o RPC público pelo lint genérico de `SECURITY DEFINER` executável por `authenticated`, padrão já presente nos RPCs transacionais existentes. Neste caso o EXECUTE é intencional e protegido por validações internas; `anon` não possui EXECUTE. O advisor de performance não apontou FK sem índice na nova tabela.
+O Security Advisor continua reportando RPCs transacionais `SECURITY DEFINER` executáveis por `authenticated`. Isso é intencional na arquitetura atual: esses RPCs são fronteiras de comando e validam autenticação/role/escopo internamente; `anon` não possui EXECUTE. Não redesenhar esses RPCs por oportunismo sem Issue específica.
+
+## Fase 20
+
+A Fase 20 permanece concluída: perdas, quebras e vencimentos possuem fluxo persistente pelo ledger via `record_stock_loss`, com motivo estruturado, custo/lote/auditoria e UI `/workspace/baixas`.
 
 ## Vercel
 
 `vercel.json` continua com `git.deploymentEnabled=false`.
 
-**Política vigente:** CI é o gate principal de desenvolvimento. Deployment manual somente quando uma validação realmente depender de hosting/browser real ou em milestone/release apropriada. A Fase 20 não usou Vercel.
+CI é o gate principal. Deployment manual somente quando uma validação depender concretamente de hosting/browser real ou em milestone/release apropriada. O hardening de segurança não usou Vercel.
 
 ## Próxima lacuna MUST real
 
-`REQ-STK-006 — Devolução/retorno relacionado` continua incompleto.
+`REQ-STK-006 — Devolução/retorno relacionado` continua incompleto e é a Issue #53.
 
-O schema já prevê `return_in`, `return_out` e `reversal_of_movement_id`, mas não existe comando/UI persistente para relacionar uma devolução a movimento anterior. A Issue #53 foi aberta com escopo conservador:
+Escopo conservador já registrado:
 
 - começar pelo retorno ao estoque de uma retirada existente;
-- novo movimento `return_in`, sem editar/apagar a retirada histórica;
+- criar novo movimento `return_in`, sem editar/apagar a retirada histórica;
 - permitir retorno parcial/total sem over-return;
 - derivar custo do snapshot histórico;
 - preservar/restaurar lote identificado quando aplicável;
-- idempotência, RLS/escopo, concorrência e auditoria;
+- idempotência, locks, RLS/escopo e auditoria;
 - sem empréstimo enquanto Q-005 estiver aberta;
 - sem componente financeiro de Q-004 ou interpretação do checkbox de Q-003;
 - fixtures exclusivamente sintéticas.
 
 ## Não repetir
 
+- não reabrir Issue #54 nem reaplicar `rls_grant_hardening`;
+- não remover a suíte `security_hardening.sql` do CI;
+- não criar objetos de aplicação manualmente no Dashboard sem migration/auditoria;
 - não reabrir Fase 20;
-- não criar segundo mecanismo de saída de estoque fora do ledger;
+- não criar segundo mecanismo de estoque fora do ledger;
 - não reativar auto-deploy Vercel;
-- não resolver advisors antigos fora de escopo por oportunismo;
 - não implementar empréstimo enquanto Q-005 estiver aberta;
 - não inferir Q-003/Q-004 ou demais Q-001..Q-025;
-- não importar dados reais;
-- não reaplicar migrations já homologadas.
+- não importar dados reais.
