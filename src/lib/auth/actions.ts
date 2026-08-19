@@ -105,19 +105,21 @@ export async function requestPasswordResetAction(formData: FormData) {
 export async function updatePasswordAction(formData: FormData) {
   const password = field(formData, "password");
   const confirmation = field(formData, "passwordConfirmation");
+  const next = safeInternalPath(formData.get("next"), "/workspace");
+  const updatePath = `/auth/atualizar-senha?next=${encodeURIComponent(next)}`;
 
   if (password.length < 8) {
-    redirect(urlWithMessage("/auth/atualizar-senha", "error", "A nova senha deve ter pelo menos 8 caracteres."));
+    redirect(urlWithMessage(updatePath, "error", "A nova senha deve ter pelo menos 8 caracteres."));
   }
   if (password !== confirmation) {
-    redirect(urlWithMessage("/auth/atualizar-senha", "error", "As senhas não coincidem."));
+    redirect(urlWithMessage(updatePath, "error", "As senhas não coincidem."));
   }
 
-  await requireOperationalBackend("/auth/atualizar-senha");
+  await requireOperationalBackend(updatePath);
   const supabase = await createServerSupabaseClient();
   const { data: claimsData } = await supabase.auth.getClaims();
   if (!claimsData?.claims?.sub) {
-    redirect(urlWithMessage("/login", "error", "O link de recuperação expirou. Solicite um novo."));
+    redirect(urlWithMessage("/login", "error", "O link de autenticação expirou. Solicite um novo."));
   }
 
   const { error } = await supabase.auth.updateUser({ password });
@@ -126,11 +128,11 @@ export async function updatePasswordAction(formData: FormData) {
       correlationId: await requestCorrelationId(),
       error,
     });
-    redirect(urlWithMessage("/auth/atualizar-senha", "error", "Não foi possível atualizar a senha. Solicite um novo link."));
+    redirect(urlWithMessage(updatePath, "error", "Não foi possível atualizar a senha. Solicite um novo link."));
   }
 
   revalidatePath("/", "layout");
-  redirect(urlWithMessage("/workspace", "message", "Senha atualizada com sucesso."));
+  redirect(urlWithMessage(next, "message", "Senha atualizada com sucesso."));
 }
 
 export async function selectOrganizationAction(formData: FormData) {

@@ -1,47 +1,276 @@
 "use server";
 
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { getRuntimeAccessSummary } from "@/lib/runtime/server";
+import {
+  getApplicationBaseUrl,
+  getRuntimeAccessSummary,
+} from "@/lib/runtime/server";
 import { createServerAdminSupabaseClient, createServerSupabaseClient } from "@/lib/supabase/server";
+import {
+  buildBootstrapInviteRedirectUrl,
+  classifyBootstrapIdentity,
+  determineBootstrapInvitationState,
+  isBootstrapInviteTemplateReady,
+  normalizeBootstrapOwnerEmail,
+  resolveBootstrapOrganizationId,
+  type BootstrapIdentityState,
+  type BootstrapInvitationState,
+} from "./bootstrap-policy";
 import { ORGANIZATION_COOKIE } from "./runtime";
 import { urlWithMessage } from "./redirect";
 
 interface BootstrapStatus {
-  configured: boolean;
-  authenticated: boolean;
-  eligible: boolean;
-  email?: string;
+  readonly configured: boolean;
+  readonly authenticated: boolean;
+  readonly eligible: boolean;
+  readonly invitationState: BootstrapInvitationState;
 }
 
+interface OwnerRow {
+  readonly id: string;
+  readonly user_id: string;
+}
+
+const AUTH_USERS_PER_PAGE = 1000;
+const MAX_AUTH_USER_PAGES = 100;
+
 function configuredOwnerEmail(): string | undefined {
-  const value = process.env.LOJASAPH_BOOTSTRAP_OWNER_EMAIL?.trim().toLowerCase();
-  return value || undefined;
+  return normalizeBootstrapOwnerEmail(process.env.LOJASAPH_BOOTSTRAP_OWNER_EMAIL);
+}
+
+function organizationErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message === "BOOTSTRAP_ORGANIZATION_NOT_AVAILABLE") {
+    return "A organização configurada para bootstrap não existe ou está inativa.";
+  }
+  if (error instanceof Error && error.message === "BOOTSTRAP_ORGANIZATION_AMBIGUOUS") {
+    return "Defina LOJASAPH_BOOTSTRAP_ORGANIZATION_ID quando houver zero ou mais de uma organização ativa.";
+  }
+  return "Não foi possível verificar a organização do bootstrap.";
+}
+
+async function resolveBootstrapOrganization(admin: SupabaseClient): Promise<string> {
+  const configuredOrganizationId = process.env.LOJASAPH_BOOTSTRAP_ORGANIZATION_ID?.trim();
+
+  if (configuredOrganizationId) {
+    const { data, error } = await admin
+      .from("organizations")
+      .select("id")
+      .eq("id", configuredOrganizationId)
+      .eq("status", "active")
+      .maybeSingle();
+    if (error) throw new Error("BOOTSTRAP_ORGANIZATION_LOOKUP_FAILED");
+
+    return resolveBootstrapOrganizationId(
+      configuredOrganizationId,
+      data ? [data.id as string] : [],
+    );
+  }
+
+  const { data, error } = await admin
+    .from("organizations")
+    .select("id")
+    .eq("status", "active")
+    .limit(2);
+  if (error) throw new Error("BOOTSTRAP_ORGANIZATION_LOOKUP_FAILED");
+
+  return resolveBootstrapOrganizationId(
+    undefined,
+    (data ?? []).map((row) => row.id as string),
+  );
+}
+
+async function readActiveOwners(admin: SupabaseClient, organizationId: string): Promise<readonly OwnerRow[]> {
+  const { data, error } = await admin
+    .from("organization_memberships")
+    .select("id, user_id")
+    .eq("organization_id", organizationId)
+    .eq("role", "owner")
+    .eq("active", true)
+    .limit(2);
+  if (error) throw new Error("BOOTSTRAP_OWNER_LOOKUP_FAILED");
+  return (data ?? []) as OwnerRow[];
+}
+
+async function readBootstrapIdentityState(
+  admin: SupabaseClient,
+  expectedEmail: string,
+): Promise<BootstrapIdentityState> {
+  for (let page = 1; page <= MAX_AUTH_USER_PAGES; page += 1) {
+    const { data, error } = await admin.auth.admin.listUsers({
+      page,
+      perPage: AUTH_USERS_PER_PAGE,
+    });
+    if (error) throw new Error("BOOTSTRAP_AUTH_USER_LOOKUP_FAILED");
+
+    const state = classifyBootstrapIdentity(
+      data.users.map((user) => ({
+        email: user.email,
+        emailConfirmedAt: user.email_confirmed_at,
+      })),
+      expectedEmail,
+    );
+    if (state !== "missing") return state;
+    if (data.users.length < AUTH_USERS_PER_PAGE) return "missing";
+  }
+
+  throw new Error("BOOTSTRAP_AUTH_USER_LOOKUP_LIMIT");
+}
+
+function optionalApplicationBaseUrl(): string | undefined {
+  try {
+    return getApplicationBaseUrl();
+  } catch {
+    return undefined;
+  }
 }
 
 export async function getBootstrapStatus(): Promise<BootstrapStatus> {
   const runtime = getRuntimeAccessSummary();
-  if (runtime.supabaseAccess !== "allowed" || runtime.adminAccess !== "allowed") {
-    return { configured: false, authenticated: false, eligible: false };
+  const expectedEmail = configuredOwnerEmail();
+  if (
+    runtime.supabaseAccess !== "allowed"
+    || runtime.adminAccess !== "allowed"
+    || !expectedEmail
+  ) {
+    return {
+      configured: false,
+      authenticated: false,
+      eligible: false,
+      invitationState: "not_configured",
+    };
   }
 
-  const expectedEmail = configuredOwnerEmail();
-  if (!expectedEmail) return { configured: false, authenticated: false, eligible: false };
-
   const supabase = await createServerSupabaseClient();
-  const { data, error } = await supabase.auth.getUser();
-  const email = data.user?.email?.trim().toLowerCase();
-  if (error || !data.user || !email) {
-    return { configured: true, authenticated: false, eligible: false };
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  const authenticatedEmail = userData.user?.email?.trim().toLowerCase();
+  const authenticated = !userError && Boolean(userData.user && authenticatedEmail);
+  const eligible = authenticated && authenticatedEmail === expectedEmail;
+
+  let invitationState: BootstrapInvitationState = "unavailable";
+  try {
+    const admin = createServerAdminSupabaseClient();
+    const organizationId = await resolveBootstrapOrganization(admin);
+    const owners = await readActiveOwners(admin, organizationId);
+
+    if (owners.length > 0) {
+      invitationState = "closed";
+    } else {
+      const identityState = await readBootstrapIdentityState(admin, expectedEmail);
+      invitationState = determineBootstrapInvitationState({
+        configured: true,
+        templateReady: isBootstrapInviteTemplateReady(process.env.LOJASAPH_BOOTSTRAP_INVITE_TEMPLATE_READY),
+        appUrlReady: Boolean(optionalApplicationBaseUrl()),
+        ownerExists: false,
+        identityState,
+      });
+    }
+  } catch {
+    invitationState = "unavailable";
   }
 
   return {
     configured: true,
-    authenticated: true,
-    eligible: email === expectedEmail,
-    email,
+    authenticated,
+    eligible,
+    invitationState,
   };
+}
+
+export async function inviteBootstrapOwnerAction() {
+  const runtime = getRuntimeAccessSummary();
+  if (runtime.supabaseAccess !== "allowed" || runtime.adminAccess !== "allowed") {
+    redirect(urlWithMessage("/bootstrap", "error", "Bootstrap administrativo não está habilitado neste ambiente."));
+  }
+
+  const expectedEmail = configuredOwnerEmail();
+  if (!expectedEmail) {
+    redirect(urlWithMessage("/bootstrap", "error", "Bootstrap não está habilitado neste ambiente."));
+  }
+
+  let admin: SupabaseClient;
+  try {
+    admin = createServerAdminSupabaseClient();
+  } catch {
+    redirect(urlWithMessage("/bootstrap", "error", "Credencial administrativa do bootstrap não está disponível."));
+  }
+
+  let organizationId: string;
+  try {
+    organizationId = await resolveBootstrapOrganization(admin);
+  } catch (error) {
+    redirect(urlWithMessage("/bootstrap", "error", organizationErrorMessage(error)));
+  }
+
+  let owners: readonly OwnerRow[];
+  try {
+    owners = await readActiveOwners(admin, organizationId);
+  } catch {
+    redirect(urlWithMessage("/bootstrap", "error", "Não foi possível verificar o owner atual."));
+  }
+
+  if (owners.length > 0) {
+    redirect(urlWithMessage("/bootstrap", "error", "A organização já possui owner ativo. O bootstrap inicial está encerrado."));
+  }
+
+  let identityState: BootstrapIdentityState;
+  try {
+    identityState = await readBootstrapIdentityState(admin, expectedEmail);
+  } catch {
+    redirect(urlWithMessage("/bootstrap", "error", "Não foi possível verificar a identidade Auth autorizada. O convite não foi enviado."));
+  }
+
+  if (identityState === "pending") {
+    redirect(urlWithMessage(
+      "/bootstrap",
+      "message",
+      "A identidade autorizada já possui convite pendente. Use o link recebido ou siga o runbook para reemissão controlada.",
+    ));
+  }
+
+  if (identityState === "confirmed") {
+    redirect(urlWithMessage(
+      "/bootstrap",
+      "message",
+      "A identidade autorizada já existe. Entre com essa conta para concluir o vínculo owner.",
+    ));
+  }
+
+  if (!isBootstrapInviteTemplateReady(process.env.LOJASAPH_BOOTSTRAP_INVITE_TEMPLATE_READY)) {
+    redirect(urlWithMessage(
+      "/bootstrap",
+      "error",
+      "O convite permanece bloqueado até o template SSR de convite ser confirmado no ambiente.",
+    ));
+  }
+
+  const appUrl = optionalApplicationBaseUrl();
+  if (!appUrl) {
+    redirect(urlWithMessage(
+      "/bootstrap",
+      "error",
+      "A URL pública segura da aplicação não está configurada para o convite.",
+    ));
+  }
+
+  const { error: inviteError } = await admin.auth.admin.inviteUserByEmail(expectedEmail, {
+    redirectTo: buildBootstrapInviteRedirectUrl(appUrl),
+  });
+  if (inviteError) {
+    redirect(urlWithMessage(
+      "/bootstrap",
+      "error",
+      "Não foi possível enviar o convite inicial. Nenhum membership foi criado.",
+    ));
+  }
+
+  redirect(urlWithMessage(
+    "/bootstrap",
+    "message",
+    "Convite inicial enviado ao endereço autorizado no ambiente. Nenhum membership foi criado ainda.",
+  ));
 }
 
 export async function bootstrapOwnerAction() {
@@ -66,51 +295,33 @@ export async function bootstrapOwnerAction() {
     redirect(urlWithMessage("/sem-acesso", "error", "Este usuário não está autorizado para o bootstrap inicial."));
   }
 
-  const admin = createServerAdminSupabaseClient();
-  const configuredOrganizationId = process.env.LOJASAPH_BOOTSTRAP_ORGANIZATION_ID?.trim();
-  let organizationId = configuredOrganizationId;
-
-  if (organizationId) {
-    const { data, error } = await admin
-      .from("organizations")
-      .select("id")
-      .eq("id", organizationId)
-      .eq("status", "active")
-      .maybeSingle();
-    if (error || !data) {
-      redirect(urlWithMessage("/bootstrap", "error", "A organização configurada para bootstrap não existe ou está inativa."));
-    }
-  } else {
-    const { data, error } = await admin.from("organizations").select("id").eq("status", "active").limit(2);
-    if (error || !data || data.length !== 1) {
-      redirect(
-        urlWithMessage(
-          "/bootstrap",
-          "error",
-          "Defina LOJASAPH_BOOTSTRAP_ORGANIZATION_ID quando houver zero ou mais de uma organização ativa.",
-        ),
-      );
-    }
-    organizationId = data[0]!.id as string;
+  let admin: SupabaseClient;
+  try {
+    admin = createServerAdminSupabaseClient();
+  } catch {
+    redirect(urlWithMessage("/bootstrap", "error", "Credencial administrativa do bootstrap não está disponível."));
   }
 
-  const { data: owners, error: ownersError } = await admin
-    .from("organization_memberships")
-    .select("id, user_id")
-    .eq("organization_id", organizationId)
-    .eq("role", "owner")
-    .eq("active", true)
-    .limit(2);
-  if (ownersError) {
+  let organizationId: string;
+  try {
+    organizationId = await resolveBootstrapOrganization(admin);
+  } catch (error) {
+    redirect(urlWithMessage("/bootstrap", "error", organizationErrorMessage(error)));
+  }
+
+  let owners: readonly OwnerRow[];
+  try {
+    owners = await readActiveOwners(admin, organizationId);
+  } catch {
     redirect(urlWithMessage("/bootstrap", "error", "Não foi possível verificar o owner atual."));
   }
 
-  const existingForUser = owners?.find((owner) => owner.user_id === user.id);
-  if (!existingForUser && (owners?.length ?? 0) > 0) {
+  const existingForUser = owners.find((owner) => owner.user_id === user.id);
+  if (!existingForUser && owners.length > 0) {
     redirect(urlWithMessage("/sem-acesso", "error", "A organização já possui owner ativo. O bootstrap inicial está encerrado."));
   }
 
-  let membershipId = existingForUser?.id as string | undefined;
+  let membershipId = existingForUser?.id;
   if (!membershipId) {
     const { data: membership, error: membershipError } = await admin
       .from("organization_memberships")
