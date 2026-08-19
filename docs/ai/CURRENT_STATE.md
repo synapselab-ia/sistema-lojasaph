@@ -4,112 +4,105 @@
 
 ## Estado atual
 
-A Fase 25 foi concluída, homologada e integrada na `main`.
+A implementação técnica da Fase 26 foi concluída e integrada na `main`; a Issue #65 permanece aberta apenas para a homologação operacional do primeiro owner.
 
 - Repositório: `synapselab-ia/sistema-lojasaph`
-- PR #64 — merged
-- Issue #63 — closed/completed
-- merge commit funcional: `e345401fa80e98c6c3433fc98843c44c146a74fb`
-- head funcional final validado pré-merge: `7040d7ec7faf356504ce3dd10f2dd4628ea69ca0`
-- `CI` #281 — success
-- `Inventory Count Integration` #167 — success
-- `Business Transactions Integration` #150 — success
-- próxima Issue: #65 — `Fase 26 — convite seguro do primeiro owner para homologação persistente`
+- PR #66 — merged
+- Issue #65 — open
+- head técnico validado: `516562485dc1a2561add033cf5db1be4cac14ce5`
+- merge commit: `677daa83b9e312199d06de4d85f46a3d6a3eb32c`
+- CI #286 — success
+- Inventory Count Integration / Business Transactions Integration — não aplicáveis ao diff por `paths` dos próprios workflows
+- nenhuma migration/DDL nesta fase
+- nenhum usuário real criado e nenhum convite enviado
 
-## Fase 25 — período gerencial explícito no Dashboard
+## Fase 26 — convite seguro do primeiro owner
 
-A dimensão período de `REQ-DASH-002` foi fechada sem transformar métricas cumulativas ou snapshots em números temporalmente falsos.
+O sistema agora possui o caminho técnico para criar a primeira identidade Auth sem abrir cadastro público nem compartilhar senha.
 
 Implementado:
 
-- `DashboardFilter`/query/UI aceitam período opcional `dateFrom` + `dateTo`;
-- período exige par completo, datas ISO `YYYY-MM-DD` reais, `dateFrom <= dateTo` e limites inclusivos;
-- `horizonDays` permanece conceito separado do período;
-- Financeiro usa `due_date` da obrigação como data canônica;
-- `net_paid_amount` continua cumulativo das obrigações selecionadas e a UI não o chama de pagamento realizado no período;
-- caixas abertos permanecem estado atual; fechamentos/divergências usam `cash_sessions.business_date`;
-- pedidos pendentes permanecem estado atual; alertas de entrega usam `expected_delivery_date` conhecida;
-- transferências em trânsito e inventários em andamento permanecem snapshots atuais;
-- validades usam `inventory_batches.expiration_date`;
-- Unit + Setor da Fase 24, incluindo Transferências por endpoint e Caixa Unit-level, foram preservados;
-- UI diferencia explicitamente Horizonte, Período e Estado atual;
-- nenhuma migration, view, RPC, grant ou policy nova foi necessária.
+- `inviteBootstrapOwnerAction` executa exclusivamente server-side;
+- destinatário vem somente de `LOJASAPH_BOOTSTRAP_OWNER_EMAIL`; não existe campo de e-mail no browser;
+- usa `createServerAdminSupabaseClient()` + `auth.admin.inviteUserByEmail()`; não há SQL direto em `auth.users`;
+- Organization alvo continua resolvida fail-closed;
+- owner ativo encerra o bootstrap;
+- identidade autorizada é classificada como `missing`, `pending` ou `confirmed`; pending/confirmed não recebem convite automático duplicado;
+- `LOJASAPH_BOOTSTRAP_INVITE_TEMPLATE_READY=true` é gate temporário/fail-closed antes de qualquer envio;
+- convite SSR usa o template Supabase com `TokenHash` + `type=invite` para o `/auth/callback` existente;
+- `/auth/callback` continua usando `verifyOtp()` e sessão SSR em cookie;
+- o fluxo de definição de senha aceita somente `next` interno validado e pode retornar à `/bootstrap`;
+- `bootstrapOwnerAction` continua sendo o único caminho que cria `organization_memberships.role='owner'` e `audit_logs.action='membership.bootstrap_owner'`;
+- signup público continua ausente;
+- nenhuma senha padrão, token ou secret foi versionado.
 
-## Validação da Fase 25
+Runbook: `docs/operations/bootstrap-owner.md`.
 
-Head `7040d7ec7faf356504ce3dd10f2dd4628ea69ca0` passou 3/3:
+## Validação
 
-- `CI` #281 — lint, typecheck, Vitest, production build, backup/restore e todas as suítes PostgreSQL — success;
-- `Inventory Count Integration` #167 — success;
-- `Business Transactions Integration` #150 — success.
+Head final `516562485dc1a2561add033cf5db1be4cac14ce5`:
 
-`supabase/tests/security_hardening.sql` permaneceu verde.
+- CI #286 — success;
+- lint — success;
+- typecheck — success;
+- Vitest — success;
+- production build — success;
+- PostgreSQL 17 client — success;
+- migrations + seed — success;
+- backup/restore — success;
+- schema/RLS smoke — success;
+- `supabase/tests/security_hardening.sql` — success;
+- auth/Organization isolation e todas as suítes transacionais — success.
+
+O CI #285 anterior teve o job de aplicação verde, mas o job de banco expirou antes das migrations porque o runner ficou bloqueado no mirror `azure.archive.ubuntu.com`. A correção `51656248` limitou o update ao PGDG com retries/timeouts; o CI #286 então completou o banco integralmente. Não houve alteração funcional para mascarar o incidente.
 
 ## Supabase remoto
 
-Projeto `fhbvwyttikrbeaanatlr`, PostgreSQL 17. Nenhum DDL foi aplicado na Fase 25.
+Projeto `fhbvwyttikrbeaanatlr`, PostgreSQL 17.
 
-Homologação read-only confirmou:
+Read-only antes e depois da validação técnica:
 
-- timezone da Organization demo: `America/Sao_Paulo`;
-- Financeiro: 0 parcelas;
-- Caixa: 0 sessões;
-- Compras: 0 pedidos;
-- Transferências: 0;
-- Inventários: 0;
-- 2 lotes ativos com validade: `2026-08-20` e `2026-08-28`;
-- intervalo `2026-08-20`..`2026-08-20` retorna 1 lote;
-- intervalo `2026-08-21`..`2026-08-27` retorna 0;
-- intervalo `2026-08-28`..`2026-08-28` retorna 1 lote.
+- 1 Organization ativa;
+- 0 Auth users;
+- 0 memberships ativos;
+- 0 owners ativos.
 
-Um usuário/membership sintético foi usado somente dentro de `BEGIN/ROLLBACK`; pós-smoke confirmou 0 resíduo e os 2 lotes reais permaneceram intactos.
+Portanto a Fase 26 ainda não teve efeito operacional no Auth ou nos dados. Como não houve DDL, advisors não foram reexecutados por causalidade.
 
-## RLS/hardening vigente
+## Pendência operacional — Issue #65
 
-Auditoria remota recente continua mostrando:
+Para concluir a Issue #65 falta exclusivamente a homologação real do primeiro owner.
 
-- 45/45 tabelas `public` com RLS habilitado;
-- nenhuma tabela sem policy;
-- nenhum DML para `anon`/`PUBLIC`;
-- nenhuma policy permissiva suspeita;
-- 0 leaks em smoke como `authenticated` sem membership;
-- `payable_installment_summary` com `security_invoker=true`.
+Pré-condição indispensável: o operador deve fornecer explicitamente o e-mail que será autorizado. Esse endereço **não pode ser inferido** de GitHub, Vercel, contas conectadas, commits ou metadados.
 
-Os warnings conhecidos do Security Advisor para RPCs `SECURITY DEFINER` autenticados permanecem uma superfície separada e intencional; não fazer sweep oportunista.
+Depois do e-mail explícito, a próxima sessão deve:
 
-## Próxima lacuna objetiva — acesso persistente inicial
-
-A Issue #65 registra o bloqueio real para homologar o Workspace persistente.
-
-Estado verificado:
-
-- Supabase remoto possui 1 Organization ativa, **0 usuários Auth**, **0 memberships ativos** e **0 owners ativos**;
-- `/login` possui login por e-mail/senha e recuperação, sem signup público;
-- `/bootstrap` já existe e exige sessão válida cujo e-mail coincide com `LOJASAPH_BOOTSTRAP_OWNER_EMAIL`;
-- `bootstrapOwnerAction` usa admin client server-only para criar somente o membership `owner` + audit, após comprovar ausência de owner ativo;
-- o bootstrap não cria a identidade Supabase Auth, criando um chicken-and-egg para a primeira conta;
-- `.env.example` já documenta as variáveis server-only de bootstrap.
-
-A Fase 26 deve adicionar um caminho de **convite Auth inicial** restrito ao e-mail configurado server-side, sem cadastro público, senha padrão ou INSERT direto em `auth.users`, e depois reutilizar o bootstrap de membership existente.
+- revalidar ausência de owner e estado da identidade Auth;
+- configurar temporariamente Production conforme `docs/operations/bootstrap-owner.md`;
+- confirmar Auth Redirect URL Allow List, template `Invite user` com TokenHash e entrega de e-mail;
+- só então ativar `LOJASAPH_BOOTSTRAP_INVITE_TEMPLATE_READY=true`;
+- fazer um único deployment Production intencional se o código da Fase 26 ainda não estiver publicado;
+- enviar um único convite controlado;
+- o usuário convidado deve abrir o e-mail e definir a própria senha;
+- concluir `/bootstrap` para criar membership + audit;
+- verificar login/RLS/audit e remover/desabilitar as variáveis temporárias;
+- fechar #65 somente depois dessa verificação.
 
 ## Vercel
 
-Projeto `sistema-lojasaph` conectado. O último deployment Production observado está `READY` no commit `a0ab92bbc6cff25527e684a0e37a87450aa265ca`, anterior às Fases 25/26. `vercel.json` continua com `git.deploymentEnabled=false`.
-
-Nenhum deploy Vercel foi disparado nesta sessão. Não fazer deployment rotineiro; deployment intencional só quando necessário para homologação final.
+`vercel.json` mantém `git.deploymentEnabled=false`. Nenhum deploy Vercel foi disparado durante a implementação técnica da Fase 26. O Production observado antes do encerramento técnico ainda estava no commit `a0ab92bbc6cff25527e684a0e37a87450aa265ca`, portanto a homologação real exigirá verificar novamente o estado e, se necessário, um único deployment deliberado.
 
 ## Não repetir
 
-- não reabrir Fases 24/25, Issues #61/#63 ou hardening/Issue #54;
-- não reaplicar migrations antigas;
-- não regredir Unit/Setor/período do Dashboard;
-- não inventar granularidade temporal/setorial;
+- não refazer PR #66 nem a implementação técnica do convite;
+- não reabrir Fases 24/25 ou Issues #61/#63;
 - não criar usuário diretamente em `auth.users` por SQL;
 - não habilitar signup público;
-- não versionar ou registrar senha/segredo;
-- não criar conta/convite real sem e-mail explicitamente fornecido pelo operador;
-- não alterar RLS/grants para facilitar onboarding;
-- não reativar deploy Vercel por commit;
+- não inferir o e-mail do owner;
+- não gerar/guardar senha padrão;
+- não enviar convite antes de template/redirect/env estarem comprovados;
+- não ampliar RLS/grants;
+- não reativar auto-deploy Vercel;
 - não importar dados reais;
 - não inferir Q-001..Q-025;
 - não fazer sweep de advisors antigos sem causalidade.
