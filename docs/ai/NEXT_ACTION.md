@@ -2,112 +2,138 @@
 
 ## Contexto
 
-A implementação técnica da Fase 26 / Issue #65 foi concluída no PR #66 e mergeada na `main`.
+A Fase 26 / Issue #65 possui código técnico verde na `main`, incluindo a correção para o projeto Supabase Free real.
 
-Estado técnico comprovado:
+Estado comprovado:
 
-- head validado: `516562485dc1a2561add033cf5db1be4cac14ce5`;
-- merge commit: `677daa83b9e312199d06de4d85f46a3d6a3eb32c`;
-- CI #286 — success, incluindo lint, typecheck, Vitest, build, migrations, backup/restore, RLS/hardening e suítes PostgreSQL;
-- nenhum DDL na Fase 26;
-- nenhum convite real ou usuário real criado;
-- Supabase remoto: 1 Organization ativa, 0 Auth users, 0 memberships, 0 owners;
-- Issue #65 permanece aberta somente para homologação operacional.
+- PR #66 — merged;
+- PR #67 — merged;
+- head técnico final: `24bba6ef3e80c6c3897d302ea7182fb368005029`;
+- merge corretivo: `e26f5030b1fd7d7a12adfcae38667993b9382052`;
+- CI #291 — success;
+- nenhum DDL;
+- remoto: 1 Organization ativa, 0 Auth users, 0 memberships, 0 owners;
+- Issue #65 continua aberta somente para configuração/homologação operacional.
 
-O fluxo técnico está documentado em `docs/operations/bootstrap-owner.md`. Não refazer a implementação do convite.
+O projeto Supabase está no plano Free e foi criado em 2026-07-06. Como novos projetos Free usando SMTP padrão não podem customizar Auth Email Templates, o fluxo vigente usa o template padrão + redirect `/auth/invite` + handoff implícito protegido. Não voltar a exigir template customizado.
 
 ## Fazer agora
 
-1. Confirmar estado real de `main`, Issue #65, branch ativa, PRs, CI, Supabase e deployment Vercel.
-2. Ler antes de agir:
+1. Confirmar `main`, Issue #65, branch `agent/bootstrap-owner-homologation`, PRs/CI, Supabase remoto e Production Vercel.
+2. Ler:
    - `AGENTS.md`;
    - `docs/00-START-HERE.md`;
    - `docs/ai/CURRENT_STATE.md`;
    - `docs/ai/HANDOFF.md`;
-   - este `NEXT_ACTION.md`;
+   - este arquivo;
    - `docs/ai/WORKFLOW.md`;
    - `docs/operations/bootstrap-owner.md`;
-   - `docs/operations/environments.md`;
-   - `.env.example`;
-   - `src/lib/auth/bootstrap.ts`;
-   - `src/app/bootstrap/page.tsx`;
-   - `/auth/callback` e atualização de senha.
-3. Confirmar que o código técnico do PR #66 já está na `main`; não reimplementar helpers, action, callback ou runbook salvo regressão concreta.
-4. Verificar se o operador **forneceu explicitamente no chat o e-mail que deve ser o primeiro owner**.
-5. Se o e-mail NÃO foi fornecido explicitamente:
-   - não inferir endereço de GitHub, Vercel, conta conectada, commits ou metadados;
-   - não criar Auth user;
-   - não enviar convite;
-   - não alterar envs de Production;
-   - não fazer deployment somente para avançar artificialmente;
-   - manter Issue #65 aberta e registrar que a próxima ação depende do e-mail explícito.
-6. Se o e-mail FOI fornecido explicitamente, revalidar remotamente antes de qualquer mutação:
-   - Organization alvo ativa;
-   - ausência de owner ativo;
-   - estado da identidade Auth para o e-mail autorizado;
-   - hardening/isolamento intactos.
-7. Descobrir e usar os conectores disponíveis antes de afirmar que alguma configuração precisa ser manual. Para Supabase Auth/Vercel, verificar as ações expostas pelo plugin conectado.
-8. Preparar a configuração temporária de Production conforme o runbook:
-   - `LOJASAPH_BOOTSTRAP_OWNER_EMAIL` = e-mail explícito;
-   - `LOJASAPH_BOOTSTRAP_ORGANIZATION_ID` somente se necessário;
-   - `SUPABASE_SECRET_KEY` exclusivamente server-only e somente se ainda necessária no target;
-   - callback canônico `/auth/callback` na Redirect URL Allow List;
-   - template hospedado `Invite user` com `TokenHash`, `type=invite` e continuação segura para `/auth/atualizar-senha?next=/bootstrap`;
-   - confirmar capacidade de entrega do e-mail;
-   - definir `LOJASAPH_BOOTSTRAP_INVITE_TEMPLATE_READY=true` somente depois das verificações anteriores.
-9. Verificar o deployment Production da Vercel. O último observado antes deste handoff estava no commit `a0ab92bbc6cff25527e684a0e37a87450aa265ca`, portanto possivelmente não contém a Fase 26.
-10. Se o Production ainda estiver antigo e todas as pré-condições do passo 8 estiverem prontas, fazer **um único deployment Production intencional**. Não reativar Git auto-deploy e não fazer deploys intermediários.
-11. Abrir `/bootstrap` no Production da Fase 26 e confirmar o estado `ready` sem expor o e-mail na UI.
-12. Enviar exatamente um convite controlado. Não criar usuário por SQL nem usar senha padrão.
-13. O destinatário deve abrir o convite e definir a própria senha. Não pedir nem conhecer essa senha.
-14. Após a etapa humana do convite, confirmar sessão do e-mail autorizado e concluir `bootstrapOwnerAction`.
-15. Verificar no Supabase:
-   - exatamente o membership owner esperado e ativo;
-   - audit `membership.bootstrap_owner` correspondente;
+   - `docs/operations/environments.md`.
+3. Não reimplementar PR #66/#67. O fluxo técnico final é:
+   - `inviteUserByEmail` server-only;
+   - redirect `/auth/invite`;
+   - fragmento implícito tratado somente no browser;
+   - fragmento removido imediatamente da URL;
+   - POST same-origin para `/auth/invite/session`;
+   - access token + e-mail autorizado revalidados server-side;
+   - sessão SSR em cookie;
+   - usuário define a própria senha;
+   - `bootstrapOwnerAction` cria membership + audit.
+4. O operador já forneceu explicitamente o e-mail do primeiro owner na sessão que produziu este handoff, mas o valor não foi persistido no GitHub. Se o valor não estiver no contexto do chat atual, pedir que o operador o repita; nunca inferir de contas conectadas.
+5. Ignorar qualquer senha que tenha sido oferecida no chat anterior. O agente não deve usar/conhecer a senha final; ela é definida pelo usuário via convite.
+6. Antes de qualquer convite, revalidar read-only:
+   - 1 Organization ativa;
+   - 0 owner ativo;
+   - identidade Auth autorizada ausente/pending/confirmed;
+   - hardening/RLS intactos.
+7. Os conectores atuais não expõem escrita de Supabase Auth URL/SMTP/Team nem Vercel env vars. Não fingir que foram configurados. O operador precisa executar as configurações abaixo no Dashboard.
+
+## Configuração manual obrigatória antes do deploy
+
+### Supabase
+
+1. Authentication → URL Configuration:
+   - confirmar Site URL canônica;
+   - adicionar exatamente `https://sistema-lojasaph.vercel.app/auth/invite` à Redirect URL Allow List.
+2. Organization Settings → Team:
+   - confirmar que o e-mail autorizado é membro da Supabase Organization se for usar SMTP padrão;
+   - se não for membro, configurar SMTP próprio antes do convite.
+3. Não enviar convite para testar capacidade de entrega; o SMTP padrão tem restrição de destinatário/rate limit e uma tentativa pode criar identidade pending.
+4. Não é necessário editar Auth Email Template para o fluxo padrão atual.
+
+### Vercel — target Production somente
+
+Configurar diretamente no Dashboard, sem copiar valores para chat/GitHub:
+
+- `SUPABASE_SECRET_KEY` — secret/admin key server-only;
+- `LOJASAPH_BOOTSTRAP_OWNER_EMAIL` — e-mail explicitamente autorizado;
+- `LOJASAPH_BOOTSTRAP_INVITE_READY=true` — somente após a configuração Supabase acima estar comprovada.
+
+`LOJASAPH_BOOTSTRAP_ORGANIZATION_ID` não é necessária no estado atual, pois existe exatamente uma Organization ativa.
+
+Não configurar a flag antiga `LOJASAPH_BOOTSTRAP_INVITE_TEMPLATE_READY` em instalações novas.
+
+## Depois que o operador disser que a configuração está pronta
+
+1. Revalidar Supabase remoto antes da primeira escrita.
+2. Confirmar Production Vercel ainda antigo; o último observado antes deste handoff era `dpl_Dx5wwzHUuc4hNG9D5sTGh6mqWSjB`, commit `a0ab92bbc6cff25527e684a0e37a87450aa265ca`.
+3. Fazer **um único deployment Production intencional** da `main` atual. Não reativar Git auto-deploy.
+4. Verificar `https://sistema-lojasaph.vercel.app/health`:
+   - `environment=production`;
+   - `supabaseAccess=allowed`;
+   - `adminAccess=allowed`.
+5. Abrir `/bootstrap` e confirmar `ready` sem expor o e-mail na UI.
+6. Enviar exatamente um convite.
+7. O destinatário deve abrir o e-mail e definir a própria senha. Não pedir a senha ao usuário.
+8. Após a etapa humana, concluir `Criar vínculo owner inicial` em `/bootstrap`.
+9. Verificar remotamente:
+   - exatamente 1 owner esperado e ativo;
    - nenhum membership duplicado;
+   - audit `membership.bootstrap_owner` correspondente;
    - RLS efetivo no Workspace.
-16. Confirmar login normal no Workspace com a credencial definida pelo próprio usuário, sem registrar senha/token.
-17. Encerrar o bootstrap removendo/desabilitando as configurações temporárias conforme o runbook, incluindo e-mail/readiness e secret administrativo se não houver outra necessidade aprovada.
-18. Confirmar `/bootstrap` encerrado/fail-closed e ausência de segredo exposto.
-19. Somente após tudo acima, fechar Issue #65 e atualizar CURRENT_STATE/HANDOFF/NEXT_ACTION para a próxima lacuna objetiva.
+10. Confirmar login normal sem registrar credenciais.
+11. Remover/desabilitar no Vercel as variáveis temporárias de bootstrap e o secret administrativo se nenhuma outra rotina aprovada depender dele.
+12. Como environment variables de um deployment já criado podem permanecer no runtime até novo deployment, avaliar a forma menos custosa de invalidar a credencial após o bootstrap. Prioridade: não deixar secret administrativo válido desnecessariamente. Registrar exatamente a ação tomada sem expor valor.
+13. Confirmar `/bootstrap` encerrado/fail-closed e fechar Issue #65 somente depois de membership + audit + RLS + desativação operacional.
+14. Depois de fechar #65, auditar requirements/MUST restantes e criar a próxima Issue objetiva; não inventar nova fase antes disso.
 
 ## Segurança obrigatória
 
 - signup público continua ausente;
-- destinatário do primeiro convite nunca vem do browser;
-- e-mail só pode ser o fornecido explicitamente pelo operador;
-- nenhuma senha padrão/temporária conhecida pelo agente;
+- e-mail autorizado nunca vem do browser;
 - nenhum INSERT/UPDATE direto em `auth.users`;
+- nenhuma senha padrão/temporária conhecida pelo agente;
 - admin key somente server-side;
-- `bootstrapOwnerAction` continua única criação do membership owner + audit;
+- `bootstrapOwnerAction` é a única criação de membership owner + audit;
 - não ampliar RLS/grants;
+- não versionar PII/secret/token/senha;
 - `supabase/tests/security_hardening.sql` continua gate permanente.
 
 ## CI
 
-O job de banco do CI foi estabilizado no PR #66 após um bloqueio reproduzível do mirror Azure. Não desfazer a correção que limita o update ao PGDG com retries/timeouts sem evidência concreta.
-
-`Inventory Count Integration` e `Business Transactions Integration` possuem filtros `paths`; não dispará-los artificialmente quando o diff não toca seus escopos.
+CI #291 é o gate técnico final do PR #67. Os workflows Inventory Count e Business Transactions não se aplicam ao diff de Auth por seus `paths`; não dispará-los artificialmente.
 
 ## Vercel
 
-- `git.deploymentEnabled=false` permanece vigente;
-- não fazer deploy rotineiro;
-- Production deploy apenas uma vez, no ponto de homologação real, depois de e-mail/configuração prontos.
+- `vercel.json` continua `git.deploymentEnabled=false`;
+- nenhum deploy foi feito nesta homologação até agora;
+- não fazer deploy antes de redirect + entrega + envs estarem prontos;
+- não gastar quota com tentativas intermediárias.
 
 ## Não fazer
 
-- não refazer PR #66;
-- não fechar #65 antes de convite + membership + audit + RLS + desativação do bootstrap;
-- não inferir o e-mail do owner;
-- não usar o e-mail de conta GitHub/Vercel como autorização implícita;
+- não refazer PR #66/#67;
+- não voltar a exigir template customizado no Supabase Free atual;
+- não usar a senha oferecida anteriormente;
+- não persistir o e-mail autorizado em GitHub;
+- não enviar convite antes de configurar redirect/env/entrega;
 - não habilitar signup público;
 - não criar usuário Auth por SQL;
-- não expor secrets/tokens/senhas;
-- não reativar auto-deploy Vercel;
+- não expor secret/token;
+- não reativar auto-deploy;
 - não importar dados reais;
 - não inferir Q-001..Q-025.
 
 ## Critério de conclusão
 
-A Issue #65 só está concluída quando um e-mail explicitamente autorizado recebeu o convite oficial Supabase, definiu sua própria credencial, concluiu o `bootstrapOwnerAction`, possui membership/audit corretos, acessa o Workspace sob RLS e as configurações temporárias de bootstrap foram desabilitadas.
+A Issue #65 só termina quando o e-mail explicitamente autorizado recebeu o convite oficial Supabase, definiu sua própria credencial, concluiu o `bootstrapOwnerAction`, possui membership/audit corretos, acessa o Workspace sob RLS e o bootstrap/admin secret temporário foi desativado de forma comprovada.
