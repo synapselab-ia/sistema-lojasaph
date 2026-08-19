@@ -10,6 +10,7 @@ import {
   DashboardRawData,
   DashboardTransferRow,
   localIsoDate,
+  validateDashboardPeriod,
 } from "../application/dashboard-summary";
 
 export interface DashboardUnit {
@@ -27,6 +28,8 @@ export interface DashboardQueryInput {
   readonly unitId?: EntityId;
   readonly sectorId?: EntityId;
   readonly horizonDays: number;
+  readonly dateFrom?: string;
+  readonly dateTo?: string;
 }
 
 export interface DashboardSnapshot {
@@ -95,6 +98,14 @@ function money(value: number | string): Money {
   return Money.fromDecimal(String(value));
 }
 
+function earlierIsoDate(left: string, right: string): string {
+  return left < right ? left : right;
+}
+
+function laterIsoDate(left: string, right: string): string {
+  return left > right ? left : right;
+}
+
 export function validateDashboardSelection(
   units: readonly DashboardUnit[],
   sectors: readonly DashboardSector[],
@@ -108,8 +119,6 @@ export function validateDashboardSelection(
 
   const sector = sectors.find((candidate) => candidate.id === input.sectorId);
   if (!sector) {
-    // The list was loaded through the authenticated client and RLS. A Sector that
-    // is not visible here cannot be accepted as a filter supplied by the browser.
     throw new Error("DASHBOARD_SECTOR_NOT_AVAILABLE");
   }
 
@@ -125,6 +134,8 @@ export class SupabaseDashboardQuery {
     organizationId: EntityId,
     input: DashboardQueryInput,
   ): Promise<DashboardSnapshot> {
+    validateDashboardPeriod(input);
+
     const [organizationResult, unitsResult, sectorsResult, locationsResult, registersResult] = await Promise.all([
       this.client.from("organizations").select("timezone").eq("id", organizationId).single(),
       this.client.from("units").select("id, name").eq("organization_id", organizationId).eq("status", "active").order("name"),
@@ -170,6 +181,9 @@ export class SupabaseDashboardQuery {
     const today = localIsoDate(new Date(), organization.timezone);
     const historyStart = shiftIsoDate(today, -input.horizonDays);
     const horizonEnd = shiftIsoDate(today, input.horizonDays);
+    const cashWindowStart = input.dateFrom ? earlierIsoDate(historyStart, input.dateFrom) : historyStart;
+    const cashWindowEnd = input.dateTo ? laterIsoDate(today, input.dateTo) : today;
+    const expiryUpperBound = input.dateTo ? laterIsoDate(horizonEnd, input.dateTo) : horizonEnd;
 
     let financeQuery = this.client
       .from("payable_installment_summary")
@@ -177,18 +191,38 @@ export class SupabaseDashboardQuery {
       .eq("organization_id", organizationId);
     if (input.unitId) financeQuery = financeQuery.eq("unit_id", input.unitId);
     if (input.sectorId) financeQuery = financeQuery.eq("sector_id", input.sectorId);
+    if (input.dateFrom && input.dateTo) {
+      financeQuery = financeQuery.gte("due_date", input.dateFrom).lte("due_date", input.dateTo);
+    }
 
-    // Cash intentionally ignores sectorId: cash_registers has no Sector relation.
-    const cashPromise = registerIds.length === 0
+    // Cash intentionally ignores sectorId. Open sessions are current-state and
+    // loaded independently; closed sessions use business_date so an explicit
+    // period can extend beyond the normal horizon without losing rows.
+    const cashOpenPromise = registerIds.length === 0
       ? Promise.resolve({ data: [] as unknown[], error: null })
       : this.client
           .from("cash_sessions")
           .select("id, cash_register_id, business_date, status, cash_difference")
           .eq("organization_id", organizationId)
           .in("cash_register_id", registerIds)
-          .or(`status.eq.open,business_date.gte.${historyStart}`)
+          .eq("status", "open")
           .order("business_date", { ascending: false });
 
+    const cashClosedPromise = registerIds.length === 0
+      ? Promise.resolve({ data: [] as unknown[], error: null })
+      : this.client
+          .from("cash_sessions")
+          .select("id, cash_register_id, business_date, status, cash_difference")
+          .eq("organization_id", organizationId)
+          .in("cash_register_id", registerIds)
+          .eq("status", "closed")
+          .gte("business_date", cashWindowStart)
+          .lte("business_date", cashWindowEnd)
+          .order("business_date", { ascending: false });
+
+    // Purchase orders stay unbounded by period here because pendingCount is a
+    // current-state KPI. The pure summary applies expected_delivery_date only to
+    // the delivery metrics.
     const purchasesPromise = scopedLocationIds.length === 0
       ? Promise.resolve({ data: [] as unknown[], error: null })
       : this.client
@@ -199,6 +233,8 @@ export class SupabaseDashboardQuery {
           .in("status", ["ordered", "partially_received"])
           .order("expected_delivery_date", { ascending: true, nullsFirst: false });
 
+    // Transfers and inventory counts are current-state snapshots, so they are
+    // intentionally not date-filtered.
     const transfersPromise = (input.unitId || input.sectorId) && scopedLocationIds.length === 0
       ? Promise.resolve({ data: [] as unknown[], error: null })
       : this.client
@@ -226,12 +262,21 @@ export class SupabaseDashboardQuery {
           .eq("status", "active")
           .gt("remaining_quantity", 0)
           .not("expiration_date", "is", null)
-          .lte("expiration_date", horizonEnd)
+          .lte("expiration_date", expiryUpperBound)
           .order("expiration_date");
 
-    const [financeResult, cashResult, purchasesResult, transfersResult, countsResult, expiriesResult] = await Promise.all([
+    const [
+      financeResult,
+      cashOpenResult,
+      cashClosedResult,
+      purchasesResult,
+      transfersResult,
+      countsResult,
+      expiriesResult,
+    ] = await Promise.all([
       financeQuery,
-      cashPromise,
+      cashOpenPromise,
+      cashClosedPromise,
       purchasesPromise,
       transfersPromise,
       countsPromise,
@@ -239,7 +284,8 @@ export class SupabaseDashboardQuery {
     ]);
 
     if (financeResult.error) throw queryError("o financeiro", financeResult.error.message);
-    if (cashResult.error) throw queryError("o caixa", cashResult.error.message);
+    if (cashOpenResult.error) throw queryError("os caixas abertos", cashOpenResult.error.message);
+    if (cashClosedResult.error) throw queryError("os fechamentos de caixa", cashClosedResult.error.message);
     if (purchasesResult.error) throw queryError("as compras", purchasesResult.error.message);
     if (transfersResult.error) throw queryError("as transferências", transfersResult.error.message);
     if (countsResult.error) throw queryError("os inventários", countsResult.error.message);
@@ -256,7 +302,11 @@ export class SupabaseDashboardQuery {
       dueDate: row.due_date,
     }));
 
-    const cash: DashboardCashRow[] = ((cashResult.data ?? []) as CashRow[]).flatMap((row) => {
+    const cashRows = [
+      ...((cashOpenResult.data ?? []) as CashRow[]),
+      ...((cashClosedResult.data ?? []) as CashRow[]),
+    ];
+    const cash: DashboardCashRow[] = cashRows.flatMap((row) => {
       const unitId = registerUnit.get(row.cash_register_id);
       if (!unitId) return [];
       return [Object.freeze({
