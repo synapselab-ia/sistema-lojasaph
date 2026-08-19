@@ -4,107 +4,95 @@
 
 ## Estado atual
 
-O hardening preventivo de RLS/grants da Issue #54 foi **concluído e integrado na `main`**, sem alterar regras de negócio. A próxima frente funcional continua sendo a Fase 21 / Issue #53.
+A Fase 21 foi concluída e integrada na `main`.
 
 - Repositório: `synapselab-ia/sistema-lojasaph`
-- PR #55 — merged
-- Issue #54 — closed/completed
-- merge commit do hardening: `c6b24c6cef935ae9652dbcc476e9131dcd2259cd`
-- head final validado pré-merge: `d456abb02aef92a5f2f1295b1b03a2b760a5e2f1`
-- `CI` #258 — success
-- `Inventory Count Integration` #158 — success
-- `Business Transactions Integration` #141 — success
-- próxima Issue funcional: #53 — `Fase 21 — devolução relacionada de retiradas no ledger`
+- PR #56 — merged
+- Issue #53 — closed/completed
+- merge commit: `82372bc18bc54690eb5a4eca9d28554c32e76211`
+- head funcional final validado: `56d2e3026e9400add9778ce0c7193a9d81d46d05`
+- `CI` #263 — success
+- `Inventory Count Integration` #161 — success
+- `Business Transactions Integration` #144 — success
+- próxima Issue: #57 — `Fase 22 — categoria obrigatória no cadastro canônico de item`
 
-## Hardening de RLS/grants — concluído
+## Fase 21 — devolução relacionada
 
-A auditoria pré-fix não encontrou vazamento ativo por RLS, mas encontrou privilégios de objeto legados/permissivos no Supabase hospedado. O hardening agora estabelece duas barreiras independentes: grants mínimos no objeto + RLS por linha.
+`REQ-STK-006` está fechado para o caso comprovado pelo domínio atual: retorno ao estoque de uma retirada confirmada.
 
-Estado final do schema `public` homologado no Supabase remoto:
+Implementado:
 
-- 45/45 tabelas com RLS habilitado;
-- 78 policies;
-- 0 policies destinadas a `anon`/`PUBLIC`;
-- 0 grants de relação para `anon`;
-- 0 mismatches entre `SELECT`/`INSERT`/`UPDATE` concedidos a `authenticated` e policies correspondentes;
-- `authenticated` sem `DELETE`, `TRUNCATE`, `REFERENCES` ou `TRIGGER` direto nas tabelas da aplicação;
-- 0 funções `SECURITY DEFINER` de `public` executáveis por `anon`;
-- `public.set_updated_at()` sem EXECUTE para `anon`, `authenticated` e `service_role`;
-- `payable_installment_summary` permanece `security_invoker=true`, legível por `authenticated` e não por `anon`.
+- novo movimento `return_in`, sem editar/apagar a retirada original;
+- relação por `stock_movements.reversal_of_movement_id`, permitindo múltiplos retornos parciais para a mesma retirada;
+- retorno parcial/total com bloqueio de over-return acumulado sob lock da retirada;
+- command ID idempotente e conflito semântico em retry divergente;
+- local, item, custo e lotes derivados do histórico da retirada, não da UI;
+- custo do retorno usa `unit_cost_snapshot` histórico e recompõe o custo médio móvel;
+- item rastreado restaura somente lotes comprovados pelas alocações históricas;
+- audit action `stock_return.recorded`;
+- autorização `owner/admin/manager/inventory` + escopo do local original;
+- RPC público `record_stock_return` com `PUBLIC/anon` revogados e `authenticated` concedido explicitamente;
+- gateway/caso de uso, UI `/workspace/devolucoes`, navegação e documentação;
+- suíte `supabase/tests/stock_return.sql` integrada aos três workflows de banco.
 
-### Default privileges
+Não foi implementado empréstimo/Q-005, `return_out`, Q-003/Q-004 ou dados reais.
 
-A migration `20260819110500_rls_grant_hardening.sql` fecha os defaults do owner de migrations `postgres`:
+## Achados de validação
 
-- tabelas novas em `public` não recebem grants automáticos para papéis de API;
-- sequences novas em `public` não recebem grants automáticos;
-- functions novas não recebem EXECUTE por `PUBLIC`, `anon`, `authenticated` ou `service_role` sem grant explícito;
-- qualquer API nova deve receber grant explícito na própria migration.
+O primeiro head revelou dois defeitos localizados: ambiguidade PL/pgSQL no `ON CONFLICT` e lint React por `setState` síncrono dentro de effect. Ambos foram corrigidos.
 
-O CI agora emula os defaults permissivos históricos do Supabase antes de aplicar migrations e executa `supabase/tests/security_hardening.sql`. A suíte cria probes temporários de tabela/function/sequence e falha se houver exposição automática, tabela sem RLS, policy insegura, grant de `anon`, grant de `authenticated` sem policy correspondente, view sem `security_invoker` ou `SECURITY DEFINER` executável por `anon`.
-
-### Limitação gerenciada pelo provedor
-
-O role `supabase_admin` é gerenciado pelo Supabase e `postgres` não é membro dele. Seus default ACLs em `public` permanecem sob controle do provedor e não podem ser alterados pela migration da aplicação.
-
-Política resultante: objetos do Sistema Lojasaph devem ser criados por migrations versionadas do repositório, executadas pelo owner `postgres`. Objetos criados manualmente pelo Dashboard não podem ser presumidos seguros e exigem auditoria explícita de grants/RLS.
+Na homologação, o Supabase hospedado recusou um fix intermediário que dependia de `ALTER FUNCTION ... SET plpgsql.variable_conflict`, por privilégio insuficiente do owner de migrations. O código foi tornado portátil por redefinição da função sem esse parâmetro privilegiado, revalidado 3/3 no CI e então aplicado remotamente.
 
 ## Supabase remoto
 
-Projeto conectado:
+Projeto `fhbvwyttikrbeaanatlr`, `ACTIVE_HEALTHY`, PostgreSQL 17, zero branches.
 
-- status `ACTIVE_HEALTHY`;
-- PostgreSQL 17;
-- zero branches de desenvolvimento.
+Migrations da Fase 21:
 
-Migration de hardening aplicada após CI 3/3 verde:
+- `stock_return_flow` — versão remota `20260819151007`;
+- `stock_return_conflict_resolution` — versão remota `20260819151604`.
 
-- `rls_grant_hardening` — versão remota `20260819141546`.
+Auditoria pós-DDL:
 
-Homologação pós-DDL:
+- 45/45 tabelas `public` com RLS;
+- 0 mismatches de grants `SELECT/INSERT/UPDATE` versus policies em tabelas-base;
+- índice `stock_movements_reversal_org_idx` presente;
+- `record_stock_return` é `SECURITY DEFINER` com `search_path=''`;
+- `anon` EXECUTE=false;
+- `authenticated` EXECUTE=true;
+- `service_role` EXECUTE=false;
+- 0 movimentos reais `return_in` de devolução.
 
-- catálogo de RLS/grants conferido diretamente no PostgreSQL;
-- probe remoto em `BEGIN/ROLLBACK` criou tabela + identity sequence + function e confirmou ausência de grants implícitos para `anon`, `authenticated` e `service_role`;
-- rollback deixou zero objetos de probe;
-- default ACL de `postgres` em `public` contém somente o próprio owner para tabelas/sequences/functions;
-- default global de functions de `postgres` também contém somente `postgres`.
+Smoke remoto sintético executado em `BEGIN/ROLLBACK` provou retirada rastreada -> devolução parcial -> relação, custo, saldo, lote e audit corretos. Rollback deixou zero Organization, usuário, movimento ou audit sintético.
 
-O Security Advisor continua reportando RPCs transacionais `SECURITY DEFINER` executáveis por `authenticated`. Isso é intencional na arquitetura atual: esses RPCs são fronteiras de comando e validam autenticação/role/escopo internamente; `anon` não possui EXECUTE. Não redesenhar esses RPCs por oportunismo sem Issue específica.
+O Security Advisor sinaliza `record_stock_return` pelo lint genérico de RPC `SECURITY DEFINER` executável por `authenticated`; aqui isso é intencional porque o wrapper revalida auth/role/escopo e `anon` não possui EXECUTE. O Performance Advisor marca o novo índice como `unused` porque ainda não há devoluções reais; não remover por oportunismo.
 
-## Fase 20
+## Hardening vigente
 
-A Fase 20 permanece concluída: perdas, quebras e vencimentos possuem fluxo persistente pelo ledger via `record_stock_loss`, com motivo estruturado, custo/lote/auditoria e UI `/workspace/baixas`.
+A Issue #54 permanece concluída. `supabase/tests/security_hardening.sql` é gate permanente. Objetos novos em `public` devem nascer deny-by-default e receber RLS/policies/grants explícitos. Não criar objeto de aplicação manualmente no Dashboard como atalho.
 
 ## Vercel
 
-`vercel.json` continua com `git.deploymentEnabled=false`.
-
-CI é o gate principal. Deployment manual somente quando uma validação depender concretamente de hosting/browser real ou em milestone/release apropriada. O hardening de segurança não usou Vercel.
+`vercel.json` continua com `git.deploymentEnabled=false`. CI é o gate principal; não usar deployment rotineiro.
 
 ## Próxima lacuna MUST real
 
-`REQ-STK-006 — Devolução/retorno relacionado` continua incompleto e é a Issue #53.
+`REQ-ITEM-001` exige que item canônico possua categoria, mas hoje:
 
-Escopo conservador já registrado:
+- `public.stock_items.category_id` é nullable;
+- o domínio usa `categoryId?: EntityId`;
+- a UI de produtos permite `Sem categoria`.
 
-- começar pelo retorno ao estoque de uma retirada existente;
-- criar novo movimento `return_in`, sem editar/apagar a retirada histórica;
-- permitir retorno parcial/total sem over-return;
-- derivar custo do snapshot histórico;
-- preservar/restaurar lote identificado quando aplicável;
-- idempotência, locks, RLS/escopo e auditoria;
-- sem empréstimo enquanto Q-005 estiver aberta;
-- sem componente financeiro de Q-004 ou interpretação do checkbox de Q-003;
-- fixtures exclusivamente sintéticas.
+No Supabase remoto, os 3 itens existentes já têm categoria e existem 3 categorias. A Fase 22 / Issue #57 deve endurecer domínio, UI e PostgreSQL sem criar categoria default nem alterar dados reais.
 
 ## Não repetir
 
-- não reabrir Issue #54 nem reaplicar `rls_grant_hardening`;
-- não remover a suíte `security_hardening.sql` do CI;
-- não criar objetos de aplicação manualmente no Dashboard sem migration/auditoria;
-- não reabrir Fase 20;
-- não criar segundo mecanismo de estoque fora do ledger;
+- não reabrir Fase 21/Issue #53;
+- não reabrir hardening/Issue #54;
+- não reaplicar migrations antigas;
+- não remover `security_hardening.sql`;
 - não reativar auto-deploy Vercel;
 - não implementar empréstimo enquanto Q-005 estiver aberta;
-- não inferir Q-003/Q-004 ou demais Q-001..Q-025;
+- não inferir Q-003/Q-004 ou demais questões abertas;
+- não criar categoria genérica automática;
 - não importar dados reais.

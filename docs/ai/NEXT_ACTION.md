@@ -2,100 +2,119 @@
 
 ## Contexto
 
-A Fase 20 está concluída e a auditoria/hardening preventivo de RLS/grants da Issue #54 também foi concluída antes da próxima frente funcional.
+A Fase 21 / Issue #53 está concluída e mergeada na `main` pelo PR #56.
 
-Estado de segurança vigente:
+Estado funcional final comprovado:
 
-- PR #55 mergeado;
-- Issue #54 closed/completed;
-- migration `rls_grant_hardening` homologada no Supabase remoto;
-- 45/45 tabelas `public` com RLS;
-- `anon` sem grants em relações de aplicação;
-- grants de `authenticated` reconciliados com policies explícitas;
-- default privileges do owner `postgres` fechados;
-- `security_hardening.sql` é gate permanente do CI.
+- head validado: `56d2e3026e9400add9778ce0c7193a9d81d46d05`;
+- `CI` #263 — success;
+- `Inventory Count Integration` #161 — success;
+- `Business Transactions Integration` #144 — success;
+- merge commit: `82372bc18bc54690eb5a4eca9d28554c32e76211`.
 
-O próximo requisito MUST verificavelmente incompleto continua sendo `REQ-STK-006 — Devolução/retorno relacionado` e está registrado na Issue #53.
+Supabase remoto:
+
+- projeto `fhbvwyttikrbeaanatlr`, `ACTIVE_HEALTHY`, PostgreSQL 17;
+- `stock_return_flow` — `20260819151007`;
+- `stock_return_conflict_resolution` — `20260819151604`;
+- smoke sintético em transação validado e rollback com zero resíduo;
+- 0 devoluções reais criadas.
+
+A próxima lacuna MUST objetiva é `REQ-ITEM-001`: categoria obrigatória no item canônico. Está registrada na Issue #57.
 
 ## Fazer agora
 
-1. Confirmar estado real da Issue #53, da `main` e da branch `agent/stock-returns`.
-2. Usar `agent/stock-returns` a partir da `main` pós-hardening; não criar branch duplicada.
+1. Confirmar estado real da Issue #57, `main`, branch `agent/item-category-required`, PRs e CI.
+2. Usar a branch `agent/item-category-required` criada a partir da `main` pós-Fase 21; não criar branch duplicada.
 3. Ler antes de editar:
-   - `docs/modules/inventory.md`;
-   - `docs/modules/supabase-runtime.md` — regras novas de grants/RLS;
-   - `docs/product/requirements.md` — `REQ-STK-006`;
-   - `docs/product/open-questions.md` — Q-003, Q-004 e Q-005;
-   - ADR-002 e ADR-003;
-   - migrations de inventory, withdrawal, stock loss, scoped permissions e `rls_grant_hardening`;
-   - `supabase/tests/stock_withdrawal.sql`, `stock_loss.sql` e `security_hardening.sql`;
-   - gateway/UI persistentes de retirada e baixa.
-4. Inspecionar `reversal_of_movement_id` e confirmar se a relação existente comporta múltiplos `return_in` parciais apontando para a mesma retirada. Preferir reutilizá-la; adicionar coluna/relação nova somente se houver incompatibilidade objetiva.
-5. Definir elegibilidade mínima sem inferir Q-005:
-   - origem deve ser movimento `withdrawal` confirmado da mesma Organization;
-   - retorno volta ao local de origem da retirada;
-   - item deve existir no movimento original;
-   - quantidade retornada acumulada não pode exceder a quantidade retirada;
-   - movimento original permanece imutável.
-6. Preservar custo e lote:
-   - usar custo snapshot da retirada original;
-   - para item rastreado, derivar lotes das alocações históricas da retirada e restaurar somente identidade/quantidade comprovadas;
-   - não inventar lote, validade ou custo.
-7. Criar RPC/comando transacional idempotente com locks suficientes para impedir over-return concorrente.
-8. Gerar novo `stock_movements.movement_type='return_in'`, relação explícita ao original e audit log.
-9. Atualizar `inventory_balances` e lotes atomicamente conforme ADR de custeio; UI não edita projeções diretamente.
-10. Na migration da Fase 21, manter least privilege explicitamente:
-    - RLS em toda tabela nova exposta;
-    - policies explícitas;
-    - grants mínimos para `authenticated` somente nos comandos necessários;
-    - nenhum grant para `anon` sem requisito explícito;
-    - RPC `SECURITY DEFINER`: `REVOKE` de `PUBLIC`/`anon` e `GRANT EXECUTE` explícito ao papel necessário.
-11. Criar testes PostgreSQL para:
-    - retorno parcial e total;
-    - múltiplos retornos até o limite;
-    - over-return;
-    - retry/idempotency conflict;
-    - custo snapshot e recálculo da projeção;
-    - restauração de lote/validade;
-    - roles e escopo do local;
-    - cross-Organization;
-    - concorrência/locks quando viável;
-    - rollback integral.
-12. Implementar gateway/caso de uso e UI persistente para listar retiradas elegíveis, mostrar quantidade pendente e registrar retorno.
-13. Atualizar `docs/modules/inventory.md`.
-14. Rodar lint, typecheck, Vitest, build e todas as suites/workflows PostgreSQL, incluindo obrigatoriamente `security_hardening.sql`.
-15. Só após CI verde aplicar/homologar migration no Supabase remoto com dados sintéticos e rollback.
-16. Reauditar grants/RLS/RPC após o DDL remoto; não presumir defaults do provedor.
-17. Atualizar PR/Issue e continuidade.
+   - `AGENTS.md`;
+   - `docs/00-START-HERE.md`;
+   - `docs/ai/CURRENT_STATE.md`;
+   - `docs/ai/HANDOFF.md`;
+   - este `NEXT_ACTION.md`;
+   - `docs/ai/WORKFLOW.md`;
+   - `docs/product/requirements.md` — `REQ-ITEM-001`;
+   - documentação de catálogo e importação aplicável;
+   - `supabase/migrations/20260817190000_foundation.sql`;
+   - migrations de RLS/hardening atuais, especialmente `rls_grant_hardening`;
+   - domínio/adapters/UI de stock item;
+   - seed e todas as fixtures/testes que inserem `stock_items`.
+4. Confirmar a lacuna atual em código/schema:
+   - `public.stock_items.category_id` nullable;
+   - `StockItem.categoryId` opcional;
+   - create/update aceitam categoria ausente;
+   - UI permite `Sem categoria`.
+5. Localizar todos os pontos que criam item sem categoria em TypeScript, seed e SQL de testes.
+6. Criar migration versionada com precondition explícita:
+   - falhar com erro claro se existir `stock_items.category_id is null` no ambiente alvo;
+   - não preencher categoria automaticamente;
+   - após precondition, `ALTER TABLE public.stock_items ALTER COLUMN category_id SET NOT NULL`;
+   - preservar o FK composto existente para mesma Organization.
+7. Tornar `categoryId` obrigatório em `StockItem`, `CreateStockItemInput`, `UpdateStockItemInput` e adapters/repositories afetados.
+8. Fazer validação de domínio estável para categoria ausente antes de persistir quando aplicável.
+9. Atualizar `/workspace/produtos`:
+   - select de categoria obrigatório;
+   - remover opção persistível `Sem categoria`;
+   - bloquear submit sem categoria;
+   - não criar categoria genérica por conveniência.
+10. Revisar importação/dry run:
+    - ausência de categoria não pode ser auto-classificada;
+    - manter rejeição/warning/pending mapping explícito conforme a arquitetura existente;
+    - não aplicar dados reais.
+11. Atualizar todas as fixtures/seed sintéticos para fornecer categoria válida da mesma Organization.
+12. Criar/ajustar testes cobrindo:
+    - domínio create/update exige categoria;
+    - migration falha se houver nulo;
+    - DB rejeita insert/update sem categoria;
+    - FK bloqueia categoria de outra Organization;
+    - UI/adapters enviam categoria obrigatória;
+    - importação preserva categoria ausente como inconsistência;
+    - regressão de estoque/compras/financeiro/importação continua verde.
+13. Não ampliar grants/RLS se a fase não criar nova superfície. Se criar objeto novo por necessidade objetiva, seguir `security_hardening.sql` e deny-by-default.
+14. Rodar lint, typecheck, Vitest, production build e todos os workflows PostgreSQL.
+15. Só após CI verde aplicar a migration no Supabase remoto.
+16. Antes e depois do DDL remoto, registrar IDs + `category_id` dos itens reais existentes e confirmar que nada foi alterado além do `NOT NULL` do schema.
+17. Rodar Security/Performance Advisors e corrigir apenas problemas novos causados pela Fase 22.
+18. Abrir/atualizar PR, marcar ready, mergear, fechar Issue #57 e atualizar continuidade.
 
-## Política de Supabase
+## Estado remoto já confirmado para a Fase 22
 
-- não reaplicar `stock_loss_flow`, `stock_loss_reason_read_scope_fix` ou `rls_grant_hardening`;
-- não remover/afrouxar `security_hardening.sql` para fazer CI passar;
-- novas APIs recebem grants explícitos na migration;
-- mudanças de schema da aplicação devem ocorrer por migrations versionadas do repositório, não por criação manual no Dashboard;
-- `supabase_admin` é role gerenciado pelo provedor e seus default ACLs não são autoridade para o desenho de segurança da aplicação;
-- homologação remota usa dados sintéticos e deixa zero resíduo;
-- advisor antigo não é autorização para ampliar escopo.
+No Supabase remoto atual:
+
+- `stock_items_total = 3`;
+- `stock_items_without_category = 0`;
+- `stock_items_with_category = 3`;
+- `categories_total = 3`.
+
+Isto autoriza o endurecimento estrutural, mas não autoriza alterar ou recategorizar dado real.
+
+## Política de segurança
+
+- `supabase/tests/security_hardening.sql` continua obrigatório;
+- não reaplicar migrations antigas;
+- não depender de default privileges do provedor;
+- não criar objeto manualmente no Dashboard;
+- não conceder `anon` sem requisito explícito;
+- RPC novo, se inevitável, deve revogar `PUBLIC/anon` e conceder EXECUTE explicitamente apenas ao papel necessário.
 
 ## Política de Vercel
 
-- `git.deploymentEnabled=false` permanece vigente;
-- não reativar deployments automáticos;
+- `git.deploymentEnabled=false` continua vigente;
 - CI é o gate principal;
-- usar deployment manual apenas se surgir validação concreta dependente de browser/hosting real.
+- não fazer deployment rotineiro para esta fase.
 
 ## Não fazer
 
-- não reabrir Issue #54 nem refazer o hardening concluído;
-- não criar empréstimo, prazo ou quantidade pendente de empréstimo enquanto Q-005 estiver aberta;
-- não implementar componente financeiro entre unidades ou interpretar `Valor total em haver` sem Q-004;
-- não inferir o checkbox de Q-003;
-- não implementar devolução a fornecedor/`return_out` sem requisito comprovado;
-- não alterar movimento histórico original para representar devolução;
+- não reabrir Fase 21/Issue #53;
+- não reabrir hardening/Issue #54;
+- não criar categoria default como `Outros` ou `Sem categoria`;
+- não alterar categorias dos 3 itens reais existentes;
+- não implementar EAN/NCM/CEST (`SHOULD`) nesta fase;
+- não implementar POS/produto de venda (`PENDING`);
+- não inferir Q-001..Q-025;
 - não importar dados reais;
-- não reabrir Fase 20.
+- não fazer sweep de advisors antigos sem causalidade.
 
 ## Critério de conclusão da próxima fase
 
-Uma retirada persistente aceita retorno parcial/total ao estoque por novo movimento `return_in` relacionado ao original, sem over-return e sem editar o histórico. Custo/lote/auditoria permanecem rastreáveis, RLS/escopo, grants mínimos e idempotência são garantidos no PostgreSQL, todos os gates — incluindo `security_hardening.sql` — ficam verdes e a homologação remota deixa zero resíduo sintético.
+Não deve ser possível criar ou manter item canônico sem categoria válida da mesma Organization. Domínio, UI e PostgreSQL devem aplicar a mesma regra; seed/fixtures/CI devem refletir o contrato; a homologação remota deve confirmar `category_id NOT NULL` sem alterar os itens reais existentes.
