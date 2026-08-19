@@ -28,7 +28,7 @@ function demoData(): DashboardRawData {
     cash: [
       { id: id(10), unitId: unitA, businessDate: "2026-08-18", status: "open" },
       { id: id(11), unitId: unitA, businessDate: "2026-08-17", status: "closed", cashDifference: Money.fromDecimal("-10.00") },
-      { id: id(13), unitId: unitA, businessDate: "2026-08-10", status: "closed" },
+      { id: id(13), unitId: unitA, businessDate: "2026-08-12", status: "closed" },
       { id: id(12), unitId: unitB, businessDate: "2026-08-17", status: "closed", cashDifference: Money.fromDecimal("50.00") },
     ],
     purchases: [
@@ -136,21 +136,13 @@ describe("dashboard summary", () => {
       dateTo: "2026-08-17",
     });
 
-    // Finance is scoped by installment due_date. The paid amount remains the
-    // cumulative amount attached to obligations due in the period.
     expect(summary.finance.nominal.toDecimal()).toBe("1000.00");
     expect(summary.finance.paid.toDecimal()).toBe("0.00");
     expect(summary.finance.openBalance.toDecimal()).toBe("1000.00");
     expect(summary.finance.overdueCount).toBe(1);
     expect(summary.finance.dueTodayCount).toBe(0);
-
-    // Closed cash uses business_date; open cash remains current-state.
     expect(summary.cash).toEqual({ openCount: 1, discrepancyCount: 1, recentClosedCount: 1 });
-
-    // Pending orders are current-state, while delivery alerts use expected_delivery_date.
     expect(summary.purchases).toEqual({ pendingCount: 3, lateDeliveryCount: 1, deliverySoonCount: 0 });
-
-    // Transfers and inventory counts are current-state; expiry alerts use expiration_date.
     expect(summary.stock).toEqual({ transfersInTransitCount: 1, openInventoryCount: 1, expiredBatchCount: 1, expiringSoonCount: 0 });
   });
 
