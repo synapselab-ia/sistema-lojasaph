@@ -43,7 +43,7 @@ export default async function BootstrapPage({ searchParams }: BootstrapPageProps
 
         {status.configured && status.invitationState === "configuration_required" && (
           <p className="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-            O convite está bloqueado até a URL pública, a allowlist de redirect e o template SSR de convite com TokenHash terem sido conferidos conforme o runbook.
+            O convite está bloqueado até a URL pública, a allowlist do redirect de convite e a capacidade de entrega de e-mail terem sido conferidas conforme o runbook.
           </p>
         )}
 
