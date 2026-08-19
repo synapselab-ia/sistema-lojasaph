@@ -61,5 +61,11 @@ alter default privileges for role postgres in schema public
 alter default privileges for role postgres in schema public
   revoke all privileges on sequences from public, anon, authenticated, service_role;
 
+-- PostgreSQL gives PUBLIC EXECUTE on newly-created functions by default. Use
+-- an explicit EXECUTE revoke for PUBLIC, then remove the provider's explicit
+-- API-role grants as a separate statement.
 alter default privileges for role postgres in schema public
-  revoke all privileges on functions from public, anon, authenticated, service_role;
+  revoke execute on functions from public;
+
+alter default privileges for role postgres in schema public
+  revoke execute on functions from anon, authenticated, service_role;
