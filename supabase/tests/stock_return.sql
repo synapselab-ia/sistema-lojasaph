@@ -16,6 +16,9 @@ insert into public.units(id,organization_id,business_id,name,code) values
  ('97000000-0000-4000-8000-000000000101','97000000-0000-4000-8000-000000000001','97000000-0000-4000-8000-000000000010','Unidade B devoluções CI','RET-B'),
  ('97000000-0000-4000-8000-000000000102','97000000-0000-4000-8000-000000000002','97000000-0000-4000-8000-000000000011','Outra unidade devoluções CI','RET-X');
 
+insert into public.sectors(id,organization_id,unit_id,name,code,status) values
+ ('97000000-0000-4000-8000-000000000110','97000000-0000-4000-8000-000000000001','97000000-0000-4000-8000-000000000100','Setor A devoluções CI','RET-SECTOR-A','active');
+
 insert into public.stock_locations(id,organization_id,unit_id,name,code,location_type,status) values
  ('97000000-0000-4000-8000-000000000120','97000000-0000-4000-8000-000000000001','97000000-0000-4000-8000-000000000100','Estoque A devoluções CI','RET-LOC-A','warehouse','active'),
  ('97000000-0000-4000-8000-000000000121','97000000-0000-4000-8000-000000000001','97000000-0000-4000-8000-000000000101','Estoque B devoluções CI','RET-LOC-B','warehouse','active'),
@@ -113,6 +116,7 @@ select * from public.record_stock_withdrawal(
   '97000000-0000-4000-8000-000000000001',
   '97000000-0000-4000-8000-000000000400',
   '97000000-0000-4000-8000-000000000120',
+  '97000000-0000-4000-8000-000000000110',
   6.000,
   '97000000-0000-4000-8000-000000000610',
   'Retirada origem da devolução CI'
@@ -168,6 +172,9 @@ do $$
 begin
   if (select movement_type from public.stock_movements where id='97000000-0000-4000-8000-000000000701') <> 'withdrawal' then
     raise exception 'original withdrawal was mutated';
+  end if;
+  if (select sector_id from public.stock_movements where id='97000000-0000-4000-8000-000000000701') <> '97000000-0000-4000-8000-000000000110' then
+    raise exception 'original withdrawal lost its sector';
   end if;
   if (select status from public.stock_movements where id='97000000-0000-4000-8000-000000000701') <> 'confirmed' then
     raise exception 'original withdrawal status was mutated';
