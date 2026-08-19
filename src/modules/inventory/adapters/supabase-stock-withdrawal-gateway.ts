@@ -10,6 +10,7 @@ export interface RecordSupabaseStockWithdrawalInput {
   organizationId: EntityId;
   stockItemId: EntityId;
   stockLocationId: EntityId;
+  sectorId: EntityId;
   quantity: string;
   preferredBatchId?: EntityId;
   notes?: string;
@@ -37,6 +38,10 @@ export class SupabaseStockWithdrawalGateway {
     const commandId = input.commandId ?? newEntityId();
     const quantity = Quantity.fromDecimal(input.quantity);
 
+    if (!input.sectorId?.trim()) {
+      throw new DomainError("STOCK_WITHDRAWAL_SECTOR_REQUIRED", "Stock withdrawal sector is required.");
+    }
+
     if (!quantity.isPositive()) {
       throw new DomainError("INVALID_STOCK_QUANTITY", "Stock quantity must be greater than zero.");
     }
@@ -46,6 +51,7 @@ export class SupabaseStockWithdrawalGateway {
       p_organization_id: input.organizationId,
       p_stock_item_id: input.stockItemId,
       p_stock_location_id: input.stockLocationId,
+      p_sector_id: input.sectorId,
       p_quantity: quantity.toDecimal(),
       p_preferred_batch_id: input.preferredBatchId ?? null,
       p_notes: input.notes?.trim() || null,
