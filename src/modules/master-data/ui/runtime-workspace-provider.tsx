@@ -130,6 +130,7 @@ interface RuntimeWorkspaceValue {
   recordWithdrawal(input: {
     stockItemId: EntityId;
     stockLocationId: EntityId;
+    sectorId: EntityId;
     quantity: string;
     preferredBatchId?: EntityId;
     notes?: string;
@@ -313,6 +314,7 @@ export function RuntimeWorkspaceProvider({
   async function recordWithdrawal(input: {
     stockItemId: EntityId;
     stockLocationId: EntityId;
+    sectorId: EntityId;
     quantity: string;
     preferredBatchId?: EntityId;
     notes?: string;
@@ -322,6 +324,7 @@ export function RuntimeWorkspaceProvider({
       organizationId,
       stockItemId: input.stockItemId,
       stockLocationId: input.stockLocationId,
+      sectorId: input.sectorId,
       quantity: input.quantity,
       preferredBatchId: input.preferredBatchId,
       notes: input.notes,

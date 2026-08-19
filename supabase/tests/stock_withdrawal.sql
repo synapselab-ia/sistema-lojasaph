@@ -1,9 +1,52 @@
 \set ON_ERROR_STOP on
 
+do $$
+begin
+  if to_regprocedure('public.record_stock_withdrawal(uuid,uuid,uuid,uuid,numeric,uuid,text)') is not null then
+    raise exception 'legacy withdrawal signature still exists in public';
+  end if;
+  if not has_function_privilege(
+    'authenticated',
+    'public.record_stock_withdrawal(uuid,uuid,uuid,uuid,uuid,numeric,uuid,text)',
+    'EXECUTE'
+  ) then
+    raise exception 'authenticated cannot execute sector-aware withdrawal';
+  end if;
+  if has_function_privilege(
+    'anon',
+    'public.record_stock_withdrawal(uuid,uuid,uuid,uuid,uuid,numeric,uuid,text)',
+    'EXECUTE'
+  ) then
+    raise exception 'anon unexpectedly executes sector-aware withdrawal';
+  end if;
+end;
+$$;
+
 -- Reuse the inventory member and demo stock created by the earlier smoke test.
 set role authenticated;
 select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000001', false);
 select set_config('request.jwt.claim.role', 'authenticated', false);
+
+-- Missing sector is rejected by the authenticated command surface.
+do $$
+begin
+  begin
+    perform public.record_stock_withdrawal(
+      '40000000-0000-4000-8000-000000000009',
+      '00000000-0000-4000-8000-000000000001',
+      '00000000-0000-4000-8000-000000000400',
+      '00000000-0000-4000-8000-000000000120',
+      null,
+      1.000,
+      null,
+      'missing sector denied'
+    );
+    raise exception 'withdrawal without sector unexpectedly succeeded';
+  exception
+    when invalid_parameter_value then null;
+  end;
+end;
+$$;
 
 -- FEFO: the original August batch expires before the CI entry batch from September.
 select * from public.record_stock_withdrawal(
@@ -11,17 +54,19 @@ select * from public.record_stock_withdrawal(
   '00000000-0000-4000-8000-000000000001',
   '00000000-0000-4000-8000-000000000400',
   '00000000-0000-4000-8000-000000000120',
+  '00000000-0000-4000-8000-000000000110',
   15.000,
   null,
   'CI FEFO withdrawal'
 );
 
--- Same command/payload is idempotent.
+-- Same command/payload/sector is idempotent.
 select * from public.record_stock_withdrawal(
   '40000000-0000-4000-8000-000000000001',
   '00000000-0000-4000-8000-000000000001',
   '00000000-0000-4000-8000-000000000400',
   '00000000-0000-4000-8000-000000000120',
+  '00000000-0000-4000-8000-000000000110',
   15.000,
   null,
   'CI FEFO withdrawal'
@@ -36,11 +81,28 @@ begin
       '00000000-0000-4000-8000-000000000001',
       '00000000-0000-4000-8000-000000000400',
       '00000000-0000-4000-8000-000000000120',
+      '00000000-0000-4000-8000-000000000110',
       14.000,
       null,
       'CI FEFO withdrawal'
     );
     raise exception 'idempotency conflict unexpectedly succeeded';
+  exception
+    when unique_violation then null;
+  end;
+
+  begin
+    perform public.record_stock_withdrawal(
+      '40000000-0000-4000-8000-000000000001',
+      '00000000-0000-4000-8000-000000000001',
+      '00000000-0000-4000-8000-000000000400',
+      '00000000-0000-4000-8000-000000000120',
+      '00000000-0000-4000-8000-000000000111',
+      15.000,
+      null,
+      'CI FEFO withdrawal'
+    );
+    raise exception 'sector idempotency conflict unexpectedly succeeded';
   exception
     when unique_violation then null;
   end;
@@ -54,8 +116,14 @@ begin
   if (select count(*) from public.stock_movements where id = '40000000-0000-4000-8000-000000000001') <> 1 then
     raise exception 'withdrawal retry duplicated movement';
   end if;
+  if (select sector_id from public.stock_movements where id = '40000000-0000-4000-8000-000000000001') <> '00000000-0000-4000-8000-000000000110' then
+    raise exception 'withdrawal did not persist sector';
+  end if;
   if (select count(*) from public.audit_logs where entity_id = '40000000-0000-4000-8000-000000000001' and action = 'stock_withdrawal.recorded') <> 1 then
     raise exception 'withdrawal retry duplicated or missed audit';
+  end if;
+  if (select after_data ->> 'sector_id' from public.audit_logs where entity_id = '40000000-0000-4000-8000-000000000001' and action = 'stock_withdrawal.recorded') <> '00000000-0000-4000-8000-000000000110' then
+    raise exception 'withdrawal audit did not persist sector';
   end if;
   if (select quantity_on_hand from public.inventory_balances where organization_id = '00000000-0000-4000-8000-000000000001' and stock_item_id = '00000000-0000-4000-8000-000000000400' and stock_location_id = '00000000-0000-4000-8000-000000000120') <> 95.000 then
     raise exception 'FEFO withdrawal produced wrong balance';
@@ -90,6 +158,7 @@ begin
     '00000000-0000-4000-8000-000000000001',
     '00000000-0000-4000-8000-000000000400',
     '00000000-0000-4000-8000-000000000120',
+    '00000000-0000-4000-8000-000000000110',
     5.000,
     preferred,
     'CI preferred-batch withdrawal'
@@ -106,6 +175,7 @@ begin
       '00000000-0000-4000-8000-000000000001',
       '00000000-0000-4000-8000-000000000400',
       '00000000-0000-4000-8000-000000000120',
+      '00000000-0000-4000-8000-000000000110',
       999.000,
       null,
       'must fail'
@@ -139,6 +209,37 @@ begin
 end;
 $$;
 
+-- Cross-Organization sector is rejected without residue.
+begin;
+insert into public.organizations(id,name) values ('49000000-0000-4000-8000-000000000001','Withdrawal cross-org CI');
+insert into public.businesses(id,organization_id,name,code) values ('49000000-0000-4000-8000-000000000010','49000000-0000-4000-8000-000000000001','Withdrawal business CI','WD-X');
+insert into public.units(id,organization_id,business_id,name,code) values ('49000000-0000-4000-8000-000000000100','49000000-0000-4000-8000-000000000001','49000000-0000-4000-8000-000000000010','Withdrawal unit CI','WD-X-U');
+insert into public.sectors(id,organization_id,unit_id,name,code,status) values ('49000000-0000-4000-8000-000000000110','49000000-0000-4000-8000-000000000001','49000000-0000-4000-8000-000000000100','Withdrawal sector CI','WD-X-S','active');
+set role authenticated;
+select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000001', false);
+select set_config('request.jwt.claim.role', 'authenticated', false);
+do $$
+begin
+  begin
+    perform public.record_stock_withdrawal(
+      '40000000-0000-4000-8000-000000000010',
+      '00000000-0000-4000-8000-000000000001',
+      '00000000-0000-4000-8000-000000000400',
+      '00000000-0000-4000-8000-000000000120',
+      '49000000-0000-4000-8000-000000000110',
+      1.000,
+      null,
+      'cross-org sector denied'
+    );
+    raise exception 'cross-Organization sector unexpectedly succeeded';
+  exception
+    when foreign_key_violation then null;
+  end;
+end;
+$$;
+reset role;
+rollback;
+
 -- Viewer cannot invoke the withdrawal command.
 set role authenticated;
 select set_config('request.jwt.claim.sub', '30000000-0000-4000-8000-000000000001', false);
@@ -152,6 +253,7 @@ begin
       '00000000-0000-4000-8000-000000000001',
       '00000000-0000-4000-8000-000000000400',
       '00000000-0000-4000-8000-000000000120',
+      '00000000-0000-4000-8000-000000000110',
       1.000,
       null,
       'viewer denied'
@@ -177,6 +279,7 @@ begin
       '00000000-0000-4000-8000-000000000001',
       '00000000-0000-4000-8000-000000000400',
       '00000000-0000-4000-8000-000000000120',
+      '00000000-0000-4000-8000-000000000110',
       1.000,
       null,
       'cross-org denied'
@@ -202,6 +305,7 @@ begin
       '00000000-0000-4000-8000-000000000001',
       '00000000-0000-4000-8000-000000000402',
       '00000000-0000-4000-8000-000000000120',
+      '00000000-0000-4000-8000-000000000110',
       21.000,
       null,
       'negative denied by default'
@@ -229,6 +333,7 @@ select * from public.record_stock_withdrawal(
   '00000000-0000-4000-8000-000000000001',
   '00000000-0000-4000-8000-000000000402',
   '00000000-0000-4000-8000-000000000120',
+  '00000000-0000-4000-8000-000000000110',
   25.000,
   null,
   'configured negative stock'
@@ -263,6 +368,7 @@ begin
       '00000000-0000-4000-8000-000000000001',
       '00000000-0000-4000-8000-000000000400',
       '00000000-0000-4000-8000-000000000120',
+      '00000000-0000-4000-8000-000000000110',
       1.000,
       null,
       'anon denied'

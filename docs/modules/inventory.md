@@ -1,6 +1,6 @@
 # Módulo — Estoque transacional
 
-Status: ledger persistente com entrada, retirada, devolução relacionada, transferências, inventário físico e baixas por perda/quebra/vencimento.
+Status: ledger persistente com entrada, retirada para Setor, devolução relacionada, transferências, inventário físico e baixas por perda/quebra/vencimento.
 
 ## Princípios
 
@@ -15,9 +15,24 @@ Status: ledger persistente com entrada, retirada, devolução relacionada, trans
 
 `record_stock_entry` valida role, command ID, quantidade/custo, bloqueia saldo, recalcula custo médio e cria lote quando aplicável. Reposição sobre saldo anterior `<= 0` usa o custo recebido como novo custo-base.
 
-## Retirada
+## Retirada para Setor
 
-`record_stock_withdrawal` bloqueia saldo/lotes, usa lote preferido quando informado e FEFO para o restante, registra custo médio vigente e respeita a política configurável de estoque negativo. Item rastreado nunca cria lote negativo.
+A Fase 23 fecha `REQ-STK-004` na command surface persistente. Toda nova retirada operacional exige um Setor de consumo explícito; não existe Setor default e o sistema não o infere a partir do local de estoque.
+
+`record_stock_withdrawal`:
+
+1. exige `sector_id` no contrato público, além de item, origem, quantidade e dados opcionais de lote/observação;
+2. valida autenticação, papel permitido e escopo do local de origem;
+3. exige Setor ativo da mesma Organization e valida o escopo do usuário com o helper `private.has_sector_role` já vigente;
+4. persiste o Setor em `stock_movements.sector_id`, mantendo `occurred_at=now()` e `responsible_user_id=auth.uid()` para data e responsável;
+5. inclui `sector_id` no audit `stock_withdrawal.recorded` e na comparação semântica do command ID;
+6. retry com o mesmo payload e Setor continua idempotente; reutilizar a chave com Setor diferente gera `IDEMPOTENCY_KEY_CONFLICT`;
+7. a assinatura pública legada sem Setor é removida, portanto não existe caminho autenticado alternativo para registrar retirada sem destino operacional;
+8. continua delegando o núcleo de saída a `private.record_stock_outflow`, preservando lock, saldo projetado, custo médio vigente, lote preferido, FEFO, política de estoque negativo e rollback atômico.
+
+`stock_movements.sector_id` permanece nullable no ledger global porque entradas, transferências e outros tipos de movimento não representam necessariamente consumo por Setor. A Fase 23 não faz backfill nem altera retiradas históricas.
+
+Na interface `/workspace/estoque`, o Setor é obrigatório e escolhido entre `workspace.sectors`, cujo resultado já é filtrado pelas policies de escopo. A UI não substitui a validação do RPC.
 
 ## Devolução relacionada de retirada
 
@@ -111,11 +126,11 @@ O saldo esperado pode ser negativo quando a exceção do local permitir; a conta
 
 ## Concorrência
 
-Entrada, retirada, devolução, baixas, transferência e inventário usam row locks/advisory transaction locks no PostgreSQL. Retirada e baixa compartilham o núcleo privado de saída; devoluções serializam pela retirada original e seguem a mesma ordem saldo → lote para evitar over-return e deadlocks com saídas concorrentes.
+Entrada, retirada, devolução, baixas, transferência e inventário usam row locks/advisory transaction locks no PostgreSQL. Retirada e baixa compartilham o núcleo privado de saída; a retirada acrescenta a validação/persistência do Setor sem alterar a ordem de locks desse núcleo. Devoluções serializam pela retirada original e seguem a mesma ordem saldo → lote para evitar over-return e deadlocks com saídas concorrentes.
 
 ## Interfaces persistentes
 
-- `/workspace/estoque` — saldo, entrada, retirada, lotes;
+- `/workspace/estoque` — saldo, entrada, retirada para Setor, lotes;
 - `/workspace/baixas` — perda, quebra, vencimento, motivos e histórico recente;
 - `/workspace/devolucoes` — retiradas elegíveis, saldo retornável e histórico de `return_in`;
 - `/workspace/transferencias` — dispatch/receive;
@@ -123,6 +138,6 @@ Entrada, retirada, devolução, baixas, transferência e inventário usam row lo
 
 ## Testes
 
-O CI cobre migrations/RLS, entrada, retirada, devolução, baixas, transferências base/multi-lote e inventário físico. A suíte de devolução valida retorno parcial/total, múltiplos retornos, over-return, retry/idempotência, custo histórico, restauração de lote, papéis/escopo, cross-Organization, anon e rollback. A suíte de baixas continua cobrindo motivo estruturado, custo, FEFO, vencimento com lote explícito, política de estoque negativo e isolamento.
+O CI cobre migrations/RLS, entrada, retirada, devolução, baixas, transferências base/multi-lote e inventário físico. A retirada cobre Setor obrigatório, persistência/auditoria, assinatura legada indisponível, cross-Organization, escopo setorial, retry com mesmo Setor e conflito com Setor divergente, além das regressões de FEFO, lote preferido, custo e estoque negativo. A suíte de devolução valida retorno parcial/total, múltiplos retornos, over-return, retry/idempotência, custo histórico, restauração de lote, papéis/escopo, cross-Organization, anon e rollback. A suíte de baixas continua cobrindo motivo estruturado, custo, FEFO, vencimento com lote explícito, política de estoque negativo e isolamento.
 
 Empréstimos continuam pendentes de Q-005; esta fase não interpreta Q-003/Q-004.
