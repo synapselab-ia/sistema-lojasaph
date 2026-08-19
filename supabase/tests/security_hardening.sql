@@ -1,0 +1,249 @@
+\set ON_ERROR_STOP on
+
+-- Security regression suite for Issue #54.
+-- This suite validates both RLS policy shape and the independent object-grant layer.
+
+do $$
+declare
+  offenders text;
+begin
+  select string_agg(format('%I', c.relname), ', ' order by c.relname)
+    into offenders
+  from pg_class c
+  join pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'public'
+    and c.relkind in ('r', 'p')
+    and not c.relrowsecurity;
+
+  if offenders is not null then
+    raise exception 'public tables without RLS: %', offenders;
+  end if;
+end;
+$$;
+
+do $$
+declare
+  offenders text;
+begin
+  select string_agg(format('%I.%I', tablename, policyname), ', ' order by tablename, policyname)
+    into offenders
+  from pg_policies
+  where schemaname = 'public'
+    and roles && array['anon'::name, 'public'::name];
+
+  if offenders is not null then
+    raise exception 'policies exposed to anon/PUBLIC: %', offenders;
+  end if;
+end;
+$$;
+
+do $$
+declare
+  offenders text;
+begin
+  select string_agg(format('%I.%I', tablename, policyname), ', ' order by tablename, policyname)
+    into offenders
+  from pg_policies
+  where schemaname = 'public'
+    and (
+      lower(regexp_replace(coalesce(qual, ''), '\s+', '', 'g')) in ('true', '(true)')
+      or lower(regexp_replace(coalesce(with_check, ''), '\s+', '', 'g')) in ('true', '(true)')
+      or lower(coalesce(qual, '') || ' ' || coalesce(with_check, '')) like '%auth.role(%'
+      or lower(coalesce(qual, '') || ' ' || coalesce(with_check, '')) like '%user_metadata%'
+      or lower(coalesce(qual, '') || ' ' || coalesce(with_check, '')) like '%raw_user_meta_data%'
+    );
+
+  if offenders is not null then
+    raise exception 'unsafe public RLS policies: %', offenders;
+  end if;
+end;
+$$;
+
+-- anon must have no relation privileges in the exposed app schema.
+do $$
+declare
+  offenders text;
+begin
+  select string_agg(format('%I', c.relname), ', ' order by c.relname)
+    into offenders
+  from pg_class c
+  join pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'public'
+    and c.relkind in ('r', 'p', 'v', 'm')
+    and (
+      has_table_privilege('anon', c.oid, 'SELECT')
+      or has_table_privilege('anon', c.oid, 'INSERT')
+      or has_table_privilege('anon', c.oid, 'UPDATE')
+      or has_table_privilege('anon', c.oid, 'DELETE')
+      or has_table_privilege('anon', c.oid, 'TRUNCATE')
+      or has_table_privilege('anon', c.oid, 'REFERENCES')
+      or has_table_privilege('anon', c.oid, 'TRIGGER')
+    );
+
+  if offenders is not null then
+    raise exception 'anon relation privileges remain in public: %', offenders;
+  end if;
+end;
+$$;
+
+-- authenticated table privileges must be exactly backed by explicit policies.
+do $$
+declare
+  relation_row record;
+  policy_exists boolean;
+begin
+  for relation_row in
+    select c.oid, c.relname
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public'
+      and c.relkind in ('r', 'p')
+    order by c.relname
+  loop
+    select exists (
+      select 1 from pg_policies p
+      where p.schemaname = 'public'
+        and p.tablename = relation_row.relname
+        and p.cmd in ('SELECT', 'ALL')
+        and ('authenticated'::name = any(p.roles) or 'public'::name = any(p.roles))
+    ) into policy_exists;
+    if has_table_privilege('authenticated', relation_row.oid, 'SELECT') <> policy_exists then
+      raise exception 'SELECT grant/policy mismatch on public.%', relation_row.relname;
+    end if;
+
+    select exists (
+      select 1 from pg_policies p
+      where p.schemaname = 'public'
+        and p.tablename = relation_row.relname
+        and p.cmd in ('INSERT', 'ALL')
+        and ('authenticated'::name = any(p.roles) or 'public'::name = any(p.roles))
+    ) into policy_exists;
+    if has_table_privilege('authenticated', relation_row.oid, 'INSERT') <> policy_exists then
+      raise exception 'INSERT grant/policy mismatch on public.%', relation_row.relname;
+    end if;
+
+    select exists (
+      select 1 from pg_policies p
+      where p.schemaname = 'public'
+        and p.tablename = relation_row.relname
+        and p.cmd in ('UPDATE', 'ALL')
+        and ('authenticated'::name = any(p.roles) or 'public'::name = any(p.roles))
+    ) into policy_exists;
+    if has_table_privilege('authenticated', relation_row.oid, 'UPDATE') <> policy_exists then
+      raise exception 'UPDATE grant/policy mismatch on public.%', relation_row.relname;
+    end if;
+
+    if has_table_privilege('authenticated', relation_row.oid, 'DELETE')
+       or has_table_privilege('authenticated', relation_row.oid, 'TRUNCATE')
+       or has_table_privilege('authenticated', relation_row.oid, 'REFERENCES')
+       or has_table_privilege('authenticated', relation_row.oid, 'TRIGGER')
+       or has_table_privilege('authenticated', relation_row.oid, 'MAINTAIN') then
+      raise exception 'administrative/direct delete privilege remains on public.%', relation_row.relname;
+    end if;
+  end loop;
+end;
+$$;
+
+-- Public views must preserve underlying RLS and remain unavailable to anon.
+do $$
+declare
+  invoker_enabled boolean;
+begin
+  select coalesce('security_invoker=true' = any(c.reloptions), false)
+    into invoker_enabled
+  from pg_class c
+  join pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'public'
+    and c.relname = 'payable_installment_summary'
+    and c.relkind = 'v';
+
+  if not coalesce(invoker_enabled, false) then
+    raise exception 'payable_installment_summary must use security_invoker=true';
+  end if;
+
+  if has_table_privilege('anon', 'public.payable_installment_summary', 'SELECT') then
+    raise exception 'anon unexpectedly has SELECT on payable_installment_summary';
+  end if;
+
+  if not has_table_privilege('authenticated', 'public.payable_installment_summary', 'SELECT') then
+    raise exception 'authenticated lost SELECT on payable_installment_summary';
+  end if;
+end;
+$$;
+
+-- No SECURITY DEFINER function in public may be callable by anon (including via PUBLIC).
+do $$
+declare
+  offenders text;
+begin
+  select string_agg(p.oid::regprocedure::text, ', ' order by p.oid::regprocedure::text)
+    into offenders
+  from pg_proc p
+  join pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'public'
+    and p.prosecdef
+    and has_function_privilege('anon', p.oid, 'EXECUTE');
+
+  if offenders is not null then
+    raise exception 'anon can execute public SECURITY DEFINER functions: %', offenders;
+  end if;
+
+  if has_function_privilege('anon', 'public.set_updated_at()', 'EXECUTE')
+     or has_function_privilege('authenticated', 'public.set_updated_at()', 'EXECUTE')
+     or has_function_privilege('service_role', 'public.set_updated_at()', 'EXECUTE') then
+    raise exception 'set_updated_at remains directly executable by an API role';
+  end if;
+end;
+$$;
+
+-- Probe postgres default privileges after the hardening migration. The bootstrap
+-- intentionally emulates legacy hosted Supabase defaults, so these objects must
+-- still be born closed after the migration resets the defaults.
+create table public._security_default_privilege_probe (
+  id bigint generated always as identity primary key
+);
+
+create function public._security_default_privilege_probe_fn()
+returns integer
+language sql
+as $$ select 1 $$;
+
+do $$
+declare
+  role_name text;
+  sequence_name text;
+begin
+  foreach role_name in array array['anon', 'authenticated', 'service_role']
+  loop
+    if has_table_privilege(role_name, 'public._security_default_privilege_probe', 'SELECT')
+       or has_table_privilege(role_name, 'public._security_default_privilege_probe', 'INSERT')
+       or has_table_privilege(role_name, 'public._security_default_privilege_probe', 'UPDATE')
+       or has_table_privilege(role_name, 'public._security_default_privilege_probe', 'DELETE') then
+      raise exception 'default table privileges leaked to %', role_name;
+    end if;
+
+    if has_function_privilege(role_name, 'public._security_default_privilege_probe_fn()', 'EXECUTE') then
+      raise exception 'default function EXECUTE leaked to %', role_name;
+    end if;
+  end loop;
+
+  sequence_name := pg_get_serial_sequence('public._security_default_privilege_probe', 'id');
+  if sequence_name is null then
+    raise exception 'default privilege probe identity sequence not found';
+  end if;
+
+  foreach role_name in array array['anon', 'authenticated', 'service_role']
+  loop
+    if has_sequence_privilege(role_name, sequence_name, 'USAGE')
+       or has_sequence_privilege(role_name, sequence_name, 'SELECT')
+       or has_sequence_privilege(role_name, sequence_name, 'UPDATE') then
+      raise exception 'default sequence privileges leaked to %', role_name;
+    end if;
+  end loop;
+end;
+$$;
+
+drop function public._security_default_privilege_probe_fn();
+drop table public._security_default_privilege_probe;
+
+select 'RLS and grant hardening tests passed' as result;

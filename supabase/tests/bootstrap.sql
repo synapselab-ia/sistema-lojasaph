@@ -38,3 +38,15 @@ $$;
 grant usage on schema auth to anon, authenticated;
 grant execute on function auth.uid() to anon, authenticated;
 grant execute on function auth.role() to anon, authenticated;
+
+-- Reproduce the legacy hosted Supabase Data API defaults in ephemeral CI.
+-- The application hardening migration must clean existing object grants and
+-- reset these defaults before future public objects are created.
+alter default privileges for role postgres in schema public
+  grant all privileges on tables to anon, authenticated, service_role;
+
+alter default privileges for role postgres in schema public
+  grant all privileges on sequences to anon, authenticated, service_role;
+
+alter default privileges for role postgres in schema public
+  grant execute on functions to anon, authenticated, service_role;
