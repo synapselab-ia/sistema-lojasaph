@@ -123,6 +123,13 @@ export async function updatePasswordAction(formData: FormData) {
   }
 
   const { error } = await supabase.auth.updateUser({ password });
+  if (error?.code === "same_password") {
+    serverLogger.info("auth.password_update.already_current", {
+      correlationId: await requestCorrelationId(),
+    });
+    revalidatePath("/", "layout");
+    redirect(urlWithMessage(next, "message", "A senha informada já estava definida. Acesso confirmado."));
+  }
   if (error) {
     serverLogger.warn("auth.password_update.provider_failed", {
       correlationId: await requestCorrelationId(),

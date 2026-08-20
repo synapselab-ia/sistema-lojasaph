@@ -8,7 +8,8 @@ import { SupabaseStockItemRepository } from "@/modules/catalog/adapters/supabase
 import { SupabaseEmployeeRepository } from "@/modules/employees/adapters/supabase-employee-repository";
 import { SupabaseStockLossGateway } from "@/modules/inventory/adapters/supabase-stock-loss-gateway";
 import { loadWorkspaceReferenceData } from "@/modules/master-data/adapters/supabase-workspace-query";
-import { RuntimeWorkspaceProvider } from "@/modules/master-data/ui/runtime-workspace-provider";
+import { RuntimeWorkspaceBootstrap } from "@/modules/master-data/ui/runtime-workspace-bootstrap";
+import { serializeRuntimeWorkspaceInitialData } from "@/modules/master-data/ui/runtime-workspace-wire";
 import { SupabaseSupplierRepository } from "@/modules/suppliers/adapters/supabase-supplier-repository";
 
 export const dynamic = "force-dynamic";
@@ -37,13 +38,22 @@ export default async function PersistentWorkspaceLayout({ children }: Readonly<{
     stockLossGateway.listRecent(organizationId),
   ]);
 
+  const initialData = serializeRuntimeWorkspaceInitialData({
+    ...referenceData,
+    stockItems,
+    suppliers,
+    employees,
+    stockLossReasons,
+    stockLosses,
+  });
+
   return (
-    <RuntimeWorkspaceProvider
+    <RuntimeWorkspaceBootstrap
       organizationId={organizationId}
       organizationName={organization.name}
       roles={organization.roles}
       organizationWideRoles={organization.organizationWideRoles}
-      initialData={{ ...referenceData, stockItems, suppliers, employees, stockLossReasons, stockLosses }}
+      initialData={initialData}
       supabaseConfig={supabaseConfig}
     >
       <RuntimeShell
@@ -53,6 +63,6 @@ export default async function PersistentWorkspaceLayout({ children }: Readonly<{
       >
         {children}
       </RuntimeShell>
-    </RuntimeWorkspaceProvider>
+    </RuntimeWorkspaceBootstrap>
   );
 }
