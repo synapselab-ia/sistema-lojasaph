@@ -2,98 +2,152 @@
 
 ## Contexto
 
-A Fase 36 auditou `REQ-SEC-003 — Auditoria`.
+A Fase 37 auditou `REQ-SEC-004 — Segredos`.
 
 Resultado:
 
-- trilha `audit_logs` continua protegida por RLS/grants e fechada para escrita direta do cliente;
-- Estoque, Inventário, Compras, Financeiro e Caixa já possuem audit events nos command paths críticos;
-- foi encontrado um gap concreto em configurações críticas de estoque persistidas por Data API/RLS;
-- Issue #83 / PR #84 adicionou auditoria transacional para `stock_items`, `stock_locations` e `stock_loss_reasons`;
-- migration canônica/remota: `20260820192526 / critical_config_audit`;
-- retries/no-op de `upsert` não duplicam eventos;
-- rollback reverte mutation e audit juntos;
-- snapshots são whitelisted e não incluem secrets nem campos fiscais desnecessários;
-- nenhuma homologação remota criou evento sintético de Production;
-- evidência: `docs/qa/audit-trail.md`.
+- nenhum segredo real identificado na árvore rastreada atual;
+- `.env.example` contém apenas placeholders vazios;
+- `.env*` locais e `/backups/` permanecem ignorados;
+- `SUPABASE_SECRET_KEY` é server-only;
+- browser recebe somente URL/publishable key/refs públicas;
+- `client-boundary.test.ts` protege a fronteira;
+- password não é enviada a logs/redirects;
+- observabilidade redige campos/texto sensíveis e erros públicos são genéricos;
+- `/health` hospedado não expõe URL/ref/key/secret;
+- workflows/scripts não publicam credenciais ou dumps por desenho;
+- nenhuma exposição concreta exigiu Issue ou rotação;
+- evidência: `docs/qa/secrets-audit.md`.
 
-Não reabrir REQ-SEC-003 sem evidência concreta de regressão.
+Limitações registradas:
+
+- o conector GitHub não expõe Secret Scanning/grep exaustivo de todos os blobs históricos;
+- o conector Vercel não expõe listagem de env vars por target.
+
+Não transformar essas limitações em finding por inferência e não reabrir SEC-004 sem evidência concreta.
+
+## Fase 36 — não repetir
+
+Issue #83 / PR #84 está integrada em `main` pelo squash commit `2ff5a421624c0f6dbf199ae16f77f9ab7f510626`.
+
+Migration existente no GitHub/Supabase:
+
+`20260820192526 / critical_config_audit`
+
+Não reaplicar.
 
 ## Issue #75 — continuar bloqueada
 
-Antes de qualquer trabalho de backup, verificar se #75 recebeu decisões novas sobre RPO/RTO/destino/retenção/proteção/alerta.
+Antes de qualquer trabalho de backup, verificar se #75 recebeu decisões novas sobre:
 
-Se continuar sem essas decisões, não inventar cron/storage e não interromper a próxima auditoria independente.
+- RPO;
+- RTO;
+- destino off-site;
+- retenção;
+- proteção/encriptação;
+- owner + canal de alerta;
+- cadence/destino de restore drill hospedado.
+
+Se continuar sem decisões, não inventar cron/storage e prosseguir para a auditoria independente abaixo.
 
 ## Objetivo ativo
 
-**Auditar `REQ-SEC-004 — Segredos`: tokens, chaves e senhas não podem ser versionados no GitHub nem expostos indevidamente ao browser/logs.**
+**Auditar `REQ-SEC-005 — Cancelamento/estorno`: registros críticos não devem ser simplesmente excluídos sem trilha de auditoria.**
 
-A tarefa começa como auditoria transversal. Não rotacionar credenciais, alterar envs ou criar fornecedores/serviços por precaução sem encontrar exposição concreta.
+A tarefa começa como auditoria transversal. Não criar novos estados, soft-delete genérico ou taxonomia de reversão sem encontrar um gap concreto.
 
-## Baseline existente
+## Baseline existente a reutilizar
 
-Reutilizar antes de criar trabalho novo:
+### Compras — Issue #28 / Fase 10
 
-- `.gitignore` ignora `.env*` com exceção deliberada de `.env.example`;
-- `.env.example` documenta nomes/formatos sem valor secreto real;
-- integração Supabase separa publishable key de `SUPABASE_SECRET_KEY` server-only;
-- Fase 18 / ADR-008 implementou fronteira Development/Preview/Production e bloqueio de admin secret fora de Production por padrão;
-- `/health` não revela URL/ref/key/secret;
-- Fase 17 / ADR-007 implementou redaction de logs para tokens, JWTs, connection strings e PII comum;
-- Fase 34 revalidou RLS/grants; não reabrir RLS nesta auditoria salvo exposição concreta;
-- Vercel mantém Git auto-deploy desabilitado; não criar deployment só para verificar secrets.
+- `purchase_orders` possui lifecycle com `cancelled`;
+- `cancel_purchase_order` é comando transacional/idempotente;
+- recebimentos preservam ledger/histórico em vez de apagar movimentações.
+
+### Financeiro — Issue #31 / Fase 11
+
+- registros financeiros críticos não são apagados para correção;
+- `cancel_payable_document` preserva documento e muda lifecycle;
+- `reverse_installment_payment` cria estorno relacionado ao pagamento original;
+- saldo/status são derivados do histórico persistente.
+
+### Caixa — Issue #33 / Fase 12
+
+- sessões críticas usam cancelamento auditado, nunca delete físico;
+- `cancel_cash_session` preserva a sessão e histórico.
+
+### Estoque / Inventário
+
+- ledger de estoque é imutável para cliente normal;
+- devolução cria novo `stock_movement` relacionado por `reversal_of_movement_id`, sem apagar retirada original;
+- `cancel_inventory_count` preserva a sessão e muda lifecycle;
+- movimentos de ajuste/baixa/transferência permanecem históricos.
+
+### Hardening transversal
+
+A Fase 34 / `rls_grant_hardening` removeu `DELETE` direto de `authenticated` nas tabelas públicas de aplicação e a suíte `security_hardening.sql` falha se DELETE/TRUNCATE/REFERENCES/TRIGGER/MAINTAIN reaparecerem.
+
+A Fase 36 confirmou `audit_logs` append-only para cliente normal e auditou os command paths críticos.
 
 ## Fazer agora
 
-1. Ler `AGENTS.md`, `START-HERE`, `CURRENT_STATE`, `HANDOFF`, este arquivo, `WORKFLOW`, `requirements.md`, ADR-007 e ADR-008.
-2. Conferir `main`, Issue #75, demais Issues/PRs/branches e CI reais.
-3. Confirmar a integração da Fase 36 / PR #84 / Issue #83 e a migration `20260820192526`; não reaplicar.
-4. Se #75 continuar sem decisões, mantê-la bloqueada.
-5. Auditar o repositório e histórico/configuração disponível sem revelar valores sensíveis:
-   - `.gitignore` e `.env.example`;
-   - arquivos tracked com nomes suspeitos (`.env`, pem/key/cert, dumps, backups);
-   - referências a `SUPABASE_SECRET_KEY`, service role/secret keys, database URLs/passwords e tokens;
-   - qualquer variável `NEXT_PUBLIC_*` que pudesse carregar privilégio administrativo;
-   - código client-side/import graph para garantir que admin client/secret não seja empacotado no browser;
-   - workflows/scripts para evitar echo de secrets ou inclusão em artefatos;
-   - logs/observability redaction e mensagens públicas de erro.
-6. Diferenciar corretamente:
-   - Supabase publishable key: identificador público de cliente, protegido por RLS;
-   - secret/service-role/database credentials: server-only e nunca versionados/expostos.
-7. Usar Vercel connector se necessário para verificar **nomes/targets/metadados**, nunca retornar valores de env no chat/docs. Se a conexão continuar incapaz de enumerar env vars com segurança, registrar como não observável em vez de inferir.
-8. Usar Supabase read-only quando necessário para confirmar configurações estruturais; não imprimir keys/connection strings.
-9. Verificar que `/health`, logs estruturados e respostas públicas não vazam configuração sensível.
-10. Não tratar placeholders sintéticos/documentais como credenciais reais.
-11. Se houver secret real versionado ou exposição browser/log reproduzível:
+1. Ler continuidade padrão, `WORKFLOW`, requirements e `docs/qa/audit-trail.md`.
+2. Conferir `main`, #75, demais Issues/PRs/branches e CI reais.
+3. Confirmar merge da Fase 37; não repetir SEC-004.
+4. Confirmar `20260820192526 / critical_config_audit` read-only; não reaplicar.
+5. Se #75 continuar sem decisões, mantê-la bloqueada.
+6. Mapear as tabelas/registros críticos atuais por domínio:
+   - `stock_movements` e relações de devolução/reversão;
+   - `inventory_counts`;
+   - `purchase_orders`/receipts;
+   - `payable_documents`/`payments`;
+   - `cash_sessions`/movements/totals;
+   - configurações críticas quando houver lifecycle relevante.
+7. Inspecionar grants/RLS atuais e provar que `authenticated` não possui DELETE direto nas relações críticas.
+8. Inspecionar RPCs de cancelamento/estorno e confirmar:
+   - autorização/escopo;
+   - idempotência;
+   - estado anterior/novo ou relação de reversão explícita;
+   - audit event no mesmo commit transacional;
+   - retry não duplica efeito;
+   - falha/rollback não remove histórico.
+9. Confirmar que UIs/gateways usam os commands de cancelamento/estorno quando a ação existe e não chamam `.delete()` para registros críticos.
+10. Diferenciar corretamente:
+    - cancelamento de lifecycle;
+    - estorno/reversão por novo evento relacionado;
+    - ausência deliberada de delete;
+    - limpeza de fixtures/testes ou tabelas não críticas, que não constitui automaticamente finding.
+11. Usar Supabase read-only para introspecção de policies/grants/functions quando necessário. Não executar cancelamento/estorno real em Production.
+12. Reutilizar suites existentes de compras, financeiro, caixa, inventário, devoluções, RLS/hardening e auditoria.
+13. Se faltar apenas prova transversal de baixo custo, adicionar teste/documentação mínima; não redesenhar domínio.
+14. Se houver delete destrutivo autenticado ou fluxo crítico que substitua/apague histórico sem audit trail:
     - abrir uma única Issue;
-    - conter a exposição no código/configuração;
-    - registrar necessidade de rotação sem publicar o segredo comprometido;
-    - não reutilizar o valor em testes ou documentação.
-12. Se `REQ-SEC-004` estiver atendido, criar apenas documentação/evidência, sem Issue artificial.
-13. Não criar deployment Vercel para esta auditoria salvo necessidade real e única de runtime hospedado.
-14. Se houver patch, exigir lint, typecheck, Vitest, build e gates aplicáveis antes do merge.
-15. Atualizar `CURRENT_STATE`, `HANDOFF` e `NEXT_ACTION` ao final.
+    - criar branch dedicada;
+    - corrigir apenas a superfície reproduzível;
+    - preservar dados existentes e backward compatibility quando possível.
+15. Se `REQ-SEC-005` estiver atendido, criar somente documentação/evidência, sem Issue artificial.
+16. Não criar deployment Vercel para essa auditoria salvo necessidade real e única.
+17. Se houver patch, exigir lint, typecheck, Vitest, build e gates PostgreSQL aplicáveis antes do merge.
+18. Atualizar `CURRENT_STATE`, `HANDOFF` e `NEXT_ACTION` ao final.
 
 ## Critério de conclusão
 
-`REQ-SEC-004` pode ser considerado atendido quando houver evidência de que:
+`REQ-SEC-005` pode ser considerado atendido quando houver evidência de que:
 
-- nenhum secret real está versionado nos arquivos rastreados relevantes;
-- arquivos locais de env/backup/credencial permanecem ignorados;
-- segredos administrativos e database credentials são server-only;
-- nenhuma variável pública carrega segredo privilegiado;
-- o browser não recebe admin client/secret;
-- logs e erros públicos redigem/omitem secrets;
-- workflows/scripts não publicam credenciais em log/artefato por desenho;
-- qualquer limitação de observabilidade de envs externos fica explicitamente registrada sem inferência.
+- clientes autenticados não possuem DELETE direto sobre registros críticos;
+- correções operacionais usam lifecycle de cancelamento ou novo evento de reversão, não remoção do original;
+- cancelamentos/estornos preservam Organization, ator, recurso original e motivo/contexto mínimo quando aplicável;
+- audit trail permanece no mesmo boundary transacional;
+- retries são idempotentes ou rejeitam conflito explicitamente;
+- falhas não deixam estado parcial nem eliminam histórico;
+- não existe `.delete()` no runtime para registros críticos fora de um caso explicitamente justificado e auditado.
 
 ## Segurança / operação
 
-- nunca colar valores de secrets no chat, Issue, PR ou documentação;
-- não fazer rotação preventiva sem exposição concreta e autorização operacional adequada;
-- não usar secret real como fixture;
-- não reabrir RLS/observabilidade/ambientes sem evidência de regressão;
+- não executar mutação destrutiva em Production para testar;
+- não criar soft-delete genérico sem necessidade de domínio;
+- não reabrir REQ-SEC-003/004 sem regressão concreta;
+- não reaplicar migrations existentes;
 - não fechar #75 sem backup automático real;
 - não importar dados reais/cutover;
 - não reativar Git auto-deploy;

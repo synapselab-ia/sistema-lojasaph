@@ -2,150 +2,137 @@
 
 ## Estado
 
-A Fase 36 auditou `REQ-SEC-003 — Auditoria`, encontrou uma lacuna concreta em configurações críticas de estoque persistidas diretamente via Data API e implementou a correção mínima na Issue #83 / PR #84.
+A Fase 37 auditou `REQ-SEC-004 — Segredos` a partir da `main` real em `2ff5a421624c0f6dbf199ae16f77f9ab7f510626`.
 
-Estado da frente:
+Resultado: **requisito atendido no escopo auditável; nenhum segredo real versionado ou vazamento browser/log reproduzível encontrado**.
 
-- baseline: `main` em `f761aa5f028f1752784b122c56fa09054e07bee3`;
-- Issue #83 — `REQ-SEC-003 — auditar configurações críticas persistidas por Data API`;
-- branch `agent/critical-config-audit`;
-- PR #84 — `fix(audit): trace critical inventory configuration changes`;
-- migration Supabase aplicada: `20260820192526 / critical_config_audit`;
-- evidência detalhada: `docs/qa/audit-trail.md`;
-- Issue #75 de backup permanece aberta/bloqueada;
+Frente atual:
+
+- branch `agent/secrets-audit`;
+- Issue funcional nova: nenhuma;
+- evidência: `docs/qa/secrets-audit.md`;
+- Issue #75 permanece aberta/bloqueada;
+- nenhuma migration/DDL/DML nesta fase;
 - nenhum deployment Vercel;
-- nenhum dado real/importação/cutover.
+- nenhum secret/key/connection string solicitado ou publicado.
 
-## O que já estava correto
+## Fase 36 — já concluída
 
-`public.audit_logs` já era append-only para clientes normais e protegido por RLS/grants:
+PR #84 foi squash-mergeado e Issue #83 foi fechada.
 
-- authenticated: SELECT apenas;
-- leitura somente para owner/admin Organization-wide;
-- anon sem acesso;
-- sem INSERT/UPDATE/DELETE direto do cliente.
+Main de entrada da Fase 37:
 
-Os command paths críticos existentes escrevem audit event dentro das próprias transações:
+`2ff5a421624c0f6dbf199ae16f77f9ab7f510626`
 
-- Estoque: entrada, retirada, perda/vencimento, devolução e transferência;
-- Inventário: início, linhas, confirmação e cancelamento;
-- Compras: criação, emissão, recebimento e cancelamento;
-- Financeiro: documento, pagamento, estorno e cancelamento;
-- Caixa: configuração via RPC, abertura, totais, movimentos, fechamento e cancelamento.
+Migration remota/canônica existente:
 
-Os payloads inspecionados são operacionais e não copiam secrets. Em Financeiro, access key/payment reference não são incluídos nos audit snapshots dos commands correspondentes.
+`20260820192526 / critical_config_audit`
 
-## Gap da Issue #83
+Não reaplicar.
 
-`SupabaseStockItemRepository.save()` usa Data API com `upsert` direto. Também existem writes diretos protegidos por RLS em `stock_locations` e `stock_loss_reasons`.
+Validação final histórica do PR #84:
 
-Essas tabelas controlam comportamento crítico:
+- CI #334 — success;
+- Business Transactions Integration #165 — success;
+- Inventory Count Integration #181 — success.
 
-- StockItem: tracking de lote/validade, retornabilidade, unidade/categoria/tipo/status;
-- StockLocation: `allow_negative_stock` e estado/localização;
-- StockLossReason: `movement_type` e ativação usados por `record_stock_loss`.
+## Auditoria REQ-SEC-004
 
-Antes da Fase 36, nenhuma das três possuía trigger de auditoria.
+### Git / arquivos
 
-## Correção aplicada
+A árvore recursiva completa da `main` foi enumerada (`truncated=false`).
 
-Migration canônica local/remota:
+- apenas `.env.example` entre arquivos `.env*`;
+- placeholders de env vazios;
+- nenhum env local/Production rastreado;
+- nenhum PEM/certificado/chave privada/container de chave rastreado;
+- nenhum dump/backup real rastreado;
+- nenhuma planilha real rastreada.
 
-`supabase/migrations/20260820192526_critical_config_audit.sql`
+`.gitignore` mantém `.env*` salvo `.env.example`, `/backups/` e `*.pem`.
 
-Ela cria `private.audit_critical_inventory_configuration()`:
+Não ampliar ignores apenas por precaução sem artefato/exposição concreta.
 
-- trigger function privada;
-- SECURITY DEFINER;
-- `search_path=""`;
-- sem EXECUTE direto para anon/authenticated/service_role;
-- snapshots por whitelist;
-- comparação semântica em UPDATE, ignorando timestamps.
+### Histórico observável
 
-Triggers:
+Buscas de commits por `.env`, `secret`, `credential`, `password` e commits de introdução do Supabase foram revisadas.
 
-- `stock_items_critical_config_audit`;
-- `stock_locations_critical_config_audit`;
-- `stock_loss_reasons_critical_config_audit`.
+- initial commit: somente README;
+- Fase 7: `.env.example` já nasceu com URL/publishable/secret vazios;
+- helper histórico usava apenas `process.env.SUPABASE_SECRET_KEY`, sem literal de credencial;
+- hardening posterior marcou fachadas/admin como `server-only` e adicionou testes de fronteira;
+- nenhuma evidência de commit de remoção/rotação por leak.
 
-Ações:
+Limitação: o conector atual não expõe GitHub Secret Scanning nem grep arbitrário de todos os blobs históricos. Portanto a conclusão é “nenhuma exposição concreta encontrada no histórico observável”, não “scan exaustivo de todo DAG”.
 
-- `stock_item.created` / `stock_item.updated`;
-- `stock_location.created` / `stock_location.updated`;
-- `stock_loss_reason.created` / `stock_loss_reason.updated`.
+### Browser/server
 
-O no-op é importante: `updated_at` muda em todo UPDATE, mas um retry de `upsert` com os mesmos campos de negócio não deve criar auditoria duplicada.
+- browser usa apenas `NODE_ENV` e `NEXT_PUBLIC_*`;
+- browser Supabase recebe URL + publishable key;
+- `SUPABASE_SECRET_KEY` é lida em `src/lib/runtime/server.ts`, marcado `server-only`;
+- `src/lib/supabase/env.ts` e `src/lib/supabase/server.ts` também são `server-only`;
+- admin client só existe no servidor e passa pela policy de ambiente;
+- `client-boundary.test.ts` protege a fronteira;
+- Client Components recebem somente `SupabasePublicConfig`.
 
-## Testes
+### Password/log/error
 
-Nova suíte: `supabase/tests/audit_trail.sql`.
+- senha de login/update vai diretamente de Server Action ao Supabase Auth e não entra em log/redirect;
+- logger redige campos sensíveis e texto livre (Bearer/JWT/chaves Supabase/credentialed URLs/query params sensíveis);
+- `instrumentation.ts` remove query string e não copia headers;
+- `toPublicError()` oculta falhas internas/persistência;
+- error boundaries mostram somente mensagem genérica + digest/referência.
 
-Cobre:
+### Health/Vercel
 
-- create/update das três configurações;
-- actor via `auth.uid()`;
-- before/after;
-- no-op upsert sem duplicação;
-- rollback de mutation + audit;
-- whitelist sem EAN/NCM/CEST/timestamps no snapshot de StockItem;
-- três triggers presentes;
-- trigger function não executável diretamente por API roles;
-- audit_logs continua fechado para escrita do cliente.
+Deployment Production continua no commit `046c4a3392f85e2361c6ddeac0ae3ee1817145c5` por política manual. O arquivo `/health` tem o mesmo blob nesse commit e na main (`76220c627485d9b70b3281a23b426c7ed9ab246d`).
 
-`.github/workflows/ci.yml` executa a suíte no database gate.
+Fetch read-only em 2026-08-20: HTTP 200 e apenas status/service/environment/supabaseAccess/supabaseReason/adminAccess. Sem URL/ref/key/secret.
 
-## Validação
+O conector Vercel atual não expõe listagem de env vars. Não inferir nomes/targets/valores a partir disso e não criar deploy para verificar.
 
-Head técnico inicial `94be4f6d71c4f1a743bd737d976f1cc5538cdf9a`:
+### Workflows/scripts
 
-- CI #332 — success;
-- Business Transactions Integration #163 — success;
-- Inventory Count Integration #179 — success.
+- workflows não ecoam secrets nem sobem env/backup artifacts;
+- `postgres/postgres` é fixture do serviço PostgreSQL efêmero de CI, não credencial real;
+- export de backup recebe DB URL por ambiente, não a imprime, recusa output dentro do Git e usa `umask 077`;
+- restore drill usa temp dir, `chmod 600` e cleanup.
 
-Após esses gates, a migration foi aplicada ao Supabase e registrada como `20260820192526 / critical_config_audit`. O arquivo local foi renomeado para o mesmo version antes da validação final.
+### Supabase
 
-Revalidação remota read-only:
+Read-only: migration `20260820192526 / critical_config_audit` continua presente.
 
-- 3/3 triggers presentes;
-- função privada SECURITY DEFINER + search_path vazio;
-- API roles sem EXECUTE;
-- audit_logs continua SELECT-only para authenticated;
-- total de audit events Production permaneceu 5 antes/depois da DDL; nenhum evento sintético foi gerado remotamente.
-
-Advisors:
-
-- Security: nova função privada não gerou warning; permanecem RPCs públicas SECURITY DEFINER intencionais e leaked-password protection;
-- Performance: recomendações históricas de FKs/índices, sem finding novo desta migration.
-
-O PR #84 deve ser mergeado somente após o head final reconciliado/documental ficar verde. Consultar o PR para os runs finais.
+Nenhuma key/secret/database credential foi solicitada. Nenhuma mutation foi feita.
 
 ## Issue #75
 
-Continua sem comentários/decisões novas sobre RPO/RTO/destino/retenção/proteção/alerta. Não iniciar backup automático por inferência.
+Continua sem comentários/decisões de RPO, RTO, destino, retenção, proteção, owner/alerta e drill hospedado.
+
+Não inventar cron/storage e não fechar sem backup automático real.
 
 ## Próximo chat
 
-1. Ler continuidade padrão e conferir estado real de main/Issues/PRs/CI.
-2. Confirmar que PR #84 está mergeado e Issue #83 encerrada; se não estiver, concluir apenas o fechamento já validado, sem refazer a implementação.
-3. Confirmar `20260820192526_critical_config_audit.sql` em main e no histórico remoto; não reaplicar.
-4. Checar #75 primeiro; sem decisões novas, mantê-la bloqueada.
-5. Executar a próxima auditoria: `REQ-SEC-004 — Segredos`.
-6. Reutilizar as entregas existentes de persistência/Auth, RLS hardening, ambientes e observabilidade antes de criar trabalho novo.
-7. Auditar repositório/config/runtime sem expor valores de secrets: `.gitignore`, `.env.example`, uso de `NEXT_PUBLIC_*`, `SUPABASE_SECRET_KEY`, admin client server-only, Vercel env targets quando observáveis, workflows e redaction de logs.
-8. Verificar que nenhum secret real está versionado ou enviado ao browser/logs. Diferenciar publishable key de secret key.
-9. Não copiar valores de env/secrets para GitHub/docs/chat.
-10. Se SEC-004 estiver atendido, documentar sem Issue artificial; se houver exposição concreta, uma única Issue + branch + fix mínimo.
-11. Não criar deploy Vercel rotineiro.
-12. Atualizar continuidade ao final.
+1. Ler `AGENTS.md`, `START-HERE`, `CURRENT_STATE`, `HANDOFF`, `NEXT_ACTION`, `WORKFLOW` e requirements.
+2. Conferir estado real de `main`, #75, Issues/PRs/branches e CI.
+3. Confirmar merge da Fase 37 e não repetir SEC-004.
+4. Confirmar migration `20260820192526` read-only; não reaplicar.
+5. Se #75 continuar sem decisões, mantê-la bloqueada.
+6. Executar `REQ-SEC-005 — Cancelamento/estorno`.
+7. Reutilizar os fluxos já existentes de cancelamento/reversão e `audit_logs`; não criar nova taxonomia por conveniência.
+8. Mapear por domínio registros críticos e provar que o cliente não possui DELETE destrutivo direto.
+9. Validar cancelamentos/estornos como novos estados/eventos ou registros relacionados, preservando histórico e ator.
+10. Se houver delete destrutivo/lifecycle sem trilha concreta, abrir uma única Issue + branch + correção mínima.
+11. Se atendido, documentação apenas, sem Issue artificial.
+12. Não criar deployment Vercel para essa auditoria salvo necessidade real e única.
+13. Atualizar continuidade e validar CI antes do merge.
 
 ## Não fazer
 
-- não reabrir Fase 36 sem regressão concreta;
-- não auditar todo master data por conveniência;
-- não reaplicar migration remota;
-- não criar eventos Production para homologação;
-- não redesenhar observabilidade;
-- não fechar #75 sem backup automático real;
+- não reabrir REQ-SEC-003/004 sem evidência concreta;
+- não rotacionar secret preventivamente;
+- não publicar valores de env;
+- não reaplicar migration Supabase;
+- não fechar #75 por inferência;
 - não importar dados reais/cutover;
-- não reativar auto-deploy Vercel;
+- não reativar Git auto-deploy;
 - não inferir Q-001..Q-025.
