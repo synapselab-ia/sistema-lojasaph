@@ -4,115 +4,138 @@
 
 ## Estado atual
 
-A Fase 34 executou um preflight de RLS antes da auditoria de importação, conforme solicitado, e não encontrou bypass ou vazamento de autorização. O único finding acionável foi uma otimização de performance semanticamente neutra em `organization_memberships`.
+A Fase 35 auditou a fundação de importação da Fase 15 contra `REQ-IMP-001` a `REQ-IMP-004` e o suporte migratório de aliases de `REQ-ITEM-002`.
+
+Resultado: **requisitos atendidos no escopo de staging/preview; nenhum gap funcional novo encontrado**.
 
 - Repositório: `synapselab-ia/sistema-lojasaph`
-- baseline inicial de `main`: `dfd3f517cecbf4111bf118e0e70eafcdab2850e4`
-- Issue #80 — `RLS — otimizar auth.uid() da policy de memberships via initPlan`
-- branch `agent/rls-initplan-optimization`
-- PR #81 — `perf(rls): cache membership auth uid per statement`
-- evidência: `docs/qa/rls-preflight.md`
-- migration remota: `20260820184106 / membership_rls_initplan`
+- baseline de `main`: `60ab2012f68d9b8bd9d1371a455fd42235a59f7e`
+- branch: `agent/import-foundation-audit`
+- nova evidência: `docs/qa/import-foundation-audit.md`
+- Issue funcional nova: nenhuma
 - Issue #75 de backup permanece aberta/bloqueada
-- nenhum dado de negócio foi alterado
-- nenhum deploy Vercel foi criado
+- nenhum código de aplicação alterado
+- nenhuma migration/DDL/DML remota executada
+- nenhum dado real importado
+- nenhum deploy Vercel criado
 
-## RLS remoto — resultado
+A Fase 34 / Issue #80 / PR #81 está integrada em `main` pelo squash commit `60ab2012f68d9b8bd9d1371a455fd42235a59f7e`. A migration `20260820184106_membership_rls_initplan.sql` está em `main` e no histórico remoto. Não reaplicar.
 
-Projeto Supabase `fhbvwyttikrbeaanatlr`:
+## Fase 35 — resultado por requisito
 
-- 45/45 tabelas de aplicação em `public` com RLS habilitado;
-- 78 policies;
-- 0 policies para `anon`/`PUBLIC`;
-- 0 policies com predicado literal `true`, `auth.role()`, `user_metadata` ou `raw_user_meta_data`;
-- `anon` sem privilégios de relação;
-- `authenticated` sem `DELETE` direto;
-- `payable_installment_summary` com `security_invoker=true`;
-- 30 funções públicas `SECURITY DEFINER`, todas com `search_path=""`, guarda de identidade/escopo e 0 executáveis por `anon`.
+### REQ-IMP-001 — importação rastreável
 
-Probe com UUID sintético `authenticated` sem membership retornou zero linhas em Organization, memberships, unidades, catálogo, ledger, financeiro, view financeira, importação e auditoria.
+Atendido.
 
-`anon` recebeu `permission denied` em tabela e RPC. A RPC de relatório de importação também recusou usuário autenticado sem membership com `IMPORT_SCOPE_NOT_ALLOWED`.
+`import_batches` preserva Organization, origem/tipo, arquivo, SHA-256, chave determinística, versão de transformação, usuário solicitante, metadata, status e timestamps.
 
-## Finding corrigido
+`import_rows` preserva batch, aba, linha, identificador bruto opcional, payload bruto, SHA-256, chave de idempotência, payload normalizado, alvo/resolução, estado, warnings e erros.
 
-O Performance Advisor reportava `auth_rls_initplan` na policy:
+### REQ-IMP-002 — idempotência
 
-`public.organization_memberships.memberships_visible_to_self_or_admin`
+Atendido para batch/staging/preview.
 
-A expressão de self-access foi alterada de:
+- mesma Organization + fonte/hash/versão reutiliza o batch;
+- mesma posição/conteúdo no mesmo batch não duplica staging;
+- mesma posição com payload diferente produz conflito explícito;
+- mesma origem reapresentada em outra versão de transformação é detectada como duplicata quando aplicável;
+- finalização do preview é idempotente.
 
-```sql
-user_id = auth.uid()
-```
+A futura aplicação definitiva nas tabelas operacionais continua fora do escopo e deverá possuir sua própria prova de idempotência antes do cutover.
 
-para:
+### REQ-IMP-003 — preview/dry run
 
-```sql
-user_id = (select auth.uid())
-```
+Atendido.
 
-O ramo owner/admin via `private.has_org_wide_role(...)` foi preservado. Não houve mudança de regra de negócio ou de escopo.
+- `import_batches.mode` é limitado por constraint a `dry_run`;
+- as RPCs atuais de importação são somente `stage_import_batch`, `stage_import_row`, `get_import_preview_report` e `finalize_import_preview`;
+- introspecção read-only confirmou que essas RPCs não fazem DML nas tabelas operacionais finais;
+- não existe command atual de apply/cutover para dados importados;
+- a suíte PostgreSQL falha se o dry run gerar StockItem operacional sintético.
 
-A migration foi primeiro validada em CI e depois aplicada ao Supabase. O remoto registrou a versão canônica `20260820184106`, e o arquivo local foi reconciliado para o mesmo timestamp antes do merge.
+### REQ-IMP-004 — relatório de inconsistências
 
-Após a aplicação:
+Atendido.
 
-- `pg_policies.qual` confirma `(SELECT auth.uid())`;
-- o warning `auth_rls_initplan` dessa policy desapareceu;
-- 45/45 tabelas continuam com RLS;
-- continuam 78 policies e 0 policies anon/PUBLIC;
-- o probe outsider continua retornando zero linhas.
+As linhas preservam estados `accepted`, `duplicate`, `warning`, `rejected` e `pending_mapping`, junto de warnings/erros e resolução.
 
-## Teste de regressão
+O relatório consolida total, aceitas, duplicadas, warnings, rejeitadas e mapeamentos pendentes. Rejeição ou pending mapping leva o batch a `review_required`; `ready` continua significando apenas preview validado.
 
-`supabase/tests/security_hardening.sql` agora falha se `memberships_visible_to_self_or_admin`:
+### REQ-ITEM-002 — aliases
 
-- desaparecer;
-- voltar a usar `user_id = auth.uid()` diretamente;
-- deixar de conter `SELECT auth.uid()`.
+Suporte migratório atendido.
 
-A suíte já cobria RLS integral, grants mínimos, ausência de policies inseguras, view `security_invoker`, bloqueio de `anon`, RPCs e default privileges deny-by-default.
+- `item_aliases` existe no remoto com RLS;
+- FK composto preserva a mesma Organization entre alias e StockItem;
+- matching aceita somente nome canônico exato normalizado ou alias explícito;
+- não existe fuzzy auto-merge;
+- inexistência/ambiguidade permanece `pending_mapping`.
 
-## Advisors
+## Supabase remoto — revalidação read-only
 
-Security Advisor:
+Projeto `fhbvwyttikrbeaanatlr`:
 
-- continua sinalizando as RPCs públicas `SECURITY DEFINER` executáveis por `authenticated`;
-- a auditoria confirmou que essa command surface é intencional e protegida por `auth.uid()`, helpers privados, `search_path=""`, escopo e testes;
-- leaked-password protection do Auth permanece desabilitada e é configuração de Auth, não gap de RLS desta frente.
+- migrations de importação presentes:
+  - `20260818180723 / import_staging`;
+  - `20260818180738 / import_staging_finalize_fix`;
+  - `20260818181051 / import_staging_indexes`;
+- `20260820184106 / membership_rls_initplan` também presente;
+- `import_batches` com RLS habilitado;
+- `import_rows` com RLS habilitado;
+- `item_aliases` com RLS habilitado;
+- `authenticated` possui somente SELECT direto em `import_batches`/`import_rows`;
+- as quatro RPCs de importação usam `SECURITY DEFINER`, `search_path=""`, verificam `auth.uid()`/escopo Organization-wide e não são executáveis por `anon`;
+- `import_batches = 0`;
+- `import_rows = 0`.
 
-Performance Advisor:
+Nenhuma escrita remota foi executada nesta auditoria.
 
-- o warning `auth_rls_initplan` da policy de memberships foi eliminado;
-- avisos de foreign keys sem índice e índices ainda sem uso observado permanecem fora do escopo desta correção.
+## Arquivos reais / segredos
 
-## Validação
+- `docs/source-data/` contém apenas documentação Markdown;
+- busca no repositório não encontrou `.xlsx`, `.xls` ou `.csv` versionados;
+- `.gitignore` continua excluindo `.env*` salvo `.env.example` e `/backups/`;
+- nenhum dump, planilha real, secret ou connection string foi adicionado.
 
-Head funcional inicial `49a67c975ebe96d5149b0df72a1b6e24f883d740`:
+## Drift documental corrigido
 
-- CI #322 — database + validate success;
-- Business Transactions Integration #156 — success;
-- Inventory Count Integration #172 — success.
+`docs/modules/imports.md` ainda citava os filenames anteriores à reconciliação de migration history da Fase 30.
 
-O database gate aplicou todas as migrations em PostgreSQL 17 limpo e passou schema/RLS smoke, `security_hardening.sql`, Auth/Organization isolation e todas as suites transacionais existentes.
+Agora a documentação usa os filenames canônicos que existem no GitHub e correspondem ao remoto:
 
-Depois desse gate, a migration foi aplicada remotamente e o filename local foi reconciliado à versão canônica. O head final do PR #81 deve permanecer verde antes do squash merge; a evidência final fica registrada no próprio PR.
+- `20260818180723_import_staging.sql`;
+- `20260818180738_import_staging_finalize_fix.sql`;
+- `20260818181051_import_staging_indexes.sql`.
+
+## Validação reutilizada
+
+O head funcional final anterior ao squash da Fase 34 passou:
+
+- CI #328 — success;
+- Business Transactions Integration #162 — success;
+- Inventory Count Integration #178 — success.
+
+O job `database` aplicou todas as migrations em PostgreSQL 17 e executou `supabase/tests/import_staging.sql` junto das suites de schema/RLS/hardening e transacionais.
+
+A Fase 35 é documental/read-only. Confirmar CI do head documental final antes do merge.
 
 ## REQ-PLAT-005 / Issue #75
 
-A frente de backup continua bloqueada pelas decisões operacionais pendentes de RPO, RTO, destino off-site, retenção, proteção e alertas. Não inventar configuração nem fechar #75 sem automação real.
+Continua bloqueada por decisões operacionais ausentes de RPO, RTO, destino off-site, retenção, proteção e alertas. Não inventar configuração e não fechar #75 sem backup automático real.
 
 ## Próxima ação
 
-Após integrar a Fase 34, executar a auditoria conjunta de `REQ-IMP-001` a `REQ-IMP-004` e do suporte migratório de aliases de `REQ-ITEM-002`, usando a Fase 15 / Issue #39 / PR #40 como baseline, sem importar dados reais e sem reabrir o hardening de RLS salvo evidência concreta de regressão.
+Após integrar a Fase 35, auditar `REQ-SEC-003 — Auditoria`: verificar de ponta a ponta que alterações críticas de Estoque, Caixa, Financeiro e configurações geram trilha persistente suficiente, protegida por RLS/grants e sem exposição de dados sensíveis.
+
+A auditoria deve reutilizar `audit_logs` e as suites existentes, sem redesenhar eventos ou abrir Issue se o requisito já estiver atendido.
 
 ## Não repetir
 
-- não reabrir a Fase 34 apenas por warnings genéricos das RPCs `SECURITY DEFINER`;
-- não corrigir índices/FKs oportunisticamente na frente de importação sem evidência de impacto;
-- não reaplicar migrations já presentes no remoto;
-- não importar dados reais nem executar cutover;
+- não reimplementar a Fase 15;
+- não importar as seis planilhas reais;
+- não criar apply/cutover durante auditoria de staging;
+- não reabrir a Fase 34/RLS sem bypass reproduzível;
+- não reaplicar migrations existentes;
 - não fechar #75 sem backup automático real;
-- não criar deploy Vercel para auditorias de banco que não dependem de runtime hospedado;
+- não reativar auto-deploy Vercel;
 - não inferir Q-001..Q-025.
