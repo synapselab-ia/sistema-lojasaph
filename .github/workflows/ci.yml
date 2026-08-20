@@ -142,6 +142,9 @@ jobs:
       - name: Run RLS and grant hardening tests
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/security_hardening.sql
 
+      - name: Run critical configuration audit tests
+        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/audit_trail.sql
+
       - name: Run auth role and Organization isolation tests
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/auth_runtime_roles.sql
 
