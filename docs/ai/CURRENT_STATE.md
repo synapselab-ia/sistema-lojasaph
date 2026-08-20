@@ -9,6 +9,9 @@ A Fase 33 auditou `REQ-PLAT-007 — Ambientes separados` sem refazer a Fase 18 e
 - Repositório: `synapselab-ia/sistema-lojasaph`
 - baseline de `main`: `2f54ac1fe823386fe90d97d752318f39ec369d8c`
 - branch: `agent/environment-isolation-audit`
+- PR #79 — `docs(qa): revalidate environment isolation`
+- head auditado/validado antes deste commit final de continuidade: `206fcc93fb4dbca217f65fa6c85fe2bdde15b516`
+- CI #316 — success
 - nova evidência: `docs/qa/environment-isolation.md`
 - runbook atualizado: `docs/operations/environments.md`
 - nenhuma nova Issue funcional de ambientes
@@ -111,14 +114,17 @@ A documentação atual do Supabase mantém desenvolvimento local como fluxo padr
 
 A Issue #75 continua sem comentários/decisões novas de RPO, RTO, destino off-site, retenção, proteção ou alertas. A frente continua bloqueada e não foi modificada.
 
-## Validação preservada
+## Validação da Fase 33
 
-Antes da Fase 33, o head final do PR #77 passou no CI #314:
+Head `206fcc93fb4dbca217f65fa6c85fe2bdde15b516` do PR #79:
 
-- `database` — success, incluindo migrations, seed, backup/checksum/restore e suites PostgreSQL;
-- `validate` — success, incluindo lint, typecheck, Vitest e production build.
+- CI #316 — success;
+- job `database` — success: PostgreSQL 17, migrations, seed, backup/checksum/restore, suites SQL e `import staging and dry-run tests`;
+- job `validate` — success: lint, typecheck, Vitest e production build.
 
-A Fase 33 altera somente documentação. O PR desta fase deve passar o CI completo antes do merge.
+Workflows especializados de Inventory/Business não são acionados pelo diff exclusivamente documental desta fase.
+
+Este commit e a atualização correspondente do `HANDOFF` são somente continuidade documental. Confirmar CI verde no head final antes do merge.
 
 ## Próxima ação
 
