@@ -4,83 +4,111 @@
 
 ## Estado atual
 
-A Fase 30 corrigiu a divergência operacional encontrada na auditoria de `REQ-PLAT-004 — Migrações de banco`.
+A Fase 31 auditou `REQ-PLAT-005 — Backup e restauração` sem refazer a Fase 16.
 
 - Repositório: `synapselab-ia/sistema-lojasaph`
-- Issue #73 — Fase 30 / alinhamento de versions de migrations
-- PR #74 — integração da Fase 30
-- head validado do PR: `ef911001be843f6a191db7918c5fafd347a06120`
-- CI #307 — success
-- Business Transactions Integration #154 — success
-- Inventory Count Integration #170 — success
-- nenhuma alteração do conteúdo SQL histórico das 27 migrations efetivas
-- nenhum DDL/DML remoto, `migration repair`, `db push`, RLS/grant/Auth change ou deploy Vercel
+- baseline de `main` no início da fase: `e68cc3f9196de532943df4a13ec77687f4e5e53d`
+- Issue #75 — `Fase 31 — ativar backup automático real de Production`
+- branch de documentação/auditoria: `agent/backup-automation-audit`
+- nenhuma migration/DDL/DML remoto
+- nenhum restore no Supabase hospedado
+- nenhum plano/add-on pago ativado
+- nenhum dump real criado/versionado
+- nenhum deploy Vercel
 
-## REQ-PLAT-004 — resolvido pela Fase 30
+## REQ-PLAT-005 — auditoria da Fase 31
 
-A auditoria encontrou 28 arquivos locais em `supabase/migrations`: 27 migrations efetivas e um placeholder vazio. O Supabase hospedado possuía 27 registros em `supabase_migrations.schema_migrations` com os mesmos nomes semânticos, mas versions/timestamps diferentes dos filenames locais.
+O requisito é `MUST antes de produção`: definir backup automático e testar restauração.
 
-Isso era risco real de upgrade porque o Supabase CLI identifica migrations pela version/timestamp ao comparar o diretório local com o histórico remoto.
+A Fase 16 continua válida e não foi reimplementada. Já existem:
 
-Correção aplicada:
+- `docs/operations/backup-restore.md`;
+- `scripts/export-supabase-backup.sh`;
+- `scripts/verify-backup-restore.sh`;
+- `supabase/tests/backup_restore.sql`;
+- drill automatizado no job `database` de `.github/workflows/ci.yml`.
 
-- as 27 migrations efetivas foram renomeadas para as 27 versions já registradas no Supabase hospedado;
-- GitHub reconhece os 27 arquivos como `renamed` com `0 additions / 0 deletions`, preservando seus blobs SQL;
-- o placeholder vazio `20260817231638_persistent_inventory_count.sql` foi removido;
-- nenhuma linha de `supabase_migrations.schema_migrations` foi alterada;
-- a matriz canônica está em `docs/qa/database-migrations.md`;
-- `docs/architecture/persistence.md` agora trata a version do filename como identidade operacional imutável após aplicação remota.
+O helper de exportação produz roles/schema/data por Supabase CLI, usa `umask 077`, recusa gravar dentro do Git repository e cria/verifica `SHA256SUMS`.
 
-A única inversão de ordem entre o histórico remoto e a antiga ordem local era `reconcile_inventory_adjustment_type` / `purchases_operational_flow`. O repair altera apenas o `CHECK` de `stock_movements.movement_type` e a migration de compras não depende de `inventory_adjustment`; a nova ordem canônica foi reconstruída do zero com sucesso pelos workflows.
+O drill da CI cria dump lógico de banco sintético, verifica checksum, restaura em banco isolado e testa dados, RLS, grants, RPC esperada e isolamento de Organization.
 
-## Evidência de reprodutibilidade
+### Lacuna concreta
 
-CI #307, em PostgreSQL 17 limpo:
+A auditoria confirmou que não existe hoje rotina automática comprovada produzindo backups do ambiente hospedado real.
 
-- aplicou bootstrap de Auth;
-- aplicou todas as migrations na ordem reconciliada;
-- aplicou seed anonimizado;
-- verificou backup lógico + restore isolado;
-- executou smoke de schema/RLS, hardening, permissões e suites de estoque/importação;
-- lint, typecheck, Vitest e production build passaram.
+`.github/workflows/` contém somente:
 
-Business Transactions Integration #154 e Inventory Count Integration #170 também reconstruíram o banco do zero e concluíram suas suites com sucesso.
+- `ci.yml`;
+- `create-inventory-count-migration.yml`;
+- `inventory-count-ci.yml`;
+- `one-shot-inventory-wiring.yml`;
+- `purchases-ci.yml`.
 
-## Supabase remoto
+Nenhum deles agenda/executa `scripts/export-supabase-backup.sh` contra Production.
 
-Projeto `fhbvwyttikrbeaanatlr`, PostgreSQL 17.
+O PR histórico #42 da Fase 16 já registrava RPO/RTO, retenção e destino off-site como pendentes. Portanto a parte de restore é comprovada, mas a parte de **backup automático real** ainda não atende `REQ-PLAT-005`.
 
-A Fase 30 usou apenas introspecção read-only para:
+A matriz completa está em `docs/qa/backup-automation.md`.
 
-- listar as 27 migrations hospedadas;
-- comparar version/nome/ordem;
-- confirmar que relations/functions/triggers atuais em `public`/`private` possuem referência nominal no histórico de migrations.
+## Supabase atual
 
-Nenhum schema, dado, função, policy, grant, Auth, configuração ou migration history foi modificado remotamente.
+Projeto `fhbvwyttikrbeaanatlr`:
 
-## Vercel Production
+- `ACTIVE_HEALTHY`;
+- região `sa-east-1`;
+- PostgreSQL `17.6.1.141` / engine 17;
+- organização continua no plano `free`.
 
-`git.deploymentEnabled=false` continua preservado. Nenhum deployment foi criado na Fase 30.
+Documentação oficial vigente verificada em 2026-08-20:
+
+- Free não inclui backups automáticos gerenciados;
+- para Free, Supabase recomenda `supabase db dump` regular + backup off-site;
+- Pro/Team/Enterprise têm backups diários gerenciados conforme retenção do plano;
+- PITR permanece add-on de planos pagos e exige compute compatível;
+- backup do banco não recupera objetos binários do Storage API;
+- restore físico para novo projeto é recurso de plano pago;
+- o fluxo de backup lógico continua separando roles, schema e data, compatível com o helper existente.
+
+O changelog de breaking changes foi revisado e nenhum item atual invalida o mecanismo de dump lógico usado pela Fase 16.
+
+## Bloqueio operacional de #75
+
+Não é seguro criar cron, retenção ou storage arbitrários. Antes de ativar o backup real precisam ser definidos explicitamente:
+
+1. RPO;
+2. RTO;
+3. destino off-site aprovado;
+4. retenção;
+5. proteção/cifragem do destino;
+6. responsável e canal de alerta;
+7. periodicidade de drill hospedado em destino isolado.
+
+Enquanto essas decisões não existirem, #75 permanece aberta e não deve ser fechada com um workflow meramente manual ou um cron inventado.
+
+## Validação técnica preservada
+
+A Fase 30 validou novamente o mecanismo de recuperação no head final do PR #74:
+
+- CI #308 — success;
+- Business Transactions Integration #155 — success;
+- Inventory Count Integration #171 — success.
+
+O job `database` passou por aplicação integral das migrations, seed, backup lógico, restore isolado e suites SQL. A Fase 31 não alterou código de aplicação, migration ou scripts de backup/restore.
 
 ## Próxima ação
 
-Auditar `REQ-PLAT-005 — Backup e restauração` sem refazer a Fase 16.
-
-Já existem `docs/operations/backup-restore.md`, `scripts/export-supabase-backup.sh`, `scripts/verify-backup-restore.sh`, `supabase/tests/backup_restore.sql` e prova automatizada no CI. A próxima sessão deve verificar o estado atual do provedor e distinguir claramente:
-
-- prova técnica de dump/restore;
-- existência real de rotina automática/off-site;
-- pendências de RPO/RTO/retention;
-- limitações atuais do plano Supabase.
-
-Só abrir nova Issue se existir lacuna concreta entre `REQ-PLAT-005` e a operação disponível hoje.
+1. Integrar a documentação da auditoria da Fase 31 após CI verde, mantendo a Issue #75 aberta.
+2. Se o operador registrar em #75 as decisões de RPO/RTO/destino/retenção/alerta, implementar a menor automação segura reutilizando `scripts/export-supabase-backup.sh`.
+3. Se essas decisões continuarem ausentes, considerar #75 **bloqueada por decisão operacional** e avançar a auditoria independente para `REQ-PLAT-006 — Logs e erros`, reaproveitando a Fase 17 sem refazê-la.
 
 ## Não repetir
 
-- não reabrir REQ-PLAT-003 ou a auditoria de idempotência;
-- não renumerar novamente migrations históricas;
-- não editar `supabase_migrations.schema_migrations` diretamente;
-- não executar `migration repair` apenas para eliminar diferença visual;
-- não reativar bootstrap ou auto-deploy Vercel;
-- não importar dados reais;
+- não reimplementar o drill de backup/restore da Fase 16;
+- não tratar CI sintética como backup de Production;
+- não inventar RPO/RTO, cron, retenção ou destino;
+- não armazenar dumps reais no GitHub;
+- não executar restore destrutivo sobre Production;
+- não ativar Pro/PITR ou outro serviço pago sem autorização explícita;
+- não renumerar migrations;
+- não reativar bootstrap/auto-deploy Vercel;
 - não inferir Q-001..Q-025.
