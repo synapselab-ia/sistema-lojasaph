@@ -2,118 +2,122 @@
 
 ## Contexto
 
-A Fase 30 corrigiu o drift de versions de migrations encontrado em `REQ-PLAT-004 — Migrações de banco`.
+A Fase 31 auditou `REQ-PLAT-005 — Backup e restauração` sem refazer a Fase 16.
 
-Estado validado da integração:
+Resultado:
 
-- Issue #73;
-- PR #74;
-- head validado antes deste handoff: `ef911001be843f6a191db7918c5fafd347a06120`;
-- CI #307 — success;
-- Business Transactions Integration #154 — success;
-- Inventory Count Integration #170 — success;
-- 27 migrations efetivas alinhadas às 27 versions do histórico Supabase;
-- placeholder vazio removido;
-- nenhum conteúdo SQL histórico alterado;
-- nenhuma mutação no Supabase remoto;
-- nenhum deployment Vercel.
+- a mecânica de dump, checksum, restore isolado e runbook já estava correta;
+- o projeto Supabase continua `ACTIVE_HEALTHY`, PostgreSQL 17.6.1.141 e plano Free;
+- Free continua sem automatic backups gerenciados;
+- não existe workflow/agendador comprovado produzindo backup do ambiente real;
+- Issue #75 registra essa lacuna;
+- matriz: `docs/qa/backup-automation.md`;
+- nenhuma mutação remota, restore hospedado, dump real, contratação ou deploy Vercel ocorreu na auditoria.
 
 ## O que já foi concluído — não repetir
 
-Não repetir a auditoria/correção de `REQ-PLAT-004`.
+Não reimplementar a Fase 16 / Issue #41 / PR #42.
 
-A identidade histórica das migrations está documentada em `docs/qa/database-migrations.md`. Depois que uma migration estiver registrada em ambiente compartilhado, não renumerar seu timestamp no GitHub. Não editar `supabase_migrations.schema_migrations` diretamente e não usar `migration repair` como cosmética.
-
-## Objetivo ativo
-
-**Auditar `REQ-PLAT-005 — Backup e restauração`: backups automáticos devem existir e o procedimento de restauração deve ser conhecido/testado.**
-
-A tarefa começa como auditoria do estado atual, não como reimplementação da Fase 16. Já existe uma estratégia e prova técnica; é necessário verificar se ela satisfaz hoje o requisito de automação operacional.
-
-## Baseline já existente
-
-Antes de criar qualquer trabalho novo, verificar e reaproveitar:
+Reutilizar:
 
 - `docs/operations/backup-restore.md`;
 - `scripts/export-supabase-backup.sh`;
 - `scripts/verify-backup-restore.sh`;
 - `supabase/tests/backup_restore.sql`;
-- job `database` do `.github/workflows/ci.yml`, que executa o drill lógico em PostgreSQL efêmero.
+- gate de backup/restore no `CI`.
 
-A Fase 30 acabou de confirmar novamente que o drill de backup/restore do CI passa após reconstrução completa das migrations.
+Não confundir o drill de CI com backup de Production.
 
-## Fazer agora
+## Issue #75 — estado bloqueado até decisão operacional
 
-1. Ler, nesta ordem:
-   - `AGENTS.md`;
-   - `docs/00-START-HERE.md`;
-   - `docs/ai/CURRENT_STATE.md`;
-   - `docs/ai/HANDOFF.md`;
-   - este arquivo;
-   - `docs/ai/WORKFLOW.md`;
-   - `docs/product/requirements.md` (`REQ-PLAT-005`);
-   - `docs/operations/backup-restore.md`;
-   - scripts/testes de backup citados acima.
-2. Conferir estado real de `main`, branches, Issues, PRs e workflows.
-3. Consultar a documentação oficial atual do Supabase sobre:
-   - backups gerenciados por plano;
-   - PITR;
-   - `supabase db dump`/restore;
-   - recomendações de automação/CI para backup.
-4. Confirmar o estado atual do projeto/plano Supabase somente por leitura quando possível; não assumir que o status de 2026-08-18 continua igual.
-5. Montar uma matriz separando:
-   - backup de schema via migrations;
-   - backup lógico de dados;
-   - automação/cadência real;
-   - storage off-site/retention;
-   - integridade/checksum;
-   - restore testado;
-   - monitoramento/alerta;
-   - RPO/RTO.
-6. Não confundir o drill de CI com backup automático de Production. O CI prova restauração mecânica; `REQ-PLAT-005` também exige existência da rotina automática apropriada ao ambiente real.
-7. Verificar se existe workflow/automation externa já configurada para executar `scripts/export-supabase-backup.sh`. Pesquisar o repositório e integrações disponíveis antes de concluir que não existe.
-8. Se a rotina automática real já existir e estiver adequada:
-   - documentar evidência;
-   - considerar `REQ-PLAT-005` atendido;
-   - não criar Issue artificial.
-9. Se houver somente helper/runbook e nenhuma automação real:
-   - registrar a lacuna concreta;
-   - abrir uma única Issue;
-   - propor a menor automação segura possível sem inventar RPO/RTO;
-   - não armazenar dumps ou secrets no GitHub;
-   - não ativar custo/plano pago sem decisão explícita do usuário.
-10. Se a correção depender de RPO/RTO ou destino off-site ainda não definido pelo negócio, não inventar valores. Implementar apenas o que for reversível e independente dessa decisão, ou documentar o bloqueio objetivo.
-11. Não executar restore destrutivo no projeto Supabase ativo. Qualquer drill hospedado precisa de destino isolado e decisão explícita.
-12. Se houver patch, validar shell syntax, CI, restore drill e demais gates aplicáveis antes do merge.
-13. Não fazer deploy Vercel durante auditoria/iteração.
-14. Atualizar `CURRENT_STATE`, `HANDOFF` e `NEXT_ACTION` ao encerrar.
+A automação real depende de decisões que não podem ser inferidas:
 
-## Critério de conclusão
+- RPO;
+- RTO;
+- destino off-site;
+- retenção;
+- proteção/cifragem no destino;
+- responsável e canal de alerta;
+- periodicidade/destino de drill hospedado isolado.
 
-`REQ-PLAT-005` só pode ser considerado atendido quando for possível apontar:
+### Se houver decisões novas em #75
 
-- qual mecanismo produz backups do ambiente real;
-- onde e com que proteção eles são armazenados;
-- como a integridade é conferida;
-- como a restauração é executada e testada sem destruir Production;
-- quais parâmetros operacionais estão definidos e quais permanecem explicitamente pendentes.
+1. Confirmar o estado real de `main`, Issue, PRs, branches e CI.
+2. Ler os comentários/decisões registradas na Issue #75.
+3. Criar/usar branch dedicada a #75.
+4. Implementar a menor rotina segura reutilizando `scripts/export-supabase-backup.sh`.
+5. A cadência não pode exceder o RPO aprovado.
+6. `SUPABASE_DB_URL` deve vir somente de secret do runtime.
+7. Usar Supabase CLI pinada/aprovada.
+8. Validar `SHA256SUMS` antes do upload.
+9. Persistir somente no destino off-site aprovado com a retenção definida.
+10. Limpar temporários mesmo em falha e emitir sinal de sucesso/falha sem expor secrets/dump.
+11. Manter o drill de restore da CI.
+12. Não executar restore destrutivo sobre Production.
+13. Validar shell/CI e a automação aplicável antes do merge.
+14. Só fechar #75 após evidência de execução automática real + storage protegido + monitoramento + recuperação documentada/testada.
 
-Uma prova de restore em CI é necessária e valiosa, mas isoladamente não comprova que backups automáticos do ambiente real estejam acontecendo.
+### Se #75 continuar sem essas decisões
+
+Não criar cron/storage arbitrários. Tratar #75 como **bloqueada por decisão operacional** e avançar para a auditoria independente abaixo.
+
+## Objetivo autônomo seguinte
+
+**Auditar `REQ-PLAT-006 — Logs e erros`: erros relevantes devem ser rastreáveis por logs/observabilidade.**
+
+A tarefa começa como auditoria, não como reimplementação da Fase 17.
+
+### Baseline existente
+
+Antes de criar trabalho novo, localizar e reaproveitar a Fase 17 / Issue #43 / PR #44 e a documentação associada, especialmente:
+
+- contrato de logs estruturados server-side;
+- correlation ID;
+- redaction de tokens/credenciais/PII;
+- `src/instrumentation.ts` / `onRequestError`;
+- `error.tsx` / `global-error.tsx`;
+- runbook `docs/operations/observability.md`;
+- ADR de observabilidade;
+- testes existentes.
+
+### Fazer
+
+1. Ler `AGENTS.md`, `START-HERE`, `CURRENT_STATE`, `HANDOFF`, este arquivo e `WORKFLOW`.
+2. Conferir primeiro Issue #75. Se não houver decisões novas, não editar a frente de backup.
+3. Ler `REQ-PLAT-006` e toda a documentação da Fase 17.
+4. Conferir estado real de `main`, Issues/PRs/branches e CI.
+5. Inspecionar o código/runtime de observabilidade existente; não confiar apenas no PR histórico.
+6. Verificar:
+   - cobertura de erros server-side relevantes;
+   - correlation ID end-to-end onde tecnicamente aplicável;
+   - redaction/fail-safe de secrets e PII;
+   - mensagens públicas sem internals;
+   - logs de Auth e comandos críticos quando aplicável;
+   - retenção/destino atual dos logs;
+   - capacidade real de pesquisa/diagnóstico no ambiente hospedado;
+   - monitoramento/alerta e limites atuais do provedor/plano.
+7. Consultar documentação atual do Supabase/Vercel somente para pontos que dependam do comportamento vigente.
+8. Se a observabilidade atual satisfizer o requisito, documentar evidência sem criar Issue artificial.
+9. Se houver gap concreto e reproduzível, abrir uma única Issue, criar branch dedicada e implementar o menor fix reversível.
+10. Não contratar vendor pago ou Log Drain por inferência.
+11. Não fazer deploy Vercel salvo se um gap só puder ser validado em runtime hospedado e houver justificativa concreta; evitar consumo de quota.
+12. Se houver patch, validar lint, typecheck, testes, build e gates PostgreSQL aplicáveis.
+13. Atualizar `CURRENT_STATE`, `HANDOFF` e `NEXT_ACTION` ao final.
 
 ## Segurança / operação
 
-- não versionar dump ou connection string;
-- não expor secret administrativa;
-- não restaurar sobre Production para testar;
-- não habilitar PITR/plano pago sem autorização explícita;
-- não inferir RPO/RTO;
-- não reativar bootstrap ou auto-deploy Vercel.
+- não versionar secrets, tokens, connection strings ou dumps;
+- não logar cookies/headers completos;
+- não restaurar Production para testar backup;
+- não ativar PITR/plano pago/serviço externo sem autorização;
+- não inventar RPO/RTO;
+- não reativar bootstrap/auto-deploy Vercel.
 
 ## Não fazer
 
+- não fechar #75 sem rotina automática real;
+- não reimplementar a Fase 16;
+- não tratar CI sintética como backup Production;
 - não reabrir REQ-PLAT-004;
 - não renumerar migrations;
-- não criar nova estratégia de backup ignorando a Fase 16;
-- não considerar `verify-backup-restore.sh` prova suficiente de automação Production;
-- não usar dados reais como fixture;
 - não inferir Q-001..Q-025.
