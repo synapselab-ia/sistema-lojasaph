@@ -4,57 +4,87 @@
 
 ## Estado atual
 
-A Fase 27 foi concluída. `REQ-PLAT-001 — Responsivo` recebeu revisão transversal e a Issue #69 foi fechada pelo merge do PR #70.
+A Fase 27 foi concluída e `REQ-PLAT-001 — Responsivo` permanece fechada pela Issue #69 / PR #70.
+
+A auditoria transversal de `REQ-PLAT-002 — Proteção contra duplicidade` foi concluída nesta sessão. O backend já possui proteção forte de idempotência nos write paths críticos, mas foi comprovada uma lacuna ponta a ponta na camada cliente. Por isso foi criada a Issue #71 — **Fase 28 — idempotência ponta a ponta das operações críticas**.
 
 - Repositório: `synapselab-ia/sistema-lojasaph`
 - Issue #69 — closed/completed
 - PR #70 — merged
-- head funcional da Fase 27: `f1c454d0c7dc4658c59829774c1effa4fe859839`
-- merge da Fase 27: `7fe0f574504a1cb7080a54e8391cb1f26ca31ce2`
+- Issue #71 — open
+- Fase 27 merge: `7fe0f574504a1cb7080a54e8391cb1f26ca31ce2`
+- baseline documental anterior: `265c3262b8cfd0b22e549118505911950c5019f3`
 - CI #297 — success
 - Business Transactions Integration #152 — success
+- nenhum patch funcional nesta sessão
 - nenhuma migration/DDL
-- nenhuma alteração de RLS, grants, roles, RPCs, Auth ou regra transacional
+- nenhuma alteração de RLS, grants, roles, RPCs, Auth ou regras transacionais
+- nenhum deployment Vercel
 
-## Fase 27 — evidência
+## REQ-PLAT-002 — auditoria concluída
 
-A auditoria cobriu as superfícies persistentes mínimas definidas na Issue #69:
+Foram auditados 26 write paths críticos:
 
-- `/login`;
-- `/workspace`;
-- Produtos;
-- Fornecedores;
-- Funcionários;
-- Estoque;
-- Baixas;
-- Devoluções;
-- Transferências;
-- Inventários;
-- Compras;
-- Financeiro;
-- Caixa.
+- Estoque: entrada, retirada, baixa/perda/vencimento e devolução relacionada;
+- Transferências: despacho e recebimento;
+- Inventário: início, atualização de linha, confirmação e cancelamento;
+- Compras: criação, emissão, recebimento e cancelamento;
+- Financeiro: criação/cancelamento de documento, pagamento e estorno;
+- Caixa: criação de caixa, meio de pagamento e regra de taxa; abertura de sessão, total por meio, movimento, fechamento e cancelamento.
 
-Foram preservadas as tabelas largas que já possuem `overflow-x-auto` local. Não houve conversão oportunista para cards.
+### Backend efetivo
 
-Correções aplicadas:
+O Supabase remoto foi inspecionado em modo leitura.
 
-- grids fixos `grid-cols-2`/`grid-cols-3` passam a uma coluna abaixo de 640px, cobrindo os casos comprovados em Produtos, Fornecedores, Transferências e Caixa;
-- cabeçalhos recorrentes `flex` com `justify-between` podem quebrar linha em celular;
-- inputs/selects/textareas/buttons têm contenção intrínseca de largura;
-- dispositivos de ponteiro grosseiro recebem alvo mínimo de 44px nos controles principais, preservando checkbox/radio;
-- `RuntimeShell` ganhou touch targets explícitos, quebra segura do nome/perfis da organização, navegação horizontal local e padding mobile menor;
-- `/login` empilha os links auxiliares no celular;
-- `src/app/responsive-contract.test.ts` protege o contrato CSS de mobile/touch.
+Os RPCs públicos atuais são wrappers de Auth/role/scope e delegam para implementações `private.*`. Nas implementações efetivas foi comprovado:
 
-As regras são restritas ao layout; semântica do Dashboard, permissões e operações persistentes não foram alteradas.
+- `p_command_id` em todos os caminhos críticos;
+- serialização concorrente por advisory lock da chave;
+- replay idêntico reaproveitado sem duplicar efeitos;
+- reutilização semântica incompatível rejeitada com `IDEMPOTENCY_KEY_CONFLICT`;
+- `record_stock_loss` herda o contrato de `private.record_stock_outflow`;
+- `record_stock_entry` já está endurecido na implementação privada atual, apesar da migration histórica original não representar a definição final.
+
+Os testes SQL existentes já comprovam replay e/ou conflito em Retirada, Transferências, Inventário, Compras, Financeiro, Perdas e Devoluções. `schema_smoke.sql` comprova replay idêntico de entrada de estoque.
+
+### Lacuna concreta no cliente
+
+O requisito ainda não está fechado porque a chave não é preservada de ponta a ponta por intenção do usuário.
+
+Foi comprovado que:
+
+- `SupabaseStockEntryGateway`, `SupabaseStockWithdrawalGateway`, `SupabaseStockLossGateway`, `SupabaseStockReturnGateway` e `SupabaseStockTransferGateway` aceitam `commandId` opcional, mas os chamadores reais não o fornecem;
+- `SupabaseInventoryCountGateway`, `SupabasePurchaseGateway`, `SupabaseFinanceGateway` e `SupabaseCashGateway` geram `newEntityId()` dentro de cada mutação;
+- as telas desabilitam botões durante `saving`, o que reduz clique duplicado simultâneo, mas não cobre retry após resultado ambíguo de transporte;
+- numa nova tentativa após falha de rede, outro UUID pode ser gerado e o PostgreSQL interpreta a operação como nova intenção legítima.
+
+Portanto o backend é retry-safe quando a mesma chave chega novamente, mas o runtime atual não garante essa reapresentação.
+
+## Fase 28
+
+Issue #71 foi criada apenas para a lacuna comprovada.
+
+Objetivo: gerar uma chave opaca uma vez por intenção crítica, reutilizá-la em retries da mesma intenção, invalidá-la somente após resultado definitivo ou mudança semântica do draft e cobrir double submit/retry com testes de regressão.
+
+Defaults:
+
+- preservar RPCs, domínio, RLS, roles, scopes e transações já corretos;
+- não usar hash de payload como command ID;
+- manter `IDEMPOTENCY_KEY_CONFLICT` explícito;
+- erro ambíguo de transporte não cria nova intenção automaticamente;
+- mudança semântica do draft gera nova intenção;
+- sem Vercel durante iteração;
+- nenhuma migration esperada para corrigir apenas o ciclo de vida da chave no client.
+
+Branch de trabalho criada: `agent/idempotency-e2e`.
 
 ## Supabase remoto
 
 Projeto `fhbvwyttikrbeaanatlr`, PostgreSQL 17, permanece `ACTIVE_HEALTHY`.
 
-Nenhuma alteração remota foi necessária na Fase 27. O baseline de advisors de segurança continua contendo avisos sobre RPCs `SECURITY DEFINER` executáveis por `authenticated` e proteção de senha vazada desabilitada; eles não foram misturados à fase de responsividade porque exigem decisão própria de segurança e os RPCs atuais possuem autorização interna testada pelo CI.
+Nesta sessão houve somente introspecção SQL read-only de definições de funções. Nenhum dado operacional, schema, grant, RLS, RPC ou configuração foi alterado.
 
-Estado operacional preservado da Fase 26:
+Estado operacional preservado:
 
 - 1 Organization ativa;
 - 1 Auth user confirmado;
@@ -62,36 +92,32 @@ Estado operacional preservado da Fase 26:
 - 1 owner ativo;
 - bootstrap desabilitado em Production.
 
+Os avisos genéricos do advisor de segurança continuam fora do escopo da Fase 28 salvo regressão diretamente relacionada.
+
 ## Vercel Production
 
-Auto-deploy continua desabilitado por `vercel.json` (`git.deploymentEnabled=false`).
+`git.deploymentEnabled=false` continua intacto.
 
 Último Production intencional permanece:
 
 - deployment `dpl_824q6umKyUyRhYzAmxLREjNeoFK1` — READY;
-- commit funcional hospedado `046c4a3392f85e2361c6ddeac0ae3ee1817145c5`;
-- `/health`: Supabase allowed e admin blocked;
-- `/bootstrap`: desabilitado.
+- commit funcional hospedado `046c4a3392f85e2361c6ddeac0ae3ee1817145c5`.
 
-Nenhum deployment foi gasto na Fase 27. O código responsivo está na `main`, mas só chegará ao Production quando houver uma publicação intencional futura.
+Nenhum deployment foi criado nesta auditoria.
 
-## Próximo MUST auditado
+## Próxima ação
 
-O próximo MUST verificável na ordem de plataforma é `REQ-PLAT-002 — Proteção contra duplicidade`.
+Executar a Issue #71 na branch `agent/idempotency-e2e` sem repetir a auditoria de backend.
 
-Já existe evidência concreta de idempotência em caminhos críticos. Exemplo: `record_stock_entry(p_command_id, ...)` consulta o movimento pelo command ID, retorna o resultado existente em retry compatível e rejeita reutilização conflitante com `IDEMPOTENCY_KEY_CONFLICT`.
-
-Entretanto, ainda não foi produzida uma matriz transversal comprovando esse comportamento em **todos** os write paths críticos de Estoque, Inventário, Compras, Financeiro e Caixa. Portanto nenhuma nova Issue foi criada por inferência.
-
-A próxima ação é auditar `REQ-PLAT-002` ponta a ponta; somente se aparecer lacuna concreta deve ser criada uma nova fase/Issue.
+A implementação deve focar o ciclo de vida do command ID no client/runtime, integrar os módulos críticos, adicionar regressão de retry/reset/double submit e completar apenas a cobertura SQL faltante de baixo custo.
 
 ## Não repetir
 
-- não reabrir Fase 26 ou Fase 27;
-- não refazer PRs #66/#67/#68/#70;
-- não recolocar bootstrap/admin secret em Production;
-- não reativar auto-deploy Vercel;
-- não alterar RLS/grants por conveniência de UI;
-- não criar nova Issue para `REQ-PLAT-002` antes da auditoria transversal;
+- não reabrir Fases 26/27;
+- não refazer a auditoria transversal de `REQ-PLAT-002`;
+- não criar outra Issue para a mesma lacuna;
+- não reescrever RPCs já comprovadamente idempotentes sem regressão específica;
+- não alterar RLS/grants para facilitar retry;
+- não reativar bootstrap ou auto-deploy Vercel;
 - não importar dados reais;
 - não inferir Q-001..Q-025.

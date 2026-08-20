@@ -2,89 +2,107 @@
 
 ## Estado
 
-A Fase 27 / Issue #69 foi concluída e integrada à `main`.
+A auditoria de `REQ-PLAT-002 — Proteção contra duplicidade` foi concluída após a Fase 27.
 
-- PR #70 — merged
-- Issue #69 — closed/completed
-- head funcional: `f1c454d0c7dc4658c59829774c1effa4fe859839`
-- merge: `7fe0f574504a1cb7080a54e8391cb1f26ca31ce2`
-- CI #297 — success
-- Business Transactions Integration #152 — success
-- sem DDL/RLS/grants/RPC/Auth changes
+Resultado: o PostgreSQL/Supabase já protege corretamente os write paths críticos quando recebe a mesma chave de comando, mas o cliente real não preserva essa chave por intenção do usuário. A lacuna foi convertida na Issue #71 — **Fase 28 — idempotência ponta a ponta das operações críticas**.
 
-## O que mudou na Fase 27
+Estado antes deste commit documental:
 
-A revisão transversal cobriu `/login`, `/workspace`, Produtos, Fornecedores, Funcionários, Estoque, Baixas, Devoluções, Transferências, Inventários, Compras, Financeiro e Caixa.
+- `main`: `265c3262b8cfd0b22e549118505911950c5019f3`;
+- `agent/responsive-workspace`: idêntica à `main`;
+- Issue #71 — open;
+- PRs abertos — 0;
+- CI #297 — success;
+- Business Transactions Integration #152 — success;
+- nenhum patch funcional nesta auditoria;
+- nenhum DDL/RLS/grant/RPC/Auth change;
+- nenhum deployment Vercel.
 
-Problemas objetivos corrigidos:
+Branch nova de continuidade: `agent/idempotency-e2e`.
 
-- grids fixos de 2/3 colunas em celular;
-- cabeçalhos recorrentes sem wrap em largura estreita;
-- controles com largura intrínseca capaz de pressionar a viewport;
-- touch targets inconsistentes em dispositivos touch;
-- shell mobile com alvos/navegação e padding pouco explícitos;
-- links auxiliares do login sem estratégia mobile.
+## Auditoria concluída — não repetir
 
-Tabelas largas já possuíam scroll horizontal local e foram preservadas. O teste `src/app/responsive-contract.test.ts` protege as regras transversais de mobile/touch.
+Foram auditados 26 write paths críticos:
 
-## Backend / Supabase
+- Estoque: entrada, retirada, perda/vencimento e devolução;
+- Transferências: despacho e recebimento;
+- Inventário: início, linha, confirmação e cancelamento;
+- Compras: criação, emissão, recebimento e cancelamento;
+- Financeiro: documento, cancelamento, pagamento e estorno;
+- Caixa: caixa, meio de pagamento, regra de taxa, abertura, total por meio, movimento, fechamento e cancelamento.
 
-Projeto `fhbvwyttikrbeaanatlr` segue `ACTIVE_HEALTHY` em PostgreSQL 17.
+### Backend
 
-Não houve alteração de banco nesta fase. Estado operacional preservado:
+No Supabase remoto, os RPCs públicos atuais são wrappers de autorização/escopo e delegam a `private.*`.
 
-- 1 Organization ativa;
-- 1 Auth user confirmado;
-- 1 membership ativo;
-- 1 owner ativo;
-- bootstrap Production desabilitado.
+A introspecção read-only comprovou que as implementações privadas efetivas possuem, direta ou indiretamente:
 
-Os advisors ainda reportam avisos genéricos sobre RPCs `SECURITY DEFINER` expostos ao papel `authenticated` e leaked-password protection desabilitada. Não tratar isso dentro de uma fase de UI; qualquer mudança precisa de auditoria de segurança própria porque os RPCs atuais implementam autorização interna e possuem testes de RLS/transação.
+- `p_command_id`;
+- advisory lock por command ID;
+- replay compatível sem efeitos duplicados;
+- `IDEMPOTENCY_KEY_CONFLICT` quando a mesma chave é reaproveitada com payload semântico incompatível.
 
-## Vercel
+`private.record_stock_loss` delega a `private.record_stock_outflow`, onde estão o lock e a comparação semântica. `private.record_stock_entry` também já contém lock e comparação completa de payload; não usar a migration histórica inicial como representação da definição final.
 
-`git.deploymentEnabled=false` continua intacto.
+Testes SQL existentes já cobrem replay/conflito em vários módulos. Evitar duplicar suites já suficientes.
 
-Último Production permanece `dpl_824q6umKyUyRhYzAmxLREjNeoFK1`, no código funcional da Fase 26 (`046c4a3392f85e2361c6ddeac0ae3ee1817145c5`). Nenhum deployment foi feito para a Fase 27, evitando gasto de quota sem necessidade operacional.
+### Cliente — lacuna comprovada
 
-A `main` agora contém a Fase 27; Production só deve ser atualizado por deployment intencional quando houver motivo real de homologação/publicação.
+- gateways de Estoque/Perdas/Devoluções/Transferências aceitam `commandId` opcional, mas os chamadores reais não o passam;
+- gateways de Inventário/Compras/Financeiro/Caixa geram `newEntityId()` dentro de cada mutação;
+- botão em `saving` evita parte dos double-clicks, mas retry após falha ambígua de transporte produz nova chave;
+- nova chave significa nova intenção legítima para o banco, portanto existe risco de duplicidade apesar do backend idempotente.
 
-## Próximo MUST — auditoria antes de nova Issue
+Esse é o único motivo para `REQ-PLAT-002` continuar aberto.
 
-Próximo requisito verificável: `REQ-PLAT-002 — Proteção contra duplicidade`.
+## Issue #71 / Fase 28
 
-Evidência já confirmada:
+Objetivo: tornar o command ID estável por intenção do usuário no runtime real.
 
-- `record_stock_entry` recebe `p_command_id`;
-- retry com o mesmo comando compatível retorna o resultado já persistido;
-- reutilização conflitante gera `IDEMPOTENCY_KEY_CONFLICT`.
+Defaults definidos na Issue:
 
-Isso prova o padrão em um caminho crítico, mas ainda falta uma matriz transversal dos write paths. O próximo chat deve auditar antes de criar Issue.
+- UUID opaco, sem PII;
+- gerar uma vez por intenção;
+- retry da mesma intenção reutiliza a mesma chave;
+- alteração semântica do draft cria nova intenção;
+- sucesso definitivo encerra a intenção;
+- erro de validação definitivo pode encerrar a intenção;
+- erro ambíguo de transporte preserva a chave;
+- double submit não pode gerar duas intenções concorrentes;
+- `IDEMPOTENCY_KEY_CONFLICT` continua explícito;
+- preservar backend, RLS, roles, scopes e regras de negócio já corretos;
+- sem deploy Vercel durante iteração.
 
-Cobrir pelo menos:
+## Próximo chat — fazer
 
-- entrada, retirada, baixa/perda e devolução de estoque;
-- despacho e recebimento de transferência;
-- início, linha, confirmação e cancelamento de inventário;
-- criação, emissão, recebimento e cancelamento de compra;
-- criação/cancelamento de documento financeiro, pagamento e estorno;
-- configuração/operação de Caixa, movimentos, fechamento e cancelamento;
-- geração/reutilização de command IDs nos adapters/clientes;
-- testes de retry e conflito no PostgreSQL/CI.
+1. Ler `AGENTS.md`, `docs/00-START-HERE.md`, `CURRENT_STATE`, este `HANDOFF`, `NEXT_ACTION`, `WORKFLOW` e `requirements.md`.
+2. Confirmar estado real de `main`, `agent/idempotency-e2e`, Issue #71, PRs e workflows antes de editar.
+3. Não repetir a auditoria de backend; usar a Issue #71 e este handoff como baseline.
+4. Implementar uma abstração pequena/testável de ciclo de vida de command ID por intenção.
+5. Integrá-la progressivamente em Estoque, Baixas, Devoluções, Transferências, Inventários, Compras, Financeiro e Caixa.
+6. Garantir que adapters/gateways possam receber command ID explicitamente onde hoje o geram internamente.
+7. Cobrir retry após falha ambígua, reset após sucesso/mudança semântica e double submit/concurrent submit.
+8. Completar apenas a cobertura SQL faltante de baixo custo, principalmente conflito explícito de entrada de estoque e mutações de Caixa ainda sem caso dedicado na suite.
+9. Rodar lint, typecheck, Vitest, build e workflows PostgreSQL aplicáveis.
+10. Se houver mudança de banco realmente necessária, justificar antes; migration não é esperada para o problema já comprovado.
+11. Não fazer Vercel deploy durante implementação; homologação hospedada só se houver motivo real ao final.
+12. Atualizar continuidade ao encerrar a próxima sessão.
 
-Se todos estiverem comprovadamente idempotentes, registrar `REQ-PLAT-002` como atendido e avançar ao próximo MUST sem abrir Issue. Se houver lacuna concreta, criar a próxima Issue apenas para ela.
+## Supabase / Production
 
-## Branch esperada
+Projeto `fhbvwyttikrbeaanatlr` permanece `ACTIVE_HEALTHY` em PostgreSQL 17.
 
-Ao iniciar o próximo chat, conferir `main` e `agent/responsive-workspace`. A branch de continuidade deve ser sincronizada com o commit documental final desta sessão antes de qualquer novo patch.
+A auditoria usou apenas queries read-only de definição de funções. Nenhuma tabela, função, policy, grant, dado operacional ou configuração foi modificada.
+
+Production Vercel continua deliberadamente no deployment `dpl_824q6umKyUyRhYzAmxLREjNeoFK1`, commit `046c4a3392f85e2361c6ddeac0ae3ee1817145c5`, com auto-deploy desabilitado.
 
 ## Não fazer
 
-- não reabrir #65 ou #69;
-- não refazer PRs #66/#67/#68/#70;
-- não criar Issue de idempotência sem auditoria transversal;
+- não reabrir #69;
+- não criar outra Issue para `REQ-PLAT-002` enquanto #71 estiver ativa;
+- não reescrever idempotência do banco já comprovada;
+- não ampliar RLS/grants;
+- não tratar advisor genérico como regressão desta fase;
 - não reativar bootstrap ou auto-deploy;
-- não alterar RLS/grants sem regressão comprovada;
-- não usar credenciais reais em automação;
-- não importar dados reais;
+- não usar dados/credenciais reais em testes;
 - não inferir Q-001..Q-025.
