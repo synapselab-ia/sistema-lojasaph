@@ -1,7 +1,7 @@
 # Arquitetura de Persistência
 
-Data: 2026-08-17
-Status: Fase 7
+Data: 2026-08-20
+Status: Fase 30
 
 ## Direção
 
@@ -22,6 +22,21 @@ supabase/
 ```
 
 Um `config.toml` gerado/validado pelo Supabase CLI será adicionado quando o ambiente CLI/projeto remoto estiver conectado. Não inventar configurações específicas do projeto antes disso.
+
+## Identidade e linhagem das migrations
+
+A partir da Fase 30, o timestamp no filename de cada migration histórica é tratado como parte da identidade operacional da migration, não apenas como ordenação estética.
+
+O Supabase CLI compara as versions locais com `supabase_migrations.schema_migrations` para decidir quais migrations já foram aplicadas. Portanto:
+
+- migrations já aplicadas no ambiente hospedado preservam a mesma version/timestamp no GitHub;
+- não renumerar migrations históricas depois que entrarem no histórico remoto;
+- migrations novas devem ser criadas pelo fluxo do Supabase CLI ou por processo que preserve a version gerada/aplicada;
+- não editar `supabase_migrations.schema_migrations` diretamente;
+- `migration repair` só pode ser usado quando existir divergência compreendida entre histórico e schema, com plano explícito;
+- um arquivo vazio gerado por tentativa anterior não deve permanecer como migration local se nunca foi aplicado e foi substituído por uma migration efetiva.
+
+A Fase 30 reconciliou os filenames históricos do repositório com as 27 versions já registradas no projeto Supabase, preservando byte a byte os blobs SQL versionados e sem alterar o histórico remoto.
 
 ## Tipos físicos
 
@@ -86,7 +101,7 @@ Escrita direta por Data API é permitida apenas para papéis compatíveis com o 
 
 Tabelas transacionais de estoque ficam disponíveis para leitura por membros, mas não recebem políticas de escrita direta nesta fase.
 
-Entradas, retiradas, transferências e inventários reais deverão usar uma camada transacional server-side/RPC para atualizar ledger, lotes e projeções atomicamente.
+Entradas, retiradas, transferências e inventários reais usam camada transacional server-side/RPC para atualizar ledger, lotes e projeções atomicamente.
 
 ## Secret key
 
@@ -105,25 +120,27 @@ Seeds são anonimizados e servem apenas para desenvolvimento/testes.
 
 Dados das seis planilhas originais não entram em `seed.sql`.
 
-## Validação sem projeto remoto
+## Validação reproduzível
 
-CI sobe um PostgreSQL efêmero e:
+CI sobe um PostgreSQL 17 efêmero e:
 
 1. cria stubs mínimos do schema `auth` usado pelo Supabase;
-2. aplica as migrations em ordem;
+2. aplica todos os arquivos `supabase/migrations/*.sql` em ordem lexicográfica;
 3. aplica seed demo;
-4. executa testes SQL de constraints e RLS.
+4. executa testes SQL de constraints, RLS e fluxos transacionais;
+5. no workflow principal, verifica também backup lógico e restore isolado.
 
-Esse teste não substitui uma execução futura do Supabase CLI, mas detecta erros de SQL, FK, constraint e políticas antes de qualquer deploy.
+Esse gate prova que um banco limpo é reconstruível somente a partir do repositório. A identidade das versions também deve permanecer sincronizada com o histórico hospedado para que `migration list`/`db push` não interpretem migrations históricas como pendentes.
 
-## Aplicação remota futura
+## Aplicação remota
 
-Quando houver projeto Supabase conectado:
+Para mudanças futuras:
 
-1. validar/generar `supabase/config.toml` com CLI;
-2. vincular o projeto por mecanismo seguro;
-3. comparar schema remoto/local;
-4. executar migrations por fluxo versionado;
-5. criar usuário administrador inicial fora do seed público;
-6. adicionar adapters reais na aplicação;
-7. executar homologação com dados anonimizados antes da migração real.
+1. criar migration versionada antes da mudança estrutural;
+2. testar a reconstrução limpa em CI;
+3. vincular o projeto por mecanismo seguro quando usar Supabase CLI;
+4. executar `supabase migration list`/`db push --dry-run` antes de qualquer push remoto quando esse fluxo estiver configurado;
+5. aplicar migrations por fluxo versionado;
+6. nunca usar Dashboard/SQL manual como fonte definitiva sem capturar a mudança em migration;
+7. manter usuário administrador e dados reais fora do seed público;
+8. homologar com dados anonimizados antes de migração real.
