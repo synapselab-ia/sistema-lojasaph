@@ -4,138 +4,115 @@
 
 ## Estado atual
 
-A Fase 35 auditou a fundação de importação da Fase 15 contra `REQ-IMP-001` a `REQ-IMP-004` e o suporte migratório de aliases de `REQ-ITEM-002`.
-
-Resultado: **requisitos atendidos no escopo de staging/preview; nenhum gap funcional novo encontrado**.
+Fase 36 — auditoria de `REQ-SEC-003 — Auditoria` — **gap identificado, corrigido e aplicado ao Supabase; aguardando validação final do head documental e merge do PR #84**.
 
 - Repositório: `synapselab-ia/sistema-lojasaph`
-- baseline de `main`: `60ab2012f68d9b8bd9d1371a455fd42235a59f7e`
-- branch: `agent/import-foundation-audit`
-- nova evidência: `docs/qa/import-foundation-audit.md`
-- Issue funcional nova: nenhuma
-- Issue #75 de backup permanece aberta/bloqueada
-- nenhum código de aplicação alterado
-- nenhuma migration/DDL/DML remota executada
-- nenhum dado real importado
-- nenhum deploy Vercel criado
+- baseline da fase: `main` em `f761aa5f028f1752784b122c56fa09054e07bee3`
+- Issue #83 — `REQ-SEC-003 — auditar configurações críticas persistidas por Data API`
+- branch `agent/critical-config-audit`
+- PR #84 — `fix(audit): trace critical inventory configuration changes`
+- migration remota/canônica: `20260820192526 / critical_config_audit`
+- evidência: `docs/qa/audit-trail.md`
+- Issue #75 de backup continua aberta e bloqueada por decisões operacionais
+- nenhum deployment Vercel foi criado
+- nenhuma carga/importação de dados reais foi executada
 
-A Fase 34 / Issue #80 / PR #81 está integrada em `main` pelo squash commit `60ab2012f68d9b8bd9d1371a455fd42235a59f7e`. A migration `20260820184106_membership_rls_initplan.sql` está em `main` e no histórico remoto. Não reaplicar.
+## Auditoria de REQ-SEC-003
 
-## Fase 35 — resultado por requisito
+A trilha existente foi revalidada no código e no Supabase hospedado.
 
-### REQ-IMP-001 — importação rastreável
+`public.audit_logs`:
 
-Atendido.
+- RLS habilitada;
+- `authenticated` possui somente SELECT direto;
+- policy de leitura limita a owner/admin Organization-wide;
+- `anon` sem acesso;
+- clientes normais sem INSERT/UPDATE/DELETE direto.
 
-`import_batches` preserva Organization, origem/tipo, arquivo, SHA-256, chave determinística, versão de transformação, usuário solicitante, metadata, status e timestamps.
+Os command paths críticos já auditavam no mesmo fluxo transacional:
 
-`import_rows` preserva batch, aba, linha, identificador bruto opcional, payload bruto, SHA-256, chave de idempotência, payload normalizado, alvo/resolução, estado, warnings e erros.
+- Estoque: entrada, retirada, perda/vencimento, devolução e transferências;
+- Inventário: início, contagem de linha, confirmação e cancelamento;
+- Compras: criação, emissão, recebimento e cancelamento;
+- Financeiro: documento, pagamento, estorno e cancelamento;
+- Caixa: configuração via RPC, abertura, totais, movimentos, fechamento e cancelamento.
 
-### REQ-IMP-002 — idempotência
+A inspeção de payloads confirmou contexto suficiente de Organization/ator/recurso e snapshots operacionais sem copiar secrets. Financeiro não copia access key/payment reference para a auditoria dos commands inspecionados.
 
-Atendido para batch/staging/preview.
+## Gap encontrado e corrigido
 
-- mesma Organization + fonte/hash/versão reutiliza o batch;
-- mesma posição/conteúdo no mesmo batch não duplica staging;
-- mesma posição com payload diferente produz conflito explícito;
-- mesma origem reapresentada em outra versão de transformação é detectada como duplicata quando aplicável;
-- finalização do preview é idempotente.
+A auditoria encontrou configuração crítica persistida diretamente via Data API/RLS e, portanto, fora dos RPCs já auditados.
 
-A futura aplicação definitiva nas tabelas operacionais continua fora do escopo e deverá possuir sua própria prova de idempotência antes do cutover.
+`SupabaseStockItemRepository.save()` usa `upsert` direto em `stock_items`. Além disso:
 
-### REQ-IMP-003 — preview/dry run
+- `stock_items` controla tracking de lote/validade, retornabilidade, unidade/categoria/tipo/status;
+- `stock_locations.allow_negative_stock` altera regra crítica do ledger;
+- `stock_loss_reasons` controla classificação/ativação usada em baixas.
 
-Atendido.
+As três tabelas aceitavam INSERT/UPDATE autenticado, mas não tinham trigger de auditoria.
 
-- `import_batches.mode` é limitado por constraint a `dry_run`;
-- as RPCs atuais de importação são somente `stage_import_batch`, `stage_import_row`, `get_import_preview_report` e `finalize_import_preview`;
-- introspecção read-only confirmou que essas RPCs não fazem DML nas tabelas operacionais finais;
-- não existe command atual de apply/cutover para dados importados;
-- a suíte PostgreSQL falha se o dry run gerar StockItem operacional sintético.
+A migration `20260820192526_critical_config_audit.sql` adiciona uma função privada `SECURITY DEFINER`, `search_path=''`, sem EXECUTE para API roles, usada por três triggers `AFTER INSERT OR UPDATE`.
 
-### REQ-IMP-004 — relatório de inconsistências
+Os snapshots são whitelisted. UPDATE semanticamente idêntico não gera evento, mesmo quando o trigger de `updated_at` altera fisicamente a linha. Isso preserva retries do `upsert` sem audit noise.
 
-Atendido.
+## Teste de regressão
 
-As linhas preservam estados `accepted`, `duplicate`, `warning`, `rejected` e `pending_mapping`, junto de warnings/erros e resolução.
+`supabase/tests/audit_trail.sql` cobre:
 
-O relatório consolida total, aceitas, duplicadas, warnings, rejeitadas e mapeamentos pendentes. Rejeição ou pending mapping leva o batch a `review_required`; `ready` continua significando apenas preview validado.
+- create/update de StockItem, StockLocation e StockLossReason;
+- ator autenticado;
+- before/after dos campos críticos;
+- retry/no-op de upsert sem duplicação;
+- rollback conjunto da mutation e do audit event;
+- whitelist dos snapshots;
+- presença dos três triggers;
+- função privada não executável pelos API roles;
+- RLS/grants de `audit_logs` sem regressão.
 
-### REQ-ITEM-002 — aliases
+O CI principal passa a executar essa suíte.
 
-Suporte migratório atendido.
+## Validação técnica
 
-- `item_aliases` existe no remoto com RLS;
-- FK composto preserva a mesma Organization entre alias e StockItem;
-- matching aceita somente nome canônico exato normalizado ou alias explícito;
-- não existe fuzzy auto-merge;
-- inexistência/ambiguidade permanece `pending_mapping`.
+Head funcional inicial `94be4f6d71c4f1a743bd737d976f1cc5538cdf9a`:
 
-## Supabase remoto — revalidação read-only
+- CI #332 — database + validate success;
+- Business Transactions Integration #163 — success;
+- Inventory Count Integration #179 — success.
 
-Projeto `fhbvwyttikrbeaanatlr`:
+O database gate aplicou toda a cadeia de migrations e passou `audit_trail.sql`, RLS/hardening, Auth/Organization isolation e todas as suites transacionais existentes.
 
-- migrations de importação presentes:
-  - `20260818180723 / import_staging`;
-  - `20260818180738 / import_staging_finalize_fix`;
-  - `20260818181051 / import_staging_indexes`;
-- `20260820184106 / membership_rls_initplan` também presente;
-- `import_batches` com RLS habilitado;
-- `import_rows` com RLS habilitado;
-- `item_aliases` com RLS habilitado;
-- `authenticated` possui somente SELECT direto em `import_batches`/`import_rows`;
-- as quatro RPCs de importação usam `SECURITY DEFINER`, `search_path=""`, verificam `auth.uid()`/escopo Organization-wide e não são executáveis por `anon`;
-- `import_batches = 0`;
-- `import_rows = 0`.
+Após os gates verdes, a migration foi aplicada no Supabase. O remoto registrou `20260820192526`, e o filename local foi reconciliado ao mesmo version sem alterar o SQL já validado.
 
-Nenhuma escrita remota foi executada nesta auditoria.
+O head final documental/reconciliado deve permanecer verde antes do squash merge; consultar o PR #84 para o run final.
 
-## Arquivos reais / segredos
+## Supabase pós-DDL
 
-- `docs/source-data/` contém apenas documentação Markdown;
-- busca no repositório não encontrou `.xlsx`, `.xls` ou `.csv` versionados;
-- `.gitignore` continua excluindo `.env*` salvo `.env.example` e `/backups/`;
-- nenhum dump, planilha real, secret ou connection string foi adicionado.
+Revalidação read-only confirmou:
 
-## Drift documental corrigido
+- três triggers exatamente nas tabelas previstas;
+- função privada com `SECURITY DEFINER` + `search_path=""`;
+- `anon`, `authenticated` e `service_role` sem EXECUTE direto nessa função;
+- `audit_logs` continua SELECT-only para authenticated;
+- a contagem de audit events reais permaneceu em 5 antes/depois da DDL, portanto a homologação não fabricou eventos Production.
 
-`docs/modules/imports.md` ainda citava os filenames anteriores à reconciliação de migration history da Fase 30.
-
-Agora a documentação usa os filenames canônicos que existem no GitHub e correspondem ao remoto:
-
-- `20260818180723_import_staging.sql`;
-- `20260818180738_import_staging_finalize_fix.sql`;
-- `20260818181051_import_staging_indexes.sql`.
-
-## Validação reutilizada
-
-O head funcional final anterior ao squash da Fase 34 passou:
-
-- CI #328 — success;
-- Business Transactions Integration #162 — success;
-- Inventory Count Integration #178 — success.
-
-O job `database` aplicou todas as migrations em PostgreSQL 17 e executou `supabase/tests/import_staging.sql` junto das suites de schema/RLS/hardening e transacionais.
-
-A Fase 35 é documental/read-only. Confirmar CI do head documental final antes do merge.
+Security Advisor não adicionou finding para a nova função privada. Permanecem warnings históricos das RPCs públicas SECURITY DEFINER intencionais e leaked-password protection. Performance Advisor mantém recomendações históricas de índices/FKs, fora desta correção.
 
 ## REQ-PLAT-005 / Issue #75
 
-Continua bloqueada por decisões operacionais ausentes de RPO, RTO, destino off-site, retenção, proteção e alertas. Não inventar configuração e não fechar #75 sem backup automático real.
+A frente de backup continua bloqueada por RPO, RTO, destino off-site, retenção, proteção e alertas ainda não definidos. Não inventar configuração nem fechar #75 sem backup automático real.
 
 ## Próxima ação
 
-Após integrar a Fase 35, auditar `REQ-SEC-003 — Auditoria`: verificar de ponta a ponta que alterações críticas de Estoque, Caixa, Financeiro e configurações geram trilha persistente suficiente, protegida por RLS/grants e sem exposição de dados sensíveis.
-
-A auditoria deve reutilizar `audit_logs` e as suites existentes, sem redesenhar eventos ou abrir Issue se o requisito já estiver atendido.
+Após integrar a Fase 36, auditar `REQ-SEC-004 — Segredos`, reutilizando o hardening já existente de `.gitignore`, `.env.example`, fronteira server/client do Supabase, política de ambientes e redaction de observabilidade. A tarefa deve começar como auditoria e só abrir Issue se houver exposição concreta/reproduzível.
 
 ## Não repetir
 
-- não reimplementar a Fase 15;
-- não importar as seis planilhas reais;
-- não criar apply/cutover durante auditoria de staging;
-- não reabrir a Fase 34/RLS sem bypass reproduzível;
-- não reaplicar migrations existentes;
-- não fechar #75 sem backup automático real;
-- não reativar auto-deploy Vercel;
+- não reabrir REQ-SEC-003 sem regressão concreta;
+- não transformar todo CRUD mestre em audit trail por conveniência;
+- não redesenhar as RPCs SECURITY DEFINER só por warning genérico;
+- não reaplicar `critical_config_audit`;
+- não gerar audit events artificiais em Production para teste;
+- não importar dados reais/cutover;
+- não fechar #75 sem decisões e automação real;
+- não criar deployment Vercel rotineiro;
 - não inferir Q-001..Q-025.

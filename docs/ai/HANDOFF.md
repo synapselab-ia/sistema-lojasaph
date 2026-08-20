@@ -2,124 +2,150 @@
 
 ## Estado
 
-A Fase 35 auditou `REQ-IMP-001` a `REQ-IMP-004` e o suporte migratório de aliases de `REQ-ITEM-002`, usando a Fase 15 / Issue #39 / PR #40 como baseline.
+A Fase 36 auditou `REQ-SEC-003 — Auditoria`, encontrou uma lacuna concreta em configurações críticas de estoque persistidas diretamente via Data API e implementou a correção mínima na Issue #83 / PR #84.
 
-Frente:
+Estado da frente:
 
-- baseline de `main`: `60ab2012f68d9b8bd9d1371a455fd42235a59f7e`;
-- branch `agent/import-foundation-audit`;
-- nenhuma Issue funcional nova;
-- evidência: `docs/qa/import-foundation-audit.md`;
-- `docs/modules/imports.md` reconciliado com os filenames canônicos atuais;
+- baseline: `main` em `f761aa5f028f1752784b122c56fa09054e07bee3`;
+- Issue #83 — `REQ-SEC-003 — auditar configurações críticas persistidas por Data API`;
+- branch `agent/critical-config-audit`;
+- PR #84 — `fix(audit): trace critical inventory configuration changes`;
+- migration Supabase aplicada: `20260820192526 / critical_config_audit`;
+- evidência detalhada: `docs/qa/audit-trail.md`;
 - Issue #75 de backup permanece aberta/bloqueada;
-- nenhum dado real importado;
-- nenhuma migration/DDL/DML remota executada;
-- nenhum deploy Vercel criado.
+- nenhum deployment Vercel;
+- nenhum dado real/importação/cutover.
 
-A Fase 34 / Issue #80 / PR #81 já está integrada. `main` contém `20260820184106_membership_rls_initplan.sql`; não reaplicar nem reabrir RLS salvo regressão concreta.
+## O que já estava correto
 
-## Resultado da Fase 35
+`public.audit_logs` já era append-only para clientes normais e protegido por RLS/grants:
 
-### REQ-IMP-001 — atendido
+- authenticated: SELECT apenas;
+- leitura somente para owner/admin Organization-wide;
+- anon sem acesso;
+- sem INSERT/UPDATE/DELETE direto do cliente.
 
-A fundação preserva batch/origem/arquivo/hash/versão/usuário e, por linha, aba/linha/payload bruto/hash/idempotency key/payload normalizado/resultado/warnings/erros.
+Os command paths críticos existentes escrevem audit event dentro das próprias transações:
 
-### REQ-IMP-002 — atendido no staging
+- Estoque: entrada, retirada, perda/vencimento, devolução e transferência;
+- Inventário: início, linhas, confirmação e cancelamento;
+- Compras: criação, emissão, recebimento e cancelamento;
+- Financeiro: documento, pagamento, estorno e cancelamento;
+- Caixa: configuração via RPC, abertura, totais, movimentos, fechamento e cancelamento.
 
-- batch determinístico é reutilizado;
-- replay de linha não duplica;
-- mudança de payload na mesma posição é conflito;
-- origem reapresentada em nova versão pode ser marcada `duplicate`;
-- finalização é idempotente.
+Os payloads inspecionados são operacionais e não copiam secrets. Em Financeiro, access key/payment reference não são incluídos nos audit snapshots dos commands correspondentes.
 
-Não extrapolar isso para a futura escrita definitiva nas tabelas operacionais; essa etapa ainda não existe.
+## Gap da Issue #83
 
-### REQ-IMP-003 — atendido
+`SupabaseStockItemRepository.save()` usa Data API com `upsert` direto. Também existem writes diretos protegidos por RLS em `stock_locations` e `stock_loss_reasons`.
 
-- `mode` é limitado a `dry_run` pelo banco;
-- as únicas RPCs públicas de importação observadas são staging, relatório e finalização de preview;
-- introspecção remota confirmou ausência de DML operacional nessas RPCs;
-- não existe command de apply/cutover;
-- teste PostgreSQL cobre ausência de escrita operacional.
+Essas tabelas controlam comportamento crítico:
 
-### REQ-IMP-004 — atendido
+- StockItem: tracking de lote/validade, retornabilidade, unidade/categoria/tipo/status;
+- StockLocation: `allow_negative_stock` e estado/localização;
+- StockLossReason: `movement_type` e ativação usados por `record_stock_loss`.
 
-`import_rows` guarda `accepted`, `duplicate`, `warning`, `rejected`, `pending_mapping`, warnings, erros e resolução. O relatório consolida as seis contagens relevantes e força `review_required` quando há rejeição ou mapeamento pendente.
+Antes da Fase 36, nenhuma das três possuía trigger de auditoria.
 
-### REQ-ITEM-002 — aliases atendidos para migração
+## Correção aplicada
 
-`item_aliases` continua com RLS e integridade por Organization. O resolver TypeScript usa somente nome canônico exato normalizado ou alias explícito. Similaridade aproximada não é aceita; ambiguidade/inexistência vira `pending_mapping`.
+Migration canônica local/remota:
 
-## Supabase remoto — fatos atuais
+`supabase/migrations/20260820192526_critical_config_audit.sql`
 
-Projeto `fhbvwyttikrbeaanatlr`:
+Ela cria `private.audit_critical_inventory_configuration()`:
 
-- `20260818180723 / import_staging` aplicado;
-- `20260818180738 / import_staging_finalize_fix` aplicado;
-- `20260818181051 / import_staging_indexes` aplicado;
-- `20260820184106 / membership_rls_initplan` aplicado;
-- `import_batches`, `import_rows`, `item_aliases` com RLS;
-- staging oferece somente SELECT direto para `authenticated`;
-- quatro RPCs de importação com `search_path=""`, guarda de identidade/escopo e sem EXECUTE para `anon`;
-- `import_batches = 0`;
-- `import_rows = 0`.
+- trigger function privada;
+- SECURITY DEFINER;
+- `search_path=""`;
+- sem EXECUTE direto para anon/authenticated/service_role;
+- snapshots por whitelist;
+- comparação semântica em UPDATE, ignorando timestamps.
 
-Nenhum write remoto foi usado nesta auditoria.
+Triggers:
 
-## Arquivos reais / higiene
+- `stock_items_critical_config_audit`;
+- `stock_locations_critical_config_audit`;
+- `stock_loss_reasons_critical_config_audit`.
 
-- `docs/source-data/` contém somente Markdown;
-- buscas não encontraram `.xlsx`, `.xls` ou `.csv` versionados;
-- `.gitignore` exclui `.env*` salvo `.env.example` e `/backups/`;
-- nenhum dump, planilha real ou segredo foi adicionado.
+Ações:
 
-## Drift documental corrigido
+- `stock_item.created` / `stock_item.updated`;
+- `stock_location.created` / `stock_location.updated`;
+- `stock_loss_reason.created` / `stock_loss_reason.updated`.
 
-`docs/modules/imports.md` estava desatualizado após a Fase 30 e ainda listava timestamps locais antigos para as migrations da Fase 15.
+O no-op é importante: `updated_at` muda em todo UPDATE, mas um retry de `upsert` com os mesmos campos de negócio não deve criar auditoria duplicada.
 
-Agora usa exatamente:
+## Testes
 
-- `20260818180723_import_staging.sql`;
-- `20260818180738_import_staging_finalize_fix.sql`;
-- `20260818181051_import_staging_indexes.sql`.
+Nova suíte: `supabase/tests/audit_trail.sql`.
+
+Cobre:
+
+- create/update das três configurações;
+- actor via `auth.uid()`;
+- before/after;
+- no-op upsert sem duplicação;
+- rollback de mutation + audit;
+- whitelist sem EAN/NCM/CEST/timestamps no snapshot de StockItem;
+- três triggers presentes;
+- trigger function não executável diretamente por API roles;
+- audit_logs continua fechado para escrita do cliente.
+
+`.github/workflows/ci.yml` executa a suíte no database gate.
 
 ## Validação
 
-Último head funcional integral antes desta auditoria documental:
+Head técnico inicial `94be4f6d71c4f1a743bd737d976f1cc5538cdf9a`:
 
-- CI #328 — success;
-- Business Transactions Integration #162 — success;
-- Inventory Count Integration #178 — success.
+- CI #332 — success;
+- Business Transactions Integration #163 — success;
+- Inventory Count Integration #179 — success.
 
-O database gate executou `supabase/tests/import_staging.sql` em PostgreSQL 17 após aplicar a cadeia completa de migrations.
+Após esses gates, a migration foi aplicada ao Supabase e registrada como `20260820192526 / critical_config_audit`. O arquivo local foi renomeado para o mesmo version antes da validação final.
 
-A Fase 35 não muda código/SQL. Confirmar CI do head documental final e fazer squash merge do PR desta branch.
+Revalidação remota read-only:
 
-## Issue #75 — backup
+- 3/3 triggers presentes;
+- função privada SECURITY DEFINER + search_path vazio;
+- API roles sem EXECUTE;
+- audit_logs continua SELECT-only para authenticated;
+- total de audit events Production permaneceu 5 antes/depois da DDL; nenhum evento sintético foi gerado remotamente.
 
-Permanece bloqueada por decisões operacionais de RPO/RTO/destino/retenção/proteção/alerta. Não editar/fechar sem decisão nova e automação real.
+Advisors:
 
-## Próximo chat — fazer
+- Security: nova função privada não gerou warning; permanecem RPCs públicas SECURITY DEFINER intencionais e leaked-password protection;
+- Performance: recomendações históricas de FKs/índices, sem finding novo desta migration.
 
-1. Ler `AGENTS.md`, `START-HERE`, `CURRENT_STATE`, este `HANDOFF`, `NEXT_ACTION`, `WORKFLOW` e `requirements.md`.
-2. Conferir `main`, Issue #75, PRs/branches e CI reais.
-3. Confirmar que a Fase 35 está integrada e que `docs/qa/import-foundation-audit.md` está em `main`.
-4. Não reabrir Fase 15/importação nem Fase 34/RLS sem regressão concreta.
-5. Executar a auditoria de `REQ-SEC-003 — Auditoria` definida em `NEXT_ACTION`.
-6. Mapear `audit_logs` e todos os write paths críticos de Estoque, Caixa, Financeiro e configurações.
-7. Verificar actor, Organization, action/entity, before/after/metadata necessários, idempotência de eventos, RLS/grants e ausência de DELETE direto.
-8. Confirmar que payloads auditados não carregam secrets/tokens/credenciais ou conteúdo sensível desnecessário.
-9. Usar Supabase read-only salvo correção versionada necessária.
-10. Se o requisito estiver atendido, documentar sem Issue artificial; se houver gap reproduzível, uma única Issue + branch/fix mínimo.
-11. Não criar deploy Vercel para uma auditoria de banco que não dependa de runtime hospedado.
+O PR #84 deve ser mergeado somente após o head final reconciliado/documental ficar verde. Consultar o PR para os runs finais.
+
+## Issue #75
+
+Continua sem comentários/decisões novas sobre RPO/RTO/destino/retenção/proteção/alerta. Não iniciar backup automático por inferência.
+
+## Próximo chat
+
+1. Ler continuidade padrão e conferir estado real de main/Issues/PRs/CI.
+2. Confirmar que PR #84 está mergeado e Issue #83 encerrada; se não estiver, concluir apenas o fechamento já validado, sem refazer a implementação.
+3. Confirmar `20260820192526_critical_config_audit.sql` em main e no histórico remoto; não reaplicar.
+4. Checar #75 primeiro; sem decisões novas, mantê-la bloqueada.
+5. Executar a próxima auditoria: `REQ-SEC-004 — Segredos`.
+6. Reutilizar as entregas existentes de persistência/Auth, RLS hardening, ambientes e observabilidade antes de criar trabalho novo.
+7. Auditar repositório/config/runtime sem expor valores de secrets: `.gitignore`, `.env.example`, uso de `NEXT_PUBLIC_*`, `SUPABASE_SECRET_KEY`, admin client server-only, Vercel env targets quando observáveis, workflows e redaction de logs.
+8. Verificar que nenhum secret real está versionado ou enviado ao browser/logs. Diferenciar publishable key de secret key.
+9. Não copiar valores de env/secrets para GitHub/docs/chat.
+10. Se SEC-004 estiver atendido, documentar sem Issue artificial; se houver exposição concreta, uma única Issue + branch + fix mínimo.
+11. Não criar deploy Vercel rotineiro.
 12. Atualizar continuidade ao final.
 
 ## Não fazer
 
-- não importar dados reais/cutover;
-- não criar apply operacional de staging nesta frente;
-- não reaplicar migrations;
-- não redesenhar RLS/RPCs por warnings genéricos;
+- não reabrir Fase 36 sem regressão concreta;
+- não auditar todo master data por conveniência;
+- não reaplicar migration remota;
+- não criar eventos Production para homologação;
+- não redesenhar observabilidade;
 - não fechar #75 sem backup automático real;
+- não importar dados reais/cutover;
 - não reativar auto-deploy Vercel;
 - não inferir Q-001..Q-025.
