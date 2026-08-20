@@ -4,85 +4,64 @@
 
 ## Estado atual
 
-A Fase 27 foi concluída e `REQ-PLAT-001 — Responsivo` permanece fechada pela Issue #69 / PR #70.
-
-A auditoria transversal de `REQ-PLAT-002 — Proteção contra duplicidade` foi concluída nesta sessão. O backend já possui proteção forte de idempotência nos write paths críticos, mas foi comprovada uma lacuna ponta a ponta na camada cliente. Por isso foi criada a Issue #71 — **Fase 28 — idempotência ponta a ponta das operações críticas**.
+A Fase 28 foi concluída e `REQ-PLAT-002 — Proteção contra duplicidade` está fechada.
 
 - Repositório: `synapselab-ia/sistema-lojasaph`
-- Issue #69 — closed/completed
-- PR #70 — merged
-- Issue #71 — open
-- Fase 27 merge: `7fe0f574504a1cb7080a54e8391cb1f26ca31ce2`
-- baseline documental anterior: `265c3262b8cfd0b22e549118505911950c5019f3`
-- CI #297 — success
-- Business Transactions Integration #152 — success
-- nenhum patch funcional nesta sessão
-- nenhuma migration/DDL
-- nenhuma alteração de RLS, grants, roles, RPCs, Auth ou regras transacionais
+- `main`: `9dc6164e628605e0ff74f748200dce165b70fdd9` após o merge funcional da Fase 28
+- Issue #71 — closed/completed
+- PR #72 — merged por squash
+- CI #301 — success (`database`, lint, typecheck, Vitest e production build)
+- Business Transactions Integration #153 — success
+- Inventory Count Integration #169 — success
+- nenhuma migration/DDL na Fase 28
+- nenhuma alteração de RLS, grants, roles, Auth ou regras transacionais
 - nenhum deployment Vercel
 
-## REQ-PLAT-002 — auditoria concluída
+## REQ-PLAT-002 — fechado
 
-Foram auditados 26 write paths críticos:
+A lacuna comprovada entre o client e os RPCs idempotentes foi corrigida por uma abstração única em `src/lib/runtime/idempotent-command.ts`.
 
-- Estoque: entrada, retirada, baixa/perda/vencimento e devolução relacionada;
-- Transferências: despacho e recebimento;
-- Inventário: início, atualização de linha, confirmação e cancelamento;
-- Compras: criação, emissão, recebimento e cancelamento;
-- Financeiro: criação/cancelamento de documento, pagamento e estorno;
-- Caixa: criação de caixa, meio de pagamento e regra de taxa; abertura de sessão, total por meio, movimento, fechamento e cancelamento.
+Contrato efetivo do runtime:
 
-### Backend efetivo
+- UUID opaco criado de forma lazy por intenção;
+- payload normalizado é usado somente para fingerprint semântico local, nunca como command ID;
+- retry da mesma intenção após falha ambígua reapresenta o mesmo UUID;
+- sucesso definitivo encerra a intenção e a próxima operação recebe nova chave;
+- mudança semântica após falha abandona a intenção anterior e cria nova chave;
+- duas submissões concorrentes idênticas compartilham a mesma Promise/comando;
+- mudança de payload enquanto a intenção anterior está em voo é rejeitada localmente;
+- `IDEMPOTENCY_KEY_CONFLICT` permanece erro explícito de reconciliação/refresh.
 
-O Supabase remoto foi inspecionado em modo leitura.
+Os gateways de Estoque que já aceitavam `commandId` explícito preservam esse caminho para teste/homologação; o caminho normal sem chave explícita usa o registro estável, sem fallback para UUID novo a cada retry.
 
-Os RPCs públicos atuais são wrappers de Auth/role/scope e delegam para implementações `private.*`. Nas implementações efetivas foi comprovado:
+### Matriz final de cobertura
 
-- `p_command_id` em todos os caminhos críticos;
-- serialização concorrente por advisory lock da chave;
-- replay idêntico reaproveitado sem duplicar efeitos;
-- reutilização semântica incompatível rejeitada com `IDEMPOTENCY_KEY_CONFLICT`;
-- `record_stock_loss` herda o contrato de `private.record_stock_outflow`;
-- `record_stock_entry` já está endurecido na implementação privada atual, apesar da migration histórica original não representar a definição final.
+| Superfície | Write paths | Evidência client/runtime | Evidência PostgreSQL |
+| --- | ---: | --- | --- |
+| Estoque | 4 | entrada, retirada, perda/vencimento e devolução usam intenção estável | replay/conflito em suites existentes; `schema_smoke.sql` agora cobre conflito explícito de entrada |
+| Transferências | 2 | despacho e recebimento usam escopos idempotentes próprios | suites de transferência mantidas verdes |
+| Inventário | 4 | início, linha, confirmação e cancelamento usam intenção estável | Inventory Count Integration #169 verde |
+| Compras | 4 | criação, emissão, recebimento e cancelamento usam intenção estável | Business Transactions Integration #153 verde |
+| Financeiro | 4 | documento, pagamento, estorno e cancelamento usam intenção estável | Business Transactions Integration #153 verde |
+| Caixa | 8 | configuração, abertura, total, movimento, fechamento e cancelamento usam intenção estável | `cash_sessions.sql` cobre replay/conflito adicional e integração #153 verde |
+| **Total** | **26** | ciclo de chave estável coberto por Vitest + teste de gateway real | RPCs/locks/guards existentes preservados |
 
-Os testes SQL existentes já comprovam replay e/ou conflito em Retirada, Transferências, Inventário, Compras, Financeiro, Perdas e Devoluções. `schema_smoke.sql` comprova replay idêntico de entrada de estoque.
+Regressões client adicionadas provam:
 
-### Lacuna concreta no cliente
-
-O requisito ainda não está fechado porque a chave não é preservada de ponta a ponta por intenção do usuário.
-
-Foi comprovado que:
-
-- `SupabaseStockEntryGateway`, `SupabaseStockWithdrawalGateway`, `SupabaseStockLossGateway`, `SupabaseStockReturnGateway` e `SupabaseStockTransferGateway` aceitam `commandId` opcional, mas os chamadores reais não o fornecem;
-- `SupabaseInventoryCountGateway`, `SupabasePurchaseGateway`, `SupabaseFinanceGateway` e `SupabaseCashGateway` geram `newEntityId()` dentro de cada mutação;
-- as telas desabilitam botões durante `saving`, o que reduz clique duplicado simultâneo, mas não cobre retry após resultado ambíguo de transporte;
-- numa nova tentativa após falha de rede, outro UUID pode ser gerado e o PostgreSQL interpreta a operação como nova intenção legítima.
-
-Portanto o backend é retry-safe quando a mesma chave chega novamente, mas o runtime atual não garante essa reapresentação.
-
-## Fase 28
-
-Issue #71 foi criada apenas para a lacuna comprovada.
-
-Objetivo: gerar uma chave opaca uma vez por intenção crítica, reutilizá-la em retries da mesma intenção, invalidá-la somente após resultado definitivo ou mudança semântica do draft e cobrir double submit/retry com testes de regressão.
-
-Defaults:
-
-- preservar RPCs, domínio, RLS, roles, scopes e transações já corretos;
-- não usar hash de payload como command ID;
-- manter `IDEMPOTENCY_KEY_CONFLICT` explícito;
-- erro ambíguo de transporte não cria nova intenção automaticamente;
-- mudança semântica do draft gera nova intenção;
-- sem Vercel durante iteração;
-- nenhuma migration esperada para corrigir apenas o ciclo de vida da chave no client.
-
-Branch de trabalho criada: `agent/idempotency-e2e`.
+- reutilização da chave após falha ambígua;
+- reset após sucesso;
+- nova chave após mudança semântica;
+- deduplicação de double submit concorrente;
+- bloqueio de payload divergente em voo;
+- fingerprint canônico;
+- reutilização real de `p_command_id` no gateway de retirada;
+- conflito idempotente continua visível.
 
 ## Supabase remoto
 
 Projeto `fhbvwyttikrbeaanatlr`, PostgreSQL 17, permanece `ACTIVE_HEALTHY`.
 
-Nesta sessão houve somente introspecção SQL read-only de definições de funções. Nenhum dado operacional, schema, grant, RLS, RPC ou configuração foi alterado.
+Após a implementação, uma confirmação SQL somente leitura verificou os 26 RPCs críticos de Estoque, Transferências, Inventário, Compras, Financeiro e Caixa. Todos continuam expondo `p_command_id` e nenhuma função/schema/policy/grant/dado foi modificado remotamente nesta fase.
 
 Estado operacional preservado:
 
@@ -92,32 +71,31 @@ Estado operacional preservado:
 - 1 owner ativo;
 - bootstrap desabilitado em Production.
 
-Os avisos genéricos do advisor de segurança continuam fora do escopo da Fase 28 salvo regressão diretamente relacionada.
+Os avisos genéricos do advisor continuam fora de escopo salvo regressão concreta.
 
 ## Vercel Production
 
-`git.deploymentEnabled=false` continua intacto.
+`git.deploymentEnabled=false` continua deliberadamente preservado.
 
 Último Production intencional permanece:
 
 - deployment `dpl_824q6umKyUyRhYzAmxLREjNeoFK1` — READY;
 - commit funcional hospedado `046c4a3392f85e2361c6ddeac0ae3ee1817145c5`.
 
-Nenhum deployment foi criado nesta auditoria.
+Nenhum deployment foi criado na Fase 28.
 
 ## Próxima ação
 
-Executar a Issue #71 na branch `agent/idempotency-e2e` sem repetir a auditoria de backend.
+Auditar `REQ-PLAT-003 — Validação de dados` como o próximo MUST verificável de Plataforma.
 
-A implementação deve focar o ciclo de vida do command ID no client/runtime, integrar os módulos críticos, adicionar regressão de retry/reset/double submit e completar apenas a cobertura SQL faltante de baixo custo.
+A próxima sessão deve primeiro comprovar o estado real de `main`, Issues/PRs e workflows. Depois deve mapear validações essenciais entre domínio/server/RPC/banco, reaproveitar testes existentes e abrir nova Issue somente se houver lacuna concreta. Não implementar validações por presunção e não reabrir a Fase 28.
 
 ## Não repetir
 
-- não reabrir Fases 26/27;
-- não refazer a auditoria transversal de `REQ-PLAT-002`;
-- não criar outra Issue para a mesma lacuna;
-- não reescrever RPCs já comprovadamente idempotentes sem regressão específica;
-- não alterar RLS/grants para facilitar retry;
+- não reabrir Issues #69 ou #71;
+- não refazer a auditoria de idempotência já encerrada;
+- não reescrever RPCs idempotentes sem regressão específica;
+- não alterar RLS/grants para resolver validação de formulário;
 - não reativar bootstrap ou auto-deploy Vercel;
 - não importar dados reais;
 - não inferir Q-001..Q-025.

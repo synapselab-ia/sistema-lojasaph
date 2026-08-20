@@ -2,107 +2,99 @@
 
 ## Estado
 
-A auditoria de `REQ-PLAT-002 — Proteção contra duplicidade` foi concluída após a Fase 27.
+A Fase 28 — idempotência ponta a ponta das operações críticas — foi concluída.
 
-Resultado: o PostgreSQL/Supabase já protege corretamente os write paths críticos quando recebe a mesma chave de comando, mas o cliente real não preserva essa chave por intenção do usuário. A lacuna foi convertida na Issue #71 — **Fase 28 — idempotência ponta a ponta das operações críticas**.
+`REQ-PLAT-002 — Proteção contra duplicidade` está fechada pela Issue #71 / PR #72.
 
-Estado antes deste commit documental:
+Estado comprovado ao encerrar:
 
-- `main`: `265c3262b8cfd0b22e549118505911950c5019f3`;
-- `agent/responsive-workspace`: idêntica à `main`;
-- Issue #71 — open;
-- PRs abertos — 0;
-- CI #297 — success;
-- Business Transactions Integration #152 — success;
-- nenhum patch funcional nesta auditoria;
-- nenhum DDL/RLS/grant/RPC/Auth change;
+- `main`: `9dc6164e628605e0ff74f748200dce165b70fdd9` antes deste commit documental;
+- Issue #71 — closed/completed;
+- PR #72 — merged por squash;
+- CI #301 — success;
+- Business Transactions Integration #153 — success;
+- Inventory Count Integration #169 — success;
+- nenhuma migration/DDL;
+- nenhuma alteração de RLS/grants/roles/Auth;
 - nenhum deployment Vercel.
 
-Branch nova de continuidade: `agent/idempotency-e2e`.
+A branch `agent/idempotency-e2e` foi integrada. Não continuar trabalho funcional nela sem antes conferir `main` e criar uma branch nova para uma lacuna nova comprovada.
 
-## Auditoria concluída — não repetir
+## Fase 28 — o que foi implementado
 
-Foram auditados 26 write paths críticos:
+Foi adicionada a abstração `IdempotentCommandRegistry` em `src/lib/runtime/idempotent-command.ts`.
+
+Contrato:
+
+- cria UUID opaco de forma lazy por intenção;
+- mantém a chave em retry após falha ambígua;
+- limpa somente após sucesso definitivo do command;
+- usa fingerprint semântico apenas para detectar mudança local de intenção;
+- payload alterado após falha recebe nova chave;
+- submissões concorrentes idênticas convergem para a mesma Promise/comando;
+- payload divergente enquanto uma intenção está em voo é bloqueado;
+- `IDEMPOTENCY_KEY_CONFLICT` não é mascarado como sucesso.
+
+A política foi aplicada aos 26 write paths críticos auditados:
 
 - Estoque: entrada, retirada, perda/vencimento e devolução;
 - Transferências: despacho e recebimento;
 - Inventário: início, linha, confirmação e cancelamento;
 - Compras: criação, emissão, recebimento e cancelamento;
-- Financeiro: documento, cancelamento, pagamento e estorno;
+- Financeiro: documento, pagamento, estorno e cancelamento;
 - Caixa: caixa, meio de pagamento, regra de taxa, abertura, total por meio, movimento, fechamento e cancelamento.
 
-### Backend
+Os adapters normalizam valores semânticos antes do fingerprint. Por exemplo, quantidades e valores monetários usam as representações canônicas de `Quantity`/`Money`, evitando que formas textuais equivalentes criem intenções diferentes.
 
-No Supabase remoto, os RPCs públicos atuais são wrappers de autorização/escopo e delegam a `private.*`.
+## Evidência de regressão
 
-A introspecção read-only comprovou que as implementações privadas efetivas possuem, direta ou indiretamente:
+Client/runtime:
 
-- `p_command_id`;
-- advisory lock por command ID;
-- replay compatível sem efeitos duplicados;
-- `IDEMPOTENCY_KEY_CONFLICT` quando a mesma chave é reaproveitada com payload semântico incompatível.
+- `src/lib/runtime/idempotent-command.test.ts` cobre retry, sucesso/reset, mudança semântica, concorrência e canonicalização;
+- `supabase-stock-withdrawal-gateway.test.ts` comprova reapresentação real do mesmo `p_command_id` após falha ambígua e visibilidade de `IDEMPOTENCY_KEY_CONFLICT`.
 
-`private.record_stock_loss` delega a `private.record_stock_outflow`, onde estão o lock e a comparação semântica. `private.record_stock_entry` também já contém lock e comparação completa de payload; não usar a migration histórica inicial como representação da definição final.
+PostgreSQL efêmero:
 
-Testes SQL existentes já cobrem replay/conflito em vários módulos. Evitar duplicar suites já suficientes.
+- `schema_smoke.sql` agora rejeita mesma chave de entrada de estoque com payload diferente;
+- `cash_sessions.sql` amplia replay/conflito para configuração de Caixa e movimento;
+- suites estabilizadas de Estoque, Inventário, Compras, Financeiro e Caixa permaneceram verdes.
 
-### Cliente — lacuna comprovada
+Gates:
 
-- gateways de Estoque/Perdas/Devoluções/Transferências aceitam `commandId` opcional, mas os chamadores reais não o passam;
-- gateways de Inventário/Compras/Financeiro/Caixa geram `newEntityId()` dentro de cada mutação;
-- botão em `saving` evita parte dos double-clicks, mas retry após falha ambígua de transporte produz nova chave;
-- nova chave significa nova intenção legítima para o banco, portanto existe risco de duplicidade apesar do backend idempotente.
+- CI #301: database + lint + typecheck + Vitest + production build — success;
+- Business Transactions Integration #153 — success;
+- Inventory Count Integration #169 — success.
 
-Esse é o único motivo para `REQ-PLAT-002` continuar aberto.
+## Supabase / Production
 
-## Issue #71 / Fase 28
+Projeto Supabase `fhbvwyttikrbeaanatlr`, PostgreSQL 17, permanece `ACTIVE_HEALTHY`.
 
-Objetivo: tornar o command ID estável por intenção do usuário no runtime real.
+Confirmação read-only posterior à implementação encontrou os 26 RPCs críticos esperados com `p_command_id`. Nenhum DDL, migration, policy, grant, função, dado operacional ou configuração foi alterado remotamente.
 
-Defaults definidos na Issue:
-
-- UUID opaco, sem PII;
-- gerar uma vez por intenção;
-- retry da mesma intenção reutiliza a mesma chave;
-- alteração semântica do draft cria nova intenção;
-- sucesso definitivo encerra a intenção;
-- erro de validação definitivo pode encerrar a intenção;
-- erro ambíguo de transporte preserva a chave;
-- double submit não pode gerar duas intenções concorrentes;
-- `IDEMPOTENCY_KEY_CONFLICT` continua explícito;
-- preservar backend, RLS, roles, scopes e regras de negócio já corretos;
-- sem deploy Vercel durante iteração.
+Production Vercel continua deliberadamente no deployment `dpl_824q6umKyUyRhYzAmxLREjNeoFK1`, commit `046c4a3392f85e2361c6ddeac0ae3ee1817145c5`, com auto-deploy desabilitado.
 
 ## Próximo chat — fazer
 
 1. Ler `AGENTS.md`, `docs/00-START-HERE.md`, `CURRENT_STATE`, este `HANDOFF`, `NEXT_ACTION`, `WORKFLOW` e `requirements.md`.
-2. Confirmar estado real de `main`, `agent/idempotency-e2e`, Issue #71, PRs e workflows antes de editar.
-3. Não repetir a auditoria de backend; usar a Issue #71 e este handoff como baseline.
-4. Implementar uma abstração pequena/testável de ciclo de vida de command ID por intenção.
-5. Integrá-la progressivamente em Estoque, Baixas, Devoluções, Transferências, Inventários, Compras, Financeiro e Caixa.
-6. Garantir que adapters/gateways possam receber command ID explicitamente onde hoje o geram internamente.
-7. Cobrir retry após falha ambígua, reset após sucesso/mudança semântica e double submit/concurrent submit.
-8. Completar apenas a cobertura SQL faltante de baixo custo, principalmente conflito explícito de entrada de estoque e mutações de Caixa ainda sem caso dedicado na suite.
-9. Rodar lint, typecheck, Vitest, build e workflows PostgreSQL aplicáveis.
-10. Se houver mudança de banco realmente necessária, justificar antes; migration não é esperada para o problema já comprovado.
-11. Não fazer Vercel deploy durante implementação; homologação hospedada só se houver motivo real ao final.
-12. Atualizar continuidade ao encerrar a próxima sessão.
-
-## Supabase / Production
-
-Projeto `fhbvwyttikrbeaanatlr` permanece `ACTIVE_HEALTHY` em PostgreSQL 17.
-
-A auditoria usou apenas queries read-only de definição de funções. Nenhuma tabela, função, policy, grant, dado operacional ou configuração foi modificada.
-
-Production Vercel continua deliberadamente no deployment `dpl_824q6umKyUyRhYzAmxLREjNeoFK1`, commit `046c4a3392f85e2361c6ddeac0ae3ee1817145c5`, com auto-deploy desabilitado.
+2. Conferir o estado real de `main`, Issues, PRs, branches e workflows antes de editar.
+3. Não reabrir a Fase 28 nem repetir a auditoria de `REQ-PLAT-002`.
+4. Auditar `REQ-PLAT-003 — Validação de dados` como próximo MUST verificável.
+5. Mapear regras essenciais entre domínio, server/actions, adapters/RPCs e constraints do banco; a UI é apenas validação complementar.
+6. Priorizar evidências de risco: campos obrigatórios, quantidades/valores/precisão, enums/status transitions, referências cross-org, datas e IDs com escopo.
+7. Reaproveitar as suites existentes antes de criar teste novo.
+8. Abrir uma única Issue/branch somente se a auditoria encontrar lacuna concreta e reproduzível.
+9. Se `REQ-PLAT-003` já estiver suficientemente fechado, documentar a evidência e avançar ao próximo MUST sem criar Issue artificial.
+10. Manter Supabase remoto em leitura durante auditoria; migration somente se uma regressão estrutural real exigir.
+11. Não fazer deploy Vercel para auditoria/iteração.
+12. Atualizar continuidade ao final.
 
 ## Não fazer
 
-- não reabrir #69;
-- não criar outra Issue para `REQ-PLAT-002` enquanto #71 estiver ativa;
-- não reescrever idempotência do banco já comprovada;
-- não ampliar RLS/grants;
-- não tratar advisor genérico como regressão desta fase;
+- não reabrir #69 ou #71;
+- não criar nova Issue de idempotência sem nova regressão concreta;
+- não reescrever backend idempotente;
+- não ampliar RLS/grants por conveniência;
+- não tratar advisor genérico como requisito funcional;
 - não reativar bootstrap ou auto-deploy;
 - não usar dados/credenciais reais em testes;
 - não inferir Q-001..Q-025.

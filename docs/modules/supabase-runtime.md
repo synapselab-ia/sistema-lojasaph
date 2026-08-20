@@ -1,6 +1,6 @@
 # Runtime Supabase — persistência, Auth e RLS
 
-Status: Auth/runtime estabilizados, núcleo transacional persistente, observabilidade, isolamento de ambientes e bootstrap seguro do primeiro owner documentados.
+Status: Auth/runtime estabilizados, núcleo transacional persistente, observabilidade, isolamento de ambientes, bootstrap seguro do primeiro owner e idempotência ponta a ponta dos commands críticos documentados.
 
 ## Sessão e autorização
 
@@ -88,7 +88,9 @@ Runbook operacional completo: `docs/operations/bootstrap-owner.md`.
 
 ## Commands críticos do ledger
 
-Executáveis somente por `authenticated`, todos revalidando `auth.uid()` + role organizacional:
+Executáveis somente por `authenticated`, todos revalidando `auth.uid()` + role organizacional. O conjunto operacional auditado inclui Estoque, Transferências, Inventário, Compras, Financeiro e Caixa; os 26 write paths críticos expõem `p_command_id` e delegam para implementação transacional com escopo/guard apropriado.
+
+Exemplos do núcleo de estoque/inventário:
 
 - `record_stock_entry`;
 - `record_stock_withdrawal`;
@@ -100,6 +102,34 @@ Executáveis somente por `authenticated`, todos revalidando `auth.uid()` + role 
 - `cancel_inventory_count`.
 
 `PUBLIC`/`anon` não possuem EXECUTE e clientes não recebem INSERT/UPDATE direto no ledger.
+
+## Idempotência ponta a ponta — Fase 28
+
+O backend já era idempotente por `p_command_id`; a Fase 28 fechou a lacuna do client/runtime.
+
+`src/lib/runtime/idempotent-command.ts` implementa um registro de intenção por instância de gateway:
+
+- cria UUID opaco apenas quando a intenção é executada;
+- mantém o mesmo UUID quando uma chamada falha de forma ambígua e o usuário repete a mesma intenção;
+- encerra a intenção após resposta definitiva de sucesso;
+- usa payload canônico somente para detectar mudança semântica local, nunca como chave de idempotência;
+- se o payload muda depois de uma falha, cria uma nova intenção/chave;
+- se duas submissões idênticas acontecem simultaneamente, ambas compartilham a mesma Promise e somente uma chamada RPC é feita;
+- se o payload muda enquanto a chamada anterior ainda está em voo, a segunda submissão é bloqueada;
+- `IDEMPOTENCY_KEY_CONFLICT` permanece explícito para refresh/reconciliação.
+
+As instâncias de gateway são persistidas pelas superfícies reais do Workspace, portanto o registro sobrevive aos re-renders necessários para retry. Os gateways de Estoque que já expunham `commandId` explícito mantêm esse caminho para teste/homologação; o caminho normal sem chave explícita usa o registro estável em vez de gerar UUID novo a cada chamada.
+
+Cobertura da Fase 28:
+
+- Vitest unitário do ciclo de intenção;
+- teste de gateway comprovando reapresentação do mesmo `p_command_id` após falha ambígua;
+- conflito idempotente visível no client;
+- `schema_smoke.sql` com replay compatível e conflito de entrada de estoque;
+- `cash_sessions.sql` com replay/conflito adicional de configuração e movimento;
+- CI, Business Transactions Integration e Inventory Count Integration verdes.
+
+Nenhuma migration, DDL, RLS, grant, role, Auth ou regra transacional foi alterada para implementar o ciclo de retry.
 
 ## Inventário
 
@@ -135,7 +165,7 @@ A Fase 18 não cria migration, DDL, branch, projeto adicional nem escreve dados 
 
 As migrations da Fase 9 foram aplicadas ao projeto homologado em `sa-east-1`. Entrada, retirada, transferência e inventário foram validados com dados demo em transações `BEGIN/ROLLBACK`; os cenários de teste não deixam usuários/movimentos artificiais.
 
-Fases posteriores aplicaram migrations adicionais conforme seus handoffs. Fases 17, 18, 24, 25 e a implementação técnica da Fase 26 não criam migration nem executam DDL no projeto remoto.
+Fases posteriores aplicaram migrations adicionais conforme seus handoffs. Fases 17, 18, 24, 25, a implementação técnica da Fase 26 e a Fase 28 não criam migration nem executam DDL no projeto remoto.
 
 ## Advisors
 
