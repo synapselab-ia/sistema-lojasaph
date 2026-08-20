@@ -9,6 +9,9 @@ A Fase 32 auditou `REQ-PLAT-006 — Logs e erros` sem refazer a Fase 17 e conclu
 - Repositório: `synapselab-ia/sistema-lojasaph`
 - baseline de `main` no início da fase: `246f5f557ddc1b188aa482fe77070313cb0b30fc`
 - branch: `agent/observability-audit`
+- PR #77 — `docs(qa): revalidate production observability`
+- head auditado/validado antes dos commits finais de continuidade: `fc6978473e2266b3f06599c9681b5cd41366162d`
+- CI #312 — success
 - nova matriz/evidência: `docs/qa/observability.md`
 - nenhuma nova Issue de observabilidade, porque não foi encontrado defeito concreto contra `REQ-PLAT-006`
 - Issue #75 permanece aberta e bloqueada por decisões operacionais de backup
@@ -82,17 +85,15 @@ A Issue #75 continua sendo o único blocker aberto do backup automático de Prod
 
 ## Validação
 
-Esta fase altera apenas documentação. O baseline integrado anterior foi validado pelo CI #310 com:
+Head `fc6978473e2266b3f06599c9681b5cd41366162d` do PR #77:
 
-- lint;
-- typecheck;
-- Vitest;
-- production build;
-- migrations + seed;
-- dump/checksum/restore isolado;
-- suites PostgreSQL.
+- CI #312 — success;
+- job `database` — success: PostgreSQL 17 client, scripts de backup, migrations, seed, dump/checksum/restore isolado e todas as suites SQL;
+- job `validate` — success: lint, typecheck, Vitest e production build.
 
-O PR documental da Fase 32 deve repetir o CI antes do merge. Workflows especializados de Inventory/Business não devem ser disparados por `docs/**` segundo seus filtros atuais.
+Os commits posteriores a esse head são somente atualização de `CURRENT_STATE`/`HANDOFF`; o head final deve permanecer verde antes do merge.
+
+Workflows especializados de Inventory/Business não são disparados por `docs/**` segundo seus filtros atuais.
 
 ## Próxima ação
 
