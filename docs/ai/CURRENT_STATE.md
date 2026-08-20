@@ -4,111 +4,134 @@
 
 ## Estado atual
 
-A Fase 32 auditou `REQ-PLAT-006 — Logs e erros` sem refazer a Fase 17 e concluiu que o requisito vigente está atendido, com limitações operacionais explicitamente documentadas.
+A Fase 33 auditou `REQ-PLAT-007 — Ambientes separados` sem refazer a Fase 18 e concluiu que o requisito permanece atendido no escopo atual.
 
 - Repositório: `synapselab-ia/sistema-lojasaph`
-- baseline de `main` no início da fase: `246f5f557ddc1b188aa482fe77070313cb0b30fc`
-- branch: `agent/observability-audit`
-- PR #77 — `docs(qa): revalidate production observability`
-- head auditado/validado antes dos commits finais de continuidade: `fc6978473e2266b3f06599c9681b5cd41366162d`
-- CI #312 — success
-- nova matriz/evidência: `docs/qa/observability.md`
-- nenhuma nova Issue de observabilidade, porque não foi encontrado defeito concreto contra `REQ-PLAT-006`
+- baseline de `main`: `2f54ac1fe823386fe90d97d752318f39ec369d8c`
+- branch: `agent/environment-isolation-audit`
+- nova evidência: `docs/qa/environment-isolation.md`
+- runbook atualizado: `docs/operations/environments.md`
+- nenhuma nova Issue funcional de ambientes
 - Issue #75 permanece aberta e bloqueada por decisões operacionais de backup
-- nenhum código de aplicação, migration, RLS/grant/Auth ou dado remoto alterado
-- nenhum deploy Vercel criado para esta auditoria
+- Issue #78 foi um placeholder acidental e foi encerrada imediatamente como `not_planned`, sem trabalho associado
+- nenhum código de aplicação, migration, DDL/DML, RLS/grant/Auth ou dado remoto alterado
+- nenhum deployment Vercel criado
+- nenhum projeto/branch Supabase criado
 
-## REQ-PLAT-006 — auditoria da Fase 32
+## REQ-PLAT-007 — auditoria da Fase 33
 
-A Fase 17 / Issue #43 / PR #44 continua válida. O código atual mantém:
+A Fase 18 / Issue #45 / PR #46 continua válida. O código atual mantém:
 
-- logs JSON server-side vendor-neutral;
-- `x-correlation-id` seguro e propagado pelo Proxy;
-- `Instrumentation.onRequestError` para exceções do runtime Next.js;
-- redaction por chave e padrões de credentials/tokens/PII;
-- `error.tsx` / `global-error.tsx` sem exposição de `error.message`;
-- `toPublicError()` convertendo erros internos/persistência para mensagem pública genérica;
-- eventos estáveis para falhas tratadas de Auth;
-- testes unitários do envelope, redaction, correlação e mensagens públicas.
+- política fail-closed em `src/lib/runtime/environment.ts`;
+- mismatch `LOJASAPH_APP_ENV` / `VERCEL_ENV` bloqueado;
+- Preview sem backend próprio comprovado bloqueado;
+- Development remoto exigindo ref distinta de Production;
+- admin secret server-only;
+- admin não-prod bloqueado salvo opt-in explícito sobre backend já isolado;
+- URLs/callbacks coerentes com o ambiente;
+- `/health` sem dados sensíveis;
+- testes da política e fronteira client/server.
 
-A matriz detalhada está em `docs/qa/observability.md` e o runbook foi atualizado em `docs/operations/observability.md`.
+A matriz detalhada está em `docs/qa/environment-isolation.md`.
 
-## Evidência runtime real — Vercel
+## Ausência de drift funcional
 
-Projeto `sistema-lojasaph`, project id `prj_Sutt2hmT3S54QjWR4jR6mBi3DlcY`.
+O arquivo central `src/lib/runtime/environment.ts` possui o mesmo blob SHA:
 
-Latest Production deployment auditado:
+`fc39f1a2b393815a6d1a853a23a4fbcff86614b0`
 
-- deployment `dpl_824q6umKyUyRhYzAmxLREjNeoFK1`;
-- estado `READY`;
-- commit hospedado `046c4a3392f85e2361c6ddeac0ae3ee1817145c5`.
+em três pontos:
 
-Runtime Errors dos últimos sete dias localizaram um erro real histórico em deployment anterior de `/workspace`: objetos `Money`/`Quantity` cruzavam a fronteira Server → Client. A observabilidade registrou esse erro com `runtime.request.error`, `correlationId`, rota, contexto do App Router e `digest`.
+1. Preview homologado da Fase 18 — commit `91738dc6f780c8269cdf9600fc57c64d63e6134d`;
+2. commit atualmente hospedado em Production — `046c4a3392f85e2361c6ddeac0ae3ee1817145c5`;
+3. `main` da Fase 33.
 
-Esse defeito funcional já foi corrigido pela Fase 26 e deployments posteriores estão no commit que inclui a serialização/reidratação correspondente. Na janela recente disponível do latest deployment, foram observadas respostas `200` em `/workspace` e diversos módulos, sem novo `error`/`warning` retornado para esse deployment.
+`src/app/health/route.ts` também mantém o mesmo blob do Preview homologado e da `main` (`76220c627485d9b70b3281a23b426c7ed9ab246d`).
 
-Os blobs centrais de observabilidade do commit hospedado e da `main` coincidem:
+Portanto a homologação Preview fail-closed da Fase 18 continua representativa do núcleo atual, sem justificar novo deploy para repetir a mesma prova.
 
-- `src/lib/observability/core.ts` — SHA `2fbbf0ea31de5c46f66bb997a986823a0d002f83`;
-- `src/instrumentation.ts` — SHA `efa32f5d9e947835e5bc9017b54462c7995077df`.
+## Vercel atual
 
-Portanto não foi necessário gastar quota criando deployment apenas para repetir o smoke da Fase 17.
+Projeto:
 
-## Retenção / alertas
+- `sistema-lojasaph`;
+- id `prj_Sutt2hmT3S54QjWR4jR6mBi3DlcY`;
+- latest deployment `dpl_824q6umKyUyRhYzAmxLREjNeoFK1`;
+- `READY`;
+- target `production`;
+- commit `046c4a3392f85e2361c6ddeac0ae3ee1817145c5`.
 
-A consulta Vercel de sete dias excedeu a janela de Runtime Logs do plano atual; a consulta da última hora funcionou. Assim:
+A listagem de deployments mostra que os deployments posteriores aos Previews da Fase 18 são de Production. Os últimos Previews identificados continuam sendo os próprios do PR #46.
 
-- diagnóstico recente está comprovado;
-- retenção histórica maior não é garantida pelo estado atual;
-- `REQ-PLAT-006` não define retenção mínima, SLA/SLO, on-call ou alertas;
-- nenhum Observability Plus, Drain, Sentry, Datadog, Axiom ou outro serviço foi contratado por inferência.
+`GET https://sistema-lojasaph.vercel.app/health` retornou em 2026-08-20:
 
-Esses pontos permanecem limitações operacionais e devem virar requisito/Issue somente quando houver necessidade concreta aprovada.
+- `environment=production`;
+- `supabaseAccess=allowed`;
+- `supabaseReason=production_backend`;
+- `adminAccess=blocked`.
+
+O payload não expõe URL/ref/key/secret.
+
+`vercel.json` continua com `git.deploymentEnabled=false`; auto-deploy não foi reativado.
+
+### Environment variables
+
+A documentação vigente da Vercel confirma escopos Production/Preview/Development e auditoria por ambiente via CLI/API. Entretanto a conexão disponível nesta sessão não expõe a ação de listar project environment variables.
+
+Assim, nomes/targets atuais são **não observáveis por esta conexão**. Isso não é tratado como prova de compartilhamento nem de isolamento material dos targets.
+
+O controle efetivo versionado continua fail-closed: Preview não cria cliente Supabase operacional sem refs distintas/coerentes.
 
 ## Supabase atual
 
-Projeto `fhbvwyttikrbeaanatlr`:
+Organização `wopgwaqlnksvqavegljp`:
 
+- plano `free`;
+- atualmente contém dois projetos.
+
+Projeto Sistema Lojasaph:
+
+- `fhbvwyttikrbeaanatlr`;
 - `ACTIVE_HEALTHY`;
-- região `sa-east-1`;
-- PostgreSQL `17.6.1.141`.
+- `sa-east-1`;
+- PostgreSQL `17.6.1.141`;
+- zero development branches.
 
-Consultas read-only aos logs de API e Auth confirmaram capacidade real de diagnóstico de requests, RPCs, status e request IDs do provedor.
+Segundo projeto da organização:
 
-Os logs nativos do Supabase podem conter PII/metadados próprios do provedor; não devem ser copiados brutos para GitHub. A redaction do logger da aplicação não transforma os logs internos do Supabase.
+- `easy-v2` / `hrmkkhqfyfoqucwbcszq`;
+- criado em 2026-08-20;
+- migrations observadas: `p10_s3_i1_foundation` e `harden_transaction_rpc_boundary`.
 
-Log Drains continuam dependentes de plano compatível (Pro/Team/Enterprise); a organização permanece Free. Nenhuma configuração remota foi alterada.
+Essas migrations não correspondem ao histórico do Lojasaph. Não há evidência de que `easy-v2` seja ambiente Preview/Development deste sistema; ele não deve ser reutilizado por inferência.
+
+A documentação atual do Supabase mantém desenvolvimento local como fluxo padrão e Branching como ambiente isolado opcional associado ao plano Pro/uso próprio. Nenhum branch/projeto foi criado nesta auditoria.
 
 ## REQ-PLAT-005 / Issue #75
 
-A Issue #75 continua sendo o único blocker aberto do backup automático de Production. Não houve comentários/decisões novas sobre RPO, RTO, destino off-site, retenção, proteção ou alertas; portanto a frente continua bloqueada e não foi modificada nesta fase.
+A Issue #75 continua sem comentários/decisões novas de RPO, RTO, destino off-site, retenção, proteção ou alertas. A frente continua bloqueada e não foi modificada.
 
-## Validação
+## Validação preservada
 
-Head `fc6978473e2266b3f06599c9681b5cd41366162d` do PR #77:
+Antes da Fase 33, o head final do PR #77 passou no CI #314:
 
-- CI #312 — success;
-- job `database` — success: PostgreSQL 17 client, scripts de backup, migrations, seed, dump/checksum/restore isolado e todas as suites SQL;
-- job `validate` — success: lint, typecheck, Vitest e production build.
+- `database` — success, incluindo migrations, seed, backup/checksum/restore e suites PostgreSQL;
+- `validate` — success, incluindo lint, typecheck, Vitest e production build.
 
-Os commits posteriores a esse head são somente atualização de `CURRENT_STATE`/`HANDOFF`; o head final deve permanecer verde antes do merge.
-
-Workflows especializados de Inventory/Business não são disparados por `docs/**` segundo seus filtros atuais.
+A Fase 33 altera somente documentação. O PR desta fase deve passar o CI completo antes do merge.
 
 ## Próxima ação
 
-Após integrar esta auditoria, avançar para `REQ-PLAT-007 — Ambientes separados`, usando a Fase 18 como baseline e sem refazê-la.
-
-A próxima auditoria deve verificar o estado real de Development/Preview/Production, guardrails de refs, configuração Vercel por target quando acessível, `git.deploymentEnabled=false`, `/health`, ausência de backend Production em Preview e ausência de secret administrativa em não-prod salvo exceção aprovada.
+Após integrar esta auditoria, avançar para a auditoria conjunta de `REQ-IMP-001` a `REQ-IMP-004` — importação rastreável, idempotência, dry run e relatório de inconsistências — usando a Fase 15 / Issue #39 / PR #40 como baseline e sem importar dados reais.
 
 ## Não repetir
 
-- não reimplementar a Fase 17;
-- não abrir Issue só por não existir retenção/SLA/alerta não requerido;
-- não contratar vendor/Drain/Observability Plus por inferência;
-- não copiar logs brutos contendo PII para GitHub;
-- não criar deployment Vercel apenas para repetir smoke já comprovado;
+- não reimplementar a Fase 18;
+- não criar Preview só para repetir smoke sem drift;
+- não reutilizar `easy-v2` como ambiente do Lojasaph por inferência;
+- não criar branch/projeto Supabase pago sem autorização;
+- não copiar env var values/secrets para GitHub;
+- não reativar auto-deploy Vercel;
 - não fechar #75 sem backup automático real;
-- não inventar RPO/RTO, cron, retenção ou destino de backup;
-- não renumerar migrations;
+- não importar dados reais antes da frente específica de migração/cutover;
 - não inferir Q-001..Q-025.
