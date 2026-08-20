@@ -2,167 +2,142 @@
 
 ## Estado
 
-A Fase 33 auditou `REQ-PLAT-007 — Ambientes separados` sem refazer a Fase 18 e não encontrou gap funcional novo contra o requisito vigente.
+A Fase 34 executou o preflight de RLS solicitado antes da auditoria de importação.
 
-Frente desta fase:
+Frente:
 
-- branch `agent/environment-isolation-audit`;
-- PR #79 — `docs(qa): revalidate environment isolation`;
-- baseline inicial de `main`: `2f54ac1fe823386fe90d97d752318f39ec369d8c`;
-- head auditado/validado antes destes commits finais de continuidade: `206fcc93fb4dbca217f65fa6c85fe2bdde15b516`;
-- CI #316 — success;
-- matriz/evidência nova: `docs/qa/environment-isolation.md`;
-- runbook atualizado: `docs/operations/environments.md`;
-- nenhuma nova Issue funcional de ambientes;
-- Issue #75 de backup permanece aberta/bloqueada;
-- nenhum DDL/DML, migration, Auth/RLS/grant ou dado remoto alterado;
-- nenhum deployment Vercel criado;
-- nenhum branch/projeto Supabase criado.
+- baseline inicial de `main`: `dfd3f517cecbf4111bf118e0e70eafcdab2850e4`;
+- Issue #80 — `RLS — otimizar auth.uid() da policy de memberships via initPlan`;
+- branch `agent/rls-initplan-optimization`;
+- PR #81 — `perf(rls): cache membership auth uid per statement`;
+- evidência detalhada: `docs/qa/rls-preflight.md`;
+- migration remota aplicada: `20260820184106 / membership_rls_initplan`;
+- Issue #75 de backup permanece aberta e bloqueada;
+- nenhum dado de negócio foi alterado;
+- nenhum deployment Vercel foi criado.
 
-Observação de higiene: a Issue #78 foi criada acidentalmente como placeholder durante a auditoria e encerrada imediatamente como `not_planned`, com texto explícito de que não há trabalho associado. Ignorar #78 nas próximas frentes.
+## RLS — o que foi comprovado
 
-## Fase 18 — o que continua válido
+No projeto Supabase `fhbvwyttikrbeaanatlr`:
 
-A Issue #45 / PR #46 já entregaram e não devem ser reimplementadas:
+- 45/45 tabelas públicas de aplicação têm RLS habilitado;
+- existem 78 policies;
+- 0 policies são destinadas a `anon`/`PUBLIC`;
+- 0 policies têm predicado literal `true`, `auth.role()`, `user_metadata` ou `raw_user_meta_data`;
+- `anon` não possui privilégios de relação em `public`;
+- `authenticated` não possui `DELETE` direto;
+- `payable_installment_summary` usa `security_invoker=true`;
+- 30 RPCs públicas `SECURITY DEFINER` usam `search_path=""`, validam identidade/escopo e nenhuma é executável por `anon`.
 
-- política fail-closed em `src/lib/runtime/environment.ts`;
-- ambientes `development`, `preview`, `production` e `unknown`;
-- mismatch `LOJASAPH_APP_ENV` / `VERCEL_ENV` bloqueado;
-- Preview bloqueado até existir backend próprio comprovado;
-- Development local como default e remoto exigindo identidade distinta de Production;
-- `SUPABASE_SECRET_KEY` server-only;
-- admin não-prod bloqueado por padrão;
-- callbacks/URLs coerentes com o ambiente;
-- Proxy/Auth/workspace respeitando o bloqueio antes de operações remotas;
-- `/health` seguro;
-- testes de isolamento e fronteira client/server;
-- ADR-008 e runbook de ambientes.
+Probe com usuário sintético `authenticated` sem membership retornou zero linhas em:
 
-## Prova de ausência de drift funcional
+- `organizations`;
+- `organization_memberships`;
+- `units`;
+- `stock_items`;
+- `stock_movements`;
+- `payable_documents`;
+- `payable_installment_summary`;
+- `import_batches`;
+- `audit_logs`.
 
-O arquivo central `src/lib/runtime/environment.ts` possui exatamente o mesmo blob SHA:
+`anon` recebeu `permission denied` em tabela e RPC. Usuário autenticado sem membership recebeu `IMPORT_SCOPE_NOT_ALLOWED` na RPC de relatório de importação.
 
-`fc39f1a2b393815a6d1a853a23a4fbcff86614b0`
+Não foi encontrado bypass de RLS ou vazamento cross-Organization.
 
-em:
+## Ajuste da Fase 34
 
-1. Preview homologado da Fase 18 — commit `91738dc6f780c8269cdf9600fc57c64d63e6134d`;
-2. commit atualmente hospedado em Production — `046c4a3392f85e2361c6ddeac0ae3ee1817145c5`;
-3. `main` auditada nesta fase.
+O único finding acionável de RLS era o Performance Advisor `auth_rls_initplan` em:
 
-`src/app/health/route.ts` também permanece idêntico entre o Preview homologado e a `main`.
+`public.organization_memberships.memberships_visible_to_self_or_admin`.
 
-A prova hospedada da Fase 18 permanece representativa do núcleo atual; não criar Preview novo apenas para repetir o mesmo smoke.
+A regra permaneceu igual, mas `auth.uid()` passou a ser avaliado via initPlan:
 
-## Evidência Vercel atual
+```sql
+user_id = (select auth.uid())
+```
 
-Projeto:
+O ramo owner/admin com `private.has_org_wide_role(...)` foi preservado.
 
-- `sistema-lojasaph`;
-- id `prj_Sutt2hmT3S54QjWR4jR6mBi3DlcY`;
-- latest deployment `dpl_824q6umKyUyRhYzAmxLREjNeoFK1`;
-- `READY`;
-- target Production;
-- commit `046c4a3392f85e2361c6ddeac0ae3ee1817145c5`.
+A migration foi validada antes de qualquer mudança remota. Depois do CI verde foi aplicada ao Supabase, que registrou:
 
-A listagem atual mostra que deployments posteriores aos Previews da Fase 18 são de Production. Os últimos Previews identificados continuam sendo os da branch `agent/environment-isolation`/PR #46.
+- `20260820184106 / membership_rls_initplan`.
 
-`GET https://sistema-lojasaph.vercel.app/health` retornou em 2026-08-20:
+O arquivo local foi renomeado para essa mesma version, preservando a regra da Fase 30 de manter histórico local/remoto alinhado.
 
-- `environment=production`;
-- `supabaseAccess=allowed`;
-- `supabaseReason=production_backend`;
-- `adminAccess=blocked`.
+Após a aplicação:
 
-O payload não expôs URL/ref/key/secret ou dados.
+- `pg_policies.qual` mostra `(SELECT auth.uid())`;
+- `auth_rls_initplan` não aparece mais no Performance Advisor;
+- RLS/policies e probes de isolamento continuam com o mesmo resultado seguro.
 
-`vercel.json` continua com `git.deploymentEnabled=false`.
+## Regressão
 
-### Limite de auditoria de environment variables
+`supabase/tests/security_hardening.sql` agora impede:
 
-A documentação/API atual da Vercel suporta auditoria de environment variables por Production/Preview/Development. Porém a conexão disponível nesta sessão não expôs ação para listar project env vars.
+- remoção da policy de self/admin membership;
+- retorno a `user_id = auth.uid()` per-row;
+- perda do `SELECT auth.uid()` usado pelo initPlan.
 
-Assim:
+As suites existentes continuam cobrindo RLS geral, grants, outsider/anon, escopos business/unit/sector, Auth e command surface transacional.
 
-- nomes/targets atuais são **não observáveis por esta conexão**;
-- isso não prova compartilhamento;
-- também não deve ser descrito como isolamento material dos targets comprovado;
-- o controle compensatório versionado continua sendo fail-closed: Preview sem refs distintas/coerentes não cria cliente Supabase operacional.
+## Advisors — não transformar em trabalho automático
 
-Se uma ferramenta futura expuser essa listagem, auditar nomes + targets sem copiar valores.
+O Security Advisor continua listando as RPCs públicas `SECURITY DEFINER` executáveis por `authenticated`. Elas são a command surface intencional do sistema e foram revalidadas nesta fase:
 
-## Evidência Supabase atual
+- 30/30 com `search_path=""`;
+- 30/30 com guarda de identidade/escopo;
+- 0 executáveis por `anon`;
+- implementações privadas de escrita permanecem inacessíveis diretamente ao cliente autenticado.
 
-Organização `wopgwaqlnksvqavegljp`:
+Não abrir nova Issue apenas pelo warning genérico sem encontrar uma RPC específica permissiva.
 
-- plano Free;
-- agora possui dois projetos.
+Também permanecem fora desta frente:
 
-Projeto Sistema Lojasaph:
+- leaked-password protection do Auth desabilitada;
+- INFOs de foreign keys sem índice;
+- índices sem uso observado.
 
-- `fhbvwyttikrbeaanatlr`;
-- `ACTIVE_HEALTHY`;
-- `sa-east-1`;
-- PostgreSQL `17.6.1.141`;
-- zero development branches.
+## Validação
 
-Segundo projeto observado:
+Head funcional inicial `49a67c975ebe96d5149b0df72a1b6e24f883d740`:
 
-- `easy-v2` / `hrmkkhqfyfoqucwbcszq`;
-- criado em 2026-08-20;
-- migrations próprias: `p10_s3_i1_foundation` e `harden_transaction_rpc_boundary`.
+- CI #322 — success;
+- Business Transactions Integration #156 — success;
+- Inventory Count Integration #172 — success.
 
-Essas migrations não correspondem ao histórico do Lojasaph. Não existe evidência de que `easy-v2` seja Preview ou Development deste sistema. **Não reutilizar nem conectar esse projeto ao Lojasaph por inferência.**
+O database gate passou migrations, seed, backup/restore, schema/RLS smoke, `security_hardening.sql`, Auth/Organization isolation e suites transacionais.
 
-Nenhuma mutação Supabase foi realizada na Fase 33.
+Depois desse gate vieram apenas aplicação remota já validada, reconciliação do timestamp da migration e documentação. O PR #81 deve ser mergeado somente com o head final verde; consultar o PR para o run final.
 
 ## Issue #75 — backup
 
-A Issue #75 continua aberta e sem comentários/decisões novas de RPO, RTO, destino off-site, retenção, proteção ou alertas. A frente permanece bloqueada por decisão operacional; não criar cron/storage arbitrários.
-
-## Validação da Fase 33
-
-Head `206fcc93fb4dbca217f65fa6c85fe2bdde15b516` do PR #79:
-
-- CI #316 — success;
-- job `database` — success, incluindo migrations, seed, backup/checksum/restore, suites PostgreSQL e `import staging and dry-run tests`;
-- job `validate` — success, incluindo lint, typecheck, Vitest e production build.
-
-Workflows especializados de Inventory/Business não disparam para o diff exclusivamente documental desta fase.
-
-Os commits posteriores são somente continuidade (`CURRENT_STATE`/`HANDOFF`). Confirmar CI verde no head final antes do squash merge.
+Continua bloqueada pelas decisões operacionais pendentes de RPO/RTO/destino/retenção/proteção/alerta. Não editar nem fechar sem decisão nova e automação real.
 
 ## Próximo chat — fazer
 
 1. Ler `AGENTS.md`, `START-HERE`, `CURRENT_STATE`, este `HANDOFF`, `NEXT_ACTION`, `WORKFLOW` e `requirements.md`.
-2. Conferir `main`, Issue #75, PRs, branches e CI reais.
-3. Se #75 continuar sem decisões operacionais novas, mantê-la bloqueada e não editar backup.
-4. Auditar conjuntamente `REQ-IMP-001` a `REQ-IMP-004` usando a Fase 15 / Issue #39 / PR #40 como baseline, sem refazê-la.
-5. Revalidar também o suporte de aliases de `REQ-ITEM-002` na medida em que faz parte da fundação de migração entregue pela Fase 15.
-6. Ler `docs/modules/imports.md`, `docs/source-data/migration-plan.md`, migrations `import_staging*`, testes `supabase/tests/import_staging.sql` e código de parsing/staging/dry-run atuais.
-7. Verificar no código e banco atual:
-   - batch/origem/hash rastreável;
-   - idempotência no reprocessamento;
-   - dry run sem escrita nas tabelas operacionais;
-   - relatório de válidas/duplicadas/warnings/rejeitadas/pending mapping;
-   - aliases explícitos sem fuzzy auto-merge;
-   - isolamento por Organization/RLS;
-   - ausência de resíduos ou dados reais versionados.
-8. Consultar Supabase somente read-only salvo gap concreto que exija correção versionada.
-9. Não importar as planilhas reais nem executar cutover.
-10. Se a fundação atual satisfizer os requisitos, documentar sem Issue artificial. Se houver gap concreto, uma única Issue + branch/fix mínimo.
-11. Não reaplicar as migrations da Fase 15.
-12. Não criar deploy Vercel para uma auditoria que não dependa de runtime hospedado.
+2. Conferir `main`, Issue #75, demais Issues/PRs/branches e CI reais.
+3. Confirmar que PR #81 já está integrado e que `main` contém `20260820184106_membership_rls_initplan.sql`; não reaplicar essa migration.
+4. Se #75 continuar sem decisões operacionais novas, mantê-la bloqueada.
+5. Auditar conjuntamente `REQ-IMP-001` a `REQ-IMP-004` e o suporte migratório de aliases de `REQ-ITEM-002`, usando a Fase 15 / Issue #39 / PR #40 como baseline.
+6. Ler `docs/modules/imports.md`, `docs/source-data/migration-plan.md`, migrations `import_staging*`, `supabase/tests/import_staging.sql` e código atual de parsing/staging/dry-run.
+7. Revalidar batch/origem/hash, idempotência, dry run, relatório de inconsistências, aliases explícitos, RLS/Organization e ausência de dados reais versionados.
+8. O preflight de RLS já foi feito; não reabrir o hardening salvo falha concreta observada nos testes da importação.
+9. Consultar Supabase read-only salvo correção versionada necessária; não reaplicar migrations.
+10. Não importar as seis planilhas reais nem executar cutover.
+11. Se os requisitos estiverem satisfeitos, documentar sem Issue artificial; se houver gap concreto, uma única Issue + branch/fix mínimo.
+12. Não criar deploy Vercel para essa auditoria de banco/domínio.
 13. Atualizar continuidade ao final.
 
 ## Não fazer
 
-- não reimplementar Fase 18;
-- não criar Preview apenas para repetir prova sem drift;
-- não reutilizar `easy-v2` por inferência;
-- não criar Supabase branch/projeto pago sem autorização;
-- não copiar env var values/secrets;
-- não fechar #75 sem backup automático real;
+- não reimplementar Fase 34;
+- não redesenhar RPCs `SECURITY DEFINER` só por warning genérico;
+- não corrigir índices/FKs oportunisticamente sem evidência concreta;
+- não reaplicar migrations existentes;
 - não importar dados reais/cutover;
-- não reaplicar migrations de importação;
+- não fechar #75 sem backup automático real;
+- não reutilizar `easy-v2` como ambiente do Lojasaph por inferência;
+- não reativar auto-deploy Vercel;
 - não inferir Q-001..Q-025.
