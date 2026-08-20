@@ -7,7 +7,10 @@ A Fase 33 auditou `REQ-PLAT-007 — Ambientes separados` sem refazer a Fase 18 e
 Frente desta fase:
 
 - branch `agent/environment-isolation-audit`;
+- PR #79 — `docs(qa): revalidate environment isolation`;
 - baseline inicial de `main`: `2f54ac1fe823386fe90d97d752318f39ec369d8c`;
+- head auditado/validado antes destes commits finais de continuidade: `206fcc93fb4dbca217f65fa6c85fe2bdde15b516`;
+- CI #316 — success;
 - matriz/evidência nova: `docs/qa/environment-isolation.md`;
 - runbook atualizado: `docs/operations/environments.md`;
 - nenhuma nova Issue funcional de ambientes;
@@ -117,14 +120,17 @@ Nenhuma mutação Supabase foi realizada na Fase 33.
 
 A Issue #75 continua aberta e sem comentários/decisões novas de RPO, RTO, destino off-site, retenção, proteção ou alertas. A frente permanece bloqueada por decisão operacional; não criar cron/storage arbitrários.
 
-## Validação anterior preservada
+## Validação da Fase 33
 
-O último head integrado antes desta auditoria passou no CI #314 do PR #77:
+Head `206fcc93fb4dbca217f65fa6c85fe2bdde15b516` do PR #79:
 
-- job `database` — success, incluindo migrations, seed, backup/checksum/restore e suites PostgreSQL;
+- CI #316 — success;
+- job `database` — success, incluindo migrations, seed, backup/checksum/restore, suites PostgreSQL e `import staging and dry-run tests`;
 - job `validate` — success, incluindo lint, typecheck, Vitest e production build.
 
-A Fase 33 altera somente documentação. O PR desta fase deve passar CI completo no head final antes do merge.
+Workflows especializados de Inventory/Business não disparam para o diff exclusivamente documental desta fase.
+
+Os commits posteriores são somente continuidade (`CURRENT_STATE`/`HANDOFF`). Confirmar CI verde no head final antes do squash merge.
 
 ## Próximo chat — fazer
 
