@@ -7,7 +7,10 @@ A Fase 32 auditou `REQ-PLAT-006 — Logs e erros` sem refazer a Fase 17 e não e
 Frente desta fase:
 
 - branch `agent/observability-audit`;
+- PR #77 — `docs(qa): revalidate production observability`;
 - baseline inicial de `main`: `246f5f557ddc1b188aa482fe77070313cb0b30fc`;
+- head auditado/validado antes destes commits finais de continuidade: `fc6978473e2266b3f06599c9681b5cd41366162d`;
+- CI #312 — success;
 - matriz/evidência: `docs/qa/observability.md`;
 - runbook atualizado: `docs/operations/observability.md`;
 - nenhuma nova Issue de observabilidade;
@@ -93,9 +96,15 @@ A Issue #75 continua aberta, sem comentários ou decisões novas de RPO/RTO/dest
 
 ## Validação
 
-O baseline integrado anterior passou no CI #310 com lint, typecheck, Vitest, production build, migrations, seed, backup/checksum/restore e suites PostgreSQL.
+Head `fc6978473e2266b3f06599c9681b5cd41366162d` do PR #77:
 
-Esta Fase 32 altera somente documentação. Antes do merge, o PR deve passar pelo CI normal. Os workflows especializados de Inventory/Business não devem disparar para `docs/**` conforme seus filtros atuais.
+- CI #312 — success;
+- job `database` — success, incluindo migrations, seed, backup/checksum/restore e suites PostgreSQL;
+- job `validate` — success, incluindo lint, typecheck, Vitest e production build.
+
+Os commits posteriores são somente continuidade (`CURRENT_STATE`/`HANDOFF`). Confirmar CI verde no head final antes do merge.
+
+Workflows especializados de Inventory/Business não disparam para este diff exclusivamente documental pelos filtros atuais.
 
 ## Próximo chat — fazer
 
