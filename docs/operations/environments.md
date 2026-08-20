@@ -1,6 +1,6 @@
 # Ambientes — Development, Preview e Production
 
-Status: Fase 18 implementada tecnicamente; bootstrap inicial deve respeitar os mesmos guardrails de isolamento.
+Status: Fase 18 implementada e revalidada na Fase 33; bootstrap inicial deve respeitar os mesmos guardrails de isolamento.
 
 ## Objetivo
 
@@ -27,6 +27,8 @@ Evitar que ambientes não-prod operem inadvertidamente sobre dados ou credenciai
 
 Project ref não é secret: ela já é observável na URL pública do Supabase. As refs são usadas apenas como identidade/guardrail.
 
+A Vercel fornece `VERCEL_ENV` no servidor e `NEXT_PUBLIC_VERCEL_ENV` para frameworks quando as system/framework environment variables estão expostas ao build correspondente.
+
 ### Server-only
 
 - `LOJASAPH_APP_ENV` — override opcional; deve coincidir com `VERCEL_ENV` quando ambos existirem;
@@ -36,76 +38,61 @@ Project ref não é secret: ela já é observável na URL pública do Supabase. 
 - `LOJASAPH_BOOTSTRAP_ORGANIZATION_ID` — Organization alvo quando necessária para eliminar ambiguidade;
 - `LOJASAPH_BOOTSTRAP_INVITE_READY` — gate temporário que só deve ser `true` após verificar redirect e entrega do convite.
 
-`LOJASAPH_BOOTSTRAP_INVITE_TEMPLATE_READY` é aceito somente como compatibilidade temporária com o primeiro patch da Fase 26 e não deve ser usado em instalação nova.
+`LOJASAPH_BOOTSTRAP_INVITE_TEMPLATE_READY` existe somente para compatibilidade temporária e não deve ser usado em instalação nova.
 
 ## Regras de liberação
 
 ### Production
 
-O runtime aceita backend hospedado. Quando `NEXT_PUBLIC_LOJASAPH_PRODUCTION_SUPABASE_REF` é configurada, a ref real da URL deve coincidir.
+O runtime aceita backend hospedado e rejeita backend local. Quando `NEXT_PUBLIC_LOJASAPH_PRODUCTION_SUPABASE_REF` é configurada, a ref real da URL deve coincidir.
 
-Recomendação antes de produção real: fixar a ref esperada para transformar troca acidental de backend em falha explícita.
+Antes de produção real, manter a ref esperada configurada para transformar troca acidental de backend em falha explícita.
 
-Rotinas administrativas, inclusive bootstrap, continuam exigindo `SUPABASE_SECRET_KEY` apenas server-side. A presença do secret não habilita por si só o convite: o bootstrap também exige e-mail autorizado, Organization resolvida, ausência de owner e o gate de convite pronto.
+Rotinas administrativas continuam exigindo `SUPABASE_SECRET_KEY` apenas server-side. A presença do secret não habilita sozinha o bootstrap.
 
 ### Preview
 
-Para permitir acesso operacional:
+Para permitir acesso operacional, todos os itens abaixo precisam ser verdadeiros:
 
 1. existir backend hospedado próprio;
 2. configurar ref de Production;
 3. configurar ref de Preview;
 4. refs serem diferentes;
-5. URL real corresponder à ref de Preview.
+5. URL real corresponder à ref de Preview e não à Production.
 
 Se qualquer item falhar, `supabaseAccess=blocked` e nenhum cliente Auth/Data API deve ser criado pelo Proxy/fluxos operacionais.
 
-Não usar o projeto de Production apenas para “testar o Preview”. O bootstrap real do primeiro owner não deve ser executado em Preview apontando para Production.
+Não usar o projeto de Production apenas para testar Preview. Não executar bootstrap real do primeiro owner em Preview apontando para Production.
 
 ### Development
 
-Supabase local é o default. Backend hospedado de Development exige refs de Development/Production configuradas e distintas.
+Supabase local é o default. Backend hospedado de Development exige refs Development/Production configuradas, distintas e coerentes com a URL real.
 
-Nunca usar seed/dump com dados reais para desenvolvimento. Testes do bootstrap devem usar funções puras/fixtures sintéticos; não enviar convites reais no loop local.
+Nunca usar seed/dump com dados reais em desenvolvimento. Testes devem usar fixtures sintéticas.
 
 ## Admin client
 
 O código não utiliza `SUPABASE_SECRET_KEY` fora de Production por padrão.
 
-Para uma exceção não-prod:
+Exceção não-prod exige simultaneamente:
 
-1. comprovar backend isolado;
-2. comprovar necessidade administrativa;
-3. configurar o secret somente no target necessário;
-4. configurar `LOJASAPH_ALLOW_NON_PRODUCTION_ADMIN=true`;
-5. remover a exceção após a rotina.
+1. backend isolado comprovado;
+2. necessidade administrativa aprovada;
+3. secret somente no target necessário;
+4. `LOJASAPH_ALLOW_NON_PRODUCTION_ADMIN=true`;
+5. remoção da exceção após a rotina.
 
 A flag não libera backend cuja identidade esteja bloqueada.
 
 ## Bootstrap do primeiro owner
 
-Runbook: `docs/operations/bootstrap-owner.md`.
+Runbook específico: `docs/operations/bootstrap-owner.md`.
 
-A janela de bootstrap deve ser curta e explícita:
-
-1. receber do operador o e-mail exato;
-2. configurar apenas no target Production necessário;
-3. confirmar o redirect canônico `https://<dominio>/auth/invite` na Auth Redirect URL Allow List;
-4. confirmar que o SMTP vigente consegue entregar ao endereço autorizado;
-5. somente então definir `LOJASAPH_BOOTSTRAP_INVITE_READY=true`;
-6. enviar um convite controlado;
-7. o fluxo padrão recebe o fragmento implícito apenas no browser em `/auth/invite`, remove-o da URL e estabelece sessão SSR via POST same-origin validado;
-8. o usuário define a própria senha;
-9. concluir membership/audit pelo `bootstrapOwnerAction` após autenticação;
-10. remover/desabilitar as variáveis temporárias.
-
-No projeto hospedado observado em 2026-08-19, o plano Supabase é Free e o projeto foi criado após a mudança de 2026-06-03 que restringe customização de Auth Email Templates para novos projetos Free usando SMTP padrão. Portanto template customizado não é pré-condição do bootstrap padrão. Se houver SMTP customizado futuramente, o callback `TokenHash` existente pode continuar sendo usado como alternativa SSR.
-
-Não copiar valores de e-mail, secret, token ou senha para Issue, log ou documentação. O app não oferece campo de e-mail para o convite inicial.
+A janela de bootstrap deve ser curta e explícita. Não copiar e-mail, secret, token ou senha para Issue, log ou documentação.
 
 ## Auditoria Vercel
 
-Quando acesso de CLI/dashboard às environment variables estiver disponível, auditar **nomes e targets sem copiar valores para issues/docs/logs**:
+Quando a ferramenta disponível expuser environment variables, auditar **nomes e targets sem copiar valores** em:
 
 - Production;
 - Preview;
@@ -116,11 +103,11 @@ Confirmar especialmente:
 
 - `SUPABASE_SECRET_KEY` ausente de Preview/Development salvo exceção aprovada;
 - refs coerentes com cada target;
-- `NEXT_PUBLIC_APP_URL` não força callback de Preview para Production;
+- `NEXT_PUBLIC_APP_URL` não força callback Preview → Production;
 - Preview não recebe backend de Production;
-- variáveis de bootstrap não permanecem ativas depois da inicialização.
+- variáveis temporárias de bootstrap não permanecem ativas.
 
-O conector disponível durante a Fase 18 não expunha essa listagem; portanto o estado prévio foi tratado como **não comprovado**, não como comprovadamente compartilhado.
+A documentação/API atual da Vercel suporta auditoria por ambiente (`env ls`/API de project envs), mas a conexão disponível na Fase 33 não expôs a ação de listagem. Portanto targets/nomes atuais continuam **não observáveis por esta conexão**, não comprovadamente compartilhados.
 
 ## Health check seguro
 
@@ -135,35 +122,70 @@ O conector disponível durante a Fase 18 não expunha essa listagem; portanto o 
 
 Não retorna URL Supabase, project ref, publishable key, secret ou conteúdo de dados.
 
+### Production observado em 2026-08-20
+
+`https://sistema-lojasaph.vercel.app/health` respondeu:
+
+- `environment=production`;
+- `supabaseAccess=allowed`;
+- `supabaseReason=production_backend`;
+- `adminAccess=blocked`.
+
+O payload não continha dados sensíveis.
+
 ### Preview sem backend isolado
 
-O esperado é:
+O esperado e já homologado na Fase 18 é:
 
 - `environment=preview`;
 - `supabaseAccess=blocked`;
-- reason code de backend Preview não comprovado/incompatível;
+- `supabaseReason=preview_backend_unverified` ou outro reason code de mismatch;
 - `adminAccess=blocked`.
 
 Se um Preview retornar `supabaseAccess=allowed`, **não executar mutações** até comprovar que a ref corresponde a backend não-prod realmente separado.
 
 ## Homologação segura
 
-Smoke mínimo do Preview final:
+Smoke mínimo de Preview:
 
 1. abrir `/health`;
-2. confirmar ambiente `preview`;
+2. confirmar `environment=preview`;
 3. confirmar `supabaseAccess=blocked` enquanto não houver backend isolado;
-4. abrir `/login` e confirmar formulário operacional desabilitado + aviso de isolamento;
-5. chamar `/auth/callback` sem credencial real e confirmar redirecionamento seguro;
+4. abrir `/login` e confirmar fluxo operacional bloqueado;
+5. chamar `/auth/callback` sem credencial real somente quando necessário;
 6. não enviar login, token, password reset, convite ou mutações;
-7. conferir Runtime Logs apenas por eventos não sensíveis, quando necessário.
+7. conferir logs apenas por eventos não sensíveis.
 
-## Estado da plataforma observado
+Não criar deployment apenas para repetir esse smoke quando o código funcional é idêntico ao Preview já homologado.
 
-- Supabase conectado: um projeto saudável, PostgreSQL 17;
-- nenhum branch/projeto adicional deve ser criado sem revalidar plano/custo e obter autorização explícita;
-- Vercel usa escopos Production/Preview/Development;
-- `vercel.json` mantém `git.deploymentEnabled=false`, portanto CI permanece o gate de desenvolvimento e deploy Production é deliberado.
+## Estado da plataforma — revalidação 2026-08-20
+
+### Vercel
+
+- projeto `sistema-lojasaph`;
+- latest deployment `dpl_824q6umKyUyRhYzAmxLREjNeoFK1`, `READY`, target Production;
+- commit hospedado `046c4a3392f85e2361c6ddeac0ae3ee1817145c5`;
+- deployments mais recentes que os Previews da Fase 18 são de Production;
+- `vercel.json` mantém `git.deploymentEnabled=false`;
+- Production e `main` mantêm o mesmo blob de `src/lib/runtime/environment.ts` do Preview homologado (`fc39f1a2b393815a6d1a853a23a4fbcff86614b0`).
+
+### Supabase
+
+Projeto do Sistema Lojasaph:
+
+- `fhbvwyttikrbeaanatlr`;
+- `ACTIVE_HEALTHY`;
+- PostgreSQL `17.6.1.141`;
+- região `sa-east-1`;
+- zero development branches.
+
+Organização `wopgwaqlnksvqavegljp` permanece no plano Free.
+
+A mesma organização possui agora um segundo projeto, `easy-v2` (`hrmkkhqfyfoqucwbcszq`), com migrations próprias que não correspondem ao histórico do Lojasaph. Não há evidência de que ele seja ambiente Preview/Development do Lojasaph; **não reutilizá-lo por inferência**.
+
+A documentação atual do Supabase recomenda desenvolvimento local e oferece Branching como ambiente isolado sem dados Production quando o recurso/plano for adotado. Não criar branch/projeto ou custo para esta auditoria sem autorização explícita.
+
+Evidência detalhada: `docs/qa/environment-isolation.md`.
 
 ## Incidente de configuração
 
@@ -171,7 +193,7 @@ Se um ambiente não-prod for identificado apontando para Production:
 
 1. não testar escrita;
 2. bloquear/remover as variáveis do target não-prod;
-3. verificar logs/auditoria por atividade no intervalo relevante sem expor PII;
+3. verificar logs/auditoria do intervalo sem expor PII;
 4. rotacionar segredo administrativo se houver evidência de exposição indevida;
 5. configurar backend isolado ou manter Preview desabilitado operacionalmente;
-6. registrar evidência e ação corretiva no GitHub sem incluir valores secretos.
+6. registrar evidência e ação corretiva sem valores secretos.
