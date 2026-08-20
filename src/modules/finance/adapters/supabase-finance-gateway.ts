@@ -1,7 +1,8 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import { DomainError } from "@/domain/common/domain-error";
-import { EntityId, newEntityId } from "@/domain/common/entity-id";
+import { EntityId } from "@/domain/common/entity-id";
 import { Money } from "@/domain/common/money";
+import { IdempotentCommandRegistry } from "@/lib/runtime/idempotent-command";
 
 export type PayableLifecycleStatus = "active" | "cancelled";
 export type InstallmentPaymentStatus = "cancelled" | "paid" | "overdue" | "due_today" | "upcoming";
@@ -151,6 +152,8 @@ function financeError(scope: string, message: string): DomainError {
 }
 
 export class SupabaseFinanceGateway {
+  private readonly commands = new IdempotentCommandRegistry();
+
   constructor(private readonly client: SupabaseClient) {}
 
   async listState(organizationId: EntityId): Promise<FinanceState> {
@@ -260,7 +263,6 @@ export class SupabaseFinanceGateway {
       paymentLabel?: string;
     }[];
   }): Promise<EntityId> {
-    const commandId = newEntityId();
     const count = input.installments.length;
     const installments = input.installments.map((installment, index) => ({
       number: index + 1,
@@ -270,25 +272,40 @@ export class SupabaseFinanceGateway {
       payment_reference: installment.paymentReference?.trim() || null,
       payment_label: installment.paymentLabel?.trim() || null,
     }));
+    const semanticPayload = {
+      organizationId: input.organizationId,
+      unitId: input.unitId,
+      sectorId: input.sectorId ?? null,
+      supplierId: input.supplierId,
+      documentType: input.documentType.trim(),
+      documentNumber: input.documentNumber?.trim() || null,
+      series: input.series?.trim() || null,
+      accessKey: input.accessKey?.trim() || null,
+      issuedAt: input.issuedAt?.trim() || null,
+      description: input.description?.trim() || null,
+      installments,
+    };
 
-    const { data, error } = await this.client.rpc("create_payable_document", {
-      p_command_id: commandId,
-      p_organization_id: input.organizationId,
-      p_unit_id: input.unitId,
-      p_sector_id: input.sectorId ?? null,
-      p_supplier_id: input.supplierId,
-      p_document_type: input.documentType.trim(),
-      p_document_number: input.documentNumber?.trim() || null,
-      p_series: input.series?.trim() || null,
-      p_access_key: input.accessKey?.trim() || null,
-      p_issued_at: input.issuedAt?.trim() || null,
-      p_description: input.description?.trim() || null,
-      p_installments: installments,
+    return this.commands.execute("finance:create-document", semanticPayload, async (commandId) => {
+      const { data, error } = await this.client.rpc("create_payable_document", {
+        p_command_id: commandId,
+        p_organization_id: semanticPayload.organizationId,
+        p_unit_id: semanticPayload.unitId,
+        p_sector_id: semanticPayload.sectorId,
+        p_supplier_id: semanticPayload.supplierId,
+        p_document_type: semanticPayload.documentType,
+        p_document_number: semanticPayload.documentNumber,
+        p_series: semanticPayload.series,
+        p_access_key: semanticPayload.accessKey,
+        p_issued_at: semanticPayload.issuedAt,
+        p_description: semanticPayload.description,
+        p_installments: semanticPayload.installments,
+      });
+      if (error) throw financeError("Não foi possível criar o documento financeiro", error.message);
+      const row = (data as { payable_document_id: string }[] | null)?.[0];
+      if (!row) throw new DomainError("SUPABASE_PERSISTENCE_ERROR", "O comando não retornou o documento criado.");
+      return row.payable_document_id as EntityId;
     });
-    if (error) throw financeError("Não foi possível criar o documento financeiro", error.message);
-    const row = (data as { payable_document_id: string }[] | null)?.[0];
-    if (!row) throw new DomainError("SUPABASE_PERSISTENCE_ERROR", "O comando não retornou o documento criado.");
-    return row.payable_document_id as EntityId;
   }
 
   async recordPayment(input: {
@@ -299,16 +316,26 @@ export class SupabaseFinanceGateway {
     paymentReference?: string;
     notes?: string;
   }): Promise<void> {
-    const { error } = await this.client.rpc("record_installment_payment", {
-      p_command_id: newEntityId(),
-      p_organization_id: input.organizationId,
-      p_installment_id: input.installmentId,
-      p_amount: Money.fromDecimal(input.amount).toDecimal(),
-      p_paid_at: input.paidAt,
-      p_payment_reference: input.paymentReference?.trim() || null,
-      p_notes: input.notes?.trim() || null,
+    const semanticPayload = {
+      organizationId: input.organizationId,
+      installmentId: input.installmentId,
+      amount: Money.fromDecimal(input.amount).toDecimal(),
+      paidAt: input.paidAt,
+      paymentReference: input.paymentReference?.trim() || null,
+      notes: input.notes?.trim() || null,
+    };
+    await this.commands.execute(`finance:payment:${input.installmentId}`, semanticPayload, async (commandId) => {
+      const { error } = await this.client.rpc("record_installment_payment", {
+        p_command_id: commandId,
+        p_organization_id: semanticPayload.organizationId,
+        p_installment_id: semanticPayload.installmentId,
+        p_amount: semanticPayload.amount,
+        p_paid_at: semanticPayload.paidAt,
+        p_payment_reference: semanticPayload.paymentReference,
+        p_notes: semanticPayload.notes,
+      });
+      if (error) throw financeError("Não foi possível registrar o pagamento", error.message);
     });
-    if (error) throw financeError("Não foi possível registrar o pagamento", error.message);
   }
 
   async reversePayment(input: {
@@ -317,23 +344,34 @@ export class SupabaseFinanceGateway {
     reversedAt: string;
     reason?: string;
   }): Promise<void> {
-    const { error } = await this.client.rpc("reverse_installment_payment", {
-      p_command_id: newEntityId(),
-      p_organization_id: input.organizationId,
-      p_payment_id: input.paymentId,
-      p_reversed_at: input.reversedAt,
-      p_reason: input.reason?.trim() || null,
+    const semanticPayload = {
+      organizationId: input.organizationId,
+      paymentId: input.paymentId,
+      reversedAt: input.reversedAt,
+      reason: input.reason?.trim() || null,
+    };
+    await this.commands.execute(`finance:reverse:${input.paymentId}`, semanticPayload, async (commandId) => {
+      const { error } = await this.client.rpc("reverse_installment_payment", {
+        p_command_id: commandId,
+        p_organization_id: semanticPayload.organizationId,
+        p_payment_id: semanticPayload.paymentId,
+        p_reversed_at: semanticPayload.reversedAt,
+        p_reason: semanticPayload.reason,
+      });
+      if (error) throw financeError("Não foi possível estornar o pagamento", error.message);
     });
-    if (error) throw financeError("Não foi possível estornar o pagamento", error.message);
   }
 
   async cancelDocument(organizationId: EntityId, payableDocumentId: EntityId, reason?: string): Promise<void> {
-    const { error } = await this.client.rpc("cancel_payable_document", {
-      p_command_id: newEntityId(),
-      p_organization_id: organizationId,
-      p_payable_document_id: payableDocumentId,
-      p_reason: reason?.trim() || null,
+    const semanticPayload = { organizationId, payableDocumentId, reason: reason?.trim() || null };
+    await this.commands.execute(`finance:cancel-document:${payableDocumentId}`, semanticPayload, async (commandId) => {
+      const { error } = await this.client.rpc("cancel_payable_document", {
+        p_command_id: commandId,
+        p_organization_id: organizationId,
+        p_payable_document_id: payableDocumentId,
+        p_reason: semanticPayload.reason,
+      });
+      if (error) throw financeError("Não foi possível cancelar o documento financeiro", error.message);
     });
-    if (error) throw financeError("Não foi possível cancelar o documento financeiro", error.message);
   }
 }
