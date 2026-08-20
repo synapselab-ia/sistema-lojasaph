@@ -1,8 +1,9 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import { DomainError } from "@/domain/common/domain-error";
-import { EntityId, newEntityId } from "@/domain/common/entity-id";
+import { EntityId } from "@/domain/common/entity-id";
 import { Money } from "@/domain/common/money";
 import { Quantity } from "@/domain/common/quantity";
+import { IdempotentCommandRegistry } from "@/lib/runtime/idempotent-command";
 
 export type RuntimeInventoryCountStatus = "counting" | "confirmed" | "cancelled";
 
@@ -52,12 +53,15 @@ function rpcError(scope: string, message: string): DomainError {
     INVENTORY_BATCH_STOCK_MISMATCH: "Os lotes disponíveis não reconciliam com o saldo agregado. A confirmação foi cancelada sem ajustes parciais.",
     INVENTORY_COUNT_NOT_EDITABLE: "Este inventário não aceita mais alterações.",
     CONFIRMED_INVENTORY_COUNT_IMMUTABLE: "Inventário confirmado é imutável.",
+    IDEMPOTENCY_KEY_CONFLICT: "A operação foi repetida com dados diferentes. Atualize a tela antes de tentar novamente.",
   };
   const code = Object.keys(known).find((candidate) => message.includes(candidate));
   return new DomainError(code ?? "SUPABASE_PERSISTENCE_ERROR", code ? known[code] : `${scope}: ${message}`);
 }
 
 export class SupabaseInventoryCountGateway {
+  private readonly commands = new IdempotentCommandRegistry();
+
   constructor(private readonly client: SupabaseClient) {}
 
   async list(organizationId: EntityId): Promise<readonly RuntimeInventoryCount[]> {
@@ -108,16 +112,18 @@ export class SupabaseInventoryCountGateway {
   }
 
   async start(organizationId: EntityId, stockLocationId: EntityId): Promise<EntityId> {
-    const commandId = newEntityId();
-    const { data, error } = await this.client.rpc("start_inventory_count", {
-      p_command_id: commandId,
-      p_organization_id: organizationId,
-      p_stock_location_id: stockLocationId,
+    const semanticPayload = { organizationId, stockLocationId };
+    return this.commands.execute("inventory-count:start", semanticPayload, async (commandId) => {
+      const { data, error } = await this.client.rpc("start_inventory_count", {
+        p_command_id: commandId,
+        p_organization_id: organizationId,
+        p_stock_location_id: stockLocationId,
+      });
+      if (error) throw rpcError("Não foi possível iniciar o inventário", error.message);
+      const row = (data as { inventory_count_id: string }[] | null)?.[0];
+      if (!row) throw new DomainError("SUPABASE_PERSISTENCE_ERROR", "O comando de inventário não retornou a sessão criada.");
+      return row.inventory_count_id as EntityId;
     });
-    if (error) throw rpcError("Não foi possível iniciar o inventário", error.message);
-    const row = (data as { inventory_count_id: string }[] | null)?.[0];
-    if (!row) throw new DomainError("SUPABASE_PERSISTENCE_ERROR", "O comando de inventário não retornou a sessão criada.");
-    return row.inventory_count_id as EntityId;
   }
 
   async setLine(input: {
@@ -132,32 +138,52 @@ export class SupabaseInventoryCountGateway {
     const cost = input.adjustmentUnitCost?.trim() ? Money.fromDecimal(input.adjustmentUnitCost) : undefined;
     if (cost?.isNegative()) throw new DomainError("INVALID_ADJUSTMENT_COST", "O custo de ajuste não pode ser negativo.");
 
-    const { error } = await this.client.rpc("set_inventory_count_line", {
-      p_command_id: newEntityId(),
-      p_organization_id: input.organizationId,
-      p_inventory_count_id: input.inventoryCountId,
-      p_stock_item_id: input.stockItemId,
-      p_counted_quantity: counted.toDecimal(),
-      p_adjustment_unit_cost: cost?.toDecimal() ?? null,
-    });
-    if (error) throw rpcError("Não foi possível salvar a contagem", error.message);
+    const semanticPayload = {
+      organizationId: input.organizationId,
+      inventoryCountId: input.inventoryCountId,
+      stockItemId: input.stockItemId,
+      countedQuantity: counted.toDecimal(),
+      adjustmentUnitCost: cost?.toDecimal() ?? null,
+    };
+
+    await this.commands.execute(
+      `inventory-count:line:${input.inventoryCountId}:${input.stockItemId}`,
+      semanticPayload,
+      async (commandId) => {
+        const { error } = await this.client.rpc("set_inventory_count_line", {
+          p_command_id: commandId,
+          p_organization_id: semanticPayload.organizationId,
+          p_inventory_count_id: semanticPayload.inventoryCountId,
+          p_stock_item_id: semanticPayload.stockItemId,
+          p_counted_quantity: semanticPayload.countedQuantity,
+          p_adjustment_unit_cost: semanticPayload.adjustmentUnitCost,
+        });
+        if (error) throw rpcError("Não foi possível salvar a contagem", error.message);
+      },
+    );
   }
 
   async confirm(organizationId: EntityId, inventoryCountId: EntityId): Promise<void> {
-    const { error } = await this.client.rpc("confirm_inventory_count", {
-      p_command_id: newEntityId(),
-      p_organization_id: organizationId,
-      p_inventory_count_id: inventoryCountId,
+    const semanticPayload = { organizationId, inventoryCountId };
+    await this.commands.execute(`inventory-count:confirm:${inventoryCountId}`, semanticPayload, async (commandId) => {
+      const { error } = await this.client.rpc("confirm_inventory_count", {
+        p_command_id: commandId,
+        p_organization_id: organizationId,
+        p_inventory_count_id: inventoryCountId,
+      });
+      if (error) throw rpcError("Não foi possível confirmar o inventário", error.message);
     });
-    if (error) throw rpcError("Não foi possível confirmar o inventário", error.message);
   }
 
   async cancel(organizationId: EntityId, inventoryCountId: EntityId): Promise<void> {
-    const { error } = await this.client.rpc("cancel_inventory_count", {
-      p_command_id: newEntityId(),
-      p_organization_id: organizationId,
-      p_inventory_count_id: inventoryCountId,
+    const semanticPayload = { organizationId, inventoryCountId };
+    await this.commands.execute(`inventory-count:cancel:${inventoryCountId}`, semanticPayload, async (commandId) => {
+      const { error } = await this.client.rpc("cancel_inventory_count", {
+        p_command_id: commandId,
+        p_organization_id: organizationId,
+        p_inventory_count_id: inventoryCountId,
+      });
+      if (error) throw rpcError("Não foi possível cancelar o inventário", error.message);
     });
-    if (error) throw rpcError("Não foi possível cancelar o inventário", error.message);
   }
 }
