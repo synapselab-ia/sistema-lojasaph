@@ -4,98 +4,99 @@
 
 ## Estado atual
 
-A Fase 28 foi concluída e `REQ-PLAT-002 — Proteção contra duplicidade` está fechada.
+A Fase 29 — auditoria de `REQ-PLAT-003 — Validação de dados` — foi concluída sem lacuna reproduzível.
+
+`REQ-PLAT-003` é considerado **atendido/verificado**: regras essenciais amostradas possuem barreira autoritativa em domínio/value objects, RPCs/server e/ou PostgreSQL conforme a natureza da regra. Nenhuma regra crítica auditada depende exclusivamente da UI.
 
 - Repositório: `synapselab-ia/sistema-lojasaph`
-- `main`: `9dc6164e628605e0ff74f748200dce165b70fdd9` após o merge funcional da Fase 28
-- Issue #71 — closed/completed
-- PR #72 — merged por squash
+- baseline antes da documentação da Fase 29: `6c9ec5d9efb527f1df4fe7eff183444527442a4b`
+- matriz de auditoria: `docs/qa/data-validation.md`
+- commit da matriz: `370b37161150bcf2eac3afb4afb9d8bb80d96e10`
+- Issues abertas ao iniciar a auditoria: 0
+- PRs abertos ao iniciar a auditoria: 0
+- nenhuma Issue criada, porque não houve lacuna concreta
+- nenhum patch funcional
+- nenhuma migration/DDL
+- nenhuma alteração de RLS, grants, roles, Auth ou dados remotos
+- nenhum deployment Vercel
+
+A última validação funcional permanece a Fase 28:
+
 - CI #301 — success (`database`, lint, typecheck, Vitest e production build)
 - Business Transactions Integration #153 — success
 - Inventory Count Integration #169 — success
-- nenhuma migration/DDL na Fase 28
-- nenhuma alteração de RLS, grants, roles, Auth ou regras transacionais
-- nenhum deployment Vercel
 
-## REQ-PLAT-002 — fechado
+## REQ-PLAT-003 — verificado
 
-A lacuna comprovada entre o client e os RPCs idempotentes foi corrigida por uma abstração única em `src/lib/runtime/idempotent-command.ts`.
+A auditoria separou validação de UI, domínio, RPC/server e banco.
 
-Contrato efetivo do runtime:
+### Domínio/value objects
 
-- UUID opaco criado de forma lazy por intenção;
-- payload normalizado é usado somente para fingerprint semântico local, nunca como command ID;
-- retry da mesma intenção após falha ambígua reapresenta o mesmo UUID;
-- sucesso definitivo encerra a intenção e a próxima operação recebe nova chave;
-- mudança semântica após falha abandona a intenção anterior e cria nova chave;
-- duas submissões concorrentes idênticas compartilham a mesma Promise/comando;
-- mudança de payload enquanto a intenção anterior está em voo é rejeitada localmente;
-- `IDEMPOTENCY_KEY_CONFLICT` permanece erro explícito de reconciliação/refresh.
+- `Money` normaliza valores monetários para até 2 casas decimais e rejeita formato/overflow inválido;
+- `Quantity` normaliza quantidades para até 3 casas e rejeita formato/overflow inválido;
+- serviços de Estoque aplicam positividade/não negatividade e invariantes de transferência/inventário;
+- cadastro de item exige categoria, nome e unidade normalizados;
+- fornecedor exige nome e impede múltiplos contatos primários no domínio.
 
-Os gateways de Estoque que já aceitavam `commandId` explícito preservam esse caminho para teste/homologação; o caminho normal sem chave explícita usa o registro estável, sem fallback para UUID novo a cada retry.
+### RPC/server
 
-### Matriz final de cobertura
+As implementações `private.*` hospedadas foram inspecionadas somente em leitura. Elas revalidam, entre outros:
 
-| Superfície | Write paths | Evidência client/runtime | Evidência PostgreSQL |
-| --- | ---: | --- | --- |
-| Estoque | 4 | entrada, retirada, perda/vencimento e devolução usam intenção estável | replay/conflito em suites existentes; `schema_smoke.sql` agora cobre conflito explícito de entrada |
-| Transferências | 2 | despacho e recebimento usam escopos idempotentes próprios | suites de transferência mantidas verdes |
-| Inventário | 4 | início, linha, confirmação e cancelamento usam intenção estável | Inventory Count Integration #169 verde |
-| Compras | 4 | criação, emissão, recebimento e cancelamento usam intenção estável | Business Transactions Integration #153 verde |
-| Financeiro | 4 | documento, pagamento, estorno e cancelamento usam intenção estável | Business Transactions Integration #153 verde |
-| Caixa | 8 | configuração, abertura, total, movimento, fechamento e cancelamento usam intenção estável | `cash_sessions.sql` cobre replay/conflito adicional e integração #153 verde |
-| **Total** | **26** | ciclo de chave estável coberto por Vitest + teste de gateway real | RPCs/locks/guards existentes preservados |
+- quantidade/custo, item/local ativo, estoque/lote e relações de devolução;
+- origem/destino e lifecycle de transferências;
+- completude/stale/custo/lote de inventário;
+- itens/quantidade/preço/fornecedor/local/lifecycle de compras;
+- tipo, parcelas, datas, unidade/setor/fornecedor, pagamentos/estornos/cancelamento em Financeiro;
+- identidade de configuração, enums, valores, datas e sessão aberta em Caixa.
 
-Regressões client adicionadas provam:
+### PostgreSQL
 
-- reutilização da chave após falha ambígua;
-- reset após sucesso;
-- nova chave após mudança semântica;
-- deduplicação de double submit concorrente;
-- bloqueio de payload divergente em voo;
-- fingerprint canônico;
-- reutilização real de `p_command_id` no gateway de retirada;
-- conflito idempotente continua visível.
+A inspeção remota confirmou:
+
+- `numeric(18,2)` para dinheiro crítico e `numeric(18,3)` para quantidades críticas;
+- `CHECK`s de positividade/não negatividade, enums e lifecycle;
+- FKs compostas com `organization_id` nas relações críticas;
+- `UNIQUE`s e índices parciais para invariantes de identidade/cardinalidade;
+- intervalos de taxa e sequenciamento de transferência protegidos;
+- política de saldo negativo implementada por trigger por local, não por check global rígido.
+
+O aparente desaparecimento de `inventory_balances_quantity_on_hand_check` não é drift: a migration transacional de retirada removeu intencionalmente o check global e instalou `private.enforce_inventory_balance_negative_policy()`. O trigger remoto `inventory_balances_negative_policy` está presente e só permite saldo negativo em local com `allow_negative_stock=true`.
+
+### Testes reaproveitados
+
+Não foi criada suíte duplicada. A matriz referencia as suites existentes de schema, Estoque, Transferências, Inventário, Compras, Financeiro, Caixa, permissões e hardening.
+
+Detalhes: `docs/qa/data-validation.md`.
 
 ## Supabase remoto
 
-Projeto `fhbvwyttikrbeaanatlr`, PostgreSQL 17, permanece `ACTIVE_HEALTHY`.
+Projeto `fhbvwyttikrbeaanatlr`, PostgreSQL 17, foi usado apenas para introspecção SQL read-only nesta auditoria.
 
-Após a implementação, uma confirmação SQL somente leitura verificou os 26 RPCs críticos de Estoque, Transferências, Inventário, Compras, Financeiro e Caixa. Todos continuam expondo `p_command_id` e nenhuma função/schema/policy/grant/dado foi modificado remotamente nesta fase.
-
-Estado operacional preservado:
-
-- 1 Organization ativa;
-- 1 Auth user confirmado;
-- 1 membership ativo;
-- 1 owner ativo;
-- bootstrap desabilitado em Production.
-
-Os avisos genéricos do advisor continuam fora de escopo salvo regressão concreta.
+Nenhuma função, constraint, trigger, migration history, tabela, dado, policy, grant ou configuração foi modificada.
 
 ## Vercel Production
 
-`git.deploymentEnabled=false` continua deliberadamente preservado.
+`git.deploymentEnabled=false` permanece deliberadamente preservado.
 
-Último Production intencional permanece:
+Último Production intencional permanece no deployment `dpl_824q6umKyUyRhYzAmxLREjNeoFK1`, commit hospedado `046c4a3392f85e2361c6ddeac0ae3ee1817145c5`.
 
-- deployment `dpl_824q6umKyUyRhYzAmxLREjNeoFK1` — READY;
-- commit funcional hospedado `046c4a3392f85e2361c6ddeac0ae3ee1817145c5`.
-
-Nenhum deployment foi criado na Fase 28.
+Nenhum deployment foi criado na Fase 29.
 
 ## Próxima ação
 
-Auditar `REQ-PLAT-003 — Validação de dados` como o próximo MUST verificável de Plataforma.
+Auditar `REQ-PLAT-004 — Migrações de banco`.
 
-A próxima sessão deve primeiro comprovar o estado real de `main`, Issues/PRs e workflows. Depois deve mapear validações essenciais entre domínio/server/RPC/banco, reaproveitar testes existentes e abrir nova Issue somente se houver lacuna concreta. Não implementar validações por presunção e não reabrir a Fase 28.
+Há um ponto concreto para esclarecer antes de declarar o requisito fechado: a história hospedada em `supabase_migrations.schema_migrations` possui versões/timestamps históricos que não coincidem literalmente com alguns filenames atuais em `supabase/migrations/` — por exemplo, o conteúdo de `inventory` aparece no remoto sob versão `20260817214649`, enquanto o arquivo versionado atual é `20260817191000_inventory.sql`.
+
+Isso **não foi classificado como defeito nesta sessão**. A próxima auditoria deve comparar a linhagem completa, distinguir renumeração/histórico de um drift real e comprovar que um ambiente novo pode ser reconstruído apenas pelas migrations versionadas do repositório.
 
 ## Não repetir
 
-- não reabrir Issues #69 ou #71;
-- não refazer a auditoria de idempotência já encerrada;
-- não reescrever RPCs idempotentes sem regressão específica;
-- não alterar RLS/grants para resolver validação de formulário;
+- não reabrir `REQ-PLAT-002` ou `REQ-PLAT-003` sem nova regressão concreta;
+- não criar Issue de validação só para aumentar cobertura;
+- não alterar o trigger de saldo negativo: a diferença em relação ao check original é intencional;
+- não editar `supabase_migrations.schema_migrations` manualmente;
+- não aplicar DDL remoto durante a auditoria de migrations sem evidência e plano explícitos;
 - não reativar bootstrap ou auto-deploy Vercel;
 - não importar dados reais;
 - não inferir Q-001..Q-025.
