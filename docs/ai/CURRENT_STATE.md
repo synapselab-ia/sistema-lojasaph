@@ -4,140 +4,115 @@
 
 ## Estado atual
 
-A Fase 33 auditou `REQ-PLAT-007 — Ambientes separados` sem refazer a Fase 18 e concluiu que o requisito permanece atendido no escopo atual.
+A Fase 34 executou um preflight de RLS antes da auditoria de importação, conforme solicitado, e não encontrou bypass ou vazamento de autorização. O único finding acionável foi uma otimização de performance semanticamente neutra em `organization_memberships`.
 
 - Repositório: `synapselab-ia/sistema-lojasaph`
-- baseline de `main`: `2f54ac1fe823386fe90d97d752318f39ec369d8c`
-- branch: `agent/environment-isolation-audit`
-- PR #79 — `docs(qa): revalidate environment isolation`
-- head auditado/validado antes deste commit final de continuidade: `206fcc93fb4dbca217f65fa6c85fe2bdde15b516`
-- CI #316 — success
-- nova evidência: `docs/qa/environment-isolation.md`
-- runbook atualizado: `docs/operations/environments.md`
-- nenhuma nova Issue funcional de ambientes
-- Issue #75 permanece aberta e bloqueada por decisões operacionais de backup
-- Issue #78 foi um placeholder acidental e foi encerrada imediatamente como `not_planned`, sem trabalho associado
-- nenhum código de aplicação, migration, DDL/DML, RLS/grant/Auth ou dado remoto alterado
-- nenhum deployment Vercel criado
-- nenhum projeto/branch Supabase criado
+- baseline inicial de `main`: `dfd3f517cecbf4111bf118e0e70eafcdab2850e4`
+- Issue #80 — `RLS — otimizar auth.uid() da policy de memberships via initPlan`
+- branch `agent/rls-initplan-optimization`
+- PR #81 — `perf(rls): cache membership auth uid per statement`
+- evidência: `docs/qa/rls-preflight.md`
+- migration remota: `20260820184106 / membership_rls_initplan`
+- Issue #75 de backup permanece aberta/bloqueada
+- nenhum dado de negócio foi alterado
+- nenhum deploy Vercel foi criado
 
-## REQ-PLAT-007 — auditoria da Fase 33
+## RLS remoto — resultado
 
-A Fase 18 / Issue #45 / PR #46 continua válida. O código atual mantém:
+Projeto Supabase `fhbvwyttikrbeaanatlr`:
 
-- política fail-closed em `src/lib/runtime/environment.ts`;
-- mismatch `LOJASAPH_APP_ENV` / `VERCEL_ENV` bloqueado;
-- Preview sem backend próprio comprovado bloqueado;
-- Development remoto exigindo ref distinta de Production;
-- admin secret server-only;
-- admin não-prod bloqueado salvo opt-in explícito sobre backend já isolado;
-- URLs/callbacks coerentes com o ambiente;
-- `/health` sem dados sensíveis;
-- testes da política e fronteira client/server.
+- 45/45 tabelas de aplicação em `public` com RLS habilitado;
+- 78 policies;
+- 0 policies para `anon`/`PUBLIC`;
+- 0 policies com predicado literal `true`, `auth.role()`, `user_metadata` ou `raw_user_meta_data`;
+- `anon` sem privilégios de relação;
+- `authenticated` sem `DELETE` direto;
+- `payable_installment_summary` com `security_invoker=true`;
+- 30 funções públicas `SECURITY DEFINER`, todas com `search_path=""`, guarda de identidade/escopo e 0 executáveis por `anon`.
 
-A matriz detalhada está em `docs/qa/environment-isolation.md`.
+Probe com UUID sintético `authenticated` sem membership retornou zero linhas em Organization, memberships, unidades, catálogo, ledger, financeiro, view financeira, importação e auditoria.
 
-## Ausência de drift funcional
+`anon` recebeu `permission denied` em tabela e RPC. A RPC de relatório de importação também recusou usuário autenticado sem membership com `IMPORT_SCOPE_NOT_ALLOWED`.
 
-O arquivo central `src/lib/runtime/environment.ts` possui o mesmo blob SHA:
+## Finding corrigido
 
-`fc39f1a2b393815a6d1a853a23a4fbcff86614b0`
+O Performance Advisor reportava `auth_rls_initplan` na policy:
 
-em três pontos:
+`public.organization_memberships.memberships_visible_to_self_or_admin`
 
-1. Preview homologado da Fase 18 — commit `91738dc6f780c8269cdf9600fc57c64d63e6134d`;
-2. commit atualmente hospedado em Production — `046c4a3392f85e2361c6ddeac0ae3ee1817145c5`;
-3. `main` da Fase 33.
+A expressão de self-access foi alterada de:
 
-`src/app/health/route.ts` também mantém o mesmo blob do Preview homologado e da `main` (`76220c627485d9b70b3281a23b426c7ed9ab246d`).
+```sql
+user_id = auth.uid()
+```
 
-Portanto a homologação Preview fail-closed da Fase 18 continua representativa do núcleo atual, sem justificar novo deploy para repetir a mesma prova.
+para:
 
-## Vercel atual
+```sql
+user_id = (select auth.uid())
+```
 
-Projeto:
+O ramo owner/admin via `private.has_org_wide_role(...)` foi preservado. Não houve mudança de regra de negócio ou de escopo.
 
-- `sistema-lojasaph`;
-- id `prj_Sutt2hmT3S54QjWR4jR6mBi3DlcY`;
-- latest deployment `dpl_824q6umKyUyRhYzAmxLREjNeoFK1`;
-- `READY`;
-- target `production`;
-- commit `046c4a3392f85e2361c6ddeac0ae3ee1817145c5`.
+A migration foi primeiro validada em CI e depois aplicada ao Supabase. O remoto registrou a versão canônica `20260820184106`, e o arquivo local foi reconciliado para o mesmo timestamp antes do merge.
 
-A listagem de deployments mostra que os deployments posteriores aos Previews da Fase 18 são de Production. Os últimos Previews identificados continuam sendo os próprios do PR #46.
+Após a aplicação:
 
-`GET https://sistema-lojasaph.vercel.app/health` retornou em 2026-08-20:
+- `pg_policies.qual` confirma `(SELECT auth.uid())`;
+- o warning `auth_rls_initplan` dessa policy desapareceu;
+- 45/45 tabelas continuam com RLS;
+- continuam 78 policies e 0 policies anon/PUBLIC;
+- o probe outsider continua retornando zero linhas.
 
-- `environment=production`;
-- `supabaseAccess=allowed`;
-- `supabaseReason=production_backend`;
-- `adminAccess=blocked`.
+## Teste de regressão
 
-O payload não expõe URL/ref/key/secret.
+`supabase/tests/security_hardening.sql` agora falha se `memberships_visible_to_self_or_admin`:
 
-`vercel.json` continua com `git.deploymentEnabled=false`; auto-deploy não foi reativado.
+- desaparecer;
+- voltar a usar `user_id = auth.uid()` diretamente;
+- deixar de conter `SELECT auth.uid()`.
 
-### Environment variables
+A suíte já cobria RLS integral, grants mínimos, ausência de policies inseguras, view `security_invoker`, bloqueio de `anon`, RPCs e default privileges deny-by-default.
 
-A documentação vigente da Vercel confirma escopos Production/Preview/Development e auditoria por ambiente via CLI/API. Entretanto a conexão disponível nesta sessão não expõe a ação de listar project environment variables.
+## Advisors
 
-Assim, nomes/targets atuais são **não observáveis por esta conexão**. Isso não é tratado como prova de compartilhamento nem de isolamento material dos targets.
+Security Advisor:
 
-O controle efetivo versionado continua fail-closed: Preview não cria cliente Supabase operacional sem refs distintas/coerentes.
+- continua sinalizando as RPCs públicas `SECURITY DEFINER` executáveis por `authenticated`;
+- a auditoria confirmou que essa command surface é intencional e protegida por `auth.uid()`, helpers privados, `search_path=""`, escopo e testes;
+- leaked-password protection do Auth permanece desabilitada e é configuração de Auth, não gap de RLS desta frente.
 
-## Supabase atual
+Performance Advisor:
 
-Organização `wopgwaqlnksvqavegljp`:
+- o warning `auth_rls_initplan` da policy de memberships foi eliminado;
+- avisos de foreign keys sem índice e índices ainda sem uso observado permanecem fora do escopo desta correção.
 
-- plano `free`;
-- atualmente contém dois projetos.
+## Validação
 
-Projeto Sistema Lojasaph:
+Head funcional inicial `49a67c975ebe96d5149b0df72a1b6e24f883d740`:
 
-- `fhbvwyttikrbeaanatlr`;
-- `ACTIVE_HEALTHY`;
-- `sa-east-1`;
-- PostgreSQL `17.6.1.141`;
-- zero development branches.
+- CI #322 — database + validate success;
+- Business Transactions Integration #156 — success;
+- Inventory Count Integration #172 — success.
 
-Segundo projeto da organização:
+O database gate aplicou todas as migrations em PostgreSQL 17 limpo e passou schema/RLS smoke, `security_hardening.sql`, Auth/Organization isolation e todas as suites transacionais existentes.
 
-- `easy-v2` / `hrmkkhqfyfoqucwbcszq`;
-- criado em 2026-08-20;
-- migrations observadas: `p10_s3_i1_foundation` e `harden_transaction_rpc_boundary`.
-
-Essas migrations não correspondem ao histórico do Lojasaph. Não há evidência de que `easy-v2` seja ambiente Preview/Development deste sistema; ele não deve ser reutilizado por inferência.
-
-A documentação atual do Supabase mantém desenvolvimento local como fluxo padrão e Branching como ambiente isolado opcional associado ao plano Pro/uso próprio. Nenhum branch/projeto foi criado nesta auditoria.
+Depois desse gate, a migration foi aplicada remotamente e o filename local foi reconciliado à versão canônica. O head final do PR #81 deve permanecer verde antes do squash merge; a evidência final fica registrada no próprio PR.
 
 ## REQ-PLAT-005 / Issue #75
 
-A Issue #75 continua sem comentários/decisões novas de RPO, RTO, destino off-site, retenção, proteção ou alertas. A frente continua bloqueada e não foi modificada.
-
-## Validação da Fase 33
-
-Head `206fcc93fb4dbca217f65fa6c85fe2bdde15b516` do PR #79:
-
-- CI #316 — success;
-- job `database` — success: PostgreSQL 17, migrations, seed, backup/checksum/restore, suites SQL e `import staging and dry-run tests`;
-- job `validate` — success: lint, typecheck, Vitest e production build.
-
-Workflows especializados de Inventory/Business não são acionados pelo diff exclusivamente documental desta fase.
-
-Este commit e a atualização correspondente do `HANDOFF` são somente continuidade documental. Confirmar CI verde no head final antes do merge.
+A frente de backup continua bloqueada pelas decisões operacionais pendentes de RPO, RTO, destino off-site, retenção, proteção e alertas. Não inventar configuração nem fechar #75 sem automação real.
 
 ## Próxima ação
 
-Após integrar esta auditoria, avançar para a auditoria conjunta de `REQ-IMP-001` a `REQ-IMP-004` — importação rastreável, idempotência, dry run e relatório de inconsistências — usando a Fase 15 / Issue #39 / PR #40 como baseline e sem importar dados reais.
+Após integrar a Fase 34, executar a auditoria conjunta de `REQ-IMP-001` a `REQ-IMP-004` e do suporte migratório de aliases de `REQ-ITEM-002`, usando a Fase 15 / Issue #39 / PR #40 como baseline, sem importar dados reais e sem reabrir o hardening de RLS salvo evidência concreta de regressão.
 
 ## Não repetir
 
-- não reimplementar a Fase 18;
-- não criar Preview só para repetir smoke sem drift;
-- não reutilizar `easy-v2` como ambiente do Lojasaph por inferência;
-- não criar branch/projeto Supabase pago sem autorização;
-- não copiar env var values/secrets para GitHub;
-- não reativar auto-deploy Vercel;
+- não reabrir a Fase 34 apenas por warnings genéricos das RPCs `SECURITY DEFINER`;
+- não corrigir índices/FKs oportunisticamente na frente de importação sem evidência de impacto;
+- não reaplicar migrations já presentes no remoto;
+- não importar dados reais nem executar cutover;
 - não fechar #75 sem backup automático real;
-- não importar dados reais antes da frente específica de migração/cutover;
+- não criar deploy Vercel para auditorias de banco que não dependem de runtime hospedado;
 - não inferir Q-001..Q-025.

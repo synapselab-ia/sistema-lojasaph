@@ -196,6 +196,36 @@ begin
 end;
 $$;
 
+-- Membership self-visibility must cache auth.uid() once per statement. This
+-- preserves authorization semantics while avoiding per-row Auth re-evaluation.
+do $$
+declare
+  policy_qual text;
+  normalized_qual text;
+begin
+  select qual
+    into policy_qual
+  from pg_policies
+  where schemaname = 'public'
+    and tablename = 'organization_memberships'
+    and policyname = 'memberships_visible_to_self_or_admin';
+
+  if policy_qual is null then
+    raise exception 'memberships_visible_to_self_or_admin policy is missing';
+  end if;
+
+  normalized_qual := lower(regexp_replace(policy_qual, '\s+', ' ', 'g'));
+
+  if normalized_qual like '%user_id = auth.uid()%' then
+    raise exception 'membership self policy reintroduced per-row auth.uid() evaluation';
+  end if;
+
+  if normalized_qual not like '%select auth.uid()%' then
+    raise exception 'membership self policy must wrap auth.uid() in SELECT for initPlan caching: %', policy_qual;
+  end if;
+end;
+$$;
+
 -- Probe postgres default privileges after the hardening migration. The bootstrap
 -- intentionally emulates legacy hosted Supabase defaults, so these objects must
 -- still be born closed after the migration resets the defaults.
