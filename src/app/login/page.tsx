@@ -20,8 +20,8 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const operational = runtime.supabaseAccess === "allowed";
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-md items-center px-5 py-10">
-      <section className="w-full rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm sm:p-8">
+    <main className="mx-auto flex min-h-screen max-w-md items-center px-4 py-8 sm:px-5 sm:py-10">
+      <section className="w-full rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm sm:p-8">
         <p className="text-sm font-semibold uppercase tracking-[0.16em] text-neutral-500">Sistema Lojasaph</p>
         <h1 className="mt-2 text-3xl font-semibold tracking-tight">Entrar</h1>
         <p className="mt-2 text-sm leading-6 text-neutral-600">Acesso operacional protegido por sessão e permissões da organização.</p>
@@ -49,11 +49,11 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           </form>
         )}
 
-        <div className="mt-5 flex items-center justify-between gap-4 text-sm">
+        <div className="mt-5 flex flex-col gap-2 text-sm sm:flex-row sm:items-center sm:justify-between sm:gap-4">
           {operational ? (
-            <Link href="/recuperar-senha" className="font-medium text-neutral-700 underline underline-offset-4">Esqueci minha senha</Link>
+            <Link href="/recuperar-senha" className="inline-flex min-h-11 items-center font-medium text-neutral-700 underline underline-offset-4">Esqueci minha senha</Link>
           ) : <span />}
-          <Link href="/" className="text-neutral-500 hover:text-neutral-900">Voltar</Link>
+          <Link href="/" className="inline-flex min-h-11 items-center text-neutral-500 hover:text-neutral-900 sm:justify-end">Voltar</Link>
         </div>
       </section>
     </main>

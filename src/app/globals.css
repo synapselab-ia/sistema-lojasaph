@@ -15,3 +15,32 @@ body {
   background: #f7f7f7;
   color: #171717;
 }
+
+input,
+select,
+textarea,
+button {
+  min-width: 0;
+  max-width: 100%;
+}
+
+@media (max-width: 639px) {
+  .grid.grid-cols-2,
+  .grid.grid-cols-3 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .flex.items-start.justify-between,
+  .flex.items-end.justify-between {
+    flex-wrap: wrap;
+  }
+}
+
+@media (pointer: coarse) {
+  button,
+  input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
+  select,
+  textarea {
+    min-height: 44px;
+  }
+}
