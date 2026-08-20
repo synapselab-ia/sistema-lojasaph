@@ -1,8 +1,9 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import { DomainError } from "@/domain/common/domain-error";
-import { EntityId, newEntityId } from "@/domain/common/entity-id";
+import { EntityId } from "@/domain/common/entity-id";
 import { Money } from "@/domain/common/money";
 import { Quantity } from "@/domain/common/quantity";
+import { IdempotentCommandRegistry } from "@/lib/runtime/idempotent-command";
 import { InventoryBalance } from "../domain/inventory";
 
 export type RuntimeStockLossMovementType = "loss" | "expiration";
@@ -76,10 +77,18 @@ interface StockLossMovementItemRow {
 }
 
 function persistenceError(message: string, cause?: string): DomainError {
+  if (cause?.includes("IDEMPOTENCY_KEY_CONFLICT")) {
+    return new DomainError(
+      "IDEMPOTENCY_KEY_CONFLICT",
+      "A operação foi repetida com dados diferentes. Atualize a tela antes de tentar novamente.",
+    );
+  }
   return new DomainError("SUPABASE_PERSISTENCE_ERROR", cause ? `${message}: ${cause}` : message);
 }
 
 export class SupabaseStockLossGateway {
+  private readonly commands = new IdempotentCommandRegistry();
+
   constructor(private readonly client: SupabaseClient) {}
 
   async listReasons(organizationId: EntityId): Promise<readonly RuntimeStockLossReason[]> {
@@ -138,7 +147,6 @@ export class SupabaseStockLossGateway {
   }
 
   async record(input: RecordSupabaseStockLossInput): Promise<RecordSupabaseStockLossResult> {
-    const commandId = input.commandId ?? newEntityId();
     const quantity = Quantity.fromDecimal(input.quantity);
     const reasonCode = input.reasonCode.trim().toLowerCase();
 
@@ -149,31 +157,46 @@ export class SupabaseStockLossGateway {
       throw new DomainError("STOCK_LOSS_REASON_REQUIRED", "A structured stock-loss reason is required.");
     }
 
-    const { data, error } = await this.client.rpc("record_stock_loss", {
-      p_command_id: commandId,
-      p_organization_id: input.organizationId,
-      p_stock_item_id: input.stockItemId,
-      p_stock_location_id: input.stockLocationId,
-      p_quantity: quantity.toDecimal(),
-      p_reason_code: reasonCode,
-      p_preferred_batch_id: input.preferredBatchId ?? null,
-      p_notes: input.notes?.trim() || null,
-    });
-
-    if (error) throw persistenceError("Failed to record stock loss", error.message);
-    const row = (data as StockLossRpcRow[] | null)?.[0];
-    if (!row) throw persistenceError("Stock loss RPC returned no result");
-
-    return {
-      movementId: row.movement_id as EntityId,
-      movementType: row.movement_type,
-      reasonCode: row.reason_code,
-      balance: Object.freeze({
-        stockItemId: input.stockItemId,
-        stockLocationId: input.stockLocationId,
-        quantity: Quantity.fromDecimal(String(row.quantity_on_hand)),
-        averageCost: Money.fromDecimal(String(row.average_cost)),
-      }),
+    const semanticPayload = {
+      organizationId: input.organizationId,
+      stockItemId: input.stockItemId,
+      stockLocationId: input.stockLocationId,
+      quantity: quantity.toDecimal(),
+      reasonCode,
+      preferredBatchId: input.preferredBatchId ?? null,
+      notes: input.notes?.trim() || null,
     };
+
+    const execute = async (commandId: EntityId): Promise<RecordSupabaseStockLossResult> => {
+      const { data, error } = await this.client.rpc("record_stock_loss", {
+        p_command_id: commandId,
+        p_organization_id: semanticPayload.organizationId,
+        p_stock_item_id: semanticPayload.stockItemId,
+        p_stock_location_id: semanticPayload.stockLocationId,
+        p_quantity: semanticPayload.quantity,
+        p_reason_code: semanticPayload.reasonCode,
+        p_preferred_batch_id: semanticPayload.preferredBatchId,
+        p_notes: semanticPayload.notes,
+      });
+
+      if (error) throw persistenceError("Failed to record stock loss", error.message);
+      const row = (data as StockLossRpcRow[] | null)?.[0];
+      if (!row) throw persistenceError("Stock loss RPC returned no result");
+
+      return {
+        movementId: row.movement_id as EntityId,
+        movementType: row.movement_type,
+        reasonCode: row.reason_code,
+        balance: Object.freeze({
+          stockItemId: input.stockItemId,
+          stockLocationId: input.stockLocationId,
+          quantity: Quantity.fromDecimal(String(row.quantity_on_hand)),
+          averageCost: Money.fromDecimal(String(row.average_cost)),
+        }),
+      };
+    };
+
+    if (input.commandId) return execute(input.commandId);
+    return this.commands.execute("stock-loss:record", semanticPayload, execute);
   }
 }
