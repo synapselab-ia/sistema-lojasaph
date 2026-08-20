@@ -4,99 +4,83 @@
 
 ## Estado atual
 
-A Fase 29 — auditoria de `REQ-PLAT-003 — Validação de dados` — foi concluída sem lacuna reproduzível.
-
-`REQ-PLAT-003` é considerado **atendido/verificado**: regras essenciais amostradas possuem barreira autoritativa em domínio/value objects, RPCs/server e/ou PostgreSQL conforme a natureza da regra. Nenhuma regra crítica auditada depende exclusivamente da UI.
+A Fase 30 corrigiu a divergência operacional encontrada na auditoria de `REQ-PLAT-004 — Migrações de banco`.
 
 - Repositório: `synapselab-ia/sistema-lojasaph`
-- baseline antes da documentação da Fase 29: `6c9ec5d9efb527f1df4fe7eff183444527442a4b`
-- matriz de auditoria: `docs/qa/data-validation.md`
-- commit da matriz: `370b37161150bcf2eac3afb4afb9d8bb80d96e10`
-- Issues abertas ao iniciar a auditoria: 0
-- PRs abertos ao iniciar a auditoria: 0
-- nenhuma Issue criada, porque não houve lacuna concreta
-- nenhum patch funcional
-- nenhuma migration/DDL
-- nenhuma alteração de RLS, grants, roles, Auth ou dados remotos
-- nenhum deployment Vercel
+- Issue #73 — Fase 30 / alinhamento de versions de migrations
+- PR #74 — integração da Fase 30
+- head validado do PR: `ef911001be843f6a191db7918c5fafd347a06120`
+- CI #307 — success
+- Business Transactions Integration #154 — success
+- Inventory Count Integration #170 — success
+- nenhuma alteração do conteúdo SQL histórico das 27 migrations efetivas
+- nenhum DDL/DML remoto, `migration repair`, `db push`, RLS/grant/Auth change ou deploy Vercel
 
-A última validação funcional permanece a Fase 28:
+## REQ-PLAT-004 — resolvido pela Fase 30
 
-- CI #301 — success (`database`, lint, typecheck, Vitest e production build)
-- Business Transactions Integration #153 — success
-- Inventory Count Integration #169 — success
+A auditoria encontrou 28 arquivos locais em `supabase/migrations`: 27 migrations efetivas e um placeholder vazio. O Supabase hospedado possuía 27 registros em `supabase_migrations.schema_migrations` com os mesmos nomes semânticos, mas versions/timestamps diferentes dos filenames locais.
 
-## REQ-PLAT-003 — verificado
+Isso era risco real de upgrade porque o Supabase CLI identifica migrations pela version/timestamp ao comparar o diretório local com o histórico remoto.
 
-A auditoria separou validação de UI, domínio, RPC/server e banco.
+Correção aplicada:
 
-### Domínio/value objects
+- as 27 migrations efetivas foram renomeadas para as 27 versions já registradas no Supabase hospedado;
+- GitHub reconhece os 27 arquivos como `renamed` com `0 additions / 0 deletions`, preservando seus blobs SQL;
+- o placeholder vazio `20260817231638_persistent_inventory_count.sql` foi removido;
+- nenhuma linha de `supabase_migrations.schema_migrations` foi alterada;
+- a matriz canônica está em `docs/qa/database-migrations.md`;
+- `docs/architecture/persistence.md` agora trata a version do filename como identidade operacional imutável após aplicação remota.
 
-- `Money` normaliza valores monetários para até 2 casas decimais e rejeita formato/overflow inválido;
-- `Quantity` normaliza quantidades para até 3 casas e rejeita formato/overflow inválido;
-- serviços de Estoque aplicam positividade/não negatividade e invariantes de transferência/inventário;
-- cadastro de item exige categoria, nome e unidade normalizados;
-- fornecedor exige nome e impede múltiplos contatos primários no domínio.
+A única inversão de ordem entre o histórico remoto e a antiga ordem local era `reconcile_inventory_adjustment_type` / `purchases_operational_flow`. O repair altera apenas o `CHECK` de `stock_movements.movement_type` e a migration de compras não depende de `inventory_adjustment`; a nova ordem canônica foi reconstruída do zero com sucesso pelos workflows.
 
-### RPC/server
+## Evidência de reprodutibilidade
 
-As implementações `private.*` hospedadas foram inspecionadas somente em leitura. Elas revalidam, entre outros:
+CI #307, em PostgreSQL 17 limpo:
 
-- quantidade/custo, item/local ativo, estoque/lote e relações de devolução;
-- origem/destino e lifecycle de transferências;
-- completude/stale/custo/lote de inventário;
-- itens/quantidade/preço/fornecedor/local/lifecycle de compras;
-- tipo, parcelas, datas, unidade/setor/fornecedor, pagamentos/estornos/cancelamento em Financeiro;
-- identidade de configuração, enums, valores, datas e sessão aberta em Caixa.
+- aplicou bootstrap de Auth;
+- aplicou todas as migrations na ordem reconciliada;
+- aplicou seed anonimizado;
+- verificou backup lógico + restore isolado;
+- executou smoke de schema/RLS, hardening, permissões e suites de estoque/importação;
+- lint, typecheck, Vitest e production build passaram.
 
-### PostgreSQL
-
-A inspeção remota confirmou:
-
-- `numeric(18,2)` para dinheiro crítico e `numeric(18,3)` para quantidades críticas;
-- `CHECK`s de positividade/não negatividade, enums e lifecycle;
-- FKs compostas com `organization_id` nas relações críticas;
-- `UNIQUE`s e índices parciais para invariantes de identidade/cardinalidade;
-- intervalos de taxa e sequenciamento de transferência protegidos;
-- política de saldo negativo implementada por trigger por local, não por check global rígido.
-
-O aparente desaparecimento de `inventory_balances_quantity_on_hand_check` não é drift: a migration transacional de retirada removeu intencionalmente o check global e instalou `private.enforce_inventory_balance_negative_policy()`. O trigger remoto `inventory_balances_negative_policy` está presente e só permite saldo negativo em local com `allow_negative_stock=true`.
-
-### Testes reaproveitados
-
-Não foi criada suíte duplicada. A matriz referencia as suites existentes de schema, Estoque, Transferências, Inventário, Compras, Financeiro, Caixa, permissões e hardening.
-
-Detalhes: `docs/qa/data-validation.md`.
+Business Transactions Integration #154 e Inventory Count Integration #170 também reconstruíram o banco do zero e concluíram suas suites com sucesso.
 
 ## Supabase remoto
 
-Projeto `fhbvwyttikrbeaanatlr`, PostgreSQL 17, foi usado apenas para introspecção SQL read-only nesta auditoria.
+Projeto `fhbvwyttikrbeaanatlr`, PostgreSQL 17.
 
-Nenhuma função, constraint, trigger, migration history, tabela, dado, policy, grant ou configuração foi modificada.
+A Fase 30 usou apenas introspecção read-only para:
+
+- listar as 27 migrations hospedadas;
+- comparar version/nome/ordem;
+- confirmar que relations/functions/triggers atuais em `public`/`private` possuem referência nominal no histórico de migrations.
+
+Nenhum schema, dado, função, policy, grant, Auth, configuração ou migration history foi modificado remotamente.
 
 ## Vercel Production
 
-`git.deploymentEnabled=false` permanece deliberadamente preservado.
-
-Último Production intencional permanece no deployment `dpl_824q6umKyUyRhYzAmxLREjNeoFK1`, commit hospedado `046c4a3392f85e2361c6ddeac0ae3ee1817145c5`.
-
-Nenhum deployment foi criado na Fase 29.
+`git.deploymentEnabled=false` continua preservado. Nenhum deployment foi criado na Fase 30.
 
 ## Próxima ação
 
-Auditar `REQ-PLAT-004 — Migrações de banco`.
+Auditar `REQ-PLAT-005 — Backup e restauração` sem refazer a Fase 16.
 
-Há um ponto concreto para esclarecer antes de declarar o requisito fechado: a história hospedada em `supabase_migrations.schema_migrations` possui versões/timestamps históricos que não coincidem literalmente com alguns filenames atuais em `supabase/migrations/` — por exemplo, o conteúdo de `inventory` aparece no remoto sob versão `20260817214649`, enquanto o arquivo versionado atual é `20260817191000_inventory.sql`.
+Já existem `docs/operations/backup-restore.md`, `scripts/export-supabase-backup.sh`, `scripts/verify-backup-restore.sh`, `supabase/tests/backup_restore.sql` e prova automatizada no CI. A próxima sessão deve verificar o estado atual do provedor e distinguir claramente:
 
-Isso **não foi classificado como defeito nesta sessão**. A próxima auditoria deve comparar a linhagem completa, distinguir renumeração/histórico de um drift real e comprovar que um ambiente novo pode ser reconstruído apenas pelas migrations versionadas do repositório.
+- prova técnica de dump/restore;
+- existência real de rotina automática/off-site;
+- pendências de RPO/RTO/retention;
+- limitações atuais do plano Supabase.
+
+Só abrir nova Issue se existir lacuna concreta entre `REQ-PLAT-005` e a operação disponível hoje.
 
 ## Não repetir
 
-- não reabrir `REQ-PLAT-002` ou `REQ-PLAT-003` sem nova regressão concreta;
-- não criar Issue de validação só para aumentar cobertura;
-- não alterar o trigger de saldo negativo: a diferença em relação ao check original é intencional;
-- não editar `supabase_migrations.schema_migrations` manualmente;
-- não aplicar DDL remoto durante a auditoria de migrations sem evidência e plano explícitos;
+- não reabrir REQ-PLAT-003 ou a auditoria de idempotência;
+- não renumerar novamente migrations históricas;
+- não editar `supabase_migrations.schema_migrations` diretamente;
+- não executar `migration repair` apenas para eliminar diferença visual;
 - não reativar bootstrap ou auto-deploy Vercel;
 - não importar dados reais;
 - não inferir Q-001..Q-025.

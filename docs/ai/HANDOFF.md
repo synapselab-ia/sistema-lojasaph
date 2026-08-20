@@ -2,88 +2,87 @@
 
 ## Estado
 
-A Fase 29 — auditoria de `REQ-PLAT-003 — Validação de dados` — foi concluída sem necessidade de Issue, branch funcional, patch ou migration.
+A Fase 30 — auditoria/correção de `REQ-PLAT-004 — Migrações de banco` — identificou e corrigiu um drift real de versions entre GitHub e o histórico do Supabase hospedado.
 
-`REQ-PLAT-003` é considerado atendido/verificado. A matriz consolidada está em `docs/qa/data-validation.md`.
+Integração da fase:
 
-Estado de referência:
-
-- baseline no início da Fase 29: `6c9ec5d9efb527f1df4fe7eff183444527442a4b`;
-- matriz de QA versionada em `370b37161150bcf2eac3afb4afb9d8bb80d96e10`;
-- Issues abertas ao iniciar: 0;
-- PRs abertos ao iniciar: 0;
-- nenhuma Issue criada nesta auditoria;
-- nenhuma alteração funcional ou de banco;
+- Issue #73 — alinhamento de versions locais ao histórico Supabase;
+- PR #74 — `fix(db): reconcile migration lineage with Supabase`;
+- head funcional/documental validado: `ef911001be843f6a191db7918c5fafd347a06120` antes deste commit final de handoff;
+- CI #307 — success;
+- Business Transactions Integration #154 — success;
+- Inventory Count Integration #170 — success;
+- nenhum DDL/DML remoto;
+- nenhum `migration repair` ou `db push`;
+- nenhuma alteração de RLS/grants/Auth;
 - nenhum deployment Vercel.
 
-A última alteração funcional continua sendo a Fase 28 / PR #72, validada por CI #301, Business Transactions Integration #153 e Inventory Count Integration #169.
+## Fase 30 — causa e correção
 
-## Fase 29 — o que foi comprovado
+No início existiam 28 arquivos locais em `supabase/migrations`, sendo 27 efetivos + 1 placeholder vazio. O projeto hospedado tinha 27 linhas em `supabase_migrations.schema_migrations`.
 
-A auditoria não tratou validação de formulário como prova suficiente. Foram confrontadas as regras essenciais com domínio/value objects, adapters/RPCs, definições `private.*` hospedadas, constraints/triggers/FKs e suites SQL existentes.
+Os 27 nomes semânticos correspondiam 1:1, mas os timestamps/versions locais divergiam do histórico remoto. A documentação atual do Supabase confirma que `migration list` compara as versions/timestamps e que `db push` usa esse histórico para decidir o que já foi aplicado. Portanto o estado anterior ameaçava o fluxo futuro de upgrade mesmo com schema funcional.
 
-### Domínio
+A correção:
 
-- `Money`: representação canônica em centavos, até 2 casas, formato/overflow protegidos;
-- `Quantity`: representação canônica em milésimos, até 3 casas, formato/overflow protegidos;
-- Estoque: positividade, não negatividade e invariantes de transferência/inventário no serviço de domínio;
-- item: categoria/nome/unidade obrigatórios e normalizados;
-- fornecedor: nome obrigatório e no máximo um contato primário no domínio.
+- renomeou as 27 migrations efetivas para as versions remotas canônicas;
+- preservou exatamente os blobs SQL — o compare do GitHub mostra os 27 como rename com zero alteração de conteúdo;
+- removeu o placeholder vazio `20260817231638_persistent_inventory_count.sql`;
+- não alterou `supabase_migrations.schema_migrations` nem reaplicou SQL no remoto;
+- documentou a matriz em `docs/qa/database-migrations.md`;
+- atualizou `docs/architecture/persistence.md` com a política de identidade de migrations.
 
-### Banco e RPCs
+A única inversão de ordem relevante era `reconcile_inventory_adjustment_type` antes/depois de `purchases_operational_flow`. Foi verificado que a migration de compras não depende do tipo `inventory_adjustment`; os gates reconstruíram a nova ordem com sucesso.
 
-Foi confirmada proteção autoritativa para:
+## Evidência de CI
 
-- campos obrigatórios e enums de cadastros;
-- referências cross-org por FKs compostas e buscas RPC no escopo da Organization;
-- quantidades, dinheiro e precisão;
-- item/local/fornecedor/meio de pagamento ativos;
-- lifecycle de transferência, inventário, compra, financeiro e caixa;
-- parcelas completas e numeradas, datas de pagamento/estorno, regras de taxa;
-- limites de recebimento e retorno;
-- lote/validade e disponibilidade de estoque;
-- sessão de caixa aberta para mutações operacionais.
+`CI #307`:
 
-O caso aparentemente divergente de saldo negativo foi esclarecido: `inventory_balances_quantity_on_hand_check` foi removido intencionalmente por migration posterior e substituído pelo trigger `inventory_balances_negative_policy`, que consulta `stock_locations.allow_negative_stock`. O trigger existe no Supabase hospedado.
+- job `database` — success;
+- aplicação completa das migrations reconciliadas — success;
+- seed anonimizado — success;
+- backup lógico e restore isolado — success;
+- smoke/schema/RLS/hardening/estoque/importação — success;
+- job `validate` — lint, typecheck, Vitest e production build — success.
 
-### Testes existentes
+`Business Transactions Integration #154` — success.
 
-A conclusão reutiliza, entre outras, `schema_smoke.sql`, suites de retirada/devolução/perda/transferência, `inventory_count.sql`, `purchase_orders.sql`, `finance_payables.sql`, `cash_sessions.sql`, permissões e hardening. Não foi criada cobertura duplicada só para fechar requisito.
+`Inventory Count Integration #170` — success.
 
 ## Supabase remoto
 
 Projeto `fhbvwyttikrbeaanatlr`, PostgreSQL 17.
 
-Todas as consultas desta Fase 29 foram introspecções somente leitura. Não houve DDL, DML operacional, alteração de migration history, RLS, grants, Auth ou configuração.
+Apenas queries read-only foram usadas. Elas confirmaram:
+
+- 27 migrations no histórico hospedado;
+- correspondência nominal com as 27 migrations efetivas locais;
+- nenhum relation/function/trigger atual em `public`/`private` sem referência nominal no texto das migrations registradas.
+
+Não houve mutação remota.
 
 ## Próximo chat — fazer
 
-1. Ler `AGENTS.md`, `docs/00-START-HERE.md`, `CURRENT_STATE`, este `HANDOFF`, `NEXT_ACTION`, `WORKFLOW`, `requirements.md` e `docs/qa/data-validation.md`.
-2. Conferir estado real de `main`, Issues, PRs, branches e CI antes de editar.
-3. Não repetir a auditoria de `REQ-PLAT-003` salvo nova regressão concreta.
-4. Auditar `REQ-PLAT-004 — Migrações de banco`.
-5. Comparar a lista ordenada de `supabase/migrations/*.sql` com `supabase_migrations.schema_migrations` no projeto hospedado.
-6. Não assumir que timestamps divergentes são erro: comparar nome, conteúdo/efeito e ordem histórica antes de classificar drift.
-7. Verificar se todas as mudanças estruturais atuais são reconstruíveis do zero usando somente as migrations versionadas e seed/test bootstrap do repositório.
-8. Confirmar que CI aplica todas as migrations em ordem a PostgreSQL limpo e não depende de DDL manual externo.
-9. Procurar objetos/constraints/functions hospedados sem ancestral versionado ou migrations versionadas ausentes no remoto.
-10. Só abrir Issue/branch se houver divergência concreta que ameace reprodutibilidade, upgrade ou rollback operacional.
-11. Não editar manualmente `supabase_migrations.schema_migrations` e não aplicar migration remota apenas para alinhar timestamp.
-12. Não fazer deploy Vercel durante auditoria.
-13. Atualizar continuidade ao encerrar.
-
-## Pista para REQ-PLAT-004
-
-Durante a auditoria de validação foi observado que a migration hospedada `inventory` aparece em `supabase_migrations.schema_migrations` como versão `20260817214649`, enquanto o repositório atual contém `20260817191000_inventory.sql` com a definição histórica correspondente.
-
-Isso é apenas **pista de auditoria**, não defeito confirmado. O próximo chat deve comparar a linhagem completa antes de propor qualquer alteração.
+1. Ler `AGENTS.md`, `docs/00-START-HERE.md`, `CURRENT_STATE`, este `HANDOFF`, `NEXT_ACTION`, `WORKFLOW`, `requirements.md`, `docs/qa/database-migrations.md` e `docs/operations/backup-restore.md`.
+2. Conferir `main`, Issues, PRs, branches e CI reais antes de editar.
+3. Não repetir REQ-PLAT-004 nem renumerar migrations históricas.
+4. Auditar `REQ-PLAT-005 — Backup e restauração` usando como baseline a Fase 16 já implementada.
+5. Confirmar a documentação oficial atual do Supabase para backups/plano vigente antes de concluir.
+6. Verificar se existe hoje rotina automática real de backup/off-site ou somente helper/runbook pronto para agendamento.
+7. Reaproveitar `scripts/export-supabase-backup.sh`, `scripts/verify-backup-restore.sh`, `supabase/tests/backup_restore.sql` e o gate de restore do CI.
+8. Separar claramente RPO, RTO, retenção, destino off-site e monitoramento; não inventar valores ainda não definidos.
+9. Se a prova técnica estiver correta mas faltar automação exigida por `REQ-PLAT-005`, registrar a lacuna concreta em uma única Issue antes de implementar.
+10. Não fazer restore destrutivo no projeto hospedado ativo.
+11. Não fazer deploy Vercel para auditoria.
+12. Atualizar continuidade ao final.
 
 ## Não fazer
 
-- não criar Issue retroativa para a Fase 29;
-- não alterar regras já protegidas apenas para duplicar validação de UI;
-- não remover a política configurável de saldo negativo;
-- não reabrir #69/#71;
-- não reativar bootstrap ou auto-deploy Vercel;
-- não usar dados/credenciais reais em testes;
+- não editar `supabase_migrations.schema_migrations` diretamente;
+- não usar `migration repair` sem drift comprovado e plano explícito;
+- não reabrir #69/#71 nem REQ-PLAT-003;
+- não repetir a correção de filenames da Fase 30;
+- não restaurar Production para testar;
+- não versionar dump, database URL ou secrets;
+- não reativar bootstrap/auto-deploy;
 - não inferir Q-001..Q-025.

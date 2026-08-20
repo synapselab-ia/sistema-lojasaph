@@ -1,12 +1,12 @@
 # Linhagem de migrations — REQ-PLAT-004
 
-Status: auditoria/correção da Fase 30.
+Status: **verificado/corrigido em 2026-08-20 — Fase 30**.
 
 ## Problema identificado
 
 O PostgreSQL hospedado continha 27 migrations registradas em `supabase_migrations.schema_migrations`, com nomes semânticos correspondentes às migrations efetivas do repositório, porém os timestamps/versions locais haviam sido renumerados. O repositório também mantinha um placeholder vazio de `persistent_inventory_count` que nunca apareceu no histórico remoto.
 
-Isso é um drift operacional real porque o Supabase CLI usa a version/timestamp para comparar migrations locais e remotas. Nomes ou conteúdo semanticamente equivalentes não substituem a identidade da version para `migration list`/`db push`.
+Isso era um drift operacional real porque o Supabase CLI usa a version/timestamp para comparar migrations locais e remotas. Nomes ou conteúdo semanticamente equivalentes não substituem a identidade da version para `migration list`/`db push`.
 
 ## Correção
 
@@ -53,11 +53,19 @@ Ignorando o placeholder vazio, a única diferença relativa encontrada entre a a
 
 `reconcile_inventory_adjustment_type` apenas substitui o `CHECK` de `stock_movements.movement_type` para aceitar `inventory_adjustment`. `purchases_operational_flow` não referencia esse tipo. Portanto a reconciliação para a ordem remota não introduz dependência funcional nova.
 
-## Reprodutibilidade
+## Reprodutibilidade comprovada
 
-Os workflows `CI`, `Inventory Count Integration` e `Business Transactions Integration` iniciam PostgreSQL 17 limpo, aplicam `supabase/tests/bootstrap.sql`, depois todos os arquivos `supabase/migrations/*.sql` ordenados lexicograficamente e só então seed/suites. Assim, o PR da Fase 30 deve demonstrar que a ordem canônica reconciliada continua reconstruindo o banco do zero.
+Os workflows `CI`, `Inventory Count Integration` e `Business Transactions Integration` iniciam PostgreSQL 17 limpo, aplicam `supabase/tests/bootstrap.sql`, depois todos os arquivos `supabase/migrations/*.sql` ordenados lexicograficamente e só então seed/suites.
 
-A CI principal também executa backup lógico e restore isolado após a reconstrução.
+Após a reconciliação:
+
+- CI #307 — success;
+- job `database` aplicou todas as migrations reconciliadas, seed, backup lógico + restore isolado e suites SQL — success;
+- job `validate` passou lint, typecheck, Vitest e production build;
+- Business Transactions Integration #154 — success;
+- Inventory Count Integration #170 — success.
+
+Isso comprova que a ordem canônica reconciliada continua reconstruindo o banco do zero e preserva os fluxos críticos testados.
 
 ## Evidência hospedada
 

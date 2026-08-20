@@ -2,38 +2,45 @@
 
 ## Contexto
 
-A Fase 29 concluiu a auditoria de `REQ-PLAT-003 — Validação de dados` sem encontrar lacuna reproduzível.
+A Fase 30 corrigiu o drift de versions de migrations encontrado em `REQ-PLAT-004 — Migrações de banco`.
 
-`REQ-PLAT-003` é considerado atendido/verificado. A evidência está em `docs/qa/data-validation.md`.
+Estado validado da integração:
 
-Estado preservado:
-
-- nenhuma Issue/branch funcional criada na Fase 29;
-- nenhuma mudança de código;
-- nenhuma migration/DDL/RLS/grant/Auth/data change;
-- Supabase remoto usado somente em leitura;
-- nenhum deployment Vercel;
-- última validação funcional: CI #301, Business Transactions Integration #153 e Inventory Count Integration #169 — success.
+- Issue #73;
+- PR #74;
+- head validado antes deste handoff: `ef911001be843f6a191db7918c5fafd347a06120`;
+- CI #307 — success;
+- Business Transactions Integration #154 — success;
+- Inventory Count Integration #170 — success;
+- 27 migrations efetivas alinhadas às 27 versions do histórico Supabase;
+- placeholder vazio removido;
+- nenhum conteúdo SQL histórico alterado;
+- nenhuma mutação no Supabase remoto;
+- nenhum deployment Vercel.
 
 ## O que já foi concluído — não repetir
 
-Não refazer a auditoria transversal de `REQ-PLAT-003`.
+Não repetir a auditoria/correção de `REQ-PLAT-004`.
 
-Já foi comprovado que regras essenciais amostradas de cadastros, Estoque, Transferências, Inventário, Compras, Financeiro e Caixa possuem barreiras autoritativas em domínio/RPC/banco e não dependem exclusivamente da UI.
-
-O saldo negativo de `inventory_balances` também já foi esclarecido: o check global original foi substituído intencionalmente pelo trigger `inventory_balances_negative_policy`, condicionado por `stock_locations.allow_negative_stock`.
+A identidade histórica das migrations está documentada em `docs/qa/database-migrations.md`. Depois que uma migration estiver registrada em ambiente compartilhado, não renumerar seu timestamp no GitHub. Não editar `supabase_migrations.schema_migrations` diretamente e não usar `migration repair` como cosmética.
 
 ## Objetivo ativo
 
-**Auditar `REQ-PLAT-004 — Migrações de banco`: toda mudança estrutural deve ser versionada.**
+**Auditar `REQ-PLAT-005 — Backup e restauração`: backups automáticos devem existir e o procedimento de restauração deve ser conhecido/testado.**
 
-A tarefa começa como auditoria de reprodutibilidade e linhagem. Não alterar migrations ou histórico hospedado até existir drift concreto e compreendido.
+A tarefa começa como auditoria do estado atual, não como reimplementação da Fase 16. Já existe uma estratégia e prova técnica; é necessário verificar se ela satisfaz hoje o requisito de automação operacional.
 
-## Pista concreta
+## Baseline já existente
 
-A introspecção read-only da Fase 29 encontrou diferença de numeração histórica: no projeto hospedado, a migration `inventory` está registrada como versão `20260817214649`, enquanto o repositório atual possui `20260817191000_inventory.sql` com a definição histórica correspondente.
+Antes de criar qualquer trabalho novo, verificar e reaproveitar:
 
-Isso pode ser apenas consequência de como migrations antigas foram aplicadas/nomeadas. Não classificar como defeito antes da comparação completa.
+- `docs/operations/backup-restore.md`;
+- `scripts/export-supabase-backup.sh`;
+- `scripts/verify-backup-restore.sh`;
+- `supabase/tests/backup_restore.sql`;
+- job `database` do `.github/workflows/ci.yml`, que executa o drill lógico em PostgreSQL efêmero.
+
+A Fase 30 acabou de confirmar novamente que o drill de backup/restore do CI passa após reconstrução completa das migrations.
 
 ## Fazer agora
 
@@ -44,56 +51,69 @@ Isso pode ser apenas consequência de como migrations antigas foram aplicadas/no
    - `docs/ai/HANDOFF.md`;
    - este arquivo;
    - `docs/ai/WORKFLOW.md`;
-   - `docs/product/requirements.md` (`REQ-PLAT-004`);
-   - `docs/qa/data-validation.md` apenas como contexto da pista encontrada.
+   - `docs/product/requirements.md` (`REQ-PLAT-005`);
+   - `docs/operations/backup-restore.md`;
+   - scripts/testes de backup citados acima.
 2. Conferir estado real de `main`, branches, Issues, PRs e workflows.
-3. Inventariar, em ordem, todos os arquivos `supabase/migrations/*.sql`, incluindo arquivos vazios/históricos se existirem.
-4. Ler `supabase_migrations.schema_migrations` no projeto hospedado somente em modo leitura e montar correspondência por:
-   - versão;
-   - nome;
-   - ordem;
-   - conteúdo/efeito estrutural quando o timestamp não coincidir.
-5. Não comparar apenas pelo número do arquivo. Identificar renomeações/renumerações históricas sem perder a relação semântica.
-6. Verificar se o schema hospedado atual contém objetos estruturais que não possam ser explicados por migrations versionadas do repositório.
-7. Verificar o inverso: migrations versionadas que deveriam estar refletidas no remoto mas não estão.
-8. Auditar `.github/workflows/ci.yml` e workflows PostgreSQL aplicáveis para confirmar que um banco limpo aplica todas as migrations ordenadas antes das suites.
-9. Usar a CI verde existente como evidência, mas não confundir “aplica do zero” com “histórico hospedado alinhado”.
-10. Conferir scripts de backup/restore apenas no que afeta reconstrução estrutural; não reabrir `REQ-PLAT-005` nesta fase.
-11. Se a divergência for apenas histórica e a reconstrução for determinística:
-   - documentar a matriz de linhagem;
-   - considerar `REQ-PLAT-004` atendido;
+3. Consultar a documentação oficial atual do Supabase sobre:
+   - backups gerenciados por plano;
+   - PITR;
+   - `supabase db dump`/restore;
+   - recomendações de automação/CI para backup.
+4. Confirmar o estado atual do projeto/plano Supabase somente por leitura quando possível; não assumir que o status de 2026-08-18 continua igual.
+5. Montar uma matriz separando:
+   - backup de schema via migrations;
+   - backup lógico de dados;
+   - automação/cadência real;
+   - storage off-site/retention;
+   - integridade/checksum;
+   - restore testado;
+   - monitoramento/alerta;
+   - RPO/RTO.
+6. Não confundir o drill de CI com backup automático de Production. O CI prova restauração mecânica; `REQ-PLAT-005` também exige existência da rotina automática apropriada ao ambiente real.
+7. Verificar se existe workflow/automation externa já configurada para executar `scripts/export-supabase-backup.sh`. Pesquisar o repositório e integrações disponíveis antes de concluir que não existe.
+8. Se a rotina automática real já existir e estiver adequada:
+   - documentar evidência;
+   - considerar `REQ-PLAT-005` atendido;
    - não criar Issue artificial.
-12. Se houver drift real, migration ausente ou risco de `db push`/upgrade:
-   - registrar evidência reproduzível;
+9. Se houver somente helper/runbook e nenhuma automação real:
+   - registrar a lacuna concreta;
    - abrir uma única Issue;
-   - criar branch dedicada a partir de `main`;
-   - corrigir a fonte de verdade com mudança mínima e reversível;
-   - nunca editar manualmente a tabela de migration history sem plano explícito e justificativa.
-13. Se houver patch, validar lint/typecheck/Vitest/build e workflows PostgreSQL relevantes antes de merge.
-14. Não fazer deploy Vercel durante auditoria/iteração.
-15. Atualizar `CURRENT_STATE`, `HANDOFF` e `NEXT_ACTION` ao encerrar.
+   - propor a menor automação segura possível sem inventar RPO/RTO;
+   - não armazenar dumps ou secrets no GitHub;
+   - não ativar custo/plano pago sem decisão explícita do usuário.
+10. Se a correção depender de RPO/RTO ou destino off-site ainda não definido pelo negócio, não inventar valores. Implementar apenas o que for reversível e independente dessa decisão, ou documentar o bloqueio objetivo.
+11. Não executar restore destrutivo no projeto Supabase ativo. Qualquer drill hospedado precisa de destino isolado e decisão explícita.
+12. Se houver patch, validar shell syntax, CI, restore drill e demais gates aplicáveis antes do merge.
+13. Não fazer deploy Vercel durante auditoria/iteração.
+14. Atualizar `CURRENT_STATE`, `HANDOFF` e `NEXT_ACTION` ao encerrar.
 
 ## Critério de conclusão
 
-Deve ser possível explicar a linhagem do schema atual e reconstruir um banco novo de forma determinística a partir do repositório, sem depender de DDL manual não versionado.
+`REQ-PLAT-005` só pode ser considerado atendido quando for possível apontar:
 
-Diferença de timestamp/nome histórico, isoladamente, não é falha. Falha é existir estrutura necessária sem migration versionada, migration necessária ausente no ambiente alvo ou histórico que torne upgrade/reprodução inseguro.
+- qual mecanismo produz backups do ambiente real;
+- onde e com que proteção eles são armazenados;
+- como a integridade é conferida;
+- como a restauração é executada e testada sem destruir Production;
+- quais parâmetros operacionais estão definidos e quais permanecem explicitamente pendentes.
+
+Uma prova de restore em CI é necessária e valiosa, mas isoladamente não comprova que backups automáticos do ambiente real estejam acontecendo.
 
 ## Segurança / operação
 
-- Supabase remoto em leitura até existir correção justificada;
-- não executar `repair migration`, `db push` ou alteração de history por tentativa;
-- não modificar RLS/grants fora do escopo de uma migration realmente faltante;
-- não reativar bootstrap;
-- não usar dados Production como fixture;
-- não disparar Vercel.
+- não versionar dump ou connection string;
+- não expor secret administrativa;
+- não restaurar sobre Production para testar;
+- não habilitar PITR/plano pago sem autorização explícita;
+- não inferir RPO/RTO;
+- não reativar bootstrap ou auto-deploy Vercel.
 
 ## Não fazer
 
-- não reabrir `REQ-PLAT-003`;
-- não criar Issue só porque timestamps diferem;
-- não apagar/renumerar migrations atuais sem análise de dependência;
-- não aplicar migration vazia para “zerar diferença”;
-- não editar `supabase_migrations.schema_migrations` diretamente;
-- não inferir Q-001..Q-025;
-- não reativar auto-deploy Vercel.
+- não reabrir REQ-PLAT-004;
+- não renumerar migrations;
+- não criar nova estratégia de backup ignorando a Fase 16;
+- não considerar `verify-backup-restore.sh` prova suficiente de automação Production;
+- não usar dados reais como fixture;
+- não inferir Q-001..Q-025.
