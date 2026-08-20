@@ -2,122 +2,116 @@
 
 ## Contexto
 
-A Fase 31 auditou `REQ-PLAT-005 — Backup e restauração` sem refazer a Fase 16.
+A Fase 32 auditou `REQ-PLAT-006 — Logs e erros` sem refazer a Fase 17.
 
 Resultado:
 
-- a mecânica de dump, checksum, restore isolado e runbook já estava correta;
-- o projeto Supabase continua `ACTIVE_HEALTHY`, PostgreSQL 17.6.1.141 e plano Free;
-- Free continua sem automatic backups gerenciados;
-- não existe workflow/agendador comprovado produzindo backup do ambiente real;
-- Issue #75 registra essa lacuna;
-- matriz: `docs/qa/backup-automation.md`;
-- nenhuma mutação remota, restore hospedado, dump real, contratação ou deploy Vercel ocorreu na auditoria.
+- o contrato de logs estruturados, correlation ID, redaction, error boundaries e mensagens públicas continua presente e testado;
+- Runtime Errors da Vercel comprovou captura real de `runtime.request.error` com correlationId e digest;
+- o erro histórico observado em `/workspace` pertencia a deployment anterior e já foi corrigido pela Fase 26;
+- o latest Production deployment consultado ficou sem novo error/warning na janela recente disponível;
+- logs de API/Auth do Supabase continuam pesquisáveis read-only;
+- retenção longa, browser telemetry, tracing cross-provider, SLA/SLO e alertas permanecem limitações/decisões não exigidas pelo requisito atual;
+- nenhuma nova Issue de observabilidade foi aberta;
+- nenhum deployment, DDL/DML ou configuração remota foi criado/alterado.
+
+A evidência detalhada está em `docs/qa/observability.md` e `docs/operations/observability.md`.
 
 ## O que já foi concluído — não repetir
 
-Não reimplementar a Fase 16 / Issue #41 / PR #42.
+Não reimplementar a Fase 17 / Issue #43 / PR #44.
 
 Reutilizar:
 
-- `docs/operations/backup-restore.md`;
-- `scripts/export-supabase-backup.sh`;
-- `scripts/verify-backup-restore.sh`;
-- `supabase/tests/backup_restore.sql`;
-- gate de backup/restore no `CI`.
+- `docs/decisions/ADR-007-observability-contract.md`;
+- `docs/operations/observability.md`;
+- `docs/qa/observability.md`;
+- `src/lib/observability/core.ts`;
+- `src/lib/observability/server.ts`;
+- `src/lib/observability/public-error.ts`;
+- `src/instrumentation.ts`;
+- `src/proxy.ts`;
+- `src/app/error.tsx`;
+- `src/app/global-error.tsx`;
+- testes de observabilidade existentes.
 
-Não confundir o drill de CI com backup de Production.
+Não abrir Issue apenas porque retenção/SLA/alerta não foram definidos; isso exige requisito operacional concreto.
 
-## Issue #75 — estado bloqueado até decisão operacional
+## Issue #75 — continuar bloqueada até decisão operacional
 
-A automação real depende de decisões que não podem ser inferidas:
+Antes de qualquer trabalho de backup, verificar se #75 recebeu decisões novas sobre RPO/RTO/destino/retenção/proteção/alerta.
 
-- RPO;
-- RTO;
-- destino off-site;
-- retenção;
-- proteção/cifragem no destino;
-- responsável e canal de alerta;
-- periodicidade/destino de drill hospedado isolado.
+Se continuar sem essas decisões, não inventar cron/storage e não interromper a próxima auditoria independente.
 
-### Se houver decisões novas em #75
+## Objetivo ativo
 
-1. Confirmar o estado real de `main`, Issue, PRs, branches e CI.
-2. Ler os comentários/decisões registradas na Issue #75.
-3. Criar/usar branch dedicada a #75.
-4. Implementar a menor rotina segura reutilizando `scripts/export-supabase-backup.sh`.
-5. A cadência não pode exceder o RPO aprovado.
-6. `SUPABASE_DB_URL` deve vir somente de secret do runtime.
-7. Usar Supabase CLI pinada/aprovada.
-8. Validar `SHA256SUMS` antes do upload.
-9. Persistir somente no destino off-site aprovado com a retenção definida.
-10. Limpar temporários mesmo em falha e emitir sinal de sucesso/falha sem expor secrets/dump.
-11. Manter o drill de restore da CI.
-12. Não executar restore destrutivo sobre Production.
-13. Validar shell/CI e a automação aplicável antes do merge.
-14. Só fechar #75 após evidência de execução automática real + storage protegido + monitoramento + recuperação documentada/testada.
+**Auditar `REQ-PLAT-007 — Ambientes separados`: Development/Preview e Production não devem compartilhar inadvertidamente dados/segredos.**
 
-### Se #75 continuar sem essas decisões
+A tarefa começa como auditoria, não como reimplementação da Fase 18.
 
-Não criar cron/storage arbitrários. Tratar #75 como **bloqueada por decisão operacional** e avançar para a auditoria independente abaixo.
+## Baseline existente
 
-## Objetivo autônomo seguinte
+Antes de criar trabalho novo, localizar e reaproveitar a Fase 18 / Issue #45 / PR #46 e especialmente:
 
-**Auditar `REQ-PLAT-006 — Logs e erros`: erros relevantes devem ser rastreáveis por logs/observabilidade.**
+- `docs/decisions/ADR-008-environment-isolation.md`;
+- `docs/operations/environments.md`;
+- política runtime em `src/lib/runtime/`;
+- integração do Proxy/Auth/workspace com essa política;
+- `/health` seguro;
+- testes de isolamento;
+- `vercel.json` com `git.deploymentEnabled=false`;
+- evidência histórica de Preview bloqueado sem backend isolado.
 
-A tarefa começa como auditoria, não como reimplementação da Fase 17.
+## Fazer agora
 
-### Baseline existente
+1. Ler `AGENTS.md`, `START-HERE`, `CURRENT_STATE`, `HANDOFF`, este arquivo, `WORKFLOW` e `REQ-PLAT-007`.
+2. Conferir `main`, Issue #75, demais Issues/PRs/branches e CI reais.
+3. Se #75 continuar bloqueada, não editar backup.
+4. Ler ADR-008, `docs/operations/environments.md`, política runtime e testes atuais; não confiar apenas no PR histórico.
+5. Verificar o estado real da Vercel sem copiar valores secretos:
+   - projeto/targets Production, Preview e Development;
+   - nomes/escopos de environment variables quando a ferramenta permitir;
+   - Git deployment policy;
+   - latest Production deployment e commit;
+   - existência de Preview ativo/recente que possa compartilhar backend Production.
+6. Verificar o estado real do Supabase:
+   - projeto Production atual;
+   - branches/projetos adicionais;
+   - plano/custo antes de considerar criação de ambiente;
+   - não criar branch/projeto pago sem autorização explícita.
+7. Revalidar os guardrails do código:
+   - mismatch `LOJASAPH_APP_ENV` / `VERCEL_ENV` deve falhar fechado;
+   - Preview sem backend isolado deve bloquear Supabase;
+   - ref de Preview deve diferir da ref Production;
+   - Development remoto deve usar ref distinta de Production;
+   - admin secret deve permanecer bloqueado fora de Production salvo opt-in explícito em backend comprovadamente isolado;
+   - browser não deve receber secret administrativa;
+   - `/health` não deve revelar URL/ref/key/secret.
+8. Distinguir configuração **comprovada** de configuração **não observável**. Ausência de acesso à listagem de env vars não prova compartilhamento nem isolamento.
+9. Não executar login, convite, password reset ou mutação em Preview apontando para backend não comprovado.
+10. Se a configuração/código atuais satisfizerem o requisito, documentar a evidência sem abrir Issue artificial.
+11. Se houver gap concreto e reproduzível, abrir uma única Issue, criar branch dedicada e implementar o menor fix reversível.
+12. Não criar Vercel deployment apenas para auditoria se o estado atual puder ser comprovado por configuração/runtime existente.
+13. Não reativar auto-deploy; `git.deploymentEnabled=false` permanece política deliberada.
+14. Se houver patch, validar lint, typecheck, testes, build e gates aplicáveis antes do merge.
+15. Atualizar `CURRENT_STATE`, `HANDOFF` e `NEXT_ACTION` ao final.
 
-Antes de criar trabalho novo, localizar e reaproveitar a Fase 17 / Issue #43 / PR #44 e a documentação associada, especialmente:
+## Critério de conclusão
 
-- contrato de logs estruturados server-side;
-- correlation ID;
-- redaction de tokens/credenciais/PII;
-- `src/instrumentation.ts` / `onRequestError`;
-- `error.tsx` / `global-error.tsx`;
-- runbook `docs/operations/observability.md`;
-- ADR de observabilidade;
-- testes existentes.
+`REQ-PLAT-007` pode ser considerado atendido quando houver evidência suficiente de que:
 
-### Fazer
-
-1. Ler `AGENTS.md`, `START-HERE`, `CURRENT_STATE`, `HANDOFF`, este arquivo e `WORKFLOW`.
-2. Conferir primeiro Issue #75. Se não houver decisões novas, não editar a frente de backup.
-3. Ler `REQ-PLAT-006` e toda a documentação da Fase 17.
-4. Conferir estado real de `main`, Issues/PRs/branches e CI.
-5. Inspecionar o código/runtime de observabilidade existente; não confiar apenas no PR histórico.
-6. Verificar:
-   - cobertura de erros server-side relevantes;
-   - correlation ID end-to-end onde tecnicamente aplicável;
-   - redaction/fail-safe de secrets e PII;
-   - mensagens públicas sem internals;
-   - logs de Auth e comandos críticos quando aplicável;
-   - retenção/destino atual dos logs;
-   - capacidade real de pesquisa/diagnóstico no ambiente hospedado;
-   - monitoramento/alerta e limites atuais do provedor/plano.
-7. Consultar documentação atual do Supabase/Vercel somente para pontos que dependam do comportamento vigente.
-8. Se a observabilidade atual satisfizer o requisito, documentar evidência sem criar Issue artificial.
-9. Se houver gap concreto e reproduzível, abrir uma única Issue, criar branch dedicada e implementar o menor fix reversível.
-10. Não contratar vendor pago ou Log Drain por inferência.
-11. Não fazer deploy Vercel salvo se um gap só puder ser validado em runtime hospedado e houver justificativa concreta; evitar consumo de quota.
-12. Se houver patch, validar lint, typecheck, testes, build e gates PostgreSQL aplicáveis.
-13. Atualizar `CURRENT_STATE`, `HANDOFF` e `NEXT_ACTION` ao final.
+- Preview/Development não recebem inadvertidamente backend/dados Production;
+- secrets administrativas não estão disponíveis em cliente e não-prod sem exceção explícita;
+- a identidade do backend é verificada fail-closed pelo runtime;
+- configuração não comprovada resulta em bloqueio, não em acesso permissivo;
+- a documentação distingue claramente o que está comprovado, bloqueado e pendente.
 
 ## Segurança / operação
 
-- não versionar secrets, tokens, connection strings ou dumps;
-- não logar cookies/headers completos;
-- não restaurar Production para testar backup;
-- não ativar PITR/plano pago/serviço externo sem autorização;
-- não inventar RPO/RTO;
-- não reativar bootstrap/auto-deploy Vercel.
-
-## Não fazer
-
-- não fechar #75 sem rotina automática real;
-- não reimplementar a Fase 16;
-- não tratar CI sintética como backup Production;
-- não reabrir REQ-PLAT-004;
-- não renumerar migrations;
+- nunca copiar valores de env vars/secrets para GitHub ou chat;
+- não criar backend/branch Supabase com custo sem autorização;
+- não testar escrita em Preview se a identidade do backend não estiver comprovada;
+- não reativar Git auto-deploy;
+- não fazer deploy Vercel apenas para repetir evidência histórica;
+- não fechar #75 sem backup automático real;
 - não inferir Q-001..Q-025.
