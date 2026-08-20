@@ -1,13 +1,13 @@
 # Observabilidade — logs, correlação e triagem
 
-Data de verificação: 2026-08-18  
+Data de verificação: 2026-08-20  
 Escopo: `REQ-PLAT-006`
 
 ## Objetivo
 
 Permitir identificar falhas relevantes do runtime sem expor secrets ou dados sensíveis e sem depender de um fornecedor pago específico.
 
-A arquitetura desta fase é descrita em `ADR-007-observability-contract.md`.
+A arquitetura desta fase é descrita em `ADR-007-observability-contract.md`. A revalidação detalhada de 2026-08-20 está em `docs/qa/observability.md`.
 
 ## Estado dos provedores verificado
 
@@ -15,19 +15,25 @@ A arquitetura desta fase é descrita em `ADR-007-observability-contract.md`.
 
 O projeto conectado `sistema-lojasaph` expõe Runtime Logs e Runtime Errors. As consultas suportam filtro por deployment, ambiente, nível, status, origem, texto e request ID.
 
-Na verificação anterior à implementação não havia runtime errors nem logs de aplicação nas últimas 24 horas. O preview da Fase 17 confirmou que logs JSON emitidos pelo servidor aparecem em Runtime Logs.
+A auditoria de 2026-08-20 comprovou o contrato em dados reais de runtime: um erro histórico de `/workspace` foi capturado como `runtime.request.error` com `correlationId`, rota e `digest`. O erro funcional pertencia a deployment anterior e a correção de serialização Server → Client já está em deployments posteriores.
 
-A retenção contratual não foi assumida nesta fase. Antes de depender de uma janela histórica específica em produção, confirmar o plano vigente e a documentação atual da Vercel.
+O latest Production deployment consultado na auditoria estava `READY`. Na janela recente disponível foram observadas respostas `200` em `/workspace` e módulos operacionais, sem novo `error`/`warning` retornado para esse deployment.
+
+A retenção do plano atual é curta. Uma consulta de sete dias foi rejeitada como além da janela disponível, enquanto a consulta da última hora funcionou. Portanto o sistema não promete investigação histórica por Runtime Logs além da retenção efetivamente disponível no plano vigente.
+
+Não habilitar Observability Plus, Drain ou outro destino pago apenas para ampliar retenção sem requisito operacional aprovado.
 
 ### Supabase
 
-O projeto conectado foi verificado como saudável, PostgreSQL 17, organização no plano Free.
+O projeto conectado foi revalidado como `ACTIVE_HEALTHY`, região `sa-east-1`, PostgreSQL `17.6.1.141`.
 
-Logs de API/Postgres/Auth podem ser consultados pelo Logs Explorer/API. A Fase 17 fez apenas consultas read-only.
+Logs de API/Postgres/Auth podem ser consultados pelo Logs Explorer/API. A auditoria de 2026-08-20 usou apenas leitura e confirmou tráfego operacional atual, status HTTP/RPC e request IDs do provedor.
 
-Log Drains não são usados: a documentação atual informa disponibilidade somente para planos Pro, Team e Enterprise. Se o plano mudar, reavaliar antes de configurar destino externo.
+Os logs nativos do Supabase podem conter PII e metadados próprios do provedor, como IP, referer, UUIDs e identidade Auth. Não copiar logs brutos para Issue/PR; registrar somente a evidência mínima necessária.
 
-O changelog de 2026-07-23 anunciou a remoção do endpoint Management API `logs.all` em 2026-09-23 em favor do endpoint unificado `logs`. O Sistema Lojasaph não adicionou integração direta com `logs.all`; qualquer automação futura deve usar a API vigente.
+Log Drains não são usados: a documentação atual informa disponibilidade somente para planos Pro, Team e Enterprise. A organização conectada permanece no plano Free. Se o plano ou o requisito de retenção mudar, reavaliar antes de configurar destino externo.
+
+O changelog de 2026-07-23 anunciou a remoção do endpoint Management API `logs.all` em 2026-09-23 em favor do endpoint unificado `logs`. O Sistema Lojasaph não possui integração direta com `logs.all`; qualquer automação futura deve usar a API vigente.
 
 ## Contrato de log
 
@@ -133,6 +139,8 @@ Detalhes técnicos permanecem fora da UI.
 5. Confirmar que o log não contém dados sensíveis antes de copiar para Issue/PR.
 6. Relacionar o evento à versão/deployment antes de corrigir código.
 
+Como a retenção atual é curta, a triagem deve começar pela menor janela possível. Ausência de um log antigo não prova ausência do erro se a janela já expirou.
+
 Não copiar logs brutos com dados de cliente para GitHub.
 
 ## Triagem no Supabase
@@ -143,7 +151,8 @@ Usar Logs Explorer/API em modo read-only para investigar falhas de Postgres, Aut
 2. Selecionar serviço relevante.
 3. Correlacionar por rota/RPC, código de erro e horário.
 4. Não assumir que o `correlationId` do Next estará presente em chamadas Supabase feitas diretamente pelo browser.
-5. Não alterar schema/RLS para investigar um log sem requisito/migration versionada.
+5. Tratar conteúdo de logs do provedor como potencialmente sensível; resumir em vez de copiar bruto.
+6. Não alterar schema/RLS para investigar um log sem requisito/migration versionada.
 
 ## Smoke test seguro em preview
 
@@ -159,15 +168,18 @@ Procedimento validado na Fase 17:
 
 Este cenário é deliberadamente inválido e não cria sessão nem altera dados.
 
+A auditoria de 2026-08-20 não criou novo deployment: o comportamento real já estava comprovado e os blobs centrais de `core.ts` e `instrumentation.ts` do Production deployment auditado coincidem com a `main`.
+
 ## Limitações conscientes
 
 - não há vendor dedicado de browser error tracking nesta fase;
 - erros puramente client-side podem não aparecer nos Runtime Logs da Vercel se não tiverem contraparte server-side;
 - chamadas Supabase feitas no browser não recebem automaticamente a correlação do logger server-side;
-- retenção, SLA/SLO, alertas e on-call continuam pendentes;
+- a retenção de Runtime Logs do plano Vercel atual é curta e não é tratada como retenção histórica contratual;
+- SLA/SLO, alertas e on-call continuam não definidos;
 - Log Drains do Supabase não estão disponíveis no plano atual;
 - esta fundação não substitui auditoria de negócio já existente no banco.
 
 ## Critério para evolução
 
-Considerar Sentry, OpenTelemetry exportado, Log Drain ou outro destino somente quando houver necessidade concreta de telemetria client-side, tracing entre serviços, retenção maior, alertas ou compliance. A adoção deve preservar o contrato atual e a política de redaction.
+Considerar Sentry, OpenTelemetry exportado, Log Drain, Observability Plus ou outro destino somente quando houver necessidade concreta de telemetria client-side, tracing entre serviços, retenção maior, alertas ou compliance. A adoção deve preservar o contrato atual e a política de redaction.
