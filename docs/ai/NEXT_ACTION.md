@@ -2,40 +2,44 @@
 
 ## Contexto
 
-A Fase 32 auditou `REQ-PLAT-006 — Logs e erros` sem refazer a Fase 17.
+A Fase 33 auditou `REQ-PLAT-007 — Ambientes separados` sem refazer a Fase 18.
 
 Resultado:
 
-- o contrato de logs estruturados, correlation ID, redaction, error boundaries e mensagens públicas continua presente e testado;
-- Runtime Errors da Vercel comprovou captura real de `runtime.request.error` com correlationId e digest;
-- o erro histórico observado em `/workspace` pertencia a deployment anterior e já foi corrigido pela Fase 26;
-- o latest Production deployment consultado ficou sem novo error/warning na janela recente disponível;
-- logs de API/Auth do Supabase continuam pesquisáveis read-only;
-- retenção longa, browser telemetry, tracing cross-provider, SLA/SLO e alertas permanecem limitações/decisões não exigidas pelo requisito atual;
-- nenhuma nova Issue de observabilidade foi aberta;
-- nenhum deployment, DDL/DML ou configuração remota foi criado/alterado.
+- a política fail-closed de Development/Preview/Production continua presente e testada;
+- o núcleo `src/lib/runtime/environment.ts` é byte-for-byte igual no Preview homologado da Fase 18, no commit atualmente hospedado em Production e na `main` auditada;
+- Production `/health` confirmou `environment=production`, `supabaseAccess=allowed` e `adminAccess=blocked`, sem expor URL/ref/key/secret;
+- os últimos Previews identificados continuam sendo os da Fase 18; não foi criado novo deployment;
+- `vercel.json` continua com `git.deploymentEnabled=false`;
+- env vars Vercel por target continuam não observáveis pela conexão atual, portanto não foram inferidos valores/targets;
+- o projeto Supabase do Lojasaph continua saudável e sem branches;
+- a organização possui agora um segundo projeto (`easy-v2`) com migrations próprias, sem evidência de relação com o Lojasaph;
+- nenhuma nova Issue funcional de ambientes foi aberta;
+- nenhum DDL/DML, migration, dado, branch/projeto Supabase ou configuração remota foi criado/alterado.
 
-A evidência detalhada está em `docs/qa/observability.md` e `docs/operations/observability.md`.
+A evidência detalhada está em `docs/qa/environment-isolation.md` e `docs/operations/environments.md`.
 
 ## O que já foi concluído — não repetir
 
-Não reimplementar a Fase 17 / Issue #43 / PR #44.
+Não reimplementar a Fase 18 / Issue #45 / PR #46.
 
 Reutilizar:
 
-- `docs/decisions/ADR-007-observability-contract.md`;
-- `docs/operations/observability.md`;
-- `docs/qa/observability.md`;
-- `src/lib/observability/core.ts`;
-- `src/lib/observability/server.ts`;
-- `src/lib/observability/public-error.ts`;
-- `src/instrumentation.ts`;
-- `src/proxy.ts`;
-- `src/app/error.tsx`;
-- `src/app/global-error.tsx`;
-- testes de observabilidade existentes.
+- `docs/decisions/ADR-008-environment-isolation.md`;
+- `docs/operations/environments.md`;
+- `docs/qa/environment-isolation.md`;
+- `src/lib/runtime/environment.ts`;
+- `src/lib/runtime/environment.test.ts`;
+- `src/lib/runtime/client-boundary.test.ts`;
+- `src/lib/runtime/server.ts`;
+- `src/lib/supabase/proxy.ts`;
+- `src/lib/supabase/browser.ts`;
+- `/health`;
+- `vercel.json`.
 
-Não abrir Issue apenas porque retenção/SLA/alerta não foram definidos; isso exige requisito operacional concreto.
+Não criar Preview novo apenas para repetir o smoke fail-closed enquanto não houver drift funcional.
+
+Não reutilizar `easy-v2` como backend Preview/Development do Lojasaph sem decisão explícita e prova de finalidade.
 
 ## Issue #75 — continuar bloqueada até decisão operacional
 
@@ -45,73 +49,84 @@ Se continuar sem essas decisões, não inventar cron/storage e não interromper 
 
 ## Objetivo ativo
 
-**Auditar `REQ-PLAT-007 — Ambientes separados`: Development/Preview e Production não devem compartilhar inadvertidamente dados/segredos.**
+**Auditar conjuntamente `REQ-IMP-001` a `REQ-IMP-004` — importação rastreável, idempotência, preview/dry run e relatório de inconsistências — e revalidar o suporte de aliases de `REQ-ITEM-002` associado à migração.**
 
-A tarefa começa como auditoria, não como reimplementação da Fase 18.
+A tarefa começa como auditoria, não como reimplementação da Fase 15 e **não autoriza importar dados reais**.
 
 ## Baseline existente
 
-Antes de criar trabalho novo, localizar e reaproveitar a Fase 18 / Issue #45 / PR #46 e especialmente:
+Antes de criar trabalho novo, localizar e reaproveitar a Fase 15 / Issue #39 / PR #40.
 
-- `docs/decisions/ADR-008-environment-isolation.md`;
-- `docs/operations/environments.md`;
-- política runtime em `src/lib/runtime/`;
-- integração do Proxy/Auth/workspace com essa política;
-- `/health` seguro;
-- testes de isolamento;
-- `vercel.json` com `git.deploymentEnabled=false`;
-- evidência histórica de Preview bloqueado sem backend isolado.
+A entrega histórica incluiu:
+
+- `import_batches`/staging persistente com origem/hash;
+- arquivo/aba/linha/payload bruto rastreáveis;
+- idempotência determinística de batch/linha;
+- estados/resultados para accepted/duplicate/warning/rejected/pending mapping;
+- dry run sem escrita nas tabelas operacionais;
+- relatório estruturado de preview;
+- aliases explícitos e matching canônico exato, sem fuzzy auto-merge;
+- RLS/Organization e superfície RPC auditada;
+- fixtures sintéticas e testes PostgreSQL/Vitest;
+- documentação de importação/migração.
+
+Migrations remotas da Fase 15 já aplicadas e que **não devem ser reaplicadas**:
+
+- `20260818180723 / import_staging`;
+- `20260818180738 / import_staging_finalize_fix`;
+- `20260818181051 / import_staging_indexes`.
 
 ## Fazer agora
 
-1. Ler `AGENTS.md`, `START-HERE`, `CURRENT_STATE`, `HANDOFF`, este arquivo, `WORKFLOW` e `REQ-PLAT-007`.
+1. Ler `AGENTS.md`, `START-HERE`, `CURRENT_STATE`, `HANDOFF`, este arquivo, `WORKFLOW` e os requisitos `REQ-IMP-001..004`/`REQ-ITEM-002`.
 2. Conferir `main`, Issue #75, demais Issues/PRs/branches e CI reais.
 3. Se #75 continuar bloqueada, não editar backup.
-4. Ler ADR-008, `docs/operations/environments.md`, política runtime e testes atuais; não confiar apenas no PR histórico.
-5. Verificar o estado real da Vercel sem copiar valores secretos:
-   - projeto/targets Production, Preview e Development;
-   - nomes/escopos de environment variables quando a ferramenta permitir;
-   - Git deployment policy;
-   - latest Production deployment e commit;
-   - existência de Preview ativo/recente que possa compartilhar backend Production.
-6. Verificar o estado real do Supabase:
-   - projeto Production atual;
-   - branches/projetos adicionais;
-   - plano/custo antes de considerar criação de ambiente;
-   - não criar branch/projeto pago sem autorização explícita.
-7. Revalidar os guardrails do código:
-   - mismatch `LOJASAPH_APP_ENV` / `VERCEL_ENV` deve falhar fechado;
-   - Preview sem backend isolado deve bloquear Supabase;
-   - ref de Preview deve diferir da ref Production;
-   - Development remoto deve usar ref distinta de Production;
-   - admin secret deve permanecer bloqueado fora de Production salvo opt-in explícito em backend comprovadamente isolado;
-   - browser não deve receber secret administrativa;
-   - `/health` não deve revelar URL/ref/key/secret.
-8. Distinguir configuração **comprovada** de configuração **não observável**. Ausência de acesso à listagem de env vars não prova compartilhamento nem isolamento.
-9. Não executar login, convite, password reset ou mutação em Preview apontando para backend não comprovado.
-10. Se a configuração/código atuais satisfizerem o requisito, documentar a evidência sem abrir Issue artificial.
-11. Se houver gap concreto e reproduzível, abrir uma única Issue, criar branch dedicada e implementar o menor fix reversível.
-12. Não criar Vercel deployment apenas para auditoria se o estado atual puder ser comprovado por configuração/runtime existente.
-13. Não reativar auto-deploy; `git.deploymentEnabled=false` permanece política deliberada.
-14. Se houver patch, validar lint, typecheck, testes, build e gates aplicáveis antes do merge.
-15. Atualizar `CURRENT_STATE`, `HANDOFF` e `NEXT_ACTION` ao final.
+4. Ler Issue #39, PR #40 e a documentação atual, especialmente:
+   - `docs/modules/imports.md`;
+   - `docs/source-data/migration-plan.md`;
+   - documentação de source data relevante;
+   - migrations `import_staging*`;
+   - `supabase/tests/import_staging.sql`;
+   - código atual de parsing, normalização, aliases, staging e dry run.
+5. Revalidar o estado real, não apenas o PR histórico:
+   - cada batch preserva origem, hash e identificador estável;
+   - cada linha preserva arquivo/aba/linha/payload e resultado;
+   - reprocessamento determinístico não duplica staging/resultados;
+   - dry run não escreve em tabelas finais operacionais;
+   - relatório distingue aceitas, duplicadas, warnings, rejeitadas e mapeamentos pendentes;
+   - aliases são explícitos e não fazem merge por similaridade textual;
+   - transformações dependentes de Q-001..Q-025 permanecem pendentes, sem inferência;
+   - RLS/escopo impede acesso cross-Organization/anon indevido;
+   - não há dados reais, dumps ou arquivos fonte sensíveis versionados.
+6. Verificar as migrations remotas e tabelas/RPCs atuais somente por leitura, confirmando que a fundação permanece aplicada e coerente; não reaplicar migrations.
+7. Quando útil, rodar advisors/read-only e comparar schema atual com migrations/testes; não corrigir warnings genéricos sem defeito concreto.
+8. Distinguir a fundação de staging da **migração real**. A existência do módulo não autoriza carregar as seis planilhas, definir cutover ou resolver questões abertas.
+9. Se os requisitos atuais estiverem satisfeitos, documentar evidência sem abrir Issue artificial.
+10. Se houver gap concreto e reproduzível, abrir uma única Issue, criar branch dedicada e implementar o menor fix reversível/versionado.
+11. Não criar deployment Vercel para esta auditoria salvo necessidade real de runtime hospedado; a fundação é principalmente domínio/PostgreSQL.
+12. Se houver patch, validar lint, typecheck, Vitest, build e gates PostgreSQL aplicáveis antes do merge.
+13. Atualizar `CURRENT_STATE`, `HANDOFF` e `NEXT_ACTION` ao final.
 
 ## Critério de conclusão
 
-`REQ-PLAT-007` pode ser considerado atendido quando houver evidência suficiente de que:
+A auditoria pode considerar `REQ-IMP-001..004` e o suporte migratório de aliases atendidos quando houver evidência de que:
 
-- Preview/Development não recebem inadvertidamente backend/dados Production;
-- secrets administrativas não estão disponíveis em cliente e não-prod sem exceção explícita;
-- a identidade do backend é verificada fail-closed pelo runtime;
-- configuração não comprovada resulta em bloqueio, não em acesso permissivo;
-- a documentação distingue claramente o que está comprovado, bloqueado e pendente.
+- staging preserva rastreabilidade de batch e linha;
+- retry/reprocessamento é idempotente;
+- dry run não produz efeitos em tabelas finais;
+- inconsistências e mapeamentos pendentes são reportados explicitamente;
+- matching de aliases não inventa fusões;
+- isolamento por Organization continua protegido;
+- nenhuma questão de negócio pendente é resolvida por inferência;
+- nenhuma carga real/cutover é executada nesta auditoria.
 
 ## Segurança / operação
 
-- nunca copiar valores de env vars/secrets para GitHub ou chat;
-- não criar backend/branch Supabase com custo sem autorização;
-- não testar escrita em Preview se a identidade do backend não estiver comprovada;
-- não reativar Git auto-deploy;
-- não fazer deploy Vercel apenas para repetir evidência histórica;
+- nunca versionar planilhas/dados reais, dumps, secrets ou connection strings;
+- não reaplicar migrations já presentes no remoto;
+- não executar importação definitiva/cutover;
+- não transformar `pending_mapping` em aceite automático sem decisão registrada;
 - não fechar #75 sem backup automático real;
+- não reutilizar `easy-v2` como ambiente do Lojasaph por inferência;
+- não reativar Git auto-deploy;
 - não inferir Q-001..Q-025.
