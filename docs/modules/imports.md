@@ -1,12 +1,14 @@
 # Importação — staging e dry run
 
-Status: **Fase 15 implementada e homologada**; contrato de categoria obrigatória de StockItem alinhado na Fase 22.
+Status: **Fase 15 implementada e homologada; fundação revalidada na auditoria de 2026-08-20**. O contrato de categoria obrigatória de StockItem foi alinhado na Fase 22.
 
 ## Escopo atual
 
 A fundação de importação atende a infraestrutura necessária para `REQ-IMP-001` a `REQ-IMP-004` e ao uso explícito de aliases previsto em `REQ-ITEM-002`, sem executar migração definitiva de dados.
 
-Esta fase entrega somente staging, validação, idempotência, preview/dry run e relatório. As seis planilhas reais, cutover e escrita dos dados importados nas tabelas operacionais permanecem fora do escopo.
+A auditoria de 2026-08-20 revalidou código, migrations, testes e estado remoto e não encontrou gap funcional novo. Evidência detalhada: `docs/qa/import-foundation-audit.md`.
+
+Esta fundação entrega somente staging, validação, idempotência, preview/dry run e relatório. As seis planilhas reais, cutover e escrita dos dados importados nas tabelas operacionais permanecem fora do escopo.
 
 ## Persistência
 
@@ -108,15 +110,17 @@ O staging é Organization-wide.
 - criação de batch e finalização de preview registram `audit_logs`;
 - os RPCs `SECURITY DEFINER` revalidam identidade e escopo internamente, seguindo o padrão de command surface do projeto.
 
+A auditoria de RLS imediatamente anterior (`docs/qa/rls-preflight.md`) revalidou a barreira de acesso e não encontrou bypass de importação.
+
 ## Implementação
 
-Migrations versionadas:
+Migrations versionadas no GitHub e alinhadas ao histórico remoto desde a Fase 30:
 
-- `20260818174500_import_staging.sql`;
-- `20260818180500_import_staging_finalize_fix.sql`;
-- `20260818182000_import_staging_indexes.sql`.
+- `20260818180723_import_staging.sql`;
+- `20260818180738_import_staging_finalize_fix.sql`;
+- `20260818181051_import_staging_indexes.sql`.
 
-No Supabase remoto elas foram registradas como:
+Supabase remoto:
 
 - `20260818180723 / import_staging`;
 - `20260818180738 / import_staging_finalize_fix`;
@@ -133,9 +137,9 @@ Teste PostgreSQL:
 
 O CI principal executa essa suíte junto das validações de schema, RLS e estoque já existentes.
 
-## Homologação remota
+## Homologação e revalidação remota
 
-Após CI verde, a suíte sintética foi executada no Supabase hospedado em uma única transação `BEGIN/ROLLBACK`.
+Na Fase 15, após CI verde, a suíte sintética foi executada no Supabase hospedado em uma única transação `BEGIN/ROLLBACK`.
 
 Resultado: `import staging tests passed`.
 
@@ -153,7 +157,15 @@ Foi comprovado:
 
 Checagem posterior ao rollback confirmou zero usuários, memberships, batches, rows, audits e itens operacionais temporários.
 
-Os advisors foram executados após as DDLs. Os dois avisos novos de foreign keys sem índice foram corrigidos pela migration de índices. Os avisos restantes são históricos do projeto ou correspondem ao padrão intencional de RPC autenticada `SECURITY DEFINER` já protegido por validação interna.
+Na auditoria de 2026-08-20, consultas somente leitura confirmaram novamente:
+
+- as três migrations de importação presentes no histórico remoto;
+- `import_batches` e `import_rows` com RLS e somente `SELECT` direto para `authenticated`;
+- quatro RPCs de importação com `search_path=""`, guarda de identidade/escopo e sem EXECUTE para `anon`;
+- nenhuma DML operacional nas quatro RPCs;
+- `import_batches = 0` e `import_rows = 0` no projeto hospedado.
+
+Os advisors da Fase 15 tiveram os dois FKs de importação sem índice corrigidos pela migration de índices. Avisos históricos/gerais do projeto não são tratados como defeito desta fundação sem evidência concreta.
 
 ## Fora do escopo / próximos passos futuros
 
