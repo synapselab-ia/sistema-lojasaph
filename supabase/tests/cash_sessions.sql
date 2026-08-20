@@ -38,6 +38,25 @@ select * from public.create_payment_method('91000000-0000-4000-8000-000000000212
 select * from public.create_payment_method('91000000-0000-4000-8000-000000000213','00000000-0000-4000-8000-000000000001','voucher','Voucher','voucher',false);
 select * from public.create_fee_rule('91000000-0000-4000-8000-000000000220','00000000-0000-4000-8000-000000000001','91000000-0000-4000-8000-000000000211',current_date,null,2.0,0,'Taxa demo 2%');
 
+-- Configuration commands replay identically and reject reuse with a changed semantic payload.
+select * from public.create_cash_register('91000000-0000-4000-8000-000000000200','00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000100','Caixa principal','principal');
+select * from public.create_payment_method('91000000-0000-4000-8000-000000000210','00000000-0000-4000-8000-000000000001','dinheiro','Dinheiro','cash',true);
+select * from public.create_fee_rule('91000000-0000-4000-8000-000000000220','00000000-0000-4000-8000-000000000001','91000000-0000-4000-8000-000000000211',current_date,null,2.0,0,'Taxa demo 2%');
+do $$ begin
+  begin
+    perform public.create_cash_register('91000000-0000-4000-8000-000000000200','00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000100','Caixa alterado','principal');
+    raise exception 'cash register idempotency conflict unexpectedly accepted';
+  exception when unique_violation then null; end;
+  begin
+    perform public.create_payment_method('91000000-0000-4000-8000-000000000210','00000000-0000-4000-8000-000000000001','dinheiro','Dinheiro alterado','cash',true);
+    raise exception 'payment method idempotency conflict unexpectedly accepted';
+  exception when unique_violation then null; end;
+  begin
+    perform public.create_fee_rule('91000000-0000-4000-8000-000000000220','00000000-0000-4000-8000-000000000001','91000000-0000-4000-8000-000000000211',current_date,null,3.0,0,'Taxa demo 2%');
+    raise exception 'fee rule idempotency conflict unexpectedly accepted';
+  exception when unique_violation then null; end;
+end $$;
+
 -- Direct writes stay forbidden.
 do $$ begin
   begin
@@ -83,6 +102,13 @@ end $$;
 
 -- Cash movements are append-only. Employee consumption is separate and does not affect expected drawer cash.
 select * from public.record_cash_movement('91000000-0000-4000-8000-000000000320','00000000-0000-4000-8000-000000000001','91000000-0000-4000-8000-000000000300','cash_in',100.00,'2026-08-18T12:00:00Z','entrada teste');
+select * from public.record_cash_movement('91000000-0000-4000-8000-000000000320','00000000-0000-4000-8000-000000000001','91000000-0000-4000-8000-000000000300','cash_in',100.00,'2026-08-18T12:00:00Z','entrada teste');
+do $$ begin
+  begin
+    perform public.record_cash_movement('91000000-0000-4000-8000-000000000320','00000000-0000-4000-8000-000000000001','91000000-0000-4000-8000-000000000300','cash_in',101.00,'2026-08-18T12:00:00Z','entrada teste');
+    raise exception 'cash movement idempotency conflict unexpectedly accepted';
+  exception when unique_violation then null; end;
+end $$;
 select * from public.record_cash_movement('91000000-0000-4000-8000-000000000321','00000000-0000-4000-8000-000000000001','91000000-0000-4000-8000-000000000300','cash_out',40.00,'2026-08-18T12:10:00Z','sangria teste');
 select * from public.record_cash_movement('91000000-0000-4000-8000-000000000322','00000000-0000-4000-8000-000000000001','91000000-0000-4000-8000-000000000300','employee_consumption',25.00,'2026-08-18T12:20:00Z','categoria separada');
 

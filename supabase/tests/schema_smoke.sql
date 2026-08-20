@@ -162,6 +162,28 @@ select * from public.record_stock_entry(
   'CI transactional entry'
 );
 
+-- Reusing the same command id with a different semantic payload must be rejected.
+do $$
+begin
+  begin
+    perform public.record_stock_entry(
+      '10000000-0000-4000-8000-000000000900',
+      '00000000-0000-4000-8000-000000000001',
+      '00000000-0000-4000-8000-000000000400',
+      '00000000-0000-4000-8000-000000000120',
+      11.000,
+      3.00,
+      'CI-RPC-TEST',
+      '2026-09-30',
+      'CI transactional entry'
+    );
+    raise exception 'stock entry idempotency conflict unexpectedly accepted';
+  exception
+    when unique_violation then null;
+  end;
+end;
+$$;
+
 reset role;
 
 do $$

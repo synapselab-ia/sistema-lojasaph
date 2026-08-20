@@ -1,8 +1,9 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import { DomainError } from "@/domain/common/domain-error";
-import { EntityId, newEntityId } from "@/domain/common/entity-id";
+import { EntityId } from "@/domain/common/entity-id";
 import { Money } from "@/domain/common/money";
 import { Quantity } from "@/domain/common/quantity";
+import { IdempotentCommandRegistry } from "@/lib/runtime/idempotent-command";
 
 export type PurchaseOrderStatus = "draft" | "ordered" | "partially_received" | "received" | "cancelled";
 
@@ -82,12 +83,15 @@ function commandError(scope: string, message: string): DomainError {
     RECEIVED_PURCHASE_ORDER_IMMUTABLE: "Pedido totalmente recebido não pode ser cancelado.",
     PURCHASE_ORDER_ALREADY_CANCELLED: "Pedido já cancelado.",
     INSUFFICIENT_ROLE: "Seu perfil não possui permissão para esta operação de compras.",
+    IDEMPOTENCY_KEY_CONFLICT: "A operação foi repetida com dados diferentes. Atualize a tela antes de tentar novamente.",
   };
   const code = Object.keys(known).find((candidate) => message.includes(candidate));
   return new DomainError(code ?? "SUPABASE_PERSISTENCE_ERROR", code ? known[code] : `${scope}: ${message}`);
 }
 
 export class SupabasePurchaseGateway {
+  private readonly commands = new IdempotentCommandRegistry();
+
   constructor(private readonly client: SupabaseClient) {}
 
   async listSupplierItems(organizationId: EntityId, supplierId: EntityId): Promise<readonly SupplierPurchaseItem[]> {
@@ -189,34 +193,47 @@ export class SupabasePurchaseGateway {
     notes?: string;
     items: readonly { supplierItemId: EntityId; quantity: string; unitPrice: string }[];
   }): Promise<EntityId> {
-    const commandId = newEntityId();
     const items = input.items.map((item) => ({
       supplier_item_id: item.supplierItemId,
       quantity: Quantity.fromDecimal(item.quantity).toDecimal(),
       unit_price: Money.fromDecimal(item.unitPrice).toDecimal(),
     }));
-    const { data, error } = await this.client.rpc("create_purchase_order", {
-      p_command_id: commandId,
-      p_organization_id: input.organizationId,
-      p_supplier_id: input.supplierId,
-      p_stock_location_id: input.stockLocationId,
-      p_expected_delivery_date: input.expectedDeliveryDate?.trim() || null,
-      p_notes: input.notes?.trim() || null,
-      p_items: items,
+    const semanticPayload = {
+      organizationId: input.organizationId,
+      supplierId: input.supplierId,
+      stockLocationId: input.stockLocationId,
+      expectedDeliveryDate: input.expectedDeliveryDate?.trim() || null,
+      notes: input.notes?.trim() || null,
+      items,
+    };
+
+    return this.commands.execute("purchase-order:create", semanticPayload, async (commandId) => {
+      const { data, error } = await this.client.rpc("create_purchase_order", {
+        p_command_id: commandId,
+        p_organization_id: semanticPayload.organizationId,
+        p_supplier_id: semanticPayload.supplierId,
+        p_stock_location_id: semanticPayload.stockLocationId,
+        p_expected_delivery_date: semanticPayload.expectedDeliveryDate,
+        p_notes: semanticPayload.notes,
+        p_items: semanticPayload.items,
+      });
+      if (error) throw commandError("Não foi possível criar o pedido", error.message);
+      const row = (data as { purchase_order_id: string }[] | null)?.[0];
+      if (!row) throw new DomainError("SUPABASE_PERSISTENCE_ERROR", "O comando não retornou o pedido criado.");
+      return row.purchase_order_id as EntityId;
     });
-    if (error) throw commandError("Não foi possível criar o pedido", error.message);
-    const row = (data as { purchase_order_id: string }[] | null)?.[0];
-    if (!row) throw new DomainError("SUPABASE_PERSISTENCE_ERROR", "O comando não retornou o pedido criado.");
-    return row.purchase_order_id as EntityId;
   }
 
   async issue(organizationId: EntityId, purchaseOrderId: EntityId): Promise<void> {
-    const { error } = await this.client.rpc("issue_purchase_order", {
-      p_command_id: newEntityId(),
-      p_organization_id: organizationId,
-      p_purchase_order_id: purchaseOrderId,
+    const semanticPayload = { organizationId, purchaseOrderId };
+    await this.commands.execute(`purchase-order:issue:${purchaseOrderId}`, semanticPayload, async (commandId) => {
+      const { error } = await this.client.rpc("issue_purchase_order", {
+        p_command_id: commandId,
+        p_organization_id: organizationId,
+        p_purchase_order_id: purchaseOrderId,
+      });
+      if (error) throw commandError("Não foi possível emitir o pedido", error.message);
     });
-    if (error) throw commandError("Não foi possível emitir o pedido", error.message);
   }
 
   async receive(input: {
@@ -231,23 +248,35 @@ export class SupabasePurchaseGateway {
       batch_code: item.batchCode?.trim() || null,
       expiration_date: item.expirationDate?.trim() || null,
     }));
-    const { error } = await this.client.rpc("receive_purchase_order", {
-      p_command_id: newEntityId(),
-      p_organization_id: input.organizationId,
-      p_purchase_order_id: input.purchaseOrderId,
-      p_items: items,
-      p_notes: input.notes?.trim() || null,
+    const semanticPayload = {
+      organizationId: input.organizationId,
+      purchaseOrderId: input.purchaseOrderId,
+      items,
+      notes: input.notes?.trim() || null,
+    };
+
+    await this.commands.execute(`purchase-order:receive:${input.purchaseOrderId}`, semanticPayload, async (commandId) => {
+      const { error } = await this.client.rpc("receive_purchase_order", {
+        p_command_id: commandId,
+        p_organization_id: semanticPayload.organizationId,
+        p_purchase_order_id: semanticPayload.purchaseOrderId,
+        p_items: semanticPayload.items,
+        p_notes: semanticPayload.notes,
+      });
+      if (error) throw commandError("Não foi possível registrar o recebimento", error.message);
     });
-    if (error) throw commandError("Não foi possível registrar o recebimento", error.message);
   }
 
   async cancel(organizationId: EntityId, purchaseOrderId: EntityId, reason?: string): Promise<void> {
-    const { error } = await this.client.rpc("cancel_purchase_order", {
-      p_command_id: newEntityId(),
-      p_organization_id: organizationId,
-      p_purchase_order_id: purchaseOrderId,
-      p_reason: reason?.trim() || null,
+    const semanticPayload = { organizationId, purchaseOrderId, reason: reason?.trim() || null };
+    await this.commands.execute(`purchase-order:cancel:${purchaseOrderId}`, semanticPayload, async (commandId) => {
+      const { error } = await this.client.rpc("cancel_purchase_order", {
+        p_command_id: commandId,
+        p_organization_id: organizationId,
+        p_purchase_order_id: purchaseOrderId,
+        p_reason: semanticPayload.reason,
+      });
+      if (error) throw commandError("Não foi possível cancelar o pedido", error.message);
     });
-    if (error) throw commandError("Não foi possível cancelar o pedido", error.message);
   }
 }

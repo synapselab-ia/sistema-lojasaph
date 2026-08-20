@@ -1,8 +1,9 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import { DomainError } from "@/domain/common/domain-error";
-import { EntityId, newEntityId } from "@/domain/common/entity-id";
+import { EntityId } from "@/domain/common/entity-id";
 import { Money } from "@/domain/common/money";
 import { Quantity } from "@/domain/common/quantity";
+import { IdempotentCommandRegistry } from "@/lib/runtime/idempotent-command";
 import {
   RecordStockReturnInput,
   RecordStockReturnResult,
@@ -40,10 +41,18 @@ interface StockReturnRpcRow {
 }
 
 function persistenceError(message: string, cause?: string): DomainError {
+  if (cause?.includes("IDEMPOTENCY_KEY_CONFLICT")) {
+    return new DomainError(
+      "IDEMPOTENCY_KEY_CONFLICT",
+      "A operação foi repetida com dados diferentes. Atualize a tela antes de tentar novamente.",
+    );
+  }
   return new DomainError("SUPABASE_PERSISTENCE_ERROR", cause ? `${message}: ${cause}` : message);
 }
 
 export class SupabaseStockReturnGateway implements StockReturnGateway {
+  private readonly commands = new IdempotentCommandRegistry();
+
   constructor(private readonly client: SupabaseClient) {}
 
   async loadOverview(organizationId: EntityId): Promise<RuntimeStockReturnOverview> {
@@ -161,31 +170,46 @@ export class SupabaseStockReturnGateway implements StockReturnGateway {
   }
 
   async record(input: RecordStockReturnInput): Promise<RecordStockReturnResult> {
-    const commandId = input.commandId ?? newEntityId();
+    const quantity = Quantity.fromDecimal(input.quantity);
+    if (!quantity.isPositive()) {
+      throw new DomainError("INVALID_STOCK_QUANTITY", "Stock return quantity must be greater than zero.");
+    }
 
-    const { data, error } = await this.client.rpc("record_stock_return", {
-      p_command_id: commandId,
-      p_organization_id: input.organizationId,
-      p_withdrawal_movement_id: input.withdrawalMovementId,
-      p_quantity: input.quantity,
-      p_notes: input.notes ?? null,
-    });
-
-    if (error) throw persistenceError("Failed to record stock return", error.message);
-    const row = (data as StockReturnRpcRow[] | null)?.[0];
-    if (!row) throw persistenceError("Stock return RPC returned no result");
-
-    return {
-      movementId: row.movement_id as EntityId,
-      withdrawalMovementId: row.withdrawal_movement_id as EntityId,
-      returnedQuantity: Quantity.fromDecimal(String(row.returned_quantity)),
-      remainingReturnableQuantity: Quantity.fromDecimal(String(row.remaining_returnable_quantity)),
-      balance: Object.freeze({
-        stockItemId: row.stock_item_id as EntityId,
-        stockLocationId: row.stock_location_id as EntityId,
-        quantity: Quantity.fromDecimal(String(row.quantity_on_hand)),
-        averageCost: Money.fromDecimal(String(row.average_cost)),
-      }),
+    const semanticPayload = {
+      organizationId: input.organizationId,
+      withdrawalMovementId: input.withdrawalMovementId,
+      quantity: quantity.toDecimal(),
+      notes: input.notes?.trim() || null,
     };
+
+    const execute = async (commandId: EntityId): Promise<RecordStockReturnResult> => {
+      const { data, error } = await this.client.rpc("record_stock_return", {
+        p_command_id: commandId,
+        p_organization_id: semanticPayload.organizationId,
+        p_withdrawal_movement_id: semanticPayload.withdrawalMovementId,
+        p_quantity: semanticPayload.quantity,
+        p_notes: semanticPayload.notes,
+      });
+
+      if (error) throw persistenceError("Failed to record stock return", error.message);
+      const row = (data as StockReturnRpcRow[] | null)?.[0];
+      if (!row) throw persistenceError("Stock return RPC returned no result");
+
+      return {
+        movementId: row.movement_id as EntityId,
+        withdrawalMovementId: row.withdrawal_movement_id as EntityId,
+        returnedQuantity: Quantity.fromDecimal(String(row.returned_quantity)),
+        remainingReturnableQuantity: Quantity.fromDecimal(String(row.remaining_returnable_quantity)),
+        balance: Object.freeze({
+          stockItemId: row.stock_item_id as EntityId,
+          stockLocationId: row.stock_location_id as EntityId,
+          quantity: Quantity.fromDecimal(String(row.quantity_on_hand)),
+          averageCost: Money.fromDecimal(String(row.average_cost)),
+        }),
+      };
+    };
+
+    if (input.commandId) return execute(input.commandId);
+    return this.commands.execute(`stock-return:record:${input.withdrawalMovementId}`, semanticPayload, execute);
   }
 }

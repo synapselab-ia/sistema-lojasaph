@@ -1,7 +1,8 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import { DomainError } from "@/domain/common/domain-error";
-import { EntityId, newEntityId } from "@/domain/common/entity-id";
+import { EntityId } from "@/domain/common/entity-id";
 import { Money } from "@/domain/common/money";
+import { IdempotentCommandRegistry } from "@/lib/runtime/idempotent-command";
 
 export type CashSessionStatus = "open" | "closed" | "cancelled";
 export type PaymentMethodKind = "cash" | "card" | "instant" | "voucher" | "other";
@@ -25,6 +26,8 @@ function cashError(scope: string, message: string): DomainError {
 }
 
 export class SupabaseCashGateway {
+  private readonly commands = new IdempotentCommandRegistry();
+
   constructor(private readonly client: SupabaseClient) {}
 
   async listState(organizationId: EntityId): Promise<CashState> {
@@ -57,12 +60,97 @@ export class SupabaseCashGateway {
     return data;
   }
 
-  async createRegister(input: { organizationId: EntityId; unitId: EntityId; name: string; code?: string }): Promise<void> { await this.rpc("create_cash_register", { p_command_id: newEntityId(), p_organization_id: input.organizationId, p_unit_id: input.unitId, p_name: input.name, p_code: input.code?.trim() || null }, "Não foi possível criar o caixa"); }
-  async createPaymentMethod(input: { organizationId: EntityId; code: string; name: string; methodKind: PaymentMethodKind; affectsCashDrawer: boolean }): Promise<void> { await this.rpc("create_payment_method", { p_command_id: newEntityId(), p_organization_id: input.organizationId, p_code: input.code, p_name: input.name, p_method_kind: input.methodKind, p_affects_cash_drawer: input.affectsCashDrawer }, "Não foi possível criar o meio de pagamento"); }
-  async createFeeRule(input: { organizationId: EntityId; paymentMethodId: EntityId; validFrom: string; validTo?: string; percentFee: string; fixedFee: string; label?: string }): Promise<void> { await this.rpc("create_fee_rule", { p_command_id: newEntityId(), p_organization_id: input.organizationId, p_payment_method_id: input.paymentMethodId, p_valid_from: input.validFrom, p_valid_to: input.validTo || null, p_percent_fee: input.percentFee, p_fixed_fee: Money.fromDecimal(input.fixedFee).toDecimal(), p_label: input.label?.trim() || null }, "Não foi possível criar a regra de taxa"); }
-  async openSession(input: { organizationId: EntityId; cashRegisterId: EntityId; businessDate: string; sequence: number; openingFloat: string; notes?: string }): Promise<void> { await this.rpc("open_cash_session", { p_command_id: newEntityId(), p_organization_id: input.organizationId, p_cash_register_id: input.cashRegisterId, p_business_date: input.businessDate, p_sequence: input.sequence, p_opening_float: Money.fromDecimal(input.openingFloat).toDecimal(), p_notes: input.notes?.trim() || null }, "Não foi possível abrir a sessão"); }
-  async setPaymentTotal(input: { organizationId: EntityId; cashSessionId: EntityId; paymentMethodId: EntityId; grossAmount: string; feeAmount?: string; feeRuleId?: EntityId }): Promise<void> { await this.rpc("set_cash_payment_total", { p_command_id: newEntityId(), p_organization_id: input.organizationId, p_cash_session_id: input.cashSessionId, p_payment_method_id: input.paymentMethodId, p_gross_amount: Money.fromDecimal(input.grossAmount).toDecimal(), p_fee_amount: input.feeAmount?.trim() ? Money.fromDecimal(input.feeAmount).toDecimal() : null, p_fee_rule_id: input.feeRuleId ?? null }, "Não foi possível registrar o total do meio de pagamento"); }
-  async recordMovement(input: { organizationId: EntityId; cashSessionId: EntityId; movementType: CashMovementType; amount: string; occurredAt: string; reason?: string }): Promise<void> { await this.rpc("record_cash_movement", { p_command_id: newEntityId(), p_organization_id: input.organizationId, p_cash_session_id: input.cashSessionId, p_movement_type: input.movementType, p_amount: Money.fromDecimal(input.amount).toDecimal(), p_occurred_at: input.occurredAt, p_reason: input.reason?.trim() || null }, "Não foi possível registrar o movimento"); }
-  async closeSession(input: { organizationId: EntityId; cashSessionId: EntityId; countedCashAmount: string; notes?: string }): Promise<void> { await this.rpc("close_cash_session", { p_command_id: newEntityId(), p_organization_id: input.organizationId, p_cash_session_id: input.cashSessionId, p_counted_cash_amount: Money.fromDecimal(input.countedCashAmount).toDecimal(), p_notes: input.notes?.trim() || null }, "Não foi possível fechar a sessão"); }
-  async cancelSession(input: { organizationId: EntityId; cashSessionId: EntityId; reason?: string }): Promise<void> { await this.rpc("cancel_cash_session", { p_command_id: newEntityId(), p_organization_id: input.organizationId, p_cash_session_id: input.cashSessionId, p_reason: input.reason?.trim() || null }, "Não foi possível cancelar a sessão"); }
+  private command<T>(
+    intentScope: string,
+    rpcName: string,
+    semanticArgs: Record<string, unknown>,
+    errorScope: string,
+  ): Promise<T> {
+    return this.commands.execute(intentScope, semanticArgs, async (commandId) => this.rpc(
+      rpcName,
+      { p_command_id: commandId, ...semanticArgs },
+      errorScope,
+    ) as Promise<T>);
+  }
+
+  async createRegister(input: { organizationId: EntityId; unitId: EntityId; name: string; code?: string }): Promise<void> {
+    await this.command("cash:create-register", "create_cash_register", {
+      p_organization_id: input.organizationId,
+      p_unit_id: input.unitId,
+      p_name: input.name.trim(),
+      p_code: input.code?.trim() || null,
+    }, "Não foi possível criar o caixa");
+  }
+
+  async createPaymentMethod(input: { organizationId: EntityId; code: string; name: string; methodKind: PaymentMethodKind; affectsCashDrawer: boolean }): Promise<void> {
+    await this.command("cash:create-payment-method", "create_payment_method", {
+      p_organization_id: input.organizationId,
+      p_code: input.code.trim(),
+      p_name: input.name.trim(),
+      p_method_kind: input.methodKind,
+      p_affects_cash_drawer: input.affectsCashDrawer,
+    }, "Não foi possível criar o meio de pagamento");
+  }
+
+  async createFeeRule(input: { organizationId: EntityId; paymentMethodId: EntityId; validFrom: string; validTo?: string; percentFee: string; fixedFee: string; label?: string }): Promise<void> {
+    await this.command(`cash:create-fee-rule:${input.paymentMethodId}`, "create_fee_rule", {
+      p_organization_id: input.organizationId,
+      p_payment_method_id: input.paymentMethodId,
+      p_valid_from: input.validFrom,
+      p_valid_to: input.validTo || null,
+      p_percent_fee: input.percentFee.trim(),
+      p_fixed_fee: Money.fromDecimal(input.fixedFee).toDecimal(),
+      p_label: input.label?.trim() || null,
+    }, "Não foi possível criar a regra de taxa");
+  }
+
+  async openSession(input: { organizationId: EntityId; cashRegisterId: EntityId; businessDate: string; sequence: number; openingFloat: string; notes?: string }): Promise<void> {
+    await this.command(`cash:open-session:${input.cashRegisterId}`, "open_cash_session", {
+      p_organization_id: input.organizationId,
+      p_cash_register_id: input.cashRegisterId,
+      p_business_date: input.businessDate,
+      p_sequence: input.sequence,
+      p_opening_float: Money.fromDecimal(input.openingFloat).toDecimal(),
+      p_notes: input.notes?.trim() || null,
+    }, "Não foi possível abrir a sessão");
+  }
+
+  async setPaymentTotal(input: { organizationId: EntityId; cashSessionId: EntityId; paymentMethodId: EntityId; grossAmount: string; feeAmount?: string; feeRuleId?: EntityId }): Promise<void> {
+    await this.command(`cash:set-total:${input.cashSessionId}:${input.paymentMethodId}`, "set_cash_payment_total", {
+      p_organization_id: input.organizationId,
+      p_cash_session_id: input.cashSessionId,
+      p_payment_method_id: input.paymentMethodId,
+      p_gross_amount: Money.fromDecimal(input.grossAmount).toDecimal(),
+      p_fee_amount: input.feeAmount?.trim() ? Money.fromDecimal(input.feeAmount).toDecimal() : null,
+      p_fee_rule_id: input.feeRuleId ?? null,
+    }, "Não foi possível registrar o total do meio de pagamento");
+  }
+
+  async recordMovement(input: { organizationId: EntityId; cashSessionId: EntityId; movementType: CashMovementType; amount: string; occurredAt: string; reason?: string }): Promise<void> {
+    await this.command(`cash:movement:${input.cashSessionId}`, "record_cash_movement", {
+      p_organization_id: input.organizationId,
+      p_cash_session_id: input.cashSessionId,
+      p_movement_type: input.movementType,
+      p_amount: Money.fromDecimal(input.amount).toDecimal(),
+      p_occurred_at: input.occurredAt,
+      p_reason: input.reason?.trim() || null,
+    }, "Não foi possível registrar o movimento");
+  }
+
+  async closeSession(input: { organizationId: EntityId; cashSessionId: EntityId; countedCashAmount: string; notes?: string }): Promise<void> {
+    await this.command(`cash:close-session:${input.cashSessionId}`, "close_cash_session", {
+      p_organization_id: input.organizationId,
+      p_cash_session_id: input.cashSessionId,
+      p_counted_cash_amount: Money.fromDecimal(input.countedCashAmount).toDecimal(),
+      p_notes: input.notes?.trim() || null,
+    }, "Não foi possível fechar a sessão");
+  }
+
+  async cancelSession(input: { organizationId: EntityId; cashSessionId: EntityId; reason?: string }): Promise<void> {
+    await this.command(`cash:cancel-session:${input.cashSessionId}`, "cancel_cash_session", {
+      p_organization_id: input.organizationId,
+      p_cash_session_id: input.cashSessionId,
+      p_reason: input.reason?.trim() || null,
+    }, "Não foi possível cancelar a sessão");
+  }
 }
