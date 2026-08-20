@@ -2,32 +2,35 @@
 
 ## Contexto
 
-A Fase 26 / Issue #65 foi concluída e fechada após homologação real do primeiro owner no Workspace persistente. O runtime Production está novamente sem credencial administrativa de bootstrap.
+A Fase 27 / Issue #69 foi concluída.
 
 Estado comprovado:
 
-- merge funcional final da Fase 26: `046c4a3392f85e2361c6ddeac0ae3ee1817145c5`;
-- PR #68 head `25e33d94cbbbc9ed91a74a2eb7db6a44a67c3521`;
-- CI #294 — success;
-- Inventory Count Integration #168 — success;
-- Business Transactions Integration #151 — success;
-- Supabase: 1 Organization ativa, 1 Auth user confirmado, 1 membership, 1 owner, 1 audit bootstrap, 0 duplicidade;
-- Production final: `dpl_824q6umKyUyRhYzAmxLREjNeoFK1` READY;
-- `/health.adminAccess=blocked`;
-- `/bootstrap` desabilitado;
-- Workspace continuou operacional após cleanup;
-- Issue #65 — closed;
-- Issue #69 — open.
+- PR #70 — merged;
+- Issue #69 — closed/completed;
+- head funcional `f1c454d0c7dc4658c59829774c1effa4fe859839`;
+- merge `7fe0f574504a1cb7080a54e8391cb1f26ca31ce2`;
+- CI #297 — success;
+- Business Transactions Integration #152 — success;
+- `REQ-PLAT-001 — Responsivo` revisado transversalmente;
+- nenhuma migration/DDL, RLS/grant, RPC, Auth ou regra de negócio alterada;
+- nenhum deployment Vercel gasto na fase;
+- Supabase remoto permanece `ACTIVE_HEALTHY`;
+- Production permanece propositalmente no deployment `dpl_824q6umKyUyRhYzAmxLREjNeoFK1` até uma publicação intencional futura.
 
 ## Objetivo ativo
 
-Executar a Fase 27 / Issue #69 e fechar `REQ-PLAT-001 — Responsivo` com validação transversal do Workspace persistente em celular, tablet e desktop.
+**Auditar `REQ-PLAT-002 — Proteção contra duplicidade` transversalmente antes de criar qualquer nova Issue.**
 
-A lacuna é de validação/UX. Várias telas já usam breakpoints e overflow local, mas não existe prova transversal documentada das rotas persistentes completas nos três tamanhos-alvo.
+O requisito é MUST: operações críticas devem tolerar retry e evitar submissão duplicada.
+
+Já existe evidência concreta do padrão em `record_stock_entry`: `p_command_id` identifica o comando, retry compatível reaproveita o resultado persistido e reutilização conflitante falha com `IDEMPOTENCY_KEY_CONFLICT`.
+
+Isso ainda não prova todos os write paths críticos.
 
 ## Fazer agora
 
-1. Confirmar estado real de `main`, branch `agent/responsive-workspace`, Issue #69, PRs e CI.
+1. Confirmar estado real de `main`, branch de continuidade, PRs, Issues e CI. Não assumir que existe nova Issue aberta.
 2. Ler, nesta ordem:
    - `AGENTS.md`;
    - `docs/00-START-HERE.md`;
@@ -35,85 +38,65 @@ A lacuna é de validação/UX. Várias telas já usam breakpoints e overflow loc
    - `docs/ai/HANDOFF.md`;
    - este arquivo;
    - `docs/ai/WORKFLOW.md`;
-   - `docs/product/requirements.md` (`REQ-PLAT-001`);
-   - `src/components/runtime-shell.tsx`;
-   - layouts/páginas das rotas persistentes principais.
-3. Confirmar que a branch parte exatamente da `main` e não contém trabalho residual da Fase 26.
-4. Antes de editar, inventariar problemas comprováveis por superfície e breakpoint. Não assumir que toda tela precisa de redesign.
-5. Revisar pelo menos larguras representativas de:
-   - celular estreito;
-   - tablet;
-   - desktop.
-6. Cobrir no mínimo:
-   - `/login`;
-   - `/workspace`;
-   - produtos;
-   - fornecedores;
-   - funcionários;
-   - estoque;
-   - baixas;
-   - devoluções;
-   - transferências;
-   - inventários;
-   - compras;
-   - financeiro;
-   - caixa.
-7. Corrigir somente problemas comprovados de:
-   - navegação inalcançável/cortada;
-   - overflow acidental da viewport;
-   - filtros/cards/grids que quebram em telas estreitas;
-   - formulários/botões não operáveis;
-   - tabelas sem estratégia deliberada em mobile;
-   - mensagens/loading/estados vazios ilegíveis;
-   - ações dependentes somente de hover;
-   - foco/touch target básico quando houver defeito objetivo.
-8. Para tabelas largas, preferir scroll horizontal **local** ou outra estratégia explícita sem ocultar informação crítica. Não forçar tabelas complexas a virar cards se isso piorar a leitura.
-9. Preservar integralmente:
-   - regras de domínio;
-   - RLS e grants;
-   - roles/escopos;
-   - RPCs transacionais;
-   - filtros e semânticas do Dashboard;
-   - comportamento Auth da Fase 26.
-10. Adicionar testes de regressão de baixo custo onde tecnicamente úteis. Não colocar credenciais Production em CI, fixtures, snapshots ou screenshots.
-11. Rodar lint, typecheck, Vitest e build. Executar workflows adicionais somente quando os `paths`/mudanças realmente os tornarem aplicáveis; não alterar filtros de workflow para fabricar gates.
-12. Não há DDL esperado. Se uma correção visual parecer exigir migration/RLS, reavaliar: isso provavelmente está fora do escopo da Fase 27.
-13. Vercel continua com auto-deploy desabilitado. Não fazer deploy durante iteração. Se a validação final realmente depender do ambiente hospedado, fazer no máximo um deployment Production intencional após merge/CI verde.
-14. A homologação visual hospedada pode usar a sessão/conta já provisionada pelo operador, mas o agente não deve solicitar, armazenar ou registrar senha.
-15. Ao concluir #69:
-   - registrar superfícies/breakpoints validados;
-   - fechar a Issue somente com CI verde e ausência de regressão de negócio/segurança;
-   - atualizar `CURRENT_STATE`, `HANDOFF` e `NEXT_ACTION`;
-   - auditar o próximo MUST verificável antes de criar nova Issue.
+   - `docs/product/requirements.md` (`REQ-PLAT-002`).
+3. Sincronizar a branch de trabalho exatamente com a `main` antes de editar. Não reaproveitar resíduos da Fase 27.
+4. Inventariar **todos os comandos persistentes críticos** e criar uma matriz com:
+   - operação;
+   - adapter/service que gera ou recebe command ID;
+   - RPC/função SQL;
+   - armazenamento/chave que detecta replay;
+   - comportamento em retry idêntico;
+   - comportamento em reutilização conflitante;
+   - teste existente que comprova o caso.
+5. Cobrir no mínimo:
+   - entrada de estoque;
+   - retirada de estoque;
+   - baixa/perda/vencimento;
+   - devolução relacionada;
+   - despacho e recebimento de transferência;
+   - início, atualização de linha, confirmação e cancelamento de inventário;
+   - criação, emissão, recebimento e cancelamento de pedido de compra;
+   - criação/cancelamento de documento financeiro;
+   - pagamento e estorno;
+   - criação/configuração de Caixa quando mutável;
+   - abertura de sessão, total por meio, movimento, fechamento e cancelamento de sessão.
+6. Verificar também a camada cliente/adapters:
+   - command ID deve ser gerado uma vez por intenção de usuário;
+   - retry de transporte não pode gerar nova intenção silenciosamente;
+   - duplo clique/submissão concorrente não pode produzir duplicidade crítica;
+   - conflito de chave idempotente deve ser explícito, não mascarado como sucesso.
+7. Usar os testes SQL existentes como evidência quando cobrirem replay/conflito. Não criar teste duplicado sem necessidade.
+8. Se **todos** os caminhos críticos estiverem comprovadamente cobertos:
+   - documentar `REQ-PLAT-002` como atendido;
+   - não criar Issue;
+   - auditar o próximo MUST verificável e atualizar continuidade.
+9. Se existir **lacuna concreta**:
+   - criar uma única Issue/fase focada na lacuna observada;
+   - não ampliar escopo para refatoração geral;
+   - preservar domínio, RLS e transações que já estiverem corretos.
+10. Não há migration esperada apenas para auditoria. DDL só é aceitável se a lacuna real exigir mudança de persistência e isso estiver explicitamente justificado na nova Issue.
+11. Se houver patch, rodar lint, typecheck, Vitest, build e workflows aplicáveis antes de merge.
+12. Atualizar `CURRENT_STATE`, `HANDOFF` e `NEXT_ACTION` ao terminar.
 
-## Segurança e operação
+## Segurança / operação
 
-- não reabrir o bootstrap do primeiro owner;
-- não recolocar `SUPABASE_SECRET_KEY` ou envs temporárias de bootstrap em Production;
-- não reenviar convite;
-- não habilitar signup público;
-- não usar credenciais reais em automação;
-- não alterar RLS/grants para facilitar layout;
-- `supabase/tests/security_hardening.sql` continua gate permanente quando workflows PostgreSQL forem aplicáveis.
-
-## Vercel
-
-- `vercel.json`: `git.deploymentEnabled=false`;
-- Production funcional atual: commit `046c4a3392f85e2361c6ddeac0ae3ee1817145c5`;
-- deployment `dpl_824q6umKyUyRhYzAmxLREjNeoFK1` READY;
-- admin access bloqueado como esperado;
-- não desperdiçar quota com previews/deploys intermediários.
+- não reabrir bootstrap;
+- não recolocar `SUPABASE_SECRET_KEY` em Production;
+- não alterar grants/RLS para facilitar retry;
+- não testar duplicidade com credenciais ou dados reais desnecessários;
+- não disparar deployment Vercel para uma auditoria de idempotência;
+- `supabase/tests/security_hardening.sql` continua gate permanente quando houver mudança de banco.
 
 ## Não fazer
 
-- não refazer Fase 26/PRs #66/#67/#68;
-- não transformar a Fase 27 em redesign completo/design system;
-- não alterar regras de Estoque, Compras, Financeiro ou Caixa por conveniência visual;
+- não reabrir Fases 26/27;
+- não refazer PR #70;
+- não criar a próxima Issue antes de comprovar uma lacuna;
+- não tratar aviso genérico do Supabase advisor como prova de defeito funcional;
 - não resolver Q-001..Q-025 por inferência;
 - não importar dados reais;
-- não reativar auto-deploy;
-- não contratar/adotar ferramenta externa de visual testing sem necessidade explícita.
+- não reativar auto-deploy Vercel.
 
-## Critério de conclusão
+## Critério de conclusão da próxima ação
 
-As principais rotas persistentes permanecem funcionalmente utilizáveis em celular, tablet e desktop: navegação e ações alcançáveis, sem overflow acidental da viewport, formulários/filtros operáveis e tabelas com tratamento deliberado em telas estreitas. Nenhuma correção altera domínio, Auth, RLS ou transações; CI fica verde e a homologação final é registrada sem exposição de credenciais.
+Existe uma matriz verificável dos write paths críticos demonstrando se `REQ-PLAT-002` está coberto ponta a ponta. Se a cobertura for completa, o requisito é registrado como atendido sem Issue artificial; se houver falha real de idempotência/retry, ela vira a única próxima Issue, com evidência e escopo preciso.

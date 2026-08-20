@@ -2,116 +2,89 @@
 
 ## Estado
 
-A Fase 26 / Issue #65 foi concluída e homologada em Production. O próximo objetivo ativo é a Issue #69 / Fase 27, voltada exclusivamente à responsividade transversal do Workspace persistente.
+A Fase 27 / Issue #69 foi concluída e integrada à `main`.
 
-Estado funcional fechado:
+- PR #70 — merged
+- Issue #69 — closed/completed
+- head funcional: `f1c454d0c7dc4658c59829774c1effa4fe859839`
+- merge: `7fe0f574504a1cb7080a54e8391cb1f26ca31ce2`
+- CI #297 — success
+- Business Transactions Integration #152 — success
+- sem DDL/RLS/grants/RPC/Auth changes
 
-- PR #66 — merged;
-- PR #67 — merged;
-- PR #68 — merged;
-- merge funcional final: `046c4a3392f85e2361c6ddeac0ae3ee1817145c5`;
-- head do PR #68: `25e33d94cbbbc9ed91a74a2eb7db6a44a67c3521`;
-- CI #294 — success;
-- Inventory Count Integration #168 — success;
-- Business Transactions Integration #151 — success;
-- Issue #65 — closed/completed;
-- Issue #69 — open;
-- nenhuma migration/DDL na Fase 26.
+## O que mudou na Fase 27
 
-## Fase 26 — evidência final
+A revisão transversal cobriu `/login`, `/workspace`, Produtos, Fornecedores, Funcionários, Estoque, Baixas, Devoluções, Transferências, Inventários, Compras, Financeiro e Caixa.
 
-O primeiro owner foi provisionado pelo fluxo oficial do Supabase Auth, sem signup público, sem SQL em `auth.users` e sem senha conhecida pelo agente.
+Problemas objetivos corrigidos:
 
-Supabase final:
+- grids fixos de 2/3 colunas em celular;
+- cabeçalhos recorrentes sem wrap em largura estreita;
+- controles com largura intrínseca capaz de pressionar a viewport;
+- touch targets inconsistentes em dispositivos touch;
+- shell mobile com alvos/navegação e padding pouco explícitos;
+- links auxiliares do login sem estratégia mobile.
+
+Tabelas largas já possuíam scroll horizontal local e foram preservadas. O teste `src/app/responsive-contract.test.ts` protege as regras transversais de mobile/touch.
+
+## Backend / Supabase
+
+Projeto `fhbvwyttikrbeaanatlr` segue `ACTIVE_HEALTHY` em PostgreSQL 17.
+
+Não houve alteração de banco nesta fase. Estado operacional preservado:
 
 - 1 Organization ativa;
 - 1 Auth user confirmado;
 - 1 membership ativo;
 - 1 owner ativo;
-- 1 audit `membership.bootstrap_owner`;
-- 0 owners duplicados para o mesmo usuário/Organization.
+- bootstrap Production desabilitado.
 
-O PR #68 corrigiu dois problemas observados somente na homologação real:
+Os advisors ainda reportam avisos genéricos sobre RPCs `SECURITY DEFINER` expostos ao papel `authenticated` e leaked-password protection desabilitada. Não tratar isso dentro de uma fase de UI; qualquer mudança precisa de auditoria de segurança própria porque os RPCs atuais implementam autorização interna e possuem testes de RLS/transação.
 
-1. retry de definição de senha retornando `same_password`, agora tratado como sucesso idempotente;
-2. instâncias `Money`/`Quantity` atravessando Server→Client em React Server Components, agora serializadas em wire format simples e reidratadas antes do provider.
+## Vercel
 
-## Production pós-cleanup
+`git.deploymentEnabled=false` continua intacto.
 
-Vercel projeto `sistema-lojasaph`, auto-deploy ainda desabilitado.
+Último Production permanece `dpl_824q6umKyUyRhYzAmxLREjNeoFK1`, no código funcional da Fase 26 (`046c4a3392f85e2361c6ddeac0ae3ee1817145c5`). Nenhum deployment foi feito para a Fase 27, evitando gasto de quota sem necessidade operacional.
 
-Deployment final observado:
+A `main` agora contém a Fase 27; Production só deve ser atualizado por deployment intencional quando houver motivo real de homologação/publicação.
 
-- `dpl_824q6umKyUyRhYzAmxLREjNeoFK1` — READY;
-- `main` em `046c4a3392f85e2361c6ddeac0ae3ee1817145c5`;
-- `/health`: Production + Supabase allowed + admin blocked;
-- `/bootstrap`: `Bootstrap desabilitado`;
-- Workspace continuou respondendo 200 após a remoção das envs temporárias, inclusive rotas Financeiro e Caixa.
+## Próximo MUST — auditoria antes de nova Issue
 
-As envs temporárias de bootstrap e `SUPABASE_SECRET_KEY` foram removidas do target Production e um novo deployment tornou essa remoção efetiva no runtime.
+Próximo requisito verificável: `REQ-PLAT-002 — Proteção contra duplicidade`.
 
-Não persistir no GitHub o e-mail, senha ou qualquer outro dado de credencial usado pelo operador.
+Evidência já confirmada:
 
-## Próxima Issue — #69 / Fase 27
+- `record_stock_entry` recebe `p_command_id`;
+- retry com o mesmo comando compatível retorna o resultado já persistido;
+- reutilização conflitante gera `IDEMPOTENCY_KEY_CONFLICT`.
 
-Título: **responsividade e usabilidade mobile/tablet do Workspace persistente**.
+Isso prova o padrão em um caminho crítico, mas ainda falta uma matriz transversal dos write paths. O próximo chat deve auditar antes de criar Issue.
 
-Requisito alvo: `REQ-PLAT-001`.
+Cobrir pelo menos:
 
-Motivo: o código possui várias decisões responsivas locais, mas não existe prova transversal documentada do Workspace persistente completo em celular, tablet e desktop após Auth/Supabase reais estarem operacionais.
+- entrada, retirada, baixa/perda e devolução de estoque;
+- despacho e recebimento de transferência;
+- início, linha, confirmação e cancelamento de inventário;
+- criação, emissão, recebimento e cancelamento de compra;
+- criação/cancelamento de documento financeiro, pagamento e estorno;
+- configuração/operação de Caixa, movimentos, fechamento e cancelamento;
+- geração/reutilização de command IDs nos adapters/clientes;
+- testes de retry e conflito no PostgreSQL/CI.
 
-### Defaults
+Se todos estiverem comprovadamente idempotentes, registrar `REQ-PLAT-002` como atendido e avançar ao próximo MUST sem abrir Issue. Se houver lacuna concreta, criar a próxima Issue apenas para ela.
 
-- preservar layout/identidade visual existentes; sem redesign completo;
-- sem DDL/migration esperado;
-- sem mudança de RLS, roles, RPCs ou regras de negócio;
-- sem credenciais Production em testes/CI;
-- tabelas largas podem usar scroll horizontal local, mas a viewport não deve ter overflow acidental;
-- ações devem permanecer alcançáveis por toque e teclado e não depender de hover;
-- no máximo um deployment Production intencional ao final se a homologação visual hospedada for necessária;
-- CI continua sendo o gate técnico principal.
+## Branch esperada
 
-### Superfícies mínimas
-
-- `/login`;
-- `/workspace`;
-- produtos;
-- fornecedores;
-- funcionários;
-- estoque;
-- baixas;
-- devoluções;
-- transferências;
-- inventários;
-- compras;
-- financeiro;
-- caixa.
-
-Revisar especialmente:
-
-- shell/navegação em largura móvel;
-- filtros do Dashboard;
-- grids e cards;
-- formulários e botões;
-- tabelas/overflow local;
-- mensagens/estados vazios/loading;
-- touch targets e foco básico.
-
-## Branch de trabalho esperada
-
-`agent/responsive-workspace`
-
-Ela deve partir do commit final de continuidade desta sessão e ficar idêntica à `main` antes do primeiro patch funcional.
+Ao iniciar o próximo chat, conferir `main` e `agent/responsive-workspace`. A branch de continuidade deve ser sincronizada com o commit documental final desta sessão antes de qualquer novo patch.
 
 ## Não fazer
 
-- não reabrir #65;
-- não criar novo owner nem reenviar convite;
-- não recolocar secret administrativa em Production para testar UI;
-- não refazer #66/#67/#68;
+- não reabrir #65 ou #69;
+- não refazer PRs #66/#67/#68/#70;
+- não criar Issue de idempotência sem auditoria transversal;
+- não reativar bootstrap ou auto-deploy;
+- não alterar RLS/grants sem regressão comprovada;
 - não usar credenciais reais em automação;
-- não alterar regras transacionais sob pretexto de responsividade;
-- não ampliar RLS/grants;
-- não reativar auto-deploy Vercel;
 - não importar dados reais;
 - não inferir Q-001..Q-025.

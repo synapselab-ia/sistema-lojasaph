@@ -4,96 +4,94 @@
 
 ## Estado atual
 
-A Fase 26 foi concluída e a Issue #65 foi fechada após homologação real do primeiro owner no Workspace persistente.
+A Fase 27 foi concluída. `REQ-PLAT-001 — Responsivo` recebeu revisão transversal e a Issue #69 foi fechada pelo merge do PR #70.
 
 - Repositório: `synapselab-ia/sistema-lojasaph`
-- Issue #65 — closed/completed
-- PR #66 — merged: convite server-only do primeiro owner
-- PR #67 — merged: compatibilidade com convite padrão do Supabase Free
-- PR #68 — merged: correção da homologação real de senha + fronteira Server→Client do Workspace
-- merge funcional final da Fase 26: `046c4a3392f85e2361c6ddeac0ae3ee1817145c5`
-- head do PR #68 validado: `25e33d94cbbbc9ed91a74a2eb7db6a44a67c3521`
-- CI #294 — success
-- Inventory Count Integration #168 — success
-- Business Transactions Integration #151 — success
-- nenhuma migration/DDL na Fase 26
-- signup público continua ausente
+- Issue #69 — closed/completed
+- PR #70 — merged
+- head funcional da Fase 27: `f1c454d0c7dc4658c59829774c1effa4fe859839`
+- merge da Fase 27: `7fe0f574504a1cb7080a54e8391cb1f26ca31ce2`
+- CI #297 — success
+- Business Transactions Integration #152 — success
+- nenhuma migration/DDL
+- nenhuma alteração de RLS, grants, roles, RPCs, Auth ou regra transacional
 
-## Fase 26 — homologação concluída
+## Fase 27 — evidência
 
-O fluxo real foi exercitado de ponta a ponta:
+A auditoria cobriu as superfícies persistentes mínimas definidas na Issue #69:
 
-1. convite oficial do Supabase enviado somente ao destinatário autorizado server-side;
-2. redirect `/auth/invite` validado;
-3. sessão SSR estabelecida;
-4. credencial definida pelo próprio usuário;
-5. `bootstrapOwnerAction` criou o primeiro membership `owner` e audit;
-6. sessão persistente abriu diretamente o Workspace;
-7. erro de retry `same_password` foi tratado idempotentemente no PR #68;
-8. `Money`/`Quantity` passaram a usar wire format serializável na fronteira RSC Server→Client e são reidratados no primeiro Client Component;
-9. variáveis temporárias de bootstrap e a secret administrativa foram removidas do target Production;
-10. novo deployment comprovou o bootstrap desabilitado e o Workspace ainda operacional.
+- `/login`;
+- `/workspace`;
+- Produtos;
+- Fornecedores;
+- Funcionários;
+- Estoque;
+- Baixas;
+- Devoluções;
+- Transferências;
+- Inventários;
+- Compras;
+- Financeiro;
+- Caixa.
 
-Nenhuma senha, token, secret ou e-mail do owner foi persistido no GitHub.
+Foram preservadas as tabelas largas que já possuem `overflow-x-auto` local. Não houve conversão oportunista para cards.
+
+Correções aplicadas:
+
+- grids fixos `grid-cols-2`/`grid-cols-3` passam a uma coluna abaixo de 640px, cobrindo os casos comprovados em Produtos, Fornecedores, Transferências e Caixa;
+- cabeçalhos recorrentes `flex` com `justify-between` podem quebrar linha em celular;
+- inputs/selects/textareas/buttons têm contenção intrínseca de largura;
+- dispositivos de ponteiro grosseiro recebem alvo mínimo de 44px nos controles principais, preservando checkbox/radio;
+- `RuntimeShell` ganhou touch targets explícitos, quebra segura do nome/perfis da organização, navegação horizontal local e padding mobile menor;
+- `/login` empilha os links auxiliares no celular;
+- `src/app/responsive-contract.test.ts` protege o contrato CSS de mobile/touch.
+
+As regras são restritas ao layout; semântica do Dashboard, permissões e operações persistentes não foram alteradas.
 
 ## Supabase remoto
 
-Projeto `fhbvwyttikrbeaanatlr`, PostgreSQL 17.
+Projeto `fhbvwyttikrbeaanatlr`, PostgreSQL 17, permanece `ACTIVE_HEALTHY`.
 
-Estado final comprovado após cleanup:
+Nenhuma alteração remota foi necessária na Fase 27. O baseline de advisors de segurança continua contendo avisos sobre RPCs `SECURITY DEFINER` executáveis por `authenticated` e proteção de senha vazada desabilitada; eles não foram misturados à fase de responsividade porque exigem decisão própria de segurança e os RPCs atuais possuem autorização interna testada pelo CI.
+
+Estado operacional preservado da Fase 26:
 
 - 1 Organization ativa;
 - 1 Auth user confirmado;
 - 1 membership ativo;
 - 1 owner ativo;
-- 1 `audit_logs.action = 'membership.bootstrap_owner'`;
-- 0 memberships owner duplicados.
-
-RLS/grants não foram alterados nesta fase. O hardening permanente continua sendo validado pelo CI, incluindo `supabase/tests/security_hardening.sql`.
+- bootstrap desabilitado em Production.
 
 ## Vercel Production
 
-Projeto `sistema-lojasaph`; `vercel.json` continua com `git.deploymentEnabled=false`.
+Auto-deploy continua desabilitado por `vercel.json` (`git.deploymentEnabled=false`).
 
-Deployment final pós-cleanup:
+Último Production intencional permanece:
 
-- `dpl_824q6umKyUyRhYzAmxLREjNeoFK1` — READY;
-- branch `main`;
-- commit funcional `046c4a3392f85e2361c6ddeac0ae3ee1817145c5`;
-- `/health`: `environment=production`, `supabaseAccess=allowed`, `adminAccess=blocked`;
-- `/bootstrap`: 200 com estado explícito `Bootstrap desabilitado`;
-- rotas do Workspace continuaram respondendo 200 após o cleanup, incluindo Financeiro e Caixa.
+- deployment `dpl_824q6umKyUyRhYzAmxLREjNeoFK1` — READY;
+- commit funcional hospedado `046c4a3392f85e2361c6ddeac0ae3ee1817145c5`;
+- `/health`: Supabase allowed e admin blocked;
+- `/bootstrap`: desabilitado.
 
-Não reativar auto-deploy. Novos deployments ficam reservados para homologação que realmente dependa do ambiente hospedado.
+Nenhum deployment foi gasto na Fase 27. O código responsivo está na `main`, mas só chegará ao Production quando houver uma publicação intencional futura.
 
-## Próxima fase
+## Próximo MUST auditado
 
-Issue #69 — **Fase 27 — responsividade e usabilidade mobile/tablet do Workspace persistente** — open.
+O próximo MUST verificável na ordem de plataforma é `REQ-PLAT-002 — Proteção contra duplicidade`.
 
-Objetivo: fechar `REQ-PLAT-001` com validação transversal das rotas persistentes em celular, tablet e desktop, corrigindo apenas problemas comprovados de navegação, overflow, formulários, tabelas, filtros e ações.
+Já existe evidência concreta de idempotência em caminhos críticos. Exemplo: `record_stock_entry(p_command_id, ...)` consulta o movimento pelo command ID, retorna o resultado existente em retry compatível e rejeita reutilização conflitante com `IDEMPOTENCY_KEY_CONFLICT`.
 
-Evidência da lacuna:
+Entretanto, ainda não foi produzida uma matriz transversal comprovando esse comportamento em **todos** os write paths críticos de Estoque, Inventário, Compras, Financeiro e Caixa. Portanto nenhuma nova Issue foi criada por inferência.
 
-- várias telas já usam breakpoints Tailwind e tratamento local de tabelas;
-- `RuntimeShell` já muda para navegação horizontal em telas menores;
-- fases anteriores exigiram responsividade em módulos isolados;
-- porém não há uma homologação transversal documentada do Workspace persistente completo nos três tamanhos-alvo após ele passar a operar com Auth/Supabase reais.
-
-Defaults da Fase 27:
-
-- sem DDL esperado;
-- sem mudança de RLS/roles/RPCs/regras de negócio;
-- sem credenciais Production em CI ou fixtures;
-- sem redesign oportunista;
-- no máximo um deployment Production intencional ao final se a validação hospedada for realmente necessária.
+A próxima ação é auditar `REQ-PLAT-002` ponta a ponta; somente se aparecer lacuna concreta deve ser criada uma nova fase/Issue.
 
 ## Não repetir
 
-- não reabrir a Fase 26 ou recriar o primeiro owner;
-- não recolocar `SUPABASE_SECRET_KEY`/envs de bootstrap em Production sem nova necessidade administrativa aprovada;
-- não refazer PRs #66/#67/#68;
-- não reabrir Fases 24/25;
-- não ampliar RLS/grants para facilitar UI;
+- não reabrir Fase 26 ou Fase 27;
+- não refazer PRs #66/#67/#68/#70;
+- não recolocar bootstrap/admin secret em Production;
 - não reativar auto-deploy Vercel;
+- não alterar RLS/grants por conveniência de UI;
+- não criar nova Issue para `REQ-PLAT-002` antes da auditoria transversal;
 - não importar dados reais;
 - não inferir Q-001..Q-025.
