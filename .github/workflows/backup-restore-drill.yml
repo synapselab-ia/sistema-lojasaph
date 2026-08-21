@@ -25,6 +25,7 @@ env:
 
 jobs:
   drill:
+    if: ${{ vars.BACKUP_AUTOMATION_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
