@@ -2,13 +2,15 @@
 
 ## Estado
 
-Fase 40 — revalidação de `REQ-PLAT-003 — Validação de dados` — foi concluída **sem finding funcional**.
+Fase 40 — revalidação de `REQ-PLAT-003 — Validação de dados` — foi concluída **sem finding funcional** e integrada pelo PR #90.
 
-`REQ-PLAT-003` já estava atendido desde a Fase 29. A continuidade pós-Fase 39 voltou a apontar para esse requisito, então esta sessão fez somente uma revalidação diferencial, sem repetir implementação/testes por rotina.
+`REQ-PLAT-003` já estava atendido desde a Fase 29. A continuidade pós-Fase 39 voltou a apontar para esse requisito, então a Fase 40 fez somente uma revalidação diferencial, sem repetir implementação/testes por rotina.
 
-- `main` de entrada: `ff65c09d14b3468eb119e083f67e63d70aaa81ce`;
+- `main` pós-Fase 40: `765776a442d66f3216e51fa86967f02a78ff1545`;
 - baseline original da auditoria: `370b37161150bcf2eac3afb4afb9d8bb80d96e10`;
-- branch: `agent/data-validation-revalidation`;
+- PR #90: squash-mergeado;
+- head validado: `747ad96e7e27c09094bf318bcd2b1cf0dc38a75d`;
+- CI #355: success (`database` + `validate`);
 - Issue corretiva: nenhuma;
 - Supabase Production: `fhbvwyttikrbeaanatlr`, `ACTIVE_HEALTHY`, PostgreSQL 17;
 - Issue #75: continua aberta/desarmada;
@@ -29,7 +31,8 @@ Resumo da Fase 40:
 - `inventory_balances_negative_policy` continua protegendo saldo negativo conforme configuração do local;
 - os novos triggers de auditoria coexistem com os boundaries anteriores;
 - nenhum DDL/DML/command de negócio foi executado em Production;
-- não existe evidência de regra essencial que tenha passado a depender somente da UI.
+- não existe evidência de regra essencial que tenha passado a depender somente da UI;
+- CI #355 repetiu migrations, seed, backup/restore, hardening, audit trail, suítes transacionais, lint, typecheck, Vitest e production build com sucesso.
 
 Não criar teste, constraint ou validação nova apenas para “fechar” novamente `REQ-PLAT-003` sem regressão concreta.
 
