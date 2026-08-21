@@ -45,7 +45,14 @@ jobs:
               missing=1
             fi
           done
-          exit "${missing}"
+          if (( missing != 0 )); then
+            exit 1
+          fi
+
+          if [[ "${SUPABASE_DB_URL}" != *".pooler.supabase.com:5432/"* ]]; then
+            echo "::error::PRODUCTION_SUPABASE_DB_URL must use the Supabase Session pooler on port 5432. GitHub Actions runners are IPv4-only; do not use the direct IPv6 database URL."
+            exit 1
+          fi
 
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@3c2f5e2ae34c34e428e8e206e2c4d21fa2d20fbf # v2.1.1
