@@ -2,16 +2,41 @@
 
 ## Estado
 
-Fase 38 / `REQ-PLAT-005` está **implementada em código**, mas a Issue #75 continua aberta até o primeiro backup Production real.
+Fase 39 / `REQ-SEC-005 — Cancelamento/estorno` foi auditada e está **atendida no escopo atual**, sem finding funcional.
 
-- `main` de entrada: `40d8d86adaa27801f2568548763af4b4cf1de3af`;
-- PR #86: squash-mergeado — automação;
-- PR #87: squash-mergeado — handoff pós-merge;
-- Issue #75: aberta;
+- `main` de entrada da auditoria: `2518dab61825c103d763b23187da04ae075b5778`;
+- PR #89: auditoria/evidência de `REQ-SEC-005`;
+- Issue corretiva nova: nenhuma;
 - Supabase Production: `fhbvwyttikrbeaanatlr`;
-- nenhum deployment Vercel nessa frente.
+- Issue #75: continua aberta/desarmada;
+- nenhum deployment Vercel nesta auditoria;
+- Production foi usada somente para introspecção read-only.
 
-## Política aprovada — não perguntar novamente
+## Evidência de REQ-SEC-005
+
+Ler `docs/qa/cancellation-reversal.md` antes de reabrir essa frente.
+
+Resumo:
+
+- `authenticated` não possui `DELETE` direto nas relações críticas revisadas;
+- `security_hardening.sql` protege transversalmente contra retorno de DELETE e privilégios administrativos diretos;
+- pedidos, documentos financeiros, sessões de caixa e inventários usam lifecycle de cancelamento, preservando a linha original;
+- estorno financeiro cria novo evento `reversal` ligado ao pagamento original;
+- devolução cria novo `stock_movement` `return_in` ligado à retirada por `reversal_of_movement_id`;
+- retirada/pagamento original não é apagado para corrigir o fato histórico;
+- commands críticos fazem auth + role + resource scope, usam idempotência/locks e registram audit no mesmo boundary transacional;
+- gateways/telas persistentes revisados chamam esses RPCs e não Data API `DELETE` para cancelamento/estorno/devolução;
+- o único `delete` relevante observado na tela de Compras é limpeza de estado React local, não persistência.
+
+Suítes reutilizadas: `security_hardening.sql`, `purchase_orders.sql`, `finance_payables.sql`, `cash_sessions.sql`, `inventory_count.sql`, `inventory_count_cancel.sql`, `stock_return.sql` e `audit_trail.sql`.
+
+Não adicionar soft-delete genérico, novas flags de cancelamento ou novos testes apenas para “marcar requisito como feito” sem regressão concreta.
+
+## Backup Production / #75
+
+A Fase 38 permanece como estava; não refazer automação.
+
+Política já aprovada — não perguntar novamente:
 
 - RPO 24h;
 - backup diário;
@@ -22,62 +47,43 @@ Fase 38 / `REQ-PLAT-005` está **implementada em código**, mas a Issue #75 cont
 - restore drill mensal isolado;
 - sem Pro/PITR por enquanto.
 
-## O que já está em `main`
+Já concluído:
 
-`.github/workflows/production-backup.yml` e `.github/workflows/backup-restore-drill.yml` implementam backup diário, SHA-256, upload Google Drive via rclone, retenção, cleanup, alerta por e-mail e drill mensal isolado.
+- `.github/workflows/production-backup.yml`;
+- `.github/workflows/backup-restore-drill.yml`;
+- `PRODUCTION_SUPABASE_DB_URL` como GitHub Actions Secret via Session pooler 5432.
 
-Os dois workflows estão protegidos por:
+Ainda pendente, deliberadamente para computador pessoal/confiável:
 
-`vars.BACKUP_AUTOMATION_ENABLED == 'true'`
-
-A variável não foi criada, portanto schedules permanecem skipped.
-
-## Provisionamento manual
-
-Já concluído pelo operador:
-
-- GitHub Actions Secret `PRODUCTION_SUPABASE_DB_URL` usando Session pooler Supabase na porta 5432.
-
-Ainda pendente:
-
-- OAuth Google Drive em `synapselab.ia@gmail.com`;
-- remote rclone `[lojasaph-drive]`;
+- OAuth Google Drive/rclone `[lojasaph-drive]`;
 - `BACKUP_RCLONE_CONFIG_B64`;
 - `BACKUP_ALERT_GMAIL_APP_PASSWORD`;
-- repository variable `BACKUP_AUTOMATION_ENABLED=true`;
+- `BACKUP_AUTOMATION_ENABLED=true`;
 - primeiro run real de `Production Database Backup`;
 - confirmação de archive + `.sha256` no Drive;
 - fechamento da #75.
 
-## Decisão operacional desta sessão
-
-O operador está em computador de trabalho e decidiu **adiar as etapas que manipulam OAuth/token/App Password para um computador pessoal/confiável**, como já foi feito em outro projeto.
-
-Essa pausa é deliberada e segura. Não tentar contornar usando credenciais no chat, arquivos temporários, service account improvisada ou outro mecanismo só para fechar a Issue.
-
-A Issue #75 permanece aberta, porém não deve bloquear outras frentes independentes do produto.
-
-## Validação existente
-
-- PR #86: CI #344 database + validate — success;
-- PR #87: CI #346 — success;
-- lint, typecheck, Vitest, build, migrations, backup/restore e hardening verdes.
+Se o operador não estiver em máquina pessoal/confiável, mantenha #75 aberta e desarmada e prossiga com a frente independente.
 
 ## Próximo chat
 
-1. Ler continuidade padrão e conferir estado real de `main`, #75, Issues/PRs/branches/CI.
-2. Não refazer a automação de backup.
-3. Se o operador estiver em computador pessoal/confiável e quiser concluir #75, retomar apenas do OAuth/rclone + Gmail App Password, depois armar e executar o primeiro backup real.
-4. Caso contrário, manter #75 aberta/desarmada e executar a `NEXT_ACTION` independente: `REQ-SEC-005 — Cancelamento/estorno`.
-5. Só fechar #75 depois de run Production real verde e confirmação de archive + checksum off-site.
+1. Ler `AGENTS.md`, `START-HERE`, `CURRENT_STATE`, este `HANDOFF`, `NEXT_ACTION` e `WORKFLOW`.
+2. Conferir estado real de `main`, Issues/PRs/branches/CI antes de agir.
+3. Não refazer Fase 38 nem Fase 39.
+4. Se #75 ainda estiver aguardando máquina confiável, executar a `NEXT_ACTION`: **Fase 40 — auditar `REQ-PLAT-003 — Validação de dados`**.
+5. Mapear regras essenciais em Estoque, Inventário, Compras, Financeiro, Caixa e cadastros críticos e provar que não dependem apenas da interface.
+6. Abrir Issue somente para gap reproduzível; se o requisito estiver atendido, produzir apenas evidência/documentação.
+7. Manter Supabase Production read-only para auditoria; não usar dados reais como fixture.
+8. Ao final, atualizar continuidade novamente.
 
 ## Não fazer
 
 - não receber/publicar DB URL, OAuth token/config ou App Password;
-- não ativar schedule antes dos secrets restantes;
+- não ativar backup antes dos secrets restantes;
 - não fechar #75 sem run real;
 - não restaurar Production para teste;
+- não reabrir `REQ-SEC-005` sem evidência de regressão;
 - não contratar plano/add-on sem autorização;
-- não criar deploy Vercel para backup;
+- não criar deploy Vercel só para auditoria;
 - não reaplicar migrations;
 - não importar dados reais/cutover.
