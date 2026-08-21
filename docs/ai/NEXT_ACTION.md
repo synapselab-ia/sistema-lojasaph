@@ -2,143 +2,124 @@
 
 ## Contexto
 
-Fase 38 / `REQ-PLAT-005` foi mergeada pelo PR #86 em:
+Fase 38 / `REQ-PLAT-005` foi implementada e mergeada pelo PR #86. A Issue #75 continua aberta porque ainda falta o primeiro backup Production real.
 
-`c51e701f56e670f6afc8ca1df375fa94ca41b5b4`
+A automação está desarmada por `BACKUP_AUTOMATION_ENABLED` e isso é intencional.
 
-A Issue #75 continua aberta porque ainda falta comprovar o primeiro backup Production real.
+Provisionamento já concluído:
 
-Decisões aprovadas — não perguntar novamente:
+- `PRODUCTION_SUPABASE_DB_URL` criado no GitHub Actions usando Session pooler Supabase na porta 5432.
 
-- RPO 24h;
-- backup diário;
-- RTO objetivo até 4h;
-- Google Drive privado;
-- retenção 30 dias;
-- alerta `synapselab.ia@gmail.com`;
-- restore drill mensal isolado;
-- sem Pro/PITR por enquanto.
+Provisionamento restante foi **adiado deliberadamente** até o operador estar em computador pessoal/confiável:
+
+- OAuth Google Drive;
+- remote rclone `[lojasaph-drive]`;
+- `BACKUP_RCLONE_CONFIG_B64`;
+- `BACKUP_ALERT_GMAIL_APP_PASSWORD`;
+- `BACKUP_AUTOMATION_ENABLED=true`;
+- primeiro run real e fechamento da #75.
+
+Não refazer nem substituir essa implementação. #75 permanece aberta e desarmada, mas não bloqueia frentes independentes.
 
 ## Objetivo ativo
 
-**Provisionar as credenciais pela UI, armar a automação, executar o primeiro backup real e fechar #75 somente após evidência verde.**
+**Auditar `REQ-SEC-005 — Cancelamento/estorno`: registros críticos não devem ser simplesmente excluídos sem trilha de auditoria.**
 
-Não começar `REQ-SEC-005` enquanto essa ativação puder ser concluída com o operador presente.
+A tarefa começa como auditoria transversal. Não criar novos estados, soft-delete genérico ou taxonomia de reversão sem encontrar um gap concreto.
 
-## Implementação já existente — não refazer
+## Baseline existente a reutilizar
 
-- `.github/workflows/production-backup.yml`;
-- `.github/workflows/backup-restore-drill.yml`;
-- `scripts/send-backup-alert.py`;
-- `scripts/export-supabase-backup.sh`;
-- `scripts/verify-backup-restore.sh`;
-- `docs/operations/backup-restore.md`.
+### Compras
 
-Os schedules ficam skipped até:
+- `purchase_orders` possui lifecycle com `cancelled`;
+- `cancel_purchase_order` é comando transacional/idempotente;
+- receipts preservam ledger/histórico.
 
-`BACKUP_AUTOMATION_ENABLED=true`
+### Financeiro
+
+- `cancel_payable_document` preserva documento e muda lifecycle;
+- `reverse_installment_payment` cria estorno relacionado ao pagamento original;
+- saldo/status são derivados do histórico persistente.
+
+### Caixa
+
+- sessões críticas usam cancelamento auditado;
+- `cancel_cash_session` preserva sessão/histórico.
+
+### Estoque / Inventário
+
+- ledger de estoque é imutável para cliente normal;
+- devolução cria novo `stock_movement` relacionado por `reversal_of_movement_id`;
+- `cancel_inventory_count` preserva sessão/lifecycle;
+- ajustes, perdas e transferências permanecem históricos.
+
+### Hardening transversal
+
+- authenticated não possui DELETE direto nas tabelas públicas de aplicação;
+- `security_hardening.sql` protege contra regressão de DELETE/TRUNCATE/REFERENCES/TRIGGER/MAINTAIN;
+- `audit_logs` é append-only para cliente normal;
+- Fase 36 adicionou audit trail para configurações críticas.
 
 ## Fazer agora
 
-### 1. Supabase DB URL
+1. Ler continuidade padrão, `WORKFLOW`, requirements e `docs/qa/audit-trail.md`.
+2. Conferir estado real de `main`, #75, Issues/PRs/branches e CI.
+3. Confirmar que #75 continua aberta/desarmada; não retomar OAuth em máquina de trabalho.
+4. Mapear registros críticos atuais por domínio:
+   - `stock_movements` e reversões/devoluções;
+   - `inventory_counts`;
+   - `purchase_orders`/receipts;
+   - `payable_documents`/`payments`;
+   - `cash_sessions`/movements/totals;
+   - configurações críticas quando houver lifecycle relevante.
+5. Inspecionar grants/RLS e provar que `authenticated` não possui DELETE direto nas relações críticas.
+6. Inspecionar RPCs de cancelamento/estorno e confirmar:
+   - autorização/escopo;
+   - idempotência;
+   - estado anterior/novo ou relação de reversão explícita;
+   - audit event no mesmo boundary transacional;
+   - retry não duplica efeito;
+   - falha/rollback não elimina histórico.
+7. Confirmar que UIs/gateways usam commands de cancelamento/estorno e não `.delete()` para registros críticos.
+8. Diferenciar corretamente lifecycle cancelado, reversão por novo evento, ausência deliberada de delete e limpeza de fixtures/testes.
+9. Usar Supabase somente read-only para introspecção; não executar cancelamento/estorno real em Production.
+10. Reutilizar suites existentes de compras, financeiro, caixa, inventário, devoluções, RLS/hardening e auditoria.
+11. Se faltar apenas prova transversal barata, adicionar teste/documentação mínima; não redesenhar domínio.
+12. Se houver gap reproduzível, abrir uma única Issue + branch + correção mínima.
+13. Se atendido, produzir apenas evidência/documentação sem Issue artificial.
+14. Não criar deployment Vercel para essa auditoria salvo necessidade real e única.
+15. Atualizar `CURRENT_STATE`, `HANDOFF` e `NEXT_ACTION` ao final.
 
-Na UI do Supabase:
+## Critério de conclusão de REQ-SEC-005
 
-- abrir projeto `fhbvwyttikrbeaanatlr`;
-- **Connect → Session pooler**;
-- usar a connection string da **porta 5432**;
-- preencher o password localmente quando a UI pedir/mostrar placeholder;
-- salvar o valor diretamente no GitHub Secret `PRODUCTION_SUPABASE_DB_URL`.
+- authenticated sem DELETE direto sobre registros críticos;
+- correções usam cancelamento/reversão e preservam o original;
+- Organization, ator, recurso e motivo/contexto mínimo preservados quando aplicável;
+- audit trail no mesmo boundary transacional;
+- retries idempotentes ou conflitos explícitos;
+- falhas não deixam estado parcial nem apagam histórico;
+- nenhum `.delete()` crítico no runtime fora de caso explicitamente justificado/auditado.
 
-Não usar Direct connection: GitHub Actions é IPv4-only e o endpoint direct do plano Free é IPv6. O workflow rejeita direct URL sem expor o valor.
+## Retomar #75 depois
 
-Nunca colar a URL no chat.
+Somente quando o operador estiver em computador pessoal/confiável:
 
-### 2. Google Drive / rclone
-
-Em máquina confiável:
-
-- criar OAuth client próprio no Google Cloud;
-- habilitar Google Drive API;
-- autenticar como `synapselab.ia@gmail.com`;
-- usar remote exato `[lojasaph-drive]`;
-- preferir scope `drive.file`;
-- não usar o shared rclone client ID em retirada durante 2026;
-- não deixar o OAuth app em Testing para automação duradoura;
-- gerar `rclone.conf` via `rclone config`;
-- codificar a config em base64;
-- salvar somente no GitHub Secret `BACKUP_RCLONE_CONFIG_B64`.
-
-Nunca colar OAuth/client secret/token/base64 no chat.
-
-### 3. Gmail App Password
-
-- garantir 2-Step Verification na conta;
-- criar App Password exclusiva para “Sistema Lojasaph Backup”;
-- salvar direto no GitHub Secret `BACKUP_ALERT_GMAIL_APP_PASSWORD`;
-- não usar a senha normal da conta.
-
-### 4. Armar
-
-Somente depois dos três secrets:
-
-- criar repository variable `BACKUP_AUTOMATION_ENABLED=true`.
-
-### 5. Executar prova real
-
-GitHub:
-
-- Actions → `Production Database Backup` → Run workflow;
-- aguardar conclusão.
-
-Exigir sucesso em:
-
-- validação dos secrets/session pooler;
-- export lógico;
-- hashes internos;
-- archive + `.sha256`;
-- upload Google Drive;
-- `rclone check`;
-- retenção;
-- cleanup.
-
-### 6. Verificar Drive
-
-Sem abrir/publicar o dump, confirmar em `Lojasaph Backups`:
-
-- `lojasaph-production-<UTC>.tar.gz`;
-- `.sha256` correspondente.
-
-### 7. Fechar #75
-
-Se o run real estiver verde:
-
-- registrar na #75 somente run/horário e confirmação de integridade/off-site, nunca valores/arquivo;
-- fechar #75 como completed;
-- atualizar continuidade.
-
-## CI já concluído
-
-PR #86 head final `1c44f83dbb20c9203e58538c2e1343b43a3b4656`:
-
-- CI #344 database — success;
-- CI #344 validate — success;
-- notifier/lint/typecheck/Vitest/build — success;
-- backup/restore/RLS/hardening — success.
-
-## Depois da #75
-
-Retomar `REQ-SEC-005 — Cancelamento/estorno`, reutilizando o hardening de DELETE, lifecycles de cancelamento, reversões e audit trail existentes. Só abrir Issue se aparecer gap reproduzível.
+1. configurar OAuth Google Drive/rclone;
+2. criar `BACKUP_RCLONE_CONFIG_B64`;
+3. criar `BACKUP_ALERT_GMAIL_APP_PASSWORD`;
+4. criar `BACKUP_AUTOMATION_ENABLED=true`;
+5. executar `Production Database Backup` manualmente;
+6. comprovar archive + `.sha256` no Drive;
+7. registrar evidência e fechar #75.
 
 ## Segurança / operação
 
 - não pedir/receber secrets no chat;
 - não versionar dump/config/token;
-- não usar GitHub Artifact para Production backup;
-- não ativar antes dos três secrets;
+- não ativar backup antes dos secrets restantes;
 - não restaurar Production para teste;
 - não fechar #75 sem run real;
-- não criar deploy Vercel;
-- não contratar plano/add-on sem autorização;
-- não reaplicar migrations;
+- não reabrir REQ-SEC-003/004 sem regressão concreta;
+- não reaplicar migrations existentes;
+- não criar deployment Vercel;
 - não importar dados reais/cutover.
