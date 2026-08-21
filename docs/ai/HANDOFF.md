@@ -2,35 +2,36 @@
 
 ## Estado
 
-Fase 39 / `REQ-SEC-005 — Cancelamento/estorno` foi auditada e está **atendida no escopo atual**, sem finding funcional.
+Fase 40 — revalidação de `REQ-PLAT-003 — Validação de dados` — foi concluída **sem finding funcional**.
 
-- `main` de entrada da auditoria: `2518dab61825c103d763b23187da04ae075b5778`;
-- PR #89: auditoria/evidência de `REQ-SEC-005`;
-- Issue corretiva nova: nenhuma;
-- Supabase Production: `fhbvwyttikrbeaanatlr`;
+`REQ-PLAT-003` já estava atendido desde a Fase 29. A continuidade pós-Fase 39 voltou a apontar para esse requisito, então esta sessão fez somente uma revalidação diferencial, sem repetir implementação/testes por rotina.
+
+- `main` de entrada: `ff65c09d14b3468eb119e083f67e63d70aaa81ce`;
+- baseline original da auditoria: `370b37161150bcf2eac3afb4afb9d8bb80d96e10`;
+- branch: `agent/data-validation-revalidation`;
+- Issue corretiva: nenhuma;
+- Supabase Production: `fhbvwyttikrbeaanatlr`, `ACTIVE_HEALTHY`, PostgreSQL 17;
 - Issue #75: continua aberta/desarmada;
-- nenhum deployment Vercel nesta auditoria;
+- nenhum deployment Vercel nesta fase;
 - Production foi usada somente para introspecção read-only.
 
-## Evidência de REQ-SEC-005
+## Evidência de REQ-PLAT-003
 
-Ler `docs/qa/cancellation-reversal.md` antes de reabrir essa frente.
+Ler `docs/qa/data-validation.md` antes de reabrir essa frente.
 
-Resumo:
+Resumo da Fase 40:
 
-- `authenticated` não possui `DELETE` direto nas relações críticas revisadas;
-- `security_hardening.sql` protege transversalmente contra retorno de DELETE e privilégios administrativos diretos;
-- pedidos, documentos financeiros, sessões de caixa e inventários usam lifecycle de cancelamento, preservando a linha original;
-- estorno financeiro cria novo evento `reversal` ligado ao pagamento original;
-- devolução cria novo `stock_movement` `return_in` ligado à retirada por `reversal_of_movement_id`;
-- retirada/pagamento original não é apagado para corrigir o fato histórico;
-- commands críticos fazem auth + role + resource scope, usam idempotência/locks e registram audit no mesmo boundary transacional;
-- gateways/telas persistentes revisados chamam esses RPCs e não Data API `DELETE` para cancelamento/estorno/devolução;
-- o único `delete` relevante observado na tela de Compras é limpeza de estado React local, não persistência.
+- comparação `370b371…` → `ff65c09…`: 14 commits, sem alteração em `src/**`;
+- migrations antigas foram apenas reconciliadas/renomeadas sem mudança SQL;
+- mudança `membership_rls_initplan` preserva semântica e pertence a autorização/RLS;
+- mudança `critical_config_audit` só adiciona audit trail de configuração crítica;
+- schema hospedado mantém `CHECK`s, FKs compostas, precisões e triggers de validação relevantes;
+- `inventory_balances_negative_policy` continua protegendo saldo negativo conforme configuração do local;
+- os novos triggers de auditoria coexistem com os boundaries anteriores;
+- nenhum DDL/DML/command de negócio foi executado em Production;
+- não existe evidência de regra essencial que tenha passado a depender somente da UI.
 
-Suítes reutilizadas: `security_hardening.sql`, `purchase_orders.sql`, `finance_payables.sql`, `cash_sessions.sql`, `inventory_count.sql`, `inventory_count_cancel.sql`, `stock_return.sql` e `audit_trail.sql`.
-
-Não adicionar soft-delete genérico, novas flags de cancelamento ou novos testes apenas para “marcar requisito como feito” sem regressão concreta.
+Não criar teste, constraint ou validação nova apenas para “fechar” novamente `REQ-PLAT-003` sem regressão concreta.
 
 ## Backup Production / #75
 
@@ -51,7 +52,7 @@ Já concluído:
 
 - `.github/workflows/production-backup.yml`;
 - `.github/workflows/backup-restore-drill.yml`;
-- `PRODUCTION_SUPABASE_DB_URL` como GitHub Actions Secret via Session pooler 5432.
+- `PRODUCTION_SUPABASE_DB_URL` via Session pooler 5432.
 
 Ainda pendente, deliberadamente para computador pessoal/confiável:
 
@@ -63,18 +64,20 @@ Ainda pendente, deliberadamente para computador pessoal/confiável:
 - confirmação de archive + `.sha256` no Drive;
 - fechamento da #75.
 
-Se o operador não estiver em máquina pessoal/confiável, mantenha #75 aberta e desarmada e prossiga com a frente independente.
+Se o operador não estiver em máquina pessoal/confiável, mantenha #75 aberta/desarmada e prossiga com a frente independente.
 
 ## Próximo chat
 
 1. Ler `AGENTS.md`, `START-HERE`, `CURRENT_STATE`, este `HANDOFF`, `NEXT_ACTION` e `WORKFLOW`.
 2. Conferir estado real de `main`, Issues/PRs/branches/CI antes de agir.
-3. Não refazer Fase 38 nem Fase 39.
-4. Se #75 ainda estiver aguardando máquina confiável, executar a `NEXT_ACTION`: **Fase 40 — auditar `REQ-PLAT-003 — Validação de dados`**.
-5. Mapear regras essenciais em Estoque, Inventário, Compras, Financeiro, Caixa e cadastros críticos e provar que não dependem apenas da interface.
-6. Abrir Issue somente para gap reproduzível; se o requisito estiver atendido, produzir apenas evidência/documentação.
-7. Manter Supabase Production read-only para auditoria; não usar dados reais como fixture.
-8. Ao final, atualizar continuidade novamente.
+3. Não refazer Fases 38, 39 ou 40.
+4. Se #75 ainda estiver aguardando máquina confiável, executar a `NEXT_ACTION`: **Fase 41 — reconciliar o escopo MVP restante e selecionar a próxima vertical slice explícita**.
+5. Confrontar `docs/product/scope.md` + `docs/product/requirements.md` com código, migrations, módulos e histórico de PRs.
+6. Começar verificando, sem presumir prioridade, os gaps aparentes `REQ-FIN-008 — Anexos` e `REQ-EXPOR-001 — Exportação`.
+7. Excluir itens `PENDING`, fase posterior e requisitos já fechados sem regressão.
+8. Selecionar uma única lacuna de MVP com processo real e critério de aceite claro; abrir Issue e implementar somente quando a lacuna estiver comprovada.
+9. Se a reconciliação mostrar que o candidato já existe ou depende de decisão do usuário, documentar e escolher o próximo candidato explícito, sem inventar requisito.
+10. Ao final, atualizar continuidade novamente.
 
 ## Não fazer
 
@@ -82,7 +85,8 @@ Se o operador não estiver em máquina pessoal/confiável, mantenha #75 aberta e
 - não ativar backup antes dos secrets restantes;
 - não fechar #75 sem run real;
 - não restaurar Production para teste;
-- não reabrir `REQ-SEC-005` sem evidência de regressão;
+- não reabrir `REQ-PLAT-003`/`REQ-SEC-005` sem evidência de regressão;
+- não implementar item `PENDING` por inferência;
 - não contratar plano/add-on sem autorização;
 - não criar deploy Vercel só para auditoria;
 - não reaplicar migrations;
