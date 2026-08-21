@@ -1,249 +1,288 @@
 # Backup, restauração e recuperação operacional
 
-Data da verificação: 2026-08-18
-Status: Fase 16
+Data da verificação: 2026-08-21
+Status: Fase 38 — automação implementada; ativação real pendente de secrets/OAuth e primeiro run comprovado
 Requisito: `REQ-PLAT-005`
+Issue: #75
 
 ## Objetivo
 
-Definir uma estratégia reproduzível de backup/restauração para o PostgreSQL/Supabase e manter uma prova automatizada de recuperação sem depender de dados reais nem executar restore destrutivo sobre o projeto hospedado ativo.
+Manter backup lógico automático do PostgreSQL/Supabase Production, cópia off-site privada, verificação de integridade, retenção definida e prova recorrente de recuperação sem restaurar destrutivamente sobre o projeto ativo.
 
-## Estado verificado do provedor
+## Estado do provedor
 
-Projeto Supabase conectado:
-
-- projeto: `synapselab-ia's Project`;
+- Supabase Production: `fhbvwyttikrbeaanatlr`;
 - região: `sa-east-1`;
-- PostgreSQL: 17;
-- status: saudável no momento da verificação;
-- organização Supabase: plano `free`;
-- branches Supabase de desenvolvimento: nenhuma.
+- PostgreSQL 17;
+- organização no plano Free;
+- migrations em `supabase/migrations/` continuam sendo a fonte de verdade do schema.
 
-Consequências atuais:
+Schema versionado não substitui backup de dados. Enquanto o projeto permanecer no plano Free, a estratégia aprovada é exportação lógica periódica + cópia off-site. Pro/PITR só devem ser reavaliados mediante autorização de custo.
 
-- o plano Free não possui o backup diário gerenciado disponível nos planos Pro/Team/Enterprise;
-- PITR é recurso de planos pagos e requer compute compatível;
-- para Free, a documentação oficial recomenda exportações regulares com `supabase db dump` e manutenção de cópias off-site;
-- nenhum restore do projeto hospedado foi executado nesta fase.
+## Política aprovada na Issue #75
 
-Fontes oficiais consultadas em 2026-08-18:
+Decisões de 2026-08-21:
 
-- https://supabase.com/docs/guides/platform/backups
-- https://supabase.com/docs/guides/platform/migrating-within-supabase/backup-restore
-- https://supabase.com/docs/guides/platform/clone-project
-- https://supabase.com/docs/guides/deployment/ci/backups
-- https://supabase.com/docs/reference/cli/supabase-db-dump
+- **RPO:** 24 horas;
+- **cadência:** diária;
+- **RTO objetivo:** até 4 horas em condição operacional normal;
+- **destino off-site:** Google Drive privado da conta operacional;
+- **retenção:** 30 dias;
+- **proteção:** credenciais fora do Git, OAuth de menor privilégio, SHA-256 e cleanup de temporários;
+- **owner/alerta:** `synapselab.ia@gmail.com`;
+- **restore drill:** mensal e isolado.
 
-## Estratégia em camadas
+Não voltar a tratar esses itens como `PENDING` salvo nova decisão do operador.
 
-### 1. Schema reproduzível
+## Exportador lógico existente
 
-As migrations em `supabase/migrations/` continuam sendo a fonte de verdade para o schema da aplicação.
+`scripts/export-supabase-backup.sh` exige:
 
-Isso **não substitui backup de dados**. Replay de migration recompõe estrutura, não o estado operacional acumulado.
-
-### 2. Backup lógico de contingência
-
-Enquanto o projeto permanecer no plano Free, a camada disponível é exportação lógica periódica para armazenamento off-site aprovado.
-
-O helper versionado é:
-
-```bash
-scripts/export-supabase-backup.sh
-```
-
-Ele exige:
-
-- `SUPABASE_DB_URL` fornecida apenas por secret do runtime;
+- `SUPABASE_DB_URL` por ambiente/secret;
 - `BACKUP_OUTPUT_DIR` fora do repositório;
-- Supabase CLI instalada em versão aprovada/pinada pelo ambiente executor.
+- Supabase CLI disponível.
 
-O script produz temporariamente:
+Produz temporariamente:
 
 - `roles.sql`;
 - `schema.sql`;
 - `data.sql`;
 - `SHA256SUMS`.
 
-Os comandos seguem a separação recomendada pelo Supabase entre roles, schema e data. O script recusa gravar dentro do Git repository e não faz commit/upload automático.
+O helper usa `umask 077`, recusa diretório dentro do Git e verifica os hashes antes de retornar sucesso.
 
-A automação operacional deve:
+## Backup automático de Production
 
-1. executar o helper em runner privado/confiável;
-2. verificar `SHA256SUMS`;
-3. cifrar o conjunto antes de persistência externa quando o destino não fornecer proteção equivalente;
-4. enviar para storage off-site aprovado;
-5. aplicar retenção conforme política aprovada;
-6. excluir os arquivos temporários do runner.
+Workflow: `.github/workflows/production-backup.yml`.
 
-### Cadência
+- cron diário `17 6 * * *`;
+- `workflow_dispatch` para primeira execução/controlada;
+- guard `vars.BACKUP_AUTOMATION_ENABLED == 'true'`;
+- Supabase CLI pinada em `2.111.0`;
+- rclone pinado em `1.75.0`;
+- reutiliza o exportador existente;
+- adiciona metadata não sensível;
+- cria `lojasaph-production-<UTC>.tar.gz` + `.sha256`;
+- verifica hashes internos e do archive;
+- envia para `lojasaph-drive:Lojasaph Backups`;
+- executa `rclone check` pós-upload;
+- remove apenas archives Lojasaph com mais de 30 dias;
+- remove temporários/config OAuth do runner;
+- envia e-mail em falha sem conteúdo do dump ou credenciais.
 
-`RPO` e `RTO` de negócio ainda não foram definidos pelo cliente e não são inferidos nesta fase.
+### Conexão Supabase obrigatória no GitHub Actions
 
-Portanto:
+GitHub Actions é um ambiente IPv4-only e a conexão direta do Supabase Free usa IPv6. Portanto `PRODUCTION_SUPABASE_DB_URL` deve ser a **Session pooler connection string na porta 5432**, obtida em **Supabase Dashboard → Connect → Session pooler**.
 
-- a rotina está pronta para ser agendada;
-- a frequência de produção deve ser configurada somente após o RPO ser aprovado;
-- o intervalo do job não pode exceder o RPO aprovado;
-- nenhum valor de RPO/RTO é prometido por esta documentação.
+Formato conceitual, sem valor real:
 
-### 3. Backup gerenciado do provedor
+`postgresql://postgres.<PROJECT_REF>:<PASSWORD>@<REGION>.pooler.supabase.com:5432/postgres`
 
-Se a organização migrar para Pro/Team/Enterprise, reavaliar esta estratégia antes de produção:
+O workflow falha antes do dump se o secret não apontar para `*.pooler.supabase.com:5432`. Não usar a direct URL `db.<ref>.supabase.co:5432` nesse runner.
 
-- backups diários gerenciados passam a estar disponíveis conforme a retenção do plano;
-- PITR pode ser habilitado como add-on quando a necessidade de granularidade justificar custo/compute;
-- quando backups físicos estiverem disponíveis, `Restore to a new project` é preferível para drills não destrutivos, pois evita sobrescrever o projeto ativo.
+## Restore drill mensal
 
-A ativação de plano/add-on é decisão operacional/custo e não foi executada nesta fase.
+Workflow: `.github/workflows/backup-restore-drill.yml`.
 
-## Prova automatizada de recuperação
+- cron `43 6 1 * *`;
+- mesmo arming switch;
+- baixa o archive Production real mais recente do Drive;
+- verifica `.sha256` externo;
+- extrai e verifica `SHA256SUMS` internos;
+- confirma `roles.sql`, `schema.sql`, `data.sql` e metadata;
+- executa também `scripts/verify-backup-restore.sh` em PostgreSQL 17 efêmero reconstruído com migrations + seed anonimizado;
+- nunca executa restore no Production;
+- alerta por e-mail em falha.
 
-O CI executa:
+### Limite atual do drill
+
+Ainda não existe projeto Supabase hospedado isolado aprovado para receber periodicamente uma cópia real de Production. Assim, o drill comprova separadamente:
+
+1. integridade e recuperabilidade dos arquivos do **backup Production real off-site**;
+2. mecânica de dump/restore e invariantes da aplicação em PostgreSQL 17 isolado.
+
+Não descrever isso como “restore hospedado do banco real”. Um futuro ambiente isolado pode ampliar o drill sem alterar Production.
+
+## Alerta operacional
+
+`scripts/send-backup-alert.py` usa SMTP Gmail via TLS.
+
+O e-mail padrão do Supabase Auth não é tratado como mecanismo genérico de alerta operacional; o projeto também não possui Edge Function de alerta. Para custo/complexidade baixos, a rotina usa uma App Password dedicada da conta `synapselab.ia@gmail.com`.
+
+Se a conta não oferecer App Password, substituir o notifier por integração explicitamente aprovada; não enfraquecer a conta para contornar a restrição.
+
+## Secrets e variável necessários
+
+Nenhum valor deve aparecer em Markdown, Issue, PR, workflow, logs ou chat.
+
+### Actions Secrets
+
+`PRODUCTION_SUPABASE_DB_URL`
+
+- **Session pooler**, porta 5432;
+- nunca `NEXT_PUBLIC_*`;
+- nunca colar o valor no chat.
+
+`BACKUP_RCLONE_CONFIG_B64`
+
+- base64 do `rclone.conf` completo;
+- deve conter remote exatamente `[lojasaph-drive]`;
+- contém OAuth token/client material e é secret.
+
+`BACKUP_ALERT_GMAIL_APP_PASSWORD`
+
+- App Password exclusiva para o notifier;
+- requer Google 2-Step Verification;
+- nunca usar a senha normal da conta.
+
+### Repository Variable
+
+`BACKUP_AUTOMATION_ENABLED=true`
+
+Criar somente depois dos três secrets.
+
+## Google Drive / OAuth
+
+O destino aprovado é uma conta pessoal `synapselab.ia@gmail.com`; o default é OAuth da própria conta, não service account.
+
+### Criar OAuth client próprio
+
+1. criar/usar projeto Google Cloud dedicado;
+2. habilitar Google Drive API;
+3. configurar OAuth consent para a conta operacional;
+4. criar OAuth Client ID do tipo Desktop App;
+5. usar client ID/secret próprios — o shared client ID do rclone está sendo retirado durante 2026;
+6. não deixar o app indefinidamente em `Testing` para automação longa, pois refresh tokens emitidos nesse estado podem expirar em 7 dias;
+7. preferir acesso por arquivo, não escopo amplo.
+
+### Criar o remote
+
+Em máquina confiável com navegador:
 
 ```bash
-bash scripts/verify-backup-restore.sh
+rclone config
 ```
 
-Fluxo:
+Configuração esperada:
 
-1. banco PostgreSQL 17 efêmero recebe bootstrap, todas as migrations e seed sintético;
-2. `pg_dump` cria um dump lógico em diretório temporário fora do repositório;
-3. SHA-256 do artefato é calculado e verificado;
-4. um segundo banco limpo é criado no mesmo PostgreSQL efêmero;
-5. `pg_restore` restaura o dump;
-6. `supabase/tests/backup_restore.sql` valida recuperação;
-7. banco restaurado e arquivos temporários são destruídos por `trap` ao final, inclusive em falha.
+- name: `lojasaph-drive`;
+- storage: Google Drive;
+- client ID/secret: próprios;
+- scope: `drive.file` sempre que compatível;
+- login: `synapselab.ia@gmail.com`;
+- Shared Drive: não.
 
-O teste comprova, no banco restaurado:
+`drive.file` limita o app aos arquivos que ele cria/usa. Se futuramente houver necessidade concreta de arquivos externos preexistentes, revisar o escopo antes de ampliar acesso.
 
-- fixtures sintéticos principais presentes;
-- saldo de estoque esperado preservado;
-- RLS habilitada em tabelas críticas;
-- `anon` sem leitura operacional indevida;
-- `authenticated` sem `INSERT` direto no ledger;
-- RPC transacional pública ainda executável pelo papel esperado;
-- isolamento de Organization funcionando após restore.
+Depois, codificar o `rclone.conf` em base64 numa máquina confiável e salvar somente em `BACKUP_RCLONE_CONFIG_B64`. Nunca versionar o arquivo ou o base64.
 
-Esse drill prova a mecânica de dump/restore e invariantes da aplicação. Ele **não** simula a infraestrutura interna de restore da Supabase nem substitui um futuro drill de recuperação hospedada quando houver um ambiente/plano seguro para isso.
+## Gmail App Password
 
-## Runbook — criar backup lógico
+1. ativar/verificar 2-Step Verification em `synapselab.ia@gmail.com`;
+2. criar App Password exclusiva, por exemplo “Sistema Lojasaph Backup”;
+3. salvar somente como `BACKUP_ALERT_GMAIL_APP_PASSWORD`;
+4. não reutilizar a senha principal da conta.
 
-Pré-condições:
+## Ativação segura
 
-- executar fora do navegador e fora do cliente web;
-- obter a connection string por mecanismo seguro;
-- não gravar a credencial em arquivo versionado;
-- usar diretório temporário fora do repo;
-- confirmar destino off-site e retenção antes da execução de produção.
+Depois do merge do PR da Fase 38:
 
-Exemplo:
+1. criar `PRODUCTION_SUPABASE_DB_URL` com a **Session pooler URL**;
+2. criar `BACKUP_RCLONE_CONFIG_B64`;
+3. criar `BACKUP_ALERT_GMAIL_APP_PASSWORD`;
+4. criar repository variable `BACKUP_AUTOMATION_ENABLED=true`;
+5. executar **Actions → Production Database Backup → Run workflow**;
+6. aguardar sucesso completo;
+7. no Google Drive, confirmar sem abrir o dump:
+   - `Lojasaph Backups/lojasaph-production-<UTC>.tar.gz`;
+   - arquivo `.sha256` correspondente;
+8. conferir no summary que export, hashes, upload, `rclone check`, retenção e cleanup passaram;
+9. registrar somente evidência não sensível na #75.
 
-```bash
-export SUPABASE_DB_URL='postgresql://...'
-export BACKUP_OUTPUT_DIR='/secure/ephemeral/lojasaph-backup'
-bash scripts/export-supabase-backup.sh
-```
+Merge do workflow sem esse primeiro run não equivale a backup Production comprovado.
 
-Depois:
+## Operação diária
 
-1. verificar `SHA256SUMS`;
-2. cifrar/transferir para o storage aprovado;
-3. registrar timestamp, origem/projeto e checksum no inventário operacional do backup;
-4. remover os arquivos locais temporários;
-5. nunca adicionar o dump ao Git.
+Em sucesso:
 
-## Runbook — restauração lógica segura
+- nenhum dump vai para GitHub Artifact ou commit;
+- Drive privado guarda somente archive/checksum;
+- retenção é automática.
 
-Regra principal: **não restaurar sobre o projeto Supabase ativo como procedimento de teste**.
+Em falha:
 
-Ordem recomendada:
+- e-mail aponta para o run do Actions;
+- corrigir credencial/OAuth/rede sem publicar valores;
+- reexecutar manualmente;
+- se o último backup válido tiver mais de 24h, tratar como violação do RPO.
 
-1. declarar incidente/drill e congelar mudanças se for recuperação real;
-2. identificar backup e validar checksum;
-3. criar destino novo/isolado compatível;
-4. confirmar extensões/configuração necessárias no destino;
-5. restaurar roles, schema e dados conforme o procedimento oficial do Supabase;
-6. restaurar separadamente configurações/ativos não cobertos pelo dump de banco;
-7. executar os checks pós-restore abaixo;
-8. somente após validação decidir cutover/retorno de tráfego;
-9. preservar o projeto original até o aceite da recuperação sempre que possível.
+## Runbook de restauração real
 
-Para um restore lógico manual em um novo projeto, seguir a documentação oficial vigente em vez de copiar comandos antigos deste arquivo. A referência principal é:
+**Nunca restaurar sobre o projeto Production ativo apenas para teste.**
 
-- https://supabase.com/docs/guides/platform/migrating-within-supabase/backup-restore
+Em incidente:
 
-## Checks pós-restore
+1. selecionar o archive válido mais recente;
+2. validar `.sha256`;
+3. extrair em diretório protegido e validar `SHA256SUMS`;
+4. criar destino PostgreSQL/Supabase novo e isolado compatível;
+5. seguir a documentação vigente do Supabase para roles/schema/data;
+6. validar migrations, extensões, tabelas, funções, triggers e índices;
+7. validar RLS/grants e isolamento por Organization;
+8. reconciliar dados operacionais críticos;
+9. executar smoke tests não destrutivos;
+10. decidir cutover somente após aceite;
+11. preservar o projeto original sempre que possível.
 
-Executar no mínimo:
+O RTO de até 4h é objetivo operacional, não garantia do provedor; depende de tamanho do banco, destino e intervenção do operador.
 
-### Estrutura
+## Checks pós-restore mínimos
 
-- migrations/versionamento esperados;
-- tabelas, funções, triggers e índices principais;
-- extensões necessárias;
-- RLS habilitada nas tabelas expostas;
-- grants críticos coerentes.
+- Organizations/Units esperadas;
+- itens, fornecedores e compras;
+- financeiro/parcelas/pagamentos;
+- caixa;
+- saldos/lotes/movimentos de estoque;
+- audit trail;
+- RLS/grants;
+- outsider/anon sem acesso operacional;
+- authenticated sem DELETE/ledger writes indevidos;
+- RPCs críticas com autorização intacta.
 
-### Dados
+## O que o dump PostgreSQL não cobre sozinho
 
-- Organizations/Units principais;
-- itens/fornecedores esperados;
-- documentos financeiros e parcelas;
-- sessões/totais de caixa;
-- saldos/lotes de estoque;
-- batches/rows de importação quando aplicável;
-- contagens e totais de reconciliação definidos para o momento do backup.
-
-### Segurança
-
-- usuário sem membership não lê dados operacionais;
-- escopos Unit/Sector continuam restritos;
-- `anon` permanece sem acesso operacional;
-- ledger/financeiro/caixa continuam sem writes diretos indevidos;
-- RPCs críticas mantêm a autorização interna esperada.
-
-### Aplicação
-
-- login;
-- carregamento do workspace;
-- leituras de Estoque, Compras, Financeiro e Caixa;
-- smoke tests não destrutivos;
-- somente depois disso liberar mutações/cutover.
-
-## Itens que backup de banco não resolve sozinho
-
-Segundo a documentação atual do Supabase, restauração de banco não equivale a clonar toda a plataforma. Dependendo do caminho de restore, podem exigir reconfiguração/cópia separada:
+Quando entrarem em uso, podem exigir estratégia própria:
 
 - Storage objects;
 - Edge Functions;
-- Auth settings e API keys;
-- Realtime settings/publications;
-- extensões/configurações do projeto;
-- custom domains/DNS;
+- Auth settings/API keys;
+- Realtime/publications;
+- domains/DNS;
 - secrets externos.
 
-O Sistema Lojasaph ainda não deve assumir que um dump PostgreSQL é backup completo de todos os serviços futuros.
+A #75 trata o banco Production atual; não assumir cobertura automática de serviços futuros.
 
-## RPO/RTO pendentes
+## Critério de fechamento da Issue #75
 
-Antes de produção devem ser definidos pelo negócio/operador:
+Fechar somente quando houver evidência de:
 
-- RPO máximo aceitável;
-- RTO máximo aceitável;
-- retenção necessária;
-- destino off-site aprovado;
-- responsável pelo monitoramento da rotina;
-- canal de alerta em caso de falha de backup;
-- periodicidade de drill completo.
+- três secrets provisionados;
+- `BACKUP_AUTOMATION_ENABLED=true`;
+- primeiro `Production Database Backup` real verde;
+- archive + checksum no Drive privado;
+- integridade pós-upload verificada;
+- retenção 30 dias ativa;
+- canal de alerta provisionado;
+- workflow mensal de drill habilitado.
 
-Até essa aprovação, esses valores permanecem explicitamente **PENDING**.
+Enquanto o primeiro run real não existir, manter #75 aberta.
 
-## Regras de segurança
+## Segurança
 
-- nenhum dump real no GitHub;
-- nenhuma database URL/secret em Markdown, workflow ou log;
-- artefatos temporários com permissões restritas;
-- restore de teste somente em destino isolado;
-- restore destrutivo do projeto ativo exige decisão operacional explícita fora desta fase;
-- Storage e demais serviços precisam de estratégia própria quando entrarem em uso real.
+- nenhum dump Production no Git/Artifacts;
+- nenhuma DB URL/OAuth/App Password em docs/logs/chat;
+- temporários sempre removidos;
+- Drive em menor privilégio;
+- restore de teste somente isolado;
+- nenhum deploy Vercel necessário;
+- nenhum plano/add-on pago sem autorização.

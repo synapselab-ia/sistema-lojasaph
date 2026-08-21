@@ -26,6 +26,9 @@ jobs:
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
 
+      - name: Validate backup notifier
+        run: python -m py_compile scripts/send-backup-alert.py
+
       - name: Lint
         run: npm run lint
 

@@ -2,153 +2,157 @@
 
 ## Contexto
 
-A Fase 37 auditou `REQ-SEC-004 — Segredos`.
+A Fase 38 retomou `REQ-PLAT-005 / Issue #75 — Backup automático real de Production` depois que as decisões operacionais foram aprovadas.
 
-Resultado:
+Decisões já registradas na Issue; **não perguntar novamente**:
 
-- nenhum segredo real identificado na árvore rastreada atual;
-- `.env.example` contém apenas placeholders vazios;
-- `.env*` locais e `/backups/` permanecem ignorados;
-- `SUPABASE_SECRET_KEY` é server-only;
-- browser recebe somente URL/publishable key/refs públicas;
-- `client-boundary.test.ts` protege a fronteira;
-- password não é enviada a logs/redirects;
-- observabilidade redige campos/texto sensíveis e erros públicos são genéricos;
-- `/health` hospedado não expõe URL/ref/key/secret;
-- workflows/scripts não publicam credenciais ou dumps por desenho;
-- nenhuma exposição concreta exigiu Issue ou rotação;
-- evidência: `docs/qa/secrets-audit.md`.
+- RPO: 24h;
+- backup diário;
+- RTO objetivo: até 4h;
+- off-site: Google Drive privado;
+- retenção: 30 dias;
+- owner/alerta: `synapselab.ia@gmail.com`;
+- restore drill: mensal isolado;
+- sem Supabase Pro/PITR por enquanto.
 
-Limitações registradas:
+## Implementação existente
 
-- o conector GitHub não expõe Secret Scanning/grep exaustivo de todos os blobs históricos;
-- o conector Vercel não expõe listagem de env vars por target.
+Branch/PR da Fase 38:
 
-Não transformar essas limitações em finding por inferência e não reabrir SEC-004 sem evidência concreta.
+- branch `agent/production-backup-automation`;
+- PR #86 — `feat(backup): automate Production backup and restore drill`.
 
-## Fase 36 — não repetir
+Arquivos principais:
 
-Issue #83 / PR #84 está integrada em `main` pelo squash commit `2ff5a421624c0f6dbf199ae16f77f9ab7f510626`.
+- `.github/workflows/production-backup.yml`;
+- `.github/workflows/backup-restore-drill.yml`;
+- `scripts/send-backup-alert.py`;
+- `docs/operations/backup-restore.md`.
 
-Migration existente no GitHub/Supabase:
+O backup diário:
 
-`20260820192526 / critical_config_audit`
+- reutiliza `scripts/export-supabase-backup.sh`;
+- produz roles/schema/data + metadata e hashes;
+- empacota archive + `.sha256`;
+- envia via rclone para `lojasaph-drive:Lojasaph Backups`;
+- verifica upload;
+- aplica retenção de 30 dias;
+- remove temporários;
+- alerta por Gmail em falha.
 
-Não reaplicar.
+O drill mensal:
 
-## Issue #75 — continuar bloqueada
+- baixa o último archive Production real;
+- verifica archive e hashes internos;
+- roda a mecânica de restore no PostgreSQL 17 isolado já existente;
+- não altera Production.
 
-Antes de qualquer trabalho de backup, verificar se #75 recebeu decisões novas sobre:
+Os dois jobs são desarmados por default:
 
-- RPO;
-- RTO;
-- destino off-site;
-- retenção;
-- proteção/encriptação;
-- owner + canal de alerta;
-- cadence/destino de restore drill hospedado.
-
-Se continuar sem decisões, não inventar cron/storage e prosseguir para a auditoria independente abaixo.
+`vars.BACKUP_AUTOMATION_ENABLED == 'true'`
 
 ## Objetivo ativo
 
-**Auditar `REQ-SEC-005 — Cancelamento/estorno`: registros críticos não devem ser simplesmente excluídos sem trilha de auditoria.**
+**Concluir a ativação real da Issue #75.**
 
-A tarefa começa como auditoria transversal. Não criar novos estados, soft-delete genérico ou taxonomia de reversão sem encontrar um gap concreto.
-
-## Baseline existente a reutilizar
-
-### Compras — Issue #28 / Fase 10
-
-- `purchase_orders` possui lifecycle com `cancelled`;
-- `cancel_purchase_order` é comando transacional/idempotente;
-- recebimentos preservam ledger/histórico em vez de apagar movimentações.
-
-### Financeiro — Issue #31 / Fase 11
-
-- registros financeiros críticos não são apagados para correção;
-- `cancel_payable_document` preserva documento e muda lifecycle;
-- `reverse_installment_payment` cria estorno relacionado ao pagamento original;
-- saldo/status são derivados do histórico persistente.
-
-### Caixa — Issue #33 / Fase 12
-
-- sessões críticas usam cancelamento auditado, nunca delete físico;
-- `cancel_cash_session` preserva a sessão e histórico.
-
-### Estoque / Inventário
-
-- ledger de estoque é imutável para cliente normal;
-- devolução cria novo `stock_movement` relacionado por `reversal_of_movement_id`, sem apagar retirada original;
-- `cancel_inventory_count` preserva a sessão e muda lifecycle;
-- movimentos de ajuste/baixa/transferência permanecem históricos.
-
-### Hardening transversal
-
-A Fase 34 / `rls_grant_hardening` removeu `DELETE` direto de `authenticated` nas tabelas públicas de aplicação e a suíte `security_hardening.sql` falha se DELETE/TRUNCATE/REFERENCES/TRIGGER/MAINTAIN reaparecerem.
-
-A Fase 36 confirmou `audit_logs` append-only para cliente normal e auditou os command paths críticos.
+Não iniciar `REQ-SEC-005` enquanto a ativação abaixo puder ser concluída com o operador presente.
 
 ## Fazer agora
 
-1. Ler continuidade padrão, `WORKFLOW`, requirements e `docs/qa/audit-trail.md`.
-2. Conferir `main`, #75, demais Issues/PRs/branches e CI reais.
-3. Confirmar merge da Fase 37; não repetir SEC-004.
-4. Confirmar `20260820192526 / critical_config_audit` read-only; não reaplicar.
-5. Se #75 continuar sem decisões, mantê-la bloqueada.
-6. Mapear as tabelas/registros críticos atuais por domínio:
-   - `stock_movements` e relações de devolução/reversão;
-   - `inventory_counts`;
-   - `purchase_orders`/receipts;
-   - `payable_documents`/`payments`;
-   - `cash_sessions`/movements/totals;
-   - configurações críticas quando houver lifecycle relevante.
-7. Inspecionar grants/RLS atuais e provar que `authenticated` não possui DELETE direto nas relações críticas.
-8. Inspecionar RPCs de cancelamento/estorno e confirmar:
-   - autorização/escopo;
-   - idempotência;
-   - estado anterior/novo ou relação de reversão explícita;
-   - audit event no mesmo commit transacional;
-   - retry não duplica efeito;
-   - falha/rollback não remove histórico.
-9. Confirmar que UIs/gateways usam os commands de cancelamento/estorno quando a ação existe e não chamam `.delete()` para registros críticos.
-10. Diferenciar corretamente:
-    - cancelamento de lifecycle;
-    - estorno/reversão por novo evento relacionado;
-    - ausência deliberada de delete;
-    - limpeza de fixtures/testes ou tabelas não críticas, que não constitui automaticamente finding.
-11. Usar Supabase read-only para introspecção de policies/grants/functions quando necessário. Não executar cancelamento/estorno real em Production.
-12. Reutilizar suites existentes de compras, financeiro, caixa, inventário, devoluções, RLS/hardening e auditoria.
-13. Se faltar apenas prova transversal de baixo custo, adicionar teste/documentação mínima; não redesenhar domínio.
-14. Se houver delete destrutivo autenticado ou fluxo crítico que substitua/apague histórico sem audit trail:
-    - abrir uma única Issue;
-    - criar branch dedicada;
-    - corrigir apenas a superfície reproduzível;
-    - preservar dados existentes e backward compatibility quando possível.
-15. Se `REQ-SEC-005` estiver atendido, criar somente documentação/evidência, sem Issue artificial.
-16. Não criar deployment Vercel para essa auditoria salvo necessidade real e única.
-17. Se houver patch, exigir lint, typecheck, Vitest, build e gates PostgreSQL aplicáveis antes do merge.
-18. Atualizar `CURRENT_STATE`, `HANDOFF` e `NEXT_ACTION` ao final.
+1. Conferir estado real de `main`, PR #86, #75 e CI.
+2. Se PR #86 ainda estiver aberto:
+   - não refazer workflows;
+   - conferir diff final;
+   - exigir CI verde no head definitivo;
+   - squash merge.
+3. Confirmar que #75 continua aberta após o merge.
+4. Orientar o operador pela UI, sem receber valores no chat, a provisionar GitHub Actions Secrets:
+   - `PRODUCTION_SUPABASE_DB_URL`;
+   - `BACKUP_RCLONE_CONFIG_B64`;
+   - `BACKUP_ALERT_GMAIL_APP_PASSWORD`.
+5. Para `BACKUP_RCLONE_CONFIG_B64`:
+   - criar OAuth Client ID próprio no Google Cloud;
+   - habilitar Drive API;
+   - autenticar rclone como `synapselab.ia@gmail.com`;
+   - remote exato `[lojasaph-drive]`;
+   - preferir `drive.file`;
+   - não usar shared client ID do rclone, retirado durante 2026;
+   - não deixar OAuth em Testing para automação duradoura, pois refresh token pode expirar em 7 dias;
+   - base64 da config vai somente ao Actions Secret.
+6. Para o alerta Gmail:
+   - usar 2-Step Verification;
+   - criar App Password exclusiva para o backup;
+   - salvar somente em `BACKUP_ALERT_GMAIL_APP_PASSWORD`;
+   - nunca usar/colar a senha normal da conta.
+7. Somente depois dos três secrets, criar repository variable:
+   - `BACKUP_AUTOMATION_ENABLED=true`.
+8. Executar manualmente **Actions → Production Database Backup → Run workflow**.
+9. Verificar o run:
+   - export passou;
+   - SHA-256 passou;
+   - upload passou;
+   - `rclone check` passou;
+   - retenção passou;
+   - cleanup passou.
+10. Confirmar no Google Drive, sem abrir/expor dados, que `Lojasaph Backups` contém:
+    - `lojasaph-production-<UTC>.tar.gz`;
+    - `lojasaph-production-<UTC>.tar.gz.sha256`.
+11. Registrar evidência não sensível na #75.
+12. Fechar #75 como completed somente após o primeiro run real verde.
+13. Atualizar `CURRENT_STATE`, `HANDOFF` e este arquivo.
+14. Depois retomar `REQ-SEC-005 — Cancelamento/estorno`.
 
-## Critério de conclusão
+## CI conhecido
 
-`REQ-SEC-005` pode ser considerado atendido quando houver evidência de que:
+Head funcional anterior aos docs:
 
-- clientes autenticados não possuem DELETE direto sobre registros críticos;
-- correções operacionais usam lifecycle de cancelamento ou novo evento de reversão, não remoção do original;
-- cancelamentos/estornos preservam Organization, ator, recurso original e motivo/contexto mínimo quando aplicável;
-- audit trail permanece no mesmo boundary transacional;
-- retries são idempotentes ou rejeitam conflito explicitamente;
-- falhas não deixam estado parcial nem eliminam histórico;
-- não existe `.delete()` no runtime para registros críticos fora de um caso explicitamente justificado e auditado.
+`3e9f373014eb5213daabfa666f3cfe44b65ffce2`
+
+CI #338:
+
+- database — success;
+- validate — success;
+- notifier Python compile — success;
+- lint/typecheck/Vitest/build — success;
+- migrations, backup/restore, RLS/hardening e suítes PostgreSQL — success.
+
+Exigir CI final no head definitivo após os updates documentais.
+
+## Critério de conclusão da #75
+
+Não basta o workflow existir. Exigir evidência de:
+
+- secrets provisionados sem vazamento;
+- automação armada;
+- primeiro backup real Production verde;
+- archive e checksum presentes no Drive privado;
+- integridade pós-upload verificada;
+- retenção 30 dias ativa;
+- canal de alerta provisionado;
+- restore drill mensal versionado/habilitado.
+
+## Depois da #75
+
+Retomar a auditoria já planejada de `REQ-SEC-005 — Cancelamento/estorno`, reutilizando:
+
+- DELETE direto já removido de authenticated;
+- cancelamentos de Compras/Financeiro/Caixa/Inventário;
+- estorno de pagamentos;
+- devoluções/reversões do ledger;
+- audit trail da Fase 36.
+
+Não abrir nova Issue nessa auditoria sem gap reproduzível.
 
 ## Segurança / operação
 
-- não executar mutação destrutiva em Production para testar;
-- não criar soft-delete genérico sem necessidade de domínio;
-- não reabrir REQ-SEC-003/004 sem regressão concreta;
+- nunca pedir ao usuário para colar DB URL, OAuth token/config ou App Password no chat;
+- nunca gravar dump Production em GitHub Artifact ou repositório;
+- não ativar schedule antes dos secrets;
+- não restaurar Production para teste;
+- não fechar #75 apenas pelo merge;
+- não alterar RLS sem regressão concreta;
+- não reabrir REQ-SEC-003/004;
 - não reaplicar migrations existentes;
-- não fechar #75 sem backup automático real;
+- não criar deployment Vercel;
 - não importar dados reais/cutover;
-- não reativar Git auto-deploy;
 - não inferir Q-001..Q-025.

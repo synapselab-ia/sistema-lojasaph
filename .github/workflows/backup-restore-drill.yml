@@ -1,0 +1,228 @@
+name: Backup Restore Drill
+
+on:
+  schedule:
+    - cron: "43 6 1 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backup-restore-drill
+  cancel-in-progress: false
+
+env:
+  BACKUP_ALERT_EMAIL: synapselab.ia@gmail.com
+  BACKUP_REMOTE: "lojasaph-drive:Lojasaph Backups"
+  RCLONE_IMAGE: rclone/rclone:1.75.0
+  PGHOST: 127.0.0.1
+  PGPORT: "5432"
+  PGUSER: postgres
+  PGPASSWORD: postgres
+  PGDATABASE: lojasaph
+  PATH: /usr/lib/postgresql/17/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+jobs:
+  drill:
+    if: ${{ vars.BACKUP_AUTOMATION_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: lojasaph
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d lojasaph"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      BACKUP_RCLONE_CONFIG_B64: ${{ secrets.BACKUP_RCLONE_CONFIG_B64 }}
+      BACKUP_ALERT_GMAIL_APP_PASSWORD: ${{ secrets.BACKUP_ALERT_GMAIL_APP_PASSWORD }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Validate required secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=0
+          for name in BACKUP_RCLONE_CONFIG_B64 BACKUP_ALERT_GMAIL_APP_PASSWORD; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::Required backup drill secret for ${name} is not configured."
+              missing=1
+            fi
+          done
+          exit "${missing}"
+
+      - name: Materialize rclone configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          CONFIG_DIR="${RUNNER_TEMP}/lojasaph-rclone"
+          install -d -m 700 "${CONFIG_DIR}"
+          printf '%s' "${BACKUP_RCLONE_CONFIG_B64}" | base64 --decode > "${CONFIG_DIR}/rclone.conf"
+          chmod 600 "${CONFIG_DIR}/rclone.conf"
+          if ! grep -Fxq '[lojasaph-drive]' "${CONFIG_DIR}/rclone.conf"; then
+            echo "::error::BACKUP_RCLONE_CONFIG_B64 must contain a remote named [lojasaph-drive]."
+            exit 1
+          fi
+
+      - name: Verify rclone tooling
+        run: docker run --rm "${RCLONE_IMAGE}" version
+
+      - name: Download and verify latest real off-site backup
+        id: latest
+        shell: bash
+        run: |
+          set -euo pipefail
+          DRILL_DIR="${RUNNER_TEMP}/lojasaph-backup-drill"
+          rm -rf "${DRILL_DIR}"
+          install -d -m 700 "${DRILL_DIR}/download" "${DRILL_DIR}/extracted"
+
+          LATEST="$(
+            docker run --rm \
+              -v "${RUNNER_TEMP}/lojasaph-rclone:/config/rclone:ro" \
+              "${RCLONE_IMAGE}" \
+              lsf "${BACKUP_REMOTE}" \
+              --config /config/rclone/rclone.conf \
+              --files-only \
+              --include 'lojasaph-production-*.tar.gz' \
+            | sed '/^$/d' \
+            | sort \
+            | tail -n 1
+          )"
+
+          if [[ -z "${LATEST}" ]]; then
+            echo "::error::No Production backup archive exists in the approved Google Drive destination."
+            exit 1
+          fi
+
+          docker run --rm \
+            -v "${RUNNER_TEMP}/lojasaph-rclone:/config/rclone:ro" \
+            -v "${DRILL_DIR}/download:/data" \
+            "${RCLONE_IMAGE}" \
+            copyto "${BACKUP_REMOTE}/${LATEST}" "/data/${LATEST}" \
+            --config /config/rclone/rclone.conf \
+            --checksum
+
+          docker run --rm \
+            -v "${RUNNER_TEMP}/lojasaph-rclone:/config/rclone:ro" \
+            -v "${DRILL_DIR}/download:/data" \
+            "${RCLONE_IMAGE}" \
+            copyto "${BACKUP_REMOTE}/${LATEST}.sha256" "/data/${LATEST}.sha256" \
+            --config /config/rclone/rclone.conf
+
+          (
+            cd "${DRILL_DIR}/download"
+            sha256sum --check "${LATEST}.sha256"
+          )
+
+          tar -xzf "${DRILL_DIR}/download/${LATEST}" -C "${DRILL_DIR}/extracted"
+          (
+            cd "${DRILL_DIR}/extracted"
+            sha256sum --check SHA256SUMS
+            for required in roles.sql schema.sql data.sql BACKUP_METADATA.txt; do
+              test -s "${required}"
+            done
+          )
+
+          echo "archive_name=${LATEST}" >> "${GITHUB_OUTPUT}"
+
+      - name: Install PostgreSQL 17 client
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl \
+            --fail \
+            --silent \
+            --show-error \
+            --location \
+            --output /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          . /etc/os-release
+          ARCH="$(dpkg --print-architecture)"
+          cat <<EOF | sudo tee /etc/apt/sources.list.d/pgdg.sources >/dev/null
+          Types: deb
+          URIs: https://apt.postgresql.org/pub/repos/apt
+          Suites: ${VERSION_CODENAME}-pgdg
+          Architectures: ${ARCH}
+          Components: main
+          Signed-By: /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
+          EOF
+          if [[ -f /etc/apt/apt-mirrors.txt ]]; then
+            sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/apt-mirrors.txt
+          fi
+          sudo apt-get update \
+            -o Dir::Etc::sourcelist="/etc/apt/sources.list.d/pgdg.sources" \
+            -o Dir::Etc::sourceparts="-" \
+            -o APT::Get::List-Cleanup="0" \
+            -o Acquire::Retries=3 \
+            -o Acquire::https::Timeout=30
+          sudo apt-get install --yes --no-install-recommends \
+            -o Acquire::Retries=3 \
+            -o Acquire::http::Timeout=30 \
+            -o Acquire::https::Timeout=30 \
+            postgresql-client-17
+
+      - name: Build isolated synthetic source database
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 -f supabase/tests/bootstrap.sql
+          while IFS= read -r migration; do
+            echo "Applying ${migration}"
+            psql -v ON_ERROR_STOP=1 -f "${migration}"
+          done < <(find supabase/migrations -maxdepth 1 -type f -name '*.sql' | sort)
+          psql -v ON_ERROR_STOP=1 -f supabase/seed.sql
+
+      - name: Run isolated restore drill
+        run: bash scripts/verify-backup-restore.sh
+
+      - name: Record successful drill
+        shell: bash
+        run: |
+          {
+            echo "## Monthly backup restore drill"
+            echo
+            echo "- Latest real off-site archive: \`${{ steps.latest.outputs.archive_name }}\`"
+            echo "- Archive checksum: verified after download"
+            echo "- Internal SQL checksums: verified"
+            echo "- Isolated PostgreSQL dump/restore regression: passed"
+            echo "- Production database was not mutated"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Remove local drill material
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          rm -rf \
+            "${RUNNER_TEMP}/lojasaph-backup-drill" \
+            "${RUNNER_TEMP}/lojasaph-rclone"
+
+      - name: Email operator on drill failure
+        if: ${{ failure() }}
+        env:
+          BACKUP_ALERT_SUBJECT: "[Sistema Lojasaph] Falha no restore drill mensal"
+          BACKUP_ALERT_BODY: |
+            O restore drill mensal do Sistema Lojasaph falhou.
+
+            Workflow: Backup Restore Drill
+            Repositório: ${{ github.repository }}
+            Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            O Production não é alterado por este drill.
+        run: python scripts/send-backup-alert.py

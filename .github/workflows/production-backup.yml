@@ -1,0 +1,196 @@
+name: Production Database Backup
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-database-backup
+  cancel-in-progress: false
+
+env:
+  BACKUP_ALERT_EMAIL: synapselab.ia@gmail.com
+  BACKUP_REMOTE: "lojasaph-drive:Lojasaph Backups"
+  BACKUP_RETENTION_DAYS: "30"
+  RCLONE_IMAGE: rclone/rclone:1.75.0
+
+jobs:
+  backup:
+    if: ${{ vars.BACKUP_AUTOMATION_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      SUPABASE_DB_URL: ${{ secrets.PRODUCTION_SUPABASE_DB_URL }}
+      BACKUP_RCLONE_CONFIG_B64: ${{ secrets.BACKUP_RCLONE_CONFIG_B64 }}
+      BACKUP_ALERT_GMAIL_APP_PASSWORD: ${{ secrets.BACKUP_ALERT_GMAIL_APP_PASSWORD }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Validate required secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=0
+          for name in SUPABASE_DB_URL BACKUP_RCLONE_CONFIG_B64 BACKUP_ALERT_GMAIL_APP_PASSWORD; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::Required backup secret for ${name} is not configured."
+              missing=1
+            fi
+          done
+          if (( missing != 0 )); then
+            exit 1
+          fi
+
+          if [[ "${SUPABASE_DB_URL}" != *".pooler.supabase.com:5432/"* ]]; then
+            echo "::error::PRODUCTION_SUPABASE_DB_URL must use the Supabase Session pooler on port 5432. GitHub Actions runners are IPv4-only; do not use the direct IPv6 database URL."
+            exit 1
+          fi
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@3c2f5e2ae34c34e428e8e206e2c4d21fa2d20fbf # v2.1.1
+        with:
+          version: 2.111.0
+
+      - name: Materialize rclone configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          CONFIG_DIR="${RUNNER_TEMP}/lojasaph-rclone"
+          install -d -m 700 "${CONFIG_DIR}"
+          printf '%s' "${BACKUP_RCLONE_CONFIG_B64}" | base64 --decode > "${CONFIG_DIR}/rclone.conf"
+          chmod 600 "${CONFIG_DIR}/rclone.conf"
+          if ! grep -Fxq '[lojasaph-drive]' "${CONFIG_DIR}/rclone.conf"; then
+            echo "::error::BACKUP_RCLONE_CONFIG_B64 must contain a remote named [lojasaph-drive]."
+            exit 1
+          fi
+
+      - name: Verify backup tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase --version
+          docker run --rm "${RCLONE_IMAGE}" version
+
+      - name: Export and package Production backup
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUNTIME_DIR="${RUNNER_TEMP}/lojasaph-production-backup"
+          PAYLOAD_DIR="${RUNTIME_DIR}/payload"
+          UPLOAD_DIR="${RUNTIME_DIR}/upload"
+          rm -rf "${RUNTIME_DIR}"
+          install -d -m 700 "${PAYLOAD_DIR}" "${UPLOAD_DIR}"
+
+          export BACKUP_OUTPUT_DIR="${PAYLOAD_DIR}"
+          bash scripts/export-supabase-backup.sh
+
+          STAMP="$(date -u +'%Y%m%dT%H%M%SZ')"
+          CREATED_AT="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          cat > "${PAYLOAD_DIR}/BACKUP_METADATA.txt" <<EOF
+          service=Sistema Lojasaph
+          source=Supabase Production
+          project_ref=fhbvwyttikrbeaanatlr
+          created_at_utc=${CREATED_AT}
+          rpo_hours=24
+          retention_days=30
+          EOF
+          chmod 600 "${PAYLOAD_DIR}/BACKUP_METADATA.txt"
+
+          (
+            cd "${PAYLOAD_DIR}"
+            sha256sum BACKUP_METADATA.txt >> SHA256SUMS
+            sha256sum --check SHA256SUMS
+          )
+
+          ARCHIVE_NAME="lojasaph-production-${STAMP}.tar.gz"
+          tar -C "${PAYLOAD_DIR}" -czf "${UPLOAD_DIR}/${ARCHIVE_NAME}" .
+          chmod 600 "${UPLOAD_DIR}/${ARCHIVE_NAME}"
+          (
+            cd "${UPLOAD_DIR}"
+            sha256sum "${ARCHIVE_NAME}" > "${ARCHIVE_NAME}.sha256"
+            sha256sum --check "${ARCHIVE_NAME}.sha256"
+          )
+
+          echo "archive_name=${ARCHIVE_NAME}" >> "${GITHUB_OUTPUT}"
+
+      - name: Upload backup to private Google Drive
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            -v "${RUNNER_TEMP}/lojasaph-rclone:/config/rclone:ro" \
+            -v "${RUNNER_TEMP}/lojasaph-production-backup/upload:/data:ro" \
+            "${RCLONE_IMAGE}" \
+            copy /data "${BACKUP_REMOTE}" \
+            --config /config/rclone/rclone.conf \
+            --checksum
+
+      - name: Verify uploaded backup
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            -v "${RUNNER_TEMP}/lojasaph-rclone:/config/rclone:ro" \
+            -v "${RUNNER_TEMP}/lojasaph-production-backup/upload:/data:ro" \
+            "${RCLONE_IMAGE}" \
+            check /data "${BACKUP_REMOTE}" \
+            --config /config/rclone/rclone.conf \
+            --checksum \
+            --one-way
+
+      - name: Enforce 30-day retention
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            -v "${RUNNER_TEMP}/lojasaph-rclone:/config/rclone:ro" \
+            "${RCLONE_IMAGE}" \
+            delete "${BACKUP_REMOTE}" \
+            --config /config/rclone/rclone.conf \
+            --min-age "${BACKUP_RETENTION_DAYS}d" \
+            --include 'lojasaph-production-*.tar.gz' \
+            --include 'lojasaph-production-*.tar.gz.sha256' \
+            --drive-use-trash=false
+
+      - name: Record successful backup
+        shell: bash
+        run: |
+          {
+            echo "## Production backup"
+            echo
+            echo "- Archive: \`${{ steps.package.outputs.archive_name }}\`"
+            echo "- Off-site destination: private Google Drive"
+            echo "- Retention: ${BACKUP_RETENTION_DAYS} days"
+            echo "- Internal and transfer checksums: verified"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Remove local backup material
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          rm -rf \
+            "${RUNNER_TEMP}/lojasaph-production-backup" \
+            "${RUNNER_TEMP}/lojasaph-rclone"
+
+      - name: Email operator on failure
+        if: ${{ failure() }}
+        env:
+          BACKUP_ALERT_SUBJECT: "[Sistema Lojasaph] Falha no backup de Production"
+          BACKUP_ALERT_BODY: |
+            O backup automático do Sistema Lojasaph falhou.
+
+            Workflow: Production Database Backup
+            Repositório: ${{ github.repository }}
+            Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            Nenhuma credencial ou conteúdo do backup é incluído neste alerta.
+        run: python scripts/send-backup-alert.py
