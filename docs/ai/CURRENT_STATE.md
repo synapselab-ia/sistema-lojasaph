@@ -4,14 +4,16 @@
 
 ## Estado atual
 
-Fase 40 — revalidação de `REQ-PLAT-003 — Validação de dados` — **concluída sem finding funcional**.
+Fase 40 — revalidação de `REQ-PLAT-003 — Validação de dados` — **concluída sem finding funcional e integrada na `main` pelo PR #90**.
 
 `REQ-PLAT-003` já havia sido auditado e considerado atendido na Fase 29. A Fase 40 ocorreu porque a continuidade pós-Fase 39 voltou a apontar para esse requisito; em vez de repetir trabalho, foi feita uma comparação diferencial entre a auditoria original e a `main` atual.
 
 - Repositório: `synapselab-ia/sistema-lojasaph`
-- `main` de entrada: `ff65c09d14b3468eb119e083f67e63d70aaa81ce`
+- `main` pós-Fase 40: `765776a442d66f3216e51fa86967f02a78ff1545`
 - baseline original de `REQ-PLAT-003`: `370b37161150bcf2eac3afb4afb9d8bb80d96e10`
-- branch da revalidação: `agent/data-validation-revalidation`
+- PR #90: squash-mergeado
+- head validado do PR #90: `747ad96e7e27c09094bf318bcd2b1cf0dc38a75d`
+- CI #355: success (`database` + `validate`)
 - Issue corretiva nova: nenhuma
 - Issue #75: continua aberta/desarmada até ativação segura do backup Production
 - Supabase Production: `fhbvwyttikrbeaanatlr`, `ACTIVE_HEALTHY`, PostgreSQL 17
@@ -24,7 +26,7 @@ Evidência consolidada em `docs/qa/data-validation.md`.
 
 ### Drift desde a Fase 29
 
-A comparação entre `370b37161150bcf2eac3afb4afb9d8bb80d96e10` e a `main` de entrada mostrou 14 commits posteriores, mas **nenhuma alteração em `src/**`**.
+A comparação entre `370b37161150bcf2eac3afb4afb9d8bb80d96e10` e a `main` de entrada da Fase 40 mostrou 14 commits posteriores, mas **nenhuma alteração em `src/**`**.
 
 As únicas mudanças funcionais de banco posteriores relevantes para validação foram:
 
@@ -54,7 +56,10 @@ Nenhum command crítico, DML de teste ou DDL foi executado remotamente.
 
 Não existe evidência de regra essencial que tenha passado a depender exclusivamente da UI. Não foi criada Issue, migration, patch funcional ou suíte duplicada.
 
-A última mudança funcional anterior já estava coberta pelo CI #353; a branch documental desta revalidação deve passar pelo CI principal antes do merge.
+Validação final do PR #90 / CI #355:
+
+- `database` — success: PostgreSQL 17, migrations, seed anonimizado, backup/restore, schema/RLS/hardening, audit trail e suítes transacionais;
+- `validate` — success: backup notifier, lint, typecheck, Vitest e production build.
 
 ## Backup Production / Issue #75
 
