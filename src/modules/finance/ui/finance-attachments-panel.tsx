@@ -57,8 +57,24 @@ export function FinanceAttachmentsPanel(props: {
   }, [client, props.organizationId, props.payableDocumentId]);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    let active = true;
+    void client
+      .from("finance_attachments")
+      .select("id, original_filename, mime_type, size_bytes, created_at")
+      .eq("organization_id", props.organizationId)
+      .eq("payable_document_id", props.payableDocumentId)
+      .order("created_at", { ascending: false })
+      .then(({ data, error }) => {
+        if (!active) return;
+        if (error) {
+          setMessage("Não foi possível carregar os anexos deste documento.");
+        } else {
+          setAttachments((data ?? []) as AttachmentRow[]);
+        }
+        setLoading(false);
+      });
+    return () => { active = false; };
+  }, [client, props.organizationId, props.payableDocumentId]);
 
   async function onFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
