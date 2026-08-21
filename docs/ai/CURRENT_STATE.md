@@ -4,114 +4,103 @@
 
 ## Estado atual
 
-Fase 38 — `REQ-PLAT-005 / Issue #75 — Backup automático de Production` — **automação mergeada; ativação real pendente de credenciais/OAuth e primeiro run comprovado**.
+Fase 38 — `REQ-PLAT-005 / Issue #75 — Backup automático de Production` — **automação mergeada e parcialmente provisionada; ativação real deliberadamente adiada até o operador usar um computador pessoal/confiável**.
 
 - Repositório: `synapselab-ia/sistema-lojasaph`
-- `main`: `c51e701f56e670f6afc8ca1df375fa94ca41b5b4`
-- PR #86: squash-mergeado
+- `main` de entrada: `40d8d86adaa27801f2568548763af4b4cf1de3af`
+- PR #86: squash-mergeado — implementação da automação
+- PR #87: squash-mergeado — handoff pós-merge
 - Issue #75: aberta
 - Supabase Production: `fhbvwyttikrbeaanatlr`
-- nenhuma migration/DDL/DML Supabase nesta fase
-- nenhum deployment Vercel
-- nenhum secret publicado no Git/docs/chat
+- nenhum deployment Vercel criado para esta frente
+- nenhum secret publicado em Git/docs/chat
 
-## Política aprovada
+## Política aprovada da #75
 
 - RPO: 24h;
 - backup diário;
 - RTO objetivo: até 4h;
-- destino: Google Drive privado;
+- destino off-site: Google Drive privado;
 - retenção: 30 dias;
 - owner/alerta: `synapselab.ia@gmail.com`;
 - restore drill: mensal isolado;
 - sem Supabase Pro/PITR por enquanto.
 
-## Implementação mergeada
+## Implementação já em `main`
 
-`production-backup.yml`:
+`.github/workflows/production-backup.yml`:
 
-- cron diário `17 6 * * *` + `workflow_dispatch`;
-- reutiliza `scripts/export-supabase-backup.sh`;
-- Supabase CLI `2.111.0` e rclone `1.75.0` pinados;
-- archive Production + checksum externo e hashes internos;
-- upload para `lojasaph-drive:Lojasaph Backups`;
-- `rclone check` pós-upload;
-- retenção automática de 30 dias;
+- cron diário + `workflow_dispatch`;
+- export lógico existente;
+- archive + SHA-256;
+- Google Drive via rclone;
+- verificação pós-upload;
+- retenção 30 dias;
 - cleanup do runner;
 - alerta Gmail em falha.
 
-`backup-restore-drill.yml`:
+`.github/workflows/backup-restore-drill.yml`:
 
-- cron mensal `43 6 1 * *`;
-- baixa e valida o backup Production real mais recente;
-- executa também o restore drill PostgreSQL 17 isolado já existente;
-- nunca escreve/restaura no Production.
+- cron mensal;
+- baixa/valida o último backup Production real;
+- executa restore drill PostgreSQL 17 isolado;
+- nunca restaura sobre Production.
 
-Os dois jobs continuam desarmados por:
+Os dois workflows permanecem desarmados por:
 
 `vars.BACKUP_AUTOMATION_ENABLED == 'true'`
 
-Sem essa variável, schedules ficam skipped.
+Sem essa variável, os schedules ficam skipped.
 
-## Conexão do backup
+## Provisionamento
 
-`PRODUCTION_SUPABASE_DB_URL` deve usar **Session pooler, porta 5432**, não a Direct connection. GitHub Actions é IPv4-only e a conexão direta do Supabase Free é IPv6. O workflow rejeita a URL errada sem imprimir o secret.
+Concluído:
 
-## Provisionamento manual restante
+- `PRODUCTION_SUPABASE_DB_URL` criado como GitHub Actions Secret usando Session pooler na porta 5432.
 
-O conector GitHub disponível não cria Actions Secrets/Variables e o OAuth Google exige autorização interativa. Faltam:
+Adiado deliberadamente para um computador pessoal/confiável:
 
-1. `PRODUCTION_SUPABASE_DB_URL` — Session pooler 5432;
-2. `BACKUP_RCLONE_CONFIG_B64` — config OAuth do remote `[lojasaph-drive]`;
-3. `BACKUP_ALERT_GMAIL_APP_PASSWORD`;
-4. repository variable `BACKUP_AUTOMATION_ENABLED=true` somente depois dos três secrets;
-5. primeiro run manual de `Production Database Backup`;
-6. confirmação do archive + `.sha256` no Drive.
+- criação/autorização do OAuth Google Drive;
+- geração do remote rclone `[lojasaph-drive]`;
+- `BACKUP_RCLONE_CONFIG_B64`;
+- `BACKUP_ALERT_GMAIL_APP_PASSWORD`;
+- `BACKUP_AUTOMATION_ENABLED=true`;
+- primeiro run real de `Production Database Backup`;
+- confirmação do archive + `.sha256` no Drive;
+- fechamento da #75.
 
-Não pedir valores de secret pelo chat.
+Motivo: essas etapas envolvem OAuth, token/config e App Password e não devem ser realizadas em computador corporativo não confiável para este segredo operacional.
 
-## Google Drive / OAuth
+A #75 continua aberta, mas **não bloqueia o desenvolvimento independente do sistema** enquanto aguarda o operador em ambiente apropriado.
 
-- conta: `synapselab.ia@gmail.com`;
-- usar OAuth da própria conta;
-- usar OAuth client próprio; shared client ID do rclone está sendo retirado durante 2026;
-- preferir scope `drive.file`;
-- não manter OAuth app em Testing para automação duradoura, pois refresh token pode expirar em 7 dias;
-- nunca versionar `rclone.conf`/base64.
+## Validação da implementação
 
-## Validação final do PR #86
+PR #86 head final `1c44f83dbb20c9203e58538c2e1343b43a3b4656`:
 
-Head final: `1c44f83dbb20c9203e58538c2e1343b43a3b4656`.
+- CI #344 database — success;
+- CI #344 validate — success;
+- notifier, lint, typecheck, Vitest e production build — success;
+- migrations, backup/restore, RLS/hardening — success.
 
-CI #344:
+PR #87:
 
-- database — success;
-- validate — success;
-- notifier Python — success;
-- lint, typecheck, Vitest e production build — success;
-- migrations, backup/restore, RLS/hardening e suítes PostgreSQL — success.
-
-## RLS
-
-Recheck remoto anterior à Fase 38:
-
-- RLS habilitado nas tabelas públicas de aplicação;
-- anon sem acesso operacional direto;
-- authenticated sem DELETE direto;
-- membership mantém `(select auth.uid())`;
-- nenhum gap novo de RLS.
+- CI #346 — success.
 
 ## Próxima ação
 
-Ativar a rotina real pela UI do Google/GitHub, executar o primeiro backup e fechar #75 apenas depois da evidência verde. Depois retomar `REQ-SEC-005 — Cancelamento/estorno`.
+Retomar a frente independente já planejada:
+
+**auditar `REQ-SEC-005 — Cancelamento/estorno`**, provando que registros críticos não são fisicamente excluídos sem trilha de auditoria.
+
+A #75 só volta a ser a ação ativa quando o operador estiver em computador pessoal/confiável para concluir OAuth/secrets e o primeiro run real.
 
 ## Não fazer
 
-- não publicar DB URL/OAuth/App Password;
-- não ativar schedule antes dos secrets;
+- não pedir/receber DB URL, OAuth token/config ou App Password no chat;
+- não ativar `BACKUP_AUTOMATION_ENABLED` antes dos secrets restantes;
 - não fechar #75 sem primeiro run real;
 - não restaurar backup real sobre Production para teste;
 - não contratar plano/add-on sem autorização;
-- não criar deploy Vercel;
+- não criar deploy Vercel para esta frente;
 - não reaplicar migrations existentes;
 - não importar dados reais/cutover.
