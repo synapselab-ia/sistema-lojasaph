@@ -1,124 +1,154 @@
 # Current State — Sistema Lojasaph
 
-Última atualização: 2026-08-20
+Última atualização: 2026-08-21
 
 ## Estado atual
 
-Fase 37 — auditoria de `REQ-SEC-004 — Segredos` — **atendido no escopo auditável; nenhum segredo real versionado ou vazamento browser/log reproduzível encontrado**.
+Fase 38 — `REQ-PLAT-005 / Issue #75 — Backup automático de Production` — **decisões aprovadas e automação implementada; ativação real ainda depende de secrets/OAuth + primeiro run comprovado**.
 
 - Repositório: `synapselab-ia/sistema-lojasaph`
-- baseline da fase: `main` em `2ff5a421624c0f6dbf199ae16f77f9ab7f510626`
-- branch: `agent/secrets-audit`
-- Issue funcional nova: nenhuma
-- evidência: `docs/qa/secrets-audit.md`
-- Issue #75 de backup continua aberta e bloqueada por decisões operacionais
-- nenhuma migration/DDL/DML foi executada nesta fase
-- nenhum valor de secret/key/connection string foi solicitado ou registrado
-- nenhum deployment Vercel foi criado
+- baseline: `main` em `ba060ec704d9e4bcca2aa7d3fc2dd4bdd3a7cd59`
+- Issue: #75 — aberta
+- branch: `agent/production-backup-automation`
+- PR: #86 — draft durante validação
+- Supabase Production: `fhbvwyttikrbeaanatlr`
+- nenhuma migration/DDL/DML Supabase nesta fase
+- nenhum deployment Vercel
+- nenhum secret foi publicado no Git/docs/chat
 
-## Fase 36 integrada
+## Decisões aprovadas para #75
 
-A Fase 36 / Issue #83 / PR #84 foi squash-mergeada em `main` no commit:
+Registradas como comentário na própria Issue em 2026-08-21:
 
-- `2ff5a421624c0f6dbf199ae16f77f9ab7f510626`
+- RPO: 24h;
+- backup: diário;
+- RTO objetivo: até 4h;
+- destino off-site: Google Drive privado da conta operacional;
+- retenção: 30 dias;
+- proteção: OAuth de menor privilégio, secrets somente no GitHub Actions, SHA-256 e cleanup de temporários;
+- owner/alerta: `synapselab.ia@gmail.com`;
+- restore drill: mensal e isolado.
 
-A Issue #83 está fechada como concluída. A migration `20260820192526 / critical_config_audit` continua registrada no Supabase e **não deve ser reaplicada**.
+O destino não será uma cópia manual: #75 exige rotina automática comprovada.
 
-Validação final da Fase 36 no head do PR #84:
+## Implementação da Fase 38
 
-- CI #334 — success;
-- Business Transactions Integration #165 — success;
-- Inventory Count Integration #181 — success.
+### Backup diário
 
-## REQ-SEC-004 — resultado
+`.github/workflows/production-backup.yml`
 
-### Arquivos rastreados
+- schedule diário `17 6 * * *`;
+- também suporta `workflow_dispatch`;
+- reutiliza `scripts/export-supabase-backup.sh`;
+- Supabase CLI pinada em `2.111.0`;
+- rclone pinado em `1.75.0`;
+- produz archive `lojasaph-production-<UTC>.tar.gz` + `.sha256`;
+- mantém checksums internos de roles/schema/data/metadata;
+- envia ao remote `lojasaph-drive:Lojasaph Backups`;
+- verifica o conteúdo enviado via `rclone check`;
+- remove somente archives do padrão Lojasaph com mais de 30 dias;
+- remove temporários do runner;
+- envia e-mail em falha.
 
-A árvore recursiva completa da `main` (`truncated=false`) foi auditada.
+### Restore drill mensal
 
-- único `.env*` rastreado: `.env.example`;
-- `.env.example` contém placeholders vazios, não valores reais;
-- nenhum `.env` local/Production rastreado;
-- nenhum PEM/certificado/chave privada ou contêiner de chave rastreado;
-- nenhum dump/backup real rastreado;
-- nenhuma planilha real `.xlsx/.xls/.csv` rastreada.
+`.github/workflows/backup-restore-drill.yml`
 
-`.gitignore` continua excluindo `.env*` salvo `.env.example`, `/backups/` e `*.pem`.
+- schedule mensal `43 6 1 * *`;
+- baixa o backup Production real mais recente do Drive;
+- verifica checksum do archive e hashes internos;
+- em paralelo à prova de integridade do backup real, executa o drill já existente em PostgreSQL 17 isolado com migrations + seed anonimizado;
+- não restaura nem escreve no Supabase Production.
 
-### Histórico observável
+Limite atual: ainda não existe um projeto Supabase hospedado isolado aprovado para restaurar periodicamente a cópia real. Não descrever o drill atual como restore hospedado de Production.
 
-O histórico disponível foi inspecionado por buscas de commits relacionadas a `.env`, `secret`, `credential`, `password` e à introdução do Supabase.
+### Alerta
 
-- commit inicial continha apenas README;
-- a Fase 7 já introduziu `.env.example` com URL/publishable/secret vazios;
-- helpers históricos referenciavam apenas nomes de `process.env`, não valores literais;
-- hardening posterior adicionou `server-only` e testes de fronteira;
-- nenhuma evidência de remoção/rotação por vazamento foi encontrada.
+`scripts/send-backup-alert.py` usa SMTP Gmail com TLS e App Password via ambiente. O projeto Supabase não possui Edge Function de alerta; o e-mail padrão de Auth não foi reutilizado como mecanismo operacional genérico.
 
-Limitação explícita: o conector atual não expõe GitHub Secret Scanning nem `git grep` arbitrário sobre todos os blobs históricos. Portanto não alegar uma varredura exaustiva de todo o DAG; registrar apenas que **nenhuma exposição concreta foi encontrada no histórico observável**.
+### Arming switch
 
-### Browser/server
+Os dois jobs possuem:
 
-- `SUPABASE_SECRET_KEY` é lida somente por runtime server-only;
-- `src/lib/supabase/env.ts` e `src/lib/supabase/server.ts` são server-only;
-- admin client recebe a secret somente no servidor e depende da policy de ambiente;
-- browser usa somente URL + publishable key + refs públicas;
-- `client-boundary.test.ts` bloqueia regressão para secret/import de facade server/process.env não público;
-- workspace envia ao client somente `SupabasePublicConfig`.
+`vars.BACKUP_AUTOMATION_ENABLED == 'true'`
 
-### Senhas, logs e erros públicos
+Sem essa repository variable, os schedules ficam skipped. Isso permite merge seguro sem gerar falhas diárias enquanto os secrets não estão provisionados.
 
-- Server Actions não colocam senha em log/URL/resposta;
-- logger redige campos sensíveis recursivamente;
-- texto livre redige Bearer/JWT, chaves Supabase, credentialed URLs e parâmetros token/secret/password;
-- `instrumentation.ts` remove query string e não copia headers;
-- `toPublicError()` converte falhas internas em mensagem genérica;
-- error boundaries exibem apenas mensagem genérica + digest/referência.
+## Secrets ainda necessários
 
-### `/health` e Vercel
+O conector GitHub disponível ao agente não possui ação para criar/alterar Actions Secrets ou repository variables. Portanto o operador precisa provisionar manualmente:
 
-O deployment Production atual permanece no commit `046c4a3392f85e2361c6ddeac0ae3ee1817145c5` por política de deploy manual. O blob de `src/app/health/route.ts` é exatamente o mesmo nesse commit e na `main`: `76220c627485d9b70b3281a23b426c7ed9ab246d`.
+- `PRODUCTION_SUPABASE_DB_URL`;
+- `BACKUP_RCLONE_CONFIG_B64` — config OAuth do remote `[lojasaph-drive]`;
+- `BACKUP_ALERT_GMAIL_APP_PASSWORD`.
 
-Fetch read-only de `/health` em 2026-08-20 retornou somente status/service/environment/supabase access reason/admin access, sem URL/ref/key/secret.
+Depois:
 
-A conexão Vercel disponível nesta sessão **não possui ação de listagem de environment variables**. Não inferir target scoping nem valores. Nenhum deploy foi criado.
+- criar `BACKUP_AUTOMATION_ENABLED=true`;
+- executar manualmente `Production Database Backup` uma vez;
+- comprovar sucesso e presença de archive + checksum no Drive privado.
 
-### Workflows e backup scripts
+**Não fechar #75 antes dessa prova real.**
 
-- workflows não ecoam credenciais nem publicam env/backup artifacts;
-- `postgres/postgres` nos jobs é credencial descartável do Postgres efêmero de CI, não Production;
-- `export-supabase-backup.sh` exige DB URL via ambiente, não imprime o valor, recusa output dentro do repo e usa `umask 077`;
-- `verify-backup-restore.sh` usa diretório temporário, dump `chmod 600` e cleanup automático.
+## Google Drive / OAuth
 
-## Supabase
+Para conta pessoal `synapselab.ia@gmail.com`:
 
-Revalidação read-only confirmou `20260820192526 / critical_config_audit` no histórico remoto.
+- usar OAuth da própria conta, não service account como default;
+- usar OAuth client próprio porque o shared client ID do rclone está sendo retirado durante 2026;
+- preferir scope `drive.file` de menor privilégio;
+- não deixar o OAuth consent indefinidamente em Testing para uma automação de longa duração, pois refresh tokens emitidos nesse estado podem expirar em 7 dias;
+- nunca versionar `rclone.conf` ou seu base64.
 
-Nesta Fase 37:
+## CI
 
-- nenhuma migration reaplicada;
-- nenhuma DDL/DML executada;
-- nenhuma key/secret/connection string solicitada.
+Head funcional `3e9f373014eb5213daabfa666f3cfe44b65ffce2`:
 
-## REQ-PLAT-005 / Issue #75
+- CI #338 database — success;
+- CI #338 validate — success;
+- compilação do notifier Python — success;
+- lint, typecheck, Vitest e production build — success;
+- cadeia PostgreSQL 17, migrations, backup/restore, RLS/hardening e suítes transacionais — success.
 
-Continua bloqueada. A #75 permanece sem comentários/decisões novas sobre RPO, RTO, destino off-site, retenção, proteção/encriptação, owner/alerta e drill hospedado.
+Após atualização documental, exigir um CI final no head definitivo do PR #86 antes do merge.
 
-Não inventar cron/storage e não fechar #75 sem automação real aprovada.
+## RLS / segurança
+
+Recheck remoto imediatamente antes desta fase confirmou:
+
+- tabelas públicas de aplicação com RLS habilitado;
+- `anon` sem privilégios operacionais diretos;
+- `authenticated` sem DELETE direto nas tabelas públicas;
+- policy de membership continua com `(select auth.uid())`;
+- warnings do Security Advisor sobre RPCs públicas SECURITY DEFINER permanecem a superfície intencional já auditada;
+- leaked-password protection continua hardening de Auth separado, não finding de RLS.
+
+Nenhuma alteração de RLS foi necessária nesta fase.
+
+## Fases anteriores — não repetir
+
+- Fase 34: RLS/initPlan concluída;
+- Fase 35: staging/import preview concluído;
+- Fase 36: audit trail de configurações críticas concluído, migration `20260820192526 / critical_config_audit` já aplicada;
+- Fase 37: `REQ-SEC-004 — Segredos` atendido e mergeado no commit `ba060ec704d9e4bcca2aa7d3fc2dd4bdd3a7cd59`.
 
 ## Próxima ação
 
-Após integrar a Fase 37, auditar `REQ-SEC-005 — Cancelamento/estorno`: registros críticos não devem ser simplesmente excluídos sem trilha de auditoria.
+1. concluir validação final e merge do PR #86;
+2. provisionar manualmente os três GitHub Actions Secrets e o OAuth rclone;
+3. criar `BACKUP_AUTOMATION_ENABLED=true`;
+4. executar e comprovar o primeiro backup Production real;
+5. fechar #75 somente depois dessa evidência;
+6. então retomar a auditoria independente `REQ-SEC-005 — Cancelamento/estorno`.
 
-Reutilizar os fluxos já existentes de cancelamento/estorno e o hardening que remove DELETE direto. A auditoria deve provar cobertura por domínio e só abrir Issue se houver delete destrutivo ou lifecycle crítico sem trilha concreta.
+## Não fazer
 
-## Não repetir
-
-- não reabrir REQ-SEC-003 ou REQ-SEC-004 sem regressão/exposição concreta;
-- não rotacionar credenciais por precaução sem evidência de comprometimento;
-- não solicitar ou publicar valores de env hospedado;
-- não reaplicar `critical_config_audit`;
-- não fechar #75 sem decisões e backup automático real;
+- não inserir connection string, OAuth token, rclone config ou App Password em Issue/PR/docs/chat;
+- não ativar schedule antes dos secrets;
+- não fechar #75 apenas porque o workflow foi mergeado;
+- não restaurar backup real sobre Production para teste;
+- não contratar Supabase Pro/PITR sem autorização;
+- não criar deployment Vercel para backup;
+- não reaplicar migrations existentes;
 - não importar dados reais/cutover;
-- não criar deployment Vercel rotineiro;
 - não inferir Q-001..Q-025.
