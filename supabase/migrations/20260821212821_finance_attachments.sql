@@ -130,14 +130,14 @@ begin
     raise exception 'INVALID_ATTACHMENT_FILENAME' using errcode = '22023';
   end if;
 
-  if p_mime_type is null or p_mime_type <> any(array[
+  if p_mime_type is null or not (p_mime_type = any(array[
     'application/pdf',
     'application/xml',
     'text/xml',
     'image/jpeg',
     'image/png',
     'image/webp'
-  ]::text[]) then
+  ]::text[])) then
     raise exception 'INVALID_ATTACHMENT_MIME_TYPE' using errcode = '22023';
   end if;
 
