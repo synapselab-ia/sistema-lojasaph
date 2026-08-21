@@ -2,70 +2,81 @@
 
 ## Contexto
 
-Fase 39 / `REQ-SEC-005 — Cancelamento/estorno` foi auditada no PR #89 e está **atendida no escopo atual**.
+Fase 40 — revalidação de `REQ-PLAT-003 — Validação de dados` — foi concluída sem finding funcional.
 
-A evidência está em `docs/qa/cancellation-reversal.md`. Não reabrir essa frente nem adicionar soft-delete/reversão genérica sem regressão concreta.
+`REQ-PLAT-003` já havia sido considerado atendido na Fase 29. A revalidação comparou o baseline `370b37161150bcf2eac3afb4afb9d8bb80d96e10` com a `main` pós-Fase 39 e confirmou que não houve mudança em `src/**`; as mudanças funcionais posteriores de banco (`membership_rls_initplan` e `critical_config_audit`) não enfraqueceram os boundaries de validação. A evidência está em `docs/qa/data-validation.md`.
 
-A Issue #75 de backup Production continua aberta e desarmada. OAuth/rclone/App Password + primeiro run real permanecem deliberadamente adiados até o operador estar em computador pessoal/confiável. Isso não bloqueia a próxima auditoria independente.
+Não reabrir `REQ-PLAT-003` sem regressão concreta.
+
+A Issue #75 de backup Production continua aberta/desarmada. OAuth/rclone/App Password + primeiro run real permanecem deliberadamente adiados até o operador estar em computador pessoal/confiável. Isso não bloqueia a próxima frente independente.
 
 ## Objetivo ativo
 
-**Fase 40 — Auditar `REQ-PLAT-003 — Validação de dados`: regras essenciais devem ser validadas no servidor/domínio e, quando aplicável, no banco.**
+**Fase 41 — Reconciliar o escopo MVP restante e selecionar a próxima vertical slice explícita.**
 
-A tarefa começa como auditoria transversal. Não mover toda validação para o banco, não duplicar regras indiscriminadamente e não tratar validação de UI como boundary de segurança.
+A fase deve evitar tanto retrabalho quanto expansão arbitrária. Antes de criar nova funcionalidade, comparar o MVP documentado com o estado real do produto e escolher **uma única lacuna comprovada**, implementável sem depender de questões `PENDING`.
 
-## Baseline existente a reutilizar
+## Baseline a reutilizar
 
-- value objects de domínio como `Money`, `Quantity` e `EntityId` já concentram invariantes locais;
-- gateways transformam erros de RPC em `DomainError` para feedback consistente;
-- commands PostgreSQL críticos validam estado, cardinalidade, escopo, quantidades, valores, relações e lifecycle;
-- constraints/indexes/FKs protegem invariantes estruturais e concorrência onde apropriado;
-- UIs fazem validação de conveniência, mas os fluxos críticos persistentes já passam por RPCs/constraints;
-- suítes SQL exercitam entradas inválidas, autorização, idempotência, concorrência/lifecycle e rollback;
-- Vitest cobre domínio/adapters/client boundary sem depender de dados reais.
+Requisitos transversais já fechados/auditados não devem voltar à fila sem regressão:
+
+- `REQ-PLAT-001` responsividade;
+- `REQ-PLAT-002` idempotência;
+- `REQ-PLAT-003` validação de dados;
+- `REQ-PLAT-004` migrations;
+- `REQ-PLAT-006` logs/erros;
+- `REQ-PLAT-007` ambientes;
+- `REQ-SEC-003` auditoria;
+- `REQ-SEC-004` segredos;
+- `REQ-SEC-005` cancelamento/estorno;
+- `REQ-IMP-001..004` foundation de importação/dry-run.
+
+`REQ-PLAT-005` continua representado pela Issue #75 e só volta a ser a frente ativa quando houver computador pessoal/confiável para concluir secrets/OAuth e o primeiro backup real.
+
+O núcleo operacional atual já cobre Organização, Cadastros, Estoque, Lotes/Validades, Compras, Financeiro, Caixa e Dashboard básico. O próximo passo não deve reimplementar essas áreas por presunção.
+
+## Candidatos explícitos a verificar primeiro
+
+A comparação inicial entre `docs/product/scope.md`, `docs/product/requirements.md` e a árvore atual não encontrou implementação aparente para:
+
+1. `REQ-FIN-008 — Anexos` (**SHOULD**) — o escopo MVP menciona NF/PDF/XML/boleto/comprovante, e a árvore atual não apresenta camada de attachment/storage do Financeiro;
+2. `REQ-EXPOR-001 — Exportação` (**SHOULD**) — o escopo MVP prevê exportação onde fizer sentido, e não foi encontrado fluxo CSV/Excel atual.
+
+Esses são **candidatos para verificação**, não prioridade pré-decidida. Também verificar se existe outro gap explícito de MVP mais fundamental antes de escolher.
 
 ## Fazer agora
 
-1. Ler continuidade padrão, `WORKFLOW`, `docs/product/requirements.md` e documentação dos módulos críticos.
-2. Conferir estado real de `main`, Issues/PRs/branches/CI e confirmar #75 sem refazer backup.
-3. Mapear regras essenciais por fluxo atual, no mínimo:
-   - cadastro/configuração crítica de estoque;
-   - entrada, retirada, transferência, perda e devolução;
-   - inventário físico;
-   - compras e recebimentos;
-   - financeiro/pagamentos/estornos;
-   - caixa;
-   - dados organizacionais/cadastros que sejam pré-condição desses fluxos.
-4. Para cada regra relevante, identificar o boundary efetivo:
-   - domínio/value object;
-   - command/RPC/server;
-   - constraint/index/FK/check no PostgreSQL;
-   - UI apenas como ergonomia, nunca como única defesa quando a regra precisa sobreviver a chamada direta.
-5. Procurar especificamente por validações críticas que existam **somente** em `page.tsx`/form/client e possam ser contornadas chamando gateway/RPC/Data API diretamente.
-6. Inspecionar commands/RPCs e constraints para quantidades/valores inválidos, referências cross-Organization, lifecycle ilegal, cardinalidade, duplicidade e estados impossíveis.
-7. Diferenciar corretamente:
-   - validação de formato/UX que pode ficar no cliente;
-   - invariante de domínio que deve sobreviver fora da UI;
-   - autorização/escopo, que pertence a `REQ-SEC-002` e não deve ser redesenhada sem finding;
-   - idempotência, já coberta por `REQ-PLAT-002`.
-8. Reutilizar as suítes SQL/Vitest existentes antes de criar teste novo. Se faltar apenas uma prova negativa barata de um invariant já implementado, adicionar o teste mínimo.
-9. Usar Supabase Production somente read-only para introspecção de constraints, funções, grants e estado estrutural; não inserir dados de teste nem disparar commands críticos remotamente.
-10. Se houver gap reproduzível em requisito essencial, abrir **uma única Issue** com reprodução e impacto; criar branch específica e implementar a correção mínima no boundary correto.
-11. Se não houver gap, não criar Issue artificial: produzir matriz/evidência em `docs/qa/` e atualizar continuidade.
-12. Não usar Vercel/deploy para provar validação de dados salvo necessidade real e única.
-13. Atualizar `CURRENT_STATE`, `HANDOFF` e `NEXT_ACTION` ao final.
+1. Ler continuidade padrão, `WORKFLOW`, `docs/product/scope.md`, `docs/product/requirements.md` e documentação dos módulos atuais.
+2. Conferir estado real de `main`, Issues/PRs/branches/CI e confirmar o estado da #75.
+3. Montar uma matriz curta dos itens do **MVP profissional** contra evidência real de implementação/homologação.
+4. Marcar cada item como:
+   - entregue;
+   - parcialmente entregue com gap concreto;
+   - não entregue e implementável agora;
+   - `PENDING`/fase posterior — não implementar;
+   - bloqueado por operação/decisão explícita.
+5. Não reabrir requisito já fechado por mera ausência de documento recente.
+6. Verificar especificamente `REQ-FIN-008` e `REQ-EXPOR-001` no código/histórico antes de tratá-los como lacuna.
+7. Excluir do candidato qualquer item que dependa de Q-001..Q-025 ou decisão de negócio ainda não aprovada.
+8. Escolher uma única próxima vertical slice usando, nesta ordem:
+   - pertinência explícita ao MVP;
+   - processo real já documentado;
+   - ausência comprovada na implementação;
+   - critério de aceite objetivo;
+   - independência de decisão pendente.
+9. Se houver uma lacuna clara, abrir **uma única Issue** com evidência, branch própria e critério de aceite. Executar a implementação mínima se ela puder ser concluída com segurança na mesma sessão.
+10. Se a reconciliação não produzir candidato inequívoco, não inventar prioridade: documentar o bloqueio e deixar a decisão específica no handoff.
+11. Usar Supabase/Vercel somente quando a vertical slice realmente exigir; não criar infraestrutura/deploy apenas para a auditoria de escopo.
+12. Atualizar `CURRENT_STATE`, `HANDOFF` e `NEXT_ACTION` ao final.
 
-## Critério de conclusão de REQ-PLAT-003
+## Critério de conclusão da Fase 41
 
-- invariantes essenciais persistem mesmo com UI contornada;
-- payload inválido crítico é rejeitado antes de deixar estado inconsistente;
-- relações/escopos estruturais relevantes não aceitam referência incompatível;
-- transitions de lifecycle inválidas são rejeitadas;
-- quantidades/valores críticos respeitam precisão, sinal e cardinalidade esperados;
-- banco protege invariantes que exigem atomicidade/concorrência/relacionamento;
-- UI não é a única defesa de nenhuma regra essencial encontrada;
-- testes negativos existentes ou mínimos demonstram as garantias sem dados reais;
-- nenhuma duplicação desnecessária de regra entre camadas é introduzida.
+- mapa do MVP atual reconciliado com evidência real;
+- requisitos já entregues não são refeitos;
+- itens `PENDING` não são promovidos por inferência;
+- próxima lacuna é concreta, rastreável a requisito/escopo e possui critério de aceite;
+- no máximo uma frente funcional nova é aberta;
+- #75 permanece preservada até poder ser concluída no ambiente seguro aprovado.
 
 ## Backup Production / #75
 
@@ -86,7 +97,8 @@ Somente quando o operador estiver em computador pessoal/confiável:
 - não ativar backup antes dos secrets restantes;
 - não restaurar Production para teste;
 - não fechar #75 sem run real;
-- não reabrir `REQ-SEC-005`, `REQ-SEC-003/004` ou `REQ-PLAT-002` sem regressão concreta;
+- não reabrir `REQ-PLAT-003`, `REQ-SEC-005` ou outros requisitos fechados sem regressão concreta;
+- não implementar requisito `PENDING` por inferência;
 - não reaplicar migrations existentes;
 - não criar deployment Vercel apenas para auditoria;
 - não importar dados reais/cutover.
