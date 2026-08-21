@@ -4,151 +4,114 @@
 
 ## Estado atual
 
-Fase 38 — `REQ-PLAT-005 / Issue #75 — Backup automático de Production` — **decisões aprovadas e automação implementada; ativação real ainda depende de secrets/OAuth + primeiro run comprovado**.
+Fase 38 — `REQ-PLAT-005 / Issue #75 — Backup automático de Production` — **automação mergeada; ativação real pendente de credenciais/OAuth e primeiro run comprovado**.
 
 - Repositório: `synapselab-ia/sistema-lojasaph`
-- baseline: `main` em `ba060ec704d9e4bcca2aa7d3fc2dd4bdd3a7cd59`
-- Issue: #75 — aberta
-- branch: `agent/production-backup-automation`
-- PR: #86 — draft durante validação
+- `main`: `c51e701f56e670f6afc8ca1df375fa94ca41b5b4`
+- PR #86: squash-mergeado
+- Issue #75: aberta
 - Supabase Production: `fhbvwyttikrbeaanatlr`
 - nenhuma migration/DDL/DML Supabase nesta fase
 - nenhum deployment Vercel
-- nenhum secret foi publicado no Git/docs/chat
+- nenhum secret publicado no Git/docs/chat
 
-## Decisões aprovadas para #75
-
-Registradas como comentário na própria Issue em 2026-08-21:
+## Política aprovada
 
 - RPO: 24h;
-- backup: diário;
+- backup diário;
 - RTO objetivo: até 4h;
-- destino off-site: Google Drive privado da conta operacional;
+- destino: Google Drive privado;
 - retenção: 30 dias;
-- proteção: OAuth de menor privilégio, secrets somente no GitHub Actions, SHA-256 e cleanup de temporários;
 - owner/alerta: `synapselab.ia@gmail.com`;
-- restore drill: mensal e isolado.
+- restore drill: mensal isolado;
+- sem Supabase Pro/PITR por enquanto.
 
-O destino não será uma cópia manual: #75 exige rotina automática comprovada.
+## Implementação mergeada
 
-## Implementação da Fase 38
+`production-backup.yml`:
 
-### Backup diário
-
-`.github/workflows/production-backup.yml`
-
-- schedule diário `17 6 * * *`;
-- também suporta `workflow_dispatch`;
+- cron diário `17 6 * * *` + `workflow_dispatch`;
 - reutiliza `scripts/export-supabase-backup.sh`;
-- Supabase CLI pinada em `2.111.0`;
-- rclone pinado em `1.75.0`;
-- produz archive `lojasaph-production-<UTC>.tar.gz` + `.sha256`;
-- mantém checksums internos de roles/schema/data/metadata;
-- envia ao remote `lojasaph-drive:Lojasaph Backups`;
-- verifica o conteúdo enviado via `rclone check`;
-- remove somente archives do padrão Lojasaph com mais de 30 dias;
-- remove temporários do runner;
-- envia e-mail em falha.
+- Supabase CLI `2.111.0` e rclone `1.75.0` pinados;
+- archive Production + checksum externo e hashes internos;
+- upload para `lojasaph-drive:Lojasaph Backups`;
+- `rclone check` pós-upload;
+- retenção automática de 30 dias;
+- cleanup do runner;
+- alerta Gmail em falha.
 
-### Restore drill mensal
+`backup-restore-drill.yml`:
 
-`.github/workflows/backup-restore-drill.yml`
+- cron mensal `43 6 1 * *`;
+- baixa e valida o backup Production real mais recente;
+- executa também o restore drill PostgreSQL 17 isolado já existente;
+- nunca escreve/restaura no Production.
 
-- schedule mensal `43 6 1 * *`;
-- baixa o backup Production real mais recente do Drive;
-- verifica checksum do archive e hashes internos;
-- em paralelo à prova de integridade do backup real, executa o drill já existente em PostgreSQL 17 isolado com migrations + seed anonimizado;
-- não restaura nem escreve no Supabase Production.
-
-Limite atual: ainda não existe um projeto Supabase hospedado isolado aprovado para restaurar periodicamente a cópia real. Não descrever o drill atual como restore hospedado de Production.
-
-### Alerta
-
-`scripts/send-backup-alert.py` usa SMTP Gmail com TLS e App Password via ambiente. O projeto Supabase não possui Edge Function de alerta; o e-mail padrão de Auth não foi reutilizado como mecanismo operacional genérico.
-
-### Arming switch
-
-Os dois jobs possuem:
+Os dois jobs continuam desarmados por:
 
 `vars.BACKUP_AUTOMATION_ENABLED == 'true'`
 
-Sem essa repository variable, os schedules ficam skipped. Isso permite merge seguro sem gerar falhas diárias enquanto os secrets não estão provisionados.
+Sem essa variável, schedules ficam skipped.
 
-## Secrets ainda necessários
+## Conexão do backup
 
-O conector GitHub disponível ao agente não possui ação para criar/alterar Actions Secrets ou repository variables. Portanto o operador precisa provisionar manualmente:
+`PRODUCTION_SUPABASE_DB_URL` deve usar **Session pooler, porta 5432**, não a Direct connection. GitHub Actions é IPv4-only e a conexão direta do Supabase Free é IPv6. O workflow rejeita a URL errada sem imprimir o secret.
 
-- `PRODUCTION_SUPABASE_DB_URL`;
-- `BACKUP_RCLONE_CONFIG_B64` — config OAuth do remote `[lojasaph-drive]`;
-- `BACKUP_ALERT_GMAIL_APP_PASSWORD`.
+## Provisionamento manual restante
 
-Depois:
+O conector GitHub disponível não cria Actions Secrets/Variables e o OAuth Google exige autorização interativa. Faltam:
 
-- criar `BACKUP_AUTOMATION_ENABLED=true`;
-- executar manualmente `Production Database Backup` uma vez;
-- comprovar sucesso e presença de archive + checksum no Drive privado.
+1. `PRODUCTION_SUPABASE_DB_URL` — Session pooler 5432;
+2. `BACKUP_RCLONE_CONFIG_B64` — config OAuth do remote `[lojasaph-drive]`;
+3. `BACKUP_ALERT_GMAIL_APP_PASSWORD`;
+4. repository variable `BACKUP_AUTOMATION_ENABLED=true` somente depois dos três secrets;
+5. primeiro run manual de `Production Database Backup`;
+6. confirmação do archive + `.sha256` no Drive.
 
-**Não fechar #75 antes dessa prova real.**
+Não pedir valores de secret pelo chat.
 
 ## Google Drive / OAuth
 
-Para conta pessoal `synapselab.ia@gmail.com`:
+- conta: `synapselab.ia@gmail.com`;
+- usar OAuth da própria conta;
+- usar OAuth client próprio; shared client ID do rclone está sendo retirado durante 2026;
+- preferir scope `drive.file`;
+- não manter OAuth app em Testing para automação duradoura, pois refresh token pode expirar em 7 dias;
+- nunca versionar `rclone.conf`/base64.
 
-- usar OAuth da própria conta, não service account como default;
-- usar OAuth client próprio porque o shared client ID do rclone está sendo retirado durante 2026;
-- preferir scope `drive.file` de menor privilégio;
-- não deixar o OAuth consent indefinidamente em Testing para uma automação de longa duração, pois refresh tokens emitidos nesse estado podem expirar em 7 dias;
-- nunca versionar `rclone.conf` ou seu base64.
+## Validação final do PR #86
 
-## CI
+Head final: `1c44f83dbb20c9203e58538c2e1343b43a3b4656`.
 
-Head funcional `3e9f373014eb5213daabfa666f3cfe44b65ffce2`:
+CI #344:
 
-- CI #338 database — success;
-- CI #338 validate — success;
-- compilação do notifier Python — success;
+- database — success;
+- validate — success;
+- notifier Python — success;
 - lint, typecheck, Vitest e production build — success;
-- cadeia PostgreSQL 17, migrations, backup/restore, RLS/hardening e suítes transacionais — success.
+- migrations, backup/restore, RLS/hardening e suítes PostgreSQL — success.
 
-Após atualização documental, exigir um CI final no head definitivo do PR #86 antes do merge.
+## RLS
 
-## RLS / segurança
+Recheck remoto anterior à Fase 38:
 
-Recheck remoto imediatamente antes desta fase confirmou:
-
-- tabelas públicas de aplicação com RLS habilitado;
-- `anon` sem privilégios operacionais diretos;
-- `authenticated` sem DELETE direto nas tabelas públicas;
-- policy de membership continua com `(select auth.uid())`;
-- warnings do Security Advisor sobre RPCs públicas SECURITY DEFINER permanecem a superfície intencional já auditada;
-- leaked-password protection continua hardening de Auth separado, não finding de RLS.
-
-Nenhuma alteração de RLS foi necessária nesta fase.
-
-## Fases anteriores — não repetir
-
-- Fase 34: RLS/initPlan concluída;
-- Fase 35: staging/import preview concluído;
-- Fase 36: audit trail de configurações críticas concluído, migration `20260820192526 / critical_config_audit` já aplicada;
-- Fase 37: `REQ-SEC-004 — Segredos` atendido e mergeado no commit `ba060ec704d9e4bcca2aa7d3fc2dd4bdd3a7cd59`.
+- RLS habilitado nas tabelas públicas de aplicação;
+- anon sem acesso operacional direto;
+- authenticated sem DELETE direto;
+- membership mantém `(select auth.uid())`;
+- nenhum gap novo de RLS.
 
 ## Próxima ação
 
-1. concluir validação final e merge do PR #86;
-2. provisionar manualmente os três GitHub Actions Secrets e o OAuth rclone;
-3. criar `BACKUP_AUTOMATION_ENABLED=true`;
-4. executar e comprovar o primeiro backup Production real;
-5. fechar #75 somente depois dessa evidência;
-6. então retomar a auditoria independente `REQ-SEC-005 — Cancelamento/estorno`.
+Ativar a rotina real pela UI do Google/GitHub, executar o primeiro backup e fechar #75 apenas depois da evidência verde. Depois retomar `REQ-SEC-005 — Cancelamento/estorno`.
 
 ## Não fazer
 
-- não inserir connection string, OAuth token, rclone config ou App Password em Issue/PR/docs/chat;
+- não publicar DB URL/OAuth/App Password;
 - não ativar schedule antes dos secrets;
-- não fechar #75 apenas porque o workflow foi mergeado;
+- não fechar #75 sem primeiro run real;
 - não restaurar backup real sobre Production para teste;
-- não contratar Supabase Pro/PITR sem autorização;
-- não criar deployment Vercel para backup;
+- não contratar plano/add-on sem autorização;
+- não criar deploy Vercel;
 - não reaplicar migrations existentes;
-- não importar dados reais/cutover;
-- não inferir Q-001..Q-025.
+- não importar dados reais/cutover.
