@@ -2,14 +2,14 @@
 
 ## Estado
 
-Fase 38 / `REQ-PLAT-005` está **implementada em código, mas a Issue #75 continua aberta até o primeiro backup Production real**.
+Fase 38 / `REQ-PLAT-005` está **implementada em código**, mas a Issue #75 continua aberta até o primeiro backup Production real.
 
-- `main`: `c51e701f56e670f6afc8ca1df375fa94ca41b5b4`;
-- PR #86: squash-mergeado;
+- `main` de entrada: `40d8d86adaa27801f2568548763af4b4cf1de3af`;
+- PR #86: squash-mergeado — automação;
+- PR #87: squash-mergeado — handoff pós-merge;
 - Issue #75: aberta;
 - Supabase Production: `fhbvwyttikrbeaanatlr`;
-- nenhum DDL/DML/migration Supabase na Fase 38;
-- nenhum deployment Vercel.
+- nenhum deployment Vercel nessa frente.
 
 ## Política aprovada — não perguntar novamente
 
@@ -22,104 +22,62 @@ Fase 38 / `REQ-PLAT-005` está **implementada em código, mas a Issue #75 contin
 - restore drill mensal isolado;
 - sem Pro/PITR por enquanto.
 
-## O que já está em main
+## O que já está em `main`
 
-`.github/workflows/production-backup.yml`:
+`.github/workflows/production-backup.yml` e `.github/workflows/backup-restore-drill.yml` implementam backup diário, SHA-256, upload Google Drive via rclone, retenção, cleanup, alerta por e-mail e drill mensal isolado.
 
-- diário `17 6 * * *` + manual;
-- export lógico existente;
-- archive + SHA-256;
-- Google Drive via rclone;
-- verificação pós-upload;
-- retenção 30 dias;
-- cleanup;
-- e-mail em falha.
-
-`.github/workflows/backup-restore-drill.yml`:
-
-- mensal `43 6 1 * *`;
-- baixa/valida o último backup Production real;
-- executa o restore drill PostgreSQL 17 isolado;
-- Production nunca é restaurado para teste.
-
-`scripts/send-backup-alert.py`:
-
-- Gmail SMTP SSL;
-- App Password somente por secret/env.
-
-Runbook: `docs/operations/backup-restore.md`.
-
-## Proteção de ativação
-
-Os dois workflows têm:
+Os dois workflows estão protegidos por:
 
 `vars.BACKUP_AUTOMATION_ENABLED == 'true'`
 
-A variável ainda não foi provisionada, portanto os schedules permanecem skipped.
+A variável não foi criada, portanto schedules permanecem skipped.
 
-## Conexão Supabase correta
+## Provisionamento manual
 
-`PRODUCTION_SUPABASE_DB_URL` deve ser **Session pooler, porta 5432**, obtida em Supabase Dashboard → Connect → Session pooler.
+Já concluído pelo operador:
 
-Não usar Direct connection: Supabase Free direct é IPv6 e GitHub Actions é IPv4-only. O workflow valida isso sem imprimir o secret.
+- GitHub Actions Secret `PRODUCTION_SUPABASE_DB_URL` usando Session pooler Supabase na porta 5432.
 
-## Provisionamento manual restante
+Ainda pendente:
 
-O conector GitHub não cria Actions Secrets/Variables; OAuth Google exige autorização interativa.
+- OAuth Google Drive em `synapselab.ia@gmail.com`;
+- remote rclone `[lojasaph-drive]`;
+- `BACKUP_RCLONE_CONFIG_B64`;
+- `BACKUP_ALERT_GMAIL_APP_PASSWORD`;
+- repository variable `BACKUP_AUTOMATION_ENABLED=true`;
+- primeiro run real de `Production Database Backup`;
+- confirmação de archive + `.sha256` no Drive;
+- fechamento da #75.
 
-Nunca pedir valores pelo chat. O operador deve criar na UI:
+## Decisão operacional desta sessão
 
-1. `PRODUCTION_SUPABASE_DB_URL` — Session pooler 5432;
-2. `BACKUP_RCLONE_CONFIG_B64` — base64 do rclone config com remote `[lojasaph-drive]`;
-3. `BACKUP_ALERT_GMAIL_APP_PASSWORD` — App Password dedicada;
-4. depois, repository variable `BACKUP_AUTOMATION_ENABLED=true`.
+O operador está em computador de trabalho e decidiu **adiar as etapas que manipulam OAuth/token/App Password para um computador pessoal/confiável**, como já foi feito em outro projeto.
 
-Google/rclone:
+Essa pausa é deliberada e segura. Não tentar contornar usando credenciais no chat, arquivos temporários, service account improvisada ou outro mecanismo só para fechar a Issue.
 
-- autenticar `synapselab.ia@gmail.com`;
-- OAuth client próprio;
-- preferir `drive.file`;
-- não usar shared rclone client ID em retirada durante 2026;
-- não manter app em Testing para token duradouro;
-- `rclone.conf` nunca vai ao Git.
+A Issue #75 permanece aberta, porém não deve bloquear outras frentes independentes do produto.
 
-## Primeiro run obrigatório
+## Validação existente
 
-Depois dos secrets + variável:
-
-1. Actions → `Production Database Backup` → Run workflow;
-2. exigir run verde;
-3. confirmar no Drive `Lojasaph Backups`:
-   - archive `lojasaph-production-<UTC>.tar.gz`;
-   - `.sha256` correspondente;
-4. não abrir/publicar conteúdo;
-5. registrar evidência não sensível na #75;
-6. fechar #75 como completed somente então.
-
-## Validação do código
-
-PR #86 head final `1c44f83dbb20c9203e58538c2e1343b43a3b4656`:
-
-- CI #344 database — success;
-- CI #344 validate — success;
-- notifier, lint, typecheck, Vitest, build — success;
-- migrations, backup/restore, RLS/hardening — success.
-
-## RLS
-
-Último recheck remoto: RLS íntegro, anon sem acesso operacional, authenticated sem DELETE direto, nenhum finding novo. Não reabrir sem regressão concreta.
+- PR #86: CI #344 database + validate — success;
+- PR #87: CI #346 — success;
+- lint, typecheck, Vitest, build, migrations, backup/restore e hardening verdes.
 
 ## Próximo chat
 
-Prioridade é concluir a ativação manual da #75 com o operador presente. Depois do primeiro backup real e fechamento da #75, retomar `REQ-SEC-005 — Cancelamento/estorno`.
+1. Ler continuidade padrão e conferir estado real de `main`, #75, Issues/PRs/branches/CI.
+2. Não refazer a automação de backup.
+3. Se o operador estiver em computador pessoal/confiável e quiser concluir #75, retomar apenas do OAuth/rclone + Gmail App Password, depois armar e executar o primeiro backup real.
+4. Caso contrário, manter #75 aberta/desarmada e executar a `NEXT_ACTION` independente: `REQ-SEC-005 — Cancelamento/estorno`.
+5. Só fechar #75 depois de run Production real verde e confirmação de archive + checksum off-site.
 
 ## Não fazer
 
-- não receber/publicar DB URL/OAuth/App Password;
+- não receber/publicar DB URL, OAuth token/config ou App Password;
+- não ativar schedule antes dos secrets restantes;
 - não fechar #75 sem run real;
-- não ativar antes dos secrets;
 - não restaurar Production para teste;
 - não contratar plano/add-on sem autorização;
-- não criar deploy Vercel;
+- não criar deploy Vercel para backup;
 - não reaplicar migrations;
 - não importar dados reais/cutover.
