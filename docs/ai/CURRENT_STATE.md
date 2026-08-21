@@ -4,68 +4,96 @@
 
 ## Estado atual
 
-Fase 40 — revalidação de `REQ-PLAT-003 — Validação de dados` — **concluída sem finding funcional e integrada na `main` pelo PR #90**.
+Fase 41 — reconciliação do MVP restante — **concluída com uma única próxima lacuna funcional comprovada**.
 
-`REQ-PLAT-003` já havia sido auditado e considerado atendido na Fase 29. A Fase 40 ocorreu porque a continuidade pós-Fase 39 voltou a apontar para esse requisito; em vez de repetir trabalho, foi feita uma comparação diferencial entre a auditoria original e a `main` atual.
+Evidência: `docs/qa/mvp-reconciliation.md`.
 
 - Repositório: `synapselab-ia/sistema-lojasaph`
-- `main` pós-Fase 40: `765776a442d66f3216e51fa86967f02a78ff1545`
-- baseline original de `REQ-PLAT-003`: `370b37161150bcf2eac3afb4afb9d8bb80d96e10`
-- PR #90: squash-mergeado
-- head validado do PR #90: `747ad96e7e27c09094bf318bcd2b1cf0dc38a75d`
-- CI #355: success (`database` + `validate`)
-- Issue corretiva nova: nenhuma
-- Issue #75: continua aberta/desarmada até ativação segura do backup Production
+- `main` real na entrada da Fase 41: `cbcedfbcc65287d79b3f7b77feead60906981222` (PR #91)
+- CI anterior de referência: #357 — success
+- PRs abertos ao iniciar: nenhum
+- Issue aberta ao iniciar: #75
+- nova Issue funcional criada: #92 — `Fase 42 — anexos financeiros privados (REQ-FIN-008)`
+- branch da Fase 41: `agent/finance-attachments`
 - Supabase Production: `fhbvwyttikrbeaanatlr`, `ACTIVE_HEALTHY`, PostgreSQL 17
-- nenhum deployment Vercel criado nesta fase
-- nenhuma mutation/DDL de negócio executada em Production
+- Production usada somente para introspecção read-only nesta fase
+- nenhum deployment Vercel
+- nenhuma migration/DDL/DML de negócio na Fase 41
 
-## Resultado da Fase 40
+A referência anterior `765776a...` em continuidade era o merge do PR #90; a `main` real já havia avançado para `cbcedfb...` pelo PR #91. A Fase 41 corrige essa distinção sem abrir frente separada.
 
-Evidência consolidada em `docs/qa/data-validation.md`.
+## Resultado da Fase 41
 
-### Drift desde a Fase 29
+A matriz do MVP não encontrou novo MUST funcional do núcleo sem cobertura.
 
-A comparação entre `370b37161150bcf2eac3afb4afb9d8bb80d96e10` e a `main` de entrada da Fase 40 mostrou 14 commits posteriores, mas **nenhuma alteração em `src/**`**.
+### Entregue no núcleo atual
 
-As únicas mudanças funcionais de banco posteriores relevantes para validação foram:
+- Organização, unidades, setores e locais de estoque;
+- produtos/categorias/unidades de medida;
+- fornecedores e contatos no núcleo atual;
+- funcionários separados de usuários/Auth;
+- Estoque: entrada, retirada, transferência, devolução, perdas, ledger, saldos e histórico;
+- lotes, validades e alertas básicos;
+- inventário físico e ajustes auditáveis;
+- Compras e recebimentos;
+- Financeiro: documentos, parcelas, pagamentos, estornos, referências e status derivados;
+- Caixa completo no escopo atual;
+- Auth, permissões por papel/escopo, RLS e auditoria;
+- Dashboard operacional básico com filtros Unit/Setor/período;
+- foundation de importação rastreável/idempotente/dry-run;
+- requisitos transversais de responsividade, idempotência, validação, migrations, observabilidade e ambientes já auditados.
 
-- `20260820184106_membership_rls_initplan.sql`: otimização de policy sem mudança de semântica de autorização;
-- `20260820192526_critical_config_audit.sql`: triggers adicionais de auditoria para configuração crítica de estoque.
+Não reabrir esses itens por mera ausência de documento recente.
 
-Nenhuma delas remove ou substitui os boundaries de validação que sustentaram a Fase 29.
+### Fora da próxima vertical slice
 
-### Production read-only
+Itens `PENDING`/dependentes de Q-001..Q-025 e fase posterior permanecem fora por decisão explícita, incluindo POS/produto de venda, ficha técnica, empréstimo distinto, FEFO/custeio final, estoque mínimo/sugestão de compra, compras avançadas, leitura de código de barras, PWA refinada e dashboards avançados.
 
-Introspecção SQL somente leitura confirmou:
+O cutover de importação real também não é uma feature faltante genérica: depende de fonte congelada, mapeamentos aprovados, backup e reconciliação operacional.
 
-- migrations hospedadas mais recentes alinhadas com `critical_config_audit` e `membership_rls_initplan`;
-- dinheiro/quantidades críticas continuam usando escalas apropriadas;
-- `CHECK`s de sinal, enum e lifecycle continuam presentes;
-- FKs compostas por `organization_id` continuam protegendo relações críticas;
-- compras continuam impondo pedido/recebimento/preço coerentes;
-- Financeiro continua impondo parcelas, pagamentos, reversões e lifecycle coerentes;
-- Caixa continua impondo lifecycle, valores, sequência, movimentos e vigência de taxa coerentes;
-- Inventário continua impondo quantidade/custo válidos e relações estruturais;
-- `inventory_balances_negative_policy` continua presente;
-- triggers de auditoria críticos coexistem com os checks/triggers de validação anteriores.
+### Gaps SHOULD comprovados
 
-Nenhum command crítico, DML de teste ou DDL foi executado remotamente.
+1. `REQ-FIN-008 — Anexos`: não entregue e implementável agora;
+2. `REQ-EXPOR-001 — Exportação`: também sem implementação aparente, mas propositalmente genérico (`onde fizer sentido`) e sem uma superfície única pré-priorizada.
 
-### Conclusão
+`REQ-FIN-008` foi escolhido porque o processo e o boundary já são explícitos: o MVP cita anexos/comprovantes, o requisito cita NF/PDF/XML/boleto/comprovante, o domínio já prevê `Attachment`, o modelo lógico já prevê metadata mínima e `docs/modules/finance.md` registra Storage/anexos como fora da Fase 11.
 
-Não existe evidência de regra essencial que tenha passado a depender exclusivamente da UI. Não foi criada Issue, migration, patch funcional ou suíte duplicada.
+## Issue #92 — próxima vertical slice
 
-Validação final do PR #90 / CI #355:
+Objetivo: anexos privados vinculados inicialmente a `payable_document`.
 
-- `database` — success: PostgreSQL 17, migrations, seed anonimizado, backup/restore, schema/RLS/hardening, audit trail e suítes transacionais;
-- `validate` — success: backup notifier, lint, typecheck, Vitest e production build.
+Contrato já delimitado:
+
+- bucket privado;
+- PDF/XML/imagens comuns de comprovante;
+- metadata com Organization, documento, storage key, nome original, MIME, tamanho, SHA-256, ator e timestamps;
+- upload apenas por papel financeiro autorizado no escopo do documento;
+- listagem/download conforme visibilidade do próprio documento;
+- browser sem secret/service key;
+- sem URL pública permanente;
+- sem overwrite/upsert;
+- sem exclusão física na primeira versão;
+- criação de metadata auditável;
+- RLS/grants explícitos;
+- compensação do objeto quando upload físico ocorrer e o registro de metadata falhar.
+
+### Baseline Supabase/Storage
+
+Introspecção read-only de Production confirmou na Fase 41:
+
+- nenhum bucket em `storage.buckets`;
+- nenhuma policy atual em `storage.objects`;
+- nenhuma relação pública de attachments/files do Financeiro.
+
+A documentação Supabase atual foi revisada: arquivos sensíveis devem ficar privados; operações de objeto devem usar Storage API; bucket pode impor MIME/tamanho; chave privilegiada fica somente em trusted server; tabelas públicas novas devem receber grants explícitos coerentes com RLS.
+
+Nenhum bucket/policy/arquivo/schema foi criado remotamente nesta fase.
 
 ## Backup Production / Issue #75
 
 A Fase 38 continua válida e não foi refeita.
 
-Política já aprovada:
+Política aprovada:
 
 - RPO 24h;
 - backup diário;
@@ -90,31 +118,26 @@ Ainda pendente, deliberadamente até computador pessoal/confiável:
 - primeiro backup Production real + archive/checksum off-site;
 - fechamento da #75.
 
-A #75 permanece aberta, mas não bloqueia frentes independentes.
+A #75 permanece aberta/desarmada e não bloqueia #92.
 
 ## Próxima ação
 
-Fase 41 — **reconciliar o escopo MVP restante e selecionar a próxima vertical slice explícita, sem reabrir requisitos já fechados**.
-
-O ponto de partida deve ser `docs/product/scope.md` + `docs/product/requirements.md` contra o estado real do código. Dois candidatos explícitos que merecem verificação são:
-
-- `REQ-FIN-008 — Anexos` / anexos e comprovantes no Financeiro;
-- `REQ-EXPOR-001 — Exportação` / CSV/Excel onde fizer sentido.
-
-Não assumir que esses são os únicos gaps nem escolher por conveniência técnica. A Fase 41 deve confirmar o que ainda falta no MVP, excluir itens `PENDING`/fase posterior e priorizar uma única entrega com processo real e critério de aceite claro.
+Fase 42 — implementar a Issue #92 / `REQ-FIN-008 — Anexos`.
 
 Ver `docs/ai/NEXT_ACTION.md`.
 
 ## Não fazer
 
-- não reabrir `REQ-PLAT-003` sem regressão concreta;
-- não reabrir Fases 38/39/40 por rotina;
+- não reabrir Fases 38–41 sem regressão concreta;
 - não pedir/receber secrets de backup no chat;
-- não ativar `BACKUP_AUTOMATION_ENABLED` antes dos secrets restantes;
+- não ativar backup antes dos secrets restantes;
 - não fechar #75 sem primeiro run real;
-- não restaurar backup real sobre Production para teste;
-- não contratar plano/add-on sem autorização;
+- não restaurar Production para teste;
 - não implementar requisito `PENDING` por inferência;
+- não transformar `REQ-EXPOR-001` em segunda frente simultânea;
+- não criar bucket público;
+- não expor secret/service key no browser;
+- não manipular objetos de Storage por SQL;
+- não inventar nome/timestamp de migration: gerar com Supabase CLI pinada;
 - não criar deployment Vercel sem necessidade real;
-- não reaplicar migrations existentes;
 - não importar dados reais/cutover.
