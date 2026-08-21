@@ -12,6 +12,8 @@ on:
       - "src/modules/inventory/**"
       - "src/modules/master-data/**"
       - "src/app/workspace/**"
+      - "src/app/api/finance/**"
+      - "src/lib/finance/**"
       - "src/components/runtime-shell.tsx"
       - ".github/workflows/purchases-ci.yml"
 
@@ -65,6 +67,7 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f supabase/tests/inventory_count.sql
           psql -v ON_ERROR_STOP=1 -f supabase/tests/purchase_orders.sql
           psql -v ON_ERROR_STOP=1 -f supabase/tests/finance_payables.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/tests/finance_attachments.sql
       - name: Run cash sessions lifecycle suite
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/cash_sessions.sql
       - name: Run scoped permission suite
