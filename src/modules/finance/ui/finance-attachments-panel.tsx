@@ -33,7 +33,7 @@ export function FinanceAttachmentsPanel(props: {
   payableDocumentId: string;
   canUpload: boolean;
 }) {
-  const client = useRef(createBrowserSupabaseClient()).current;
+  const [client] = useState(() => createBrowserSupabaseClient());
   const inputRef = useRef<HTMLInputElement>(null);
   const [attachments, setAttachments] = useState<AttachmentRow[]>([]);
   const [loading, setLoading] = useState(true);
