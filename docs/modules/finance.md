@@ -190,7 +190,11 @@ Vitest cobre a política de MIME/tamanho/path e a compensação do objeto quando
 
 A migration histórica `finance_payables_flow` permanece aplicada no projeto homologado em `sa-east-1`.
 
-A migration de anexos é `20260821212821_finance_attachments.sql`, gerada pela Supabase CLI pinada. A aplicação em Production só ocorre depois de CI verde. O bucket físico não é criado por SQL: ele é garantido pela Storage API no primeiro upload autorizado.
+A migration hospedada de anexos é `20260822195823_finance_attachments`, e o arquivo versionado foi reconciliado para `supabase/migrations/20260822195823_finance_attachments.sql`. Production foi homologada com fixtures sintéticas em `BEGIN/ROLLBACK`: preflight, registro, retry idempotente e audit único passaram, e a checagem posterior confirmou zero resíduos.
+
+RLS/grants hospedados confirmam `SELECT` apenas para `authenticated`, mutations diretas negadas, `anon` sem leitura/EXECUTE e os dois RPCs acessíveis somente ao papel autenticado previsto. Security Advisor reporta os dois RPCs como `SECURITY DEFINER` executáveis por `authenticated`; isso é intencional e segue o boundary dos demais commands críticos, que revalidam sessão, papel e escopo. Performance Advisor reporta apenas INFO de FKs/índices para tuning orientado a carga, sem finding bloqueante.
+
+O conector operacional usado na homologação não expõe mutações de Storage. Por segurança, nenhum bucket/objeto foi criado por SQL. O bucket físico continua sendo garantido pela Storage API no primeiro upload autorizado, conforme o boundary implementado e testado.
 
 ## Fora do escopo atual
 
