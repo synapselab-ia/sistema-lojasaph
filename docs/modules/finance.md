@@ -1,10 +1,10 @@
-# Módulo — Financeiro, parcelas e contas a pagar
+# Módulo — Financeiro, parcelas, contas a pagar e anexos
 
-Status: Fase 11 concluída tecnicamente no PR #32.
+Status: núcleo transacional concluído na Fase 11 / PR #32; anexos privados adicionados na Fase 42 / Issue #92.
 
 ## Objetivo
 
-Substituir o controle de NFs/contas a pagar por documentos financeiros estruturados, parcelas, vencimentos e eventos de pagamento auditáveis, preservando as ambiguidades históricas em vez de inventar regras.
+Substituir o controle de NFs/contas a pagar por documentos financeiros estruturados, parcelas, vencimentos e eventos de pagamento auditáveis, preservando as ambiguidades históricas em vez de inventar regras. Anexos privados permitem guardar o arquivo de apoio do documento sem transformá-lo em fonte de regra fiscal nem expô-lo publicamente.
 
 ## Modelo persistente
 
@@ -13,6 +13,7 @@ Substituir o controle de NFs/contas a pagar por documentos financeiros estrutura
 - `payment_instructions`: referência bruta associada à parcela, separada do pagamento executado.
 - `payments`: eventos `payment` e `reversal`; o pagamento original nunca é apagado por estorno.
 - `payable_installment_summary`: view `security_invoker` que deriva saldo e status sob RLS.
+- `finance_attachments`: metadata imutável do arquivo privado, vinculada inicialmente ao `payable_document` por Organization.
 
 ## Perguntas abertas preservadas
 
@@ -89,9 +90,65 @@ Sobrepagamento gera saldo negativo e permanece visível.
 - retry compara também o motivo;
 - auditado.
 
+### `can_upload_finance_attachment`
+
+- preflight read-only;
+- exige sessão autenticada;
+- reutiliza `private.has_payable_document_role(...)`;
+- permite somente `owner/admin/manager/finance` no escopo real do documento;
+- não concede acesso físico ao Storage.
+
+### `register_finance_attachment`
+
+- revalida sessão, papel e escopo depois do upload físico;
+- aceita somente bucket canônico `finance-attachments`;
+- exige storage key opaca `Organization/document/attachment UUID`;
+- valida filename, MIME, tamanho até 10 MiB e SHA-256 lowercase;
+- retry com mesmo ID e metadata é idempotente; payload divergente gera conflito;
+- grava metadata e `audit_logs` no mesmo boundary PostgreSQL;
+- não expõe UPDATE/DELETE do anexo nesta primeira versão.
+
+## Anexos privados / Storage
+
+A primeira vertical slice de `REQ-FIN-008` liga o arquivo ao documento financeiro. O modelo de domínio pode evoluir posteriormente para parcela/pagamento/recebimento sem forçar esses vínculos agora.
+
+Tipos aceitos:
+
+- PDF;
+- XML (`application/xml` e `text/xml`);
+- JPEG;
+- PNG;
+- WebP.
+
+Limite: 10 MiB por arquivo.
+
+Fluxo de upload:
+
+1. browser valida formato/tamanho somente para feedback rápido;
+2. route server-only valida sessão e arquivo novamente;
+3. RPC de preflight revalida role + resource scope usando a sessão normal;
+4. trusted server garante, pela Storage API, bucket privado `finance-attachments` com limite/MIME configurados;
+5. servidor calcula SHA-256 e gera UUID opaco;
+6. objeto é enviado com `upsert=false` para `organization/document/attachment`;
+7. metadata é registrada pelo RPC autenticado;
+8. se a etapa 7 falhar, o servidor tenta remover o objeto recém-enviado como compensação.
+
+O bucket não é público e o browser não recebe `SUPABASE_SECRET_KEY`. O admin client existe somente em `src/lib/finance/attachment-server.ts`, marcado `server-only`.
+
+Fluxo de download:
+
+1. route server-only consulta a metadata usando o client autenticado normal;
+2. RLS de `finance_attachments` usa `private.can_read_payable_document(...)` e esconde anexo fora do escopo;
+3. somente após a metadata ser visível o trusted server baixa o objeto privado via Storage API;
+4. a resposta usa `Content-Disposition: attachment`, `no-store` e nunca gera public URL permanente.
+
+Não se manipula `storage.objects` por SQL. O bucket é provisionado de forma idempotente pela Storage API no primeiro upload autorizado.
+
 ## Segurança
 
-As tabelas críticas permitem leitura de membros da Organization por RLS, mas não aceitam write direto do browser. Os quatro commands são `SECURITY DEFINER` intencionais, executáveis somente por `authenticated`, e revalidam `auth.uid()`, papel, Organization, referências e payload.
+As tabelas críticas permitem leitura de membros no escopo autorizado por RLS, mas não aceitam write direto do browser. Commands de mutação são `SECURITY DEFINER` intencionais, executáveis somente por `authenticated`, e revalidam `auth.uid()`, papel, Organization, referências e payload.
+
+`finance_attachments` concede somente `SELECT` direto a `authenticated`; `INSERT/UPDATE/DELETE` permanecem revogados. Viewer pode listar/baixar metadata visível, mas não passa no preflight nem no command de registro.
 
 `payable_installment_summary` usa `security_invoker`, portanto não contorna as policies das tabelas-base.
 
@@ -106,47 +163,47 @@ As tabelas críticas permitem leitura de membros da Organization por RLS, mas n�
 - registro de pagamentos;
 - histórico de eventos;
 - estorno sem exclusão;
-- cancelamento apenas conforme regra do banco.
+- cancelamento apenas conforme regra do banco;
+- painel de anexos por documento, com listagem/download para quem pode ver o documento e upload para perfis financeiros autorizados.
 
 `manageFinance = owner/admin/manager/finance` controla ações visíveis. A UI não é fronteira de segurança.
 
 ## Testes
 
-`supabase/tests/finance_payables.sql` roda depois das suites estabilizadas de estoque, inventário e compras. Cobre:
+`supabase/tests/finance_payables.sql` cobre o fluxo financeiro transacional original.
 
-- direct write negado;
-- payload nulo/incompleto;
-- três parcelas e retry com ordem diferente;
-- conflito de idempotência;
-- preservação de referência de pagamento;
-- `overdue`, `due_today` e `upcoming`;
-- múltiplos pagamentos;
-- sobrepagamento preservado;
-- retry de pagamento;
-- estorno e bloqueio de segundo estorno;
-- cancelamento bloqueado com pagamento líquido;
-- cancelamento após estornos;
+`supabase/tests/finance_attachments.sql` usa somente fixtures sintéticas em `BEGIN/ROLLBACK` e cobre:
+
+- Finance in-scope registra metadata;
+- retry idempotente e audit único;
+- conflito com mesmo ID/payload alterado;
+- storage key, MIME, tamanho e checksum inválidos;
+- direct INSERT/UPDATE/DELETE negados;
 - viewer read-only;
-- cross-Organization;
-- anon.
+- membership Finance em outra Unit negada;
+- cross-Organization negado;
+- `anon` sem SELECT/RPC.
+
+Vitest cobre a política de MIME/tamanho/path e a compensação do objeto quando o registro de metadata falha. `client-boundary.test.ts` protege a separação do admin Storage server-only.
 
 ## Supabase remoto
 
-A migration `finance_payables_flow` está aplicada no projeto homologado em `sa-east-1`.
+A migration histórica `finance_payables_flow` permanece aplicada no projeto homologado em `sa-east-1`.
 
-Homologação em `BEGIN/ROLLBACK` confirmou criação/retry, status derivados, referência separada, pagamentos múltiplos, sobrepagamento, estornos, cancelamento e trilha de auditoria. A leitura administrativa do audit log foi feita após `reset role`, porque `authenticated` não possui leitura dessa trilha por RLS — comportamento intencional.
+A migration hospedada de anexos é `20260822195823_finance_attachments`, e o arquivo versionado foi reconciliado para `supabase/migrations/20260822195823_finance_attachments.sql`. Production foi homologada com fixtures sintéticas em `BEGIN/ROLLBACK`: preflight, registro, retry idempotente e audit único passaram, e a checagem posterior confirmou zero resíduos.
 
-Após rollback não restaram documento, pagamentos, usuário ou membership de teste.
+RLS/grants hospedados confirmam `SELECT` apenas para `authenticated`, mutations diretas negadas, `anon` sem leitura/EXECUTE e os dois RPCs acessíveis somente ao papel autenticado previsto. Security Advisor reporta os dois RPCs como `SECURITY DEFINER` executáveis por `authenticated`; isso é intencional e segue o boundary dos demais commands críticos, que revalidam sessão, papel e escopo. Performance Advisor reporta apenas INFO de FKs/índices para tuning orientado a carga, sem finding bloqueante.
 
-Security Advisor mantém warnings esperados para os quatro commands `SECURITY DEFINER`. Performance Advisor retornou apenas INFO de FKs/índices para tuning orientado a carga real.
+O conector operacional usado na homologação não expõe mutações de Storage. Por segurança, nenhum bucket/objeto foi criado por SQL. O bucket físico continua sendo garantido pela Storage API no primeiro upload autorizado, conforme o boundary implementado e testado.
 
-## Fora do escopo da Fase 11
+## Fora do escopo atual
 
 - Caixa e fechamento diário;
 - conciliação bancária;
 - SEFAZ/OCR;
 - classificação automática de juros/multa/desconto;
 - importação definitiva de dados reais;
-- política avançada de anexos/Storage.
-
-Próxima fase registrada: Issue #33 — Caixa: sessões, meios de pagamento e fechamento diário.
+- classificação automática do tipo de anexo;
+- vínculo de Attachment com parcela/pagamento/recebimento nesta primeira entrega;
+- exclusão física/lifecycle de anexos;
+- URL pública permanente.

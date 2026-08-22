@@ -11,6 +11,7 @@ import {
   SupabaseFinanceGateway,
 } from "@/modules/finance/adapters/supabase-finance-gateway";
 import { useRuntimeWorkspace } from "@/modules/master-data/ui/runtime-workspace-provider";
+import { FinanceAttachmentsPanel } from "@/modules/finance/ui/finance-attachments-panel";
 
 interface InstallmentDraft {
   key: string;
@@ -345,6 +346,12 @@ export default function RuntimeFinancePage() {
                 <div><h3 className="font-semibold">{supplier?.tradeName ?? "Fornecedor indisponível"}</h3><p className="mt-1 text-xs text-neutral-500">{document.documentNumber ? `Doc. ${document.documentNumber}` : document.documentType}{document.series ? ` · série ${document.series}` : ""}{unit ? ` · ${unit.name}` : ""}{sector ? ` / ${sector.name}` : ""}</p><p className="mt-1 text-sm text-neutral-600">Total nominal: <strong>{moneyLabel(document.totalAmount)}</strong>{document.description ? ` · ${document.description}` : ""}</p></div>
                 <div className="flex items-center gap-2"><span className="rounded-full bg-neutral-100 px-2.5 py-1 text-xs font-semibold text-neutral-700">{document.lifecycleStatus === "active" ? "Ativo" : "Cancelado"}</span>{workspace.permissions.manageFinance && document.lifecycleStatus === "active" && <button disabled={savingKey !== null} onClick={() => void cancelDocument(document.id)} className="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700 disabled:opacity-50">Cancelar documento</button>}</div>
               </div>
+
+              <FinanceAttachmentsPanel
+                organizationId={organizationId}
+                payableDocumentId={document.id}
+                canUpload={workspace.permissions.manageFinance && document.lifecycleStatus === "active"}
+              />
 
               <div className="divide-y divide-neutral-100">
                 {installments.map((installment) => {

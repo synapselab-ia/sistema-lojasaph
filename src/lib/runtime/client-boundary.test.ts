@@ -28,4 +28,21 @@ describe("environment client/server boundary", () => {
     expect(runtimeServer).toContain('import "server-only"');
     expect(runtimeServer).toContain("SUPABASE_SECRET_KEY");
   });
+
+  it("keeps finance attachment Storage administration server-only", () => {
+    const panel = source("src/modules/finance/ui/finance-attachments-panel.tsx");
+    const attachmentServer = source("src/lib/finance/attachment-server.ts");
+    const uploadRoute = source("src/app/api/finance/attachments/route.ts");
+    const downloadRoute = source("src/app/api/finance/attachments/[attachmentId]/route.ts");
+
+    expect(panel).not.toContain("SUPABASE_SECRET_KEY");
+    expect(panel).not.toContain("createServerAdminSupabaseClient");
+    expect(panel).not.toContain("storage.createBucket");
+    expect(attachmentServer).toContain('import "server-only"');
+    expect(attachmentServer).toContain("createServerAdminSupabaseClient");
+    expect(uploadRoute).toContain("attachment-server");
+    expect(downloadRoute).toContain("attachment-server");
+    expect(uploadRoute).not.toContain("SUPABASE_SECRET_KEY");
+    expect(downloadRoute).not.toContain("SUPABASE_SECRET_KEY");
+  });
 });

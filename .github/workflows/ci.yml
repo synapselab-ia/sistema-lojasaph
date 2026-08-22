@@ -151,6 +151,9 @@ jobs:
       - name: Run auth role and Organization isolation tests
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/auth_runtime_roles.sql
 
+      - name: Run finance attachment metadata tests
+        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/finance_attachments.sql
+
       - name: Run transactional withdrawal tests
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/stock_withdrawal.sql
 

@@ -2,81 +2,154 @@
 
 ## Contexto
 
-Fase 40 — revalidação de `REQ-PLAT-003 — Validação de dados` — foi concluída sem finding funcional.
+Fase 41 — reconciliação do MVP restante — foi concluída.
 
-`REQ-PLAT-003` já havia sido considerado atendido na Fase 29. A revalidação comparou o baseline `370b37161150bcf2eac3afb4afb9d8bb80d96e10` com a `main` pós-Fase 39 e confirmou que não houve mudança em `src/**`; as mudanças funcionais posteriores de banco (`membership_rls_initplan` e `critical_config_audit`) não enfraqueceram os boundaries de validação. A evidência está em `docs/qa/data-validation.md`.
+Evidência: `docs/qa/mvp-reconciliation.md`.
 
-Não reabrir `REQ-PLAT-003` sem regressão concreta.
+Resultado:
 
-A Issue #75 de backup Production continua aberta/desarmada. OAuth/rclone/App Password + primeiro run real permanecem deliberadamente adiados até o operador estar em computador pessoal/confiável. Isso não bloqueia a próxima frente independente.
+- nenhum novo MUST funcional do núcleo apareceu sem cobertura;
+- itens `PENDING`/Q-001..Q-025 e fase posterior continuam excluídos;
+- cutover de importação real permanece dependente de fonte/mapeamento/backup/reconciliação;
+- `REQ-EXPOR-001 — Exportação` continua sem implementação aparente, mas é um SHOULD amplo e não deve competir em paralelo;
+- a única nova frente funcional aberta é a Issue #92 — `Fase 42 — anexos financeiros privados (REQ-FIN-008)`.
+
+A Issue #75 continua aberta/desarmada. OAuth/rclone/App Password + primeiro run real permanecem adiados até computador pessoal/confiável e não bloqueiam #92.
 
 ## Objetivo ativo
 
-**Fase 41 — Reconciliar o escopo MVP restante e selecionar a próxima vertical slice explícita.**
+**Fase 42 — Implementar Issue #92 / `REQ-FIN-008 — Anexos` como uma vertical slice privada de anexos em `payable_document`.**
 
-A fase deve evitar tanto retrabalho quanto expansão arbitrária. Antes de criar nova funcionalidade, comparar o MVP documentado com o estado real do produto e escolher **uma única lacuna comprovada**, implementável sem depender de questões `PENDING`.
+O objetivo é permitir listar, anexar e baixar documentos financeiros sem tornar arquivo público, sem expor secret/service key no browser e sem inventar classificação fiscal ou lifecycle de exclusão que o requisito não definiu.
 
-## Baseline a reutilizar
+## Contrato funcional já aprovado pela Fase 41
 
-Requisitos transversais já fechados/auditados não devem voltar à fila sem regressão:
+Primeiro vínculo suportado: `payable_document`.
 
-- `REQ-PLAT-001` responsividade;
-- `REQ-PLAT-002` idempotência;
-- `REQ-PLAT-003` validação de dados;
-- `REQ-PLAT-004` migrations;
-- `REQ-PLAT-006` logs/erros;
-- `REQ-PLAT-007` ambientes;
-- `REQ-SEC-003` auditoria;
-- `REQ-SEC-004` segredos;
-- `REQ-SEC-005` cancelamento/estorno;
-- `REQ-IMP-001..004` foundation de importação/dry-run.
+Metadata mínima:
 
-`REQ-PLAT-005` continua representado pela Issue #75 e só volta a ser a frente ativa quando houver computador pessoal/confiável para concluir secrets/OAuth e o primeiro backup real.
+- `id`;
+- `organization_id`;
+- `payable_document_id`;
+- bucket/storage key;
+- nome original;
+- MIME;
+- tamanho em bytes;
+- checksum SHA-256;
+- usuário criador;
+- timestamp.
 
-O núcleo operacional atual já cobre Organização, Cadastros, Estoque, Lotes/Validades, Compras, Financeiro, Caixa e Dashboard básico. O próximo passo não deve reimplementar essas áreas por presunção.
+Tipos iniciais: PDF, XML e imagens comuns de comprovante.
 
-## Candidatos explícitos a verificar primeiro
+Não expandir já para vínculo com parcela, pagamento, recebimento, OCR, SEFAZ, classificação automática ou exclusão.
 
-A comparação inicial entre `docs/product/scope.md`, `docs/product/requirements.md` e a árvore atual não encontrou implementação aparente para:
+## Boundaries de segurança
 
-1. `REQ-FIN-008 — Anexos` (**SHOULD**) — o escopo MVP menciona NF/PDF/XML/boleto/comprovante, e a árvore atual não apresenta camada de attachment/storage do Financeiro;
-2. `REQ-EXPOR-001 — Exportação` (**SHOULD**) — o escopo MVP prevê exportação onde fizer sentido, e não foi encontrado fluxo CSV/Excel atual.
+- bucket privado;
+- browser usa apenas sessão normal e nunca recebe `SUPABASE_SECRET_KEY`/service role;
+- trusted server pode usar admin client somente para a operação física de Storage;
+- autorização de negócio deve ser revalidada usando usuário normal/RPC, não presumida porque o server possui secret;
+- upload permitido somente para `owner/admin/manager/finance` no escopo do documento, reutilizando `private.has_payable_document_role(...)`;
+- leitura/listagem conforme `private.can_read_payable_document(...)`;
+- `viewer` autorizado pode ler/baixar, mas não registrar novo anexo;
+- cross-Organization/fora do escopo e `anon` devem falhar;
+- `authenticated` recebe somente SELECT direto na metadata; INSERT/UPDATE/DELETE diretos permanecem negados;
+- sem URL pública permanente;
+- `upsert=false` / sem overwrite;
+- sem DELETE físico exposto nesta versão;
+- registro de metadata + audit event no mesmo boundary PostgreSQL;
+- se Storage upload ocorrer e o registro relacional falhar, o server deve tentar remover o objeto recém-enviado.
 
-Esses são **candidatos para verificação**, não prioridade pré-decidida. Também verificar se existe outro gap explícito de MVP mais fundamental antes de escolher.
+## Baseline Supabase
+
+Production `fhbvwyttikrbeaanatlr` foi inspecionada somente read-only na Fase 41:
+
+- `ACTIVE_HEALTHY`, PostgreSQL 17;
+- nenhum bucket atual;
+- nenhuma policy em `storage.objects`;
+- nenhuma tabela pública de attachments/files.
+
+A documentação Supabase atual foi revisada:
+
+- documentos sensíveis devem ficar em bucket privado;
+- objetos devem ser manipulados pela Storage API, não por SQL direto em `storage.objects`;
+- bucket pode restringir MIME/tamanho;
+- service/secret key é server-only;
+- tabelas públicas novas exigem grants explícitos coerentes com RLS.
 
 ## Fazer agora
 
-1. Ler continuidade padrão, `WORKFLOW`, `docs/product/scope.md`, `docs/product/requirements.md` e documentação dos módulos atuais.
-2. Conferir estado real de `main`, Issues/PRs/branches/CI e confirmar o estado da #75.
-3. Montar uma matriz curta dos itens do **MVP profissional** contra evidência real de implementação/homologação.
-4. Marcar cada item como:
-   - entregue;
-   - parcialmente entregue com gap concreto;
-   - não entregue e implementável agora;
-   - `PENDING`/fase posterior — não implementar;
-   - bloqueado por operação/decisão explícita.
-5. Não reabrir requisito já fechado por mera ausência de documento recente.
-6. Verificar especificamente `REQ-FIN-008` e `REQ-EXPOR-001` no código/histórico antes de tratá-los como lacuna.
-7. Excluir do candidato qualquer item que dependa de Q-001..Q-025 ou decisão de negócio ainda não aprovada.
-8. Escolher uma única próxima vertical slice usando, nesta ordem:
-   - pertinência explícita ao MVP;
-   - processo real já documentado;
-   - ausência comprovada na implementação;
-   - critério de aceite objetivo;
-   - independência de decisão pendente.
-9. Se houver uma lacuna clara, abrir **uma única Issue** com evidência, branch própria e critério de aceite. Executar a implementação mínima se ela puder ser concluída com segurança na mesma sessão.
-10. Se a reconciliação não produzir candidato inequívoco, não inventar prioridade: documentar o bloqueio e deixar a decisão específica no handoff.
-11. Usar Supabase/Vercel somente quando a vertical slice realmente exigir; não criar infraestrutura/deploy apenas para a auditoria de escopo.
-12. Atualizar `CURRENT_STATE`, `HANDOFF` e `NEXT_ACTION` ao final.
+1. Ler `AGENTS.md`, `START-HERE`, `CURRENT_STATE`, `HANDOFF`, este arquivo, `WORKFLOW`, Issue #92, `docs/modules/finance.md`, `docs/architecture/domain-model.md` e `docs/architecture/data-model.md`.
+2. Conferir estado real de `main`, Issues/PRs/branches/CI e confirmar #75/#92 antes de agir.
+3. Criar branch funcional nova para #92 se a branch documental da Fase 41 já estiver mergeada; não acumular trabalho novo em branch histórica integrada.
+4. Revalidar a documentação/changelog Supabase Storage atual antes da implementação.
+5. Em checkout com a Supabase CLI pinada, executar primeiro:
+   - `supabase migration new --help`;
+   - `supabase migration new finance_attachments`.
+   **Nunca inventar timestamp/nome de migration.**
+6. Na migration relacional:
+   - criar `public.finance_attachments`;
+   - FK composta `(payable_document_id, organization_id)` → `payable_documents(id, organization_id)`;
+   - constraints para nome/MIME/tamanho/checksum/storage key;
+   - RLS habilitado;
+   - policy SELECT usando `private.can_read_payable_document(...)`;
+   - revoke padrão de `anon`/`authenticated` + GRANT SELECT explícito a `authenticated`;
+   - nenhum direct INSERT/UPDATE/DELETE de `authenticated`;
+   - RPC de preflight de upload com auth + `private.has_payable_document_role(...)`;
+   - RPC de registro de metadata que repete auth/role/scope, valida payload/path e grava `audit_logs` na mesma transação.
+7. Não modificar `storage.objects` por SQL. Provisionar/configurar o bucket pela Storage API em código server-only, de forma idempotente, privado, com MIME/tamanho limitados.
+8. Usar storage key canônica e opaca baseada em Organization/document/attachment UUID. Não incorporar filename do usuário ao path físico.
+9. Implementar upload em server boundary:
+   - validar auth, arquivo, tamanho e MIME antes dos bytes;
+   - executar preflight de role/scope;
+   - garantir bucket privado pela API;
+   - calcular SHA-256 no servidor;
+   - upload com `upsert=false`;
+   - registrar metadata por RPC usando a sessão autenticada;
+   - se RPC falhar após upload, tentar `storage.remove` e logar erro de compensação sem expor segredo.
+10. Implementar download em server boundary:
+    - carregar metadata via client autenticado + RLS;
+    - se invisível, não revelar existência do arquivo;
+    - somente depois usar Storage server-side para devolver o conteúdo;
+    - `Content-Disposition` deve usar o nome original de forma segura;
+    - não criar public URL permanente.
+11. Estender `SupabaseFinanceGateway`/read model para listar metadata da Organization e a tela `/workspace/financeiro` para:
+    - mostrar anexos por documento;
+    - anexar arquivo quando `workspace.permissions.manageFinance` permitir como UX;
+    - baixar anexo visível;
+    - mostrar erro/sucesso sem vazar mensagem interna.
+12. Não tratar a permissão da UI como autoridade final; RPC/RLS continuam autoritativos.
+13. Adicionar testes mínimos sem dado real:
+    - finance permitido registra;
+    - viewer lê/lista e não registra;
+    - cross-org/fora do escopo não registra/lê;
+    - `anon` negado;
+    - direct write da metadata negado;
+    - MIME/tamanho/checksum/path inválidos rejeitados;
+    - função de política de arquivo/testes unitários no client/server boundary;
+    - nenhum secret entra no client bundle;
+    - compensação de upload é exercitada com doubles/unit test, sem Storage Production.
+14. Se criar `supabase/tests/finance_attachments.sql`, incluí-lo no CI principal e `Business Transactions Integration`.
+15. Rodar lint, typecheck, Vitest, production build e suítes SQL completas; abrir PR draft cedo e mergear só com CI verde.
+16. Só depois do head verde, aplicar a migration em Production com ferramenta de migration — nunca `execute_sql` para DDL — e fazer homologação não destrutiva.
+17. Após DDL, rodar Security + Performance Advisors e investigar warnings novos causados pela migration.
+18. Bucket/arquivo de homologação, se necessário, deve ser sintético e removido ao final; não usar documento real.
+19. Não criar deploy Vercel intermediário apenas para esta frente; preservar a limitação atual de deploys.
+20. Atualizar `docs/modules/finance.md`, evidência QA, `CURRENT_STATE`, `HANDOFF` e `NEXT_ACTION` ao final.
 
-## Critério de conclusão da Fase 41
+## Critério de conclusão da Issue #92
 
-- mapa do MVP atual reconciliado com evidência real;
-- requisitos já entregues não são refeitos;
-- itens `PENDING` não são promovidos por inferência;
-- próxima lacuna é concreta, rastreável a requisito/escopo e possui critério de aceite;
-- no máximo uma frente funcional nova é aberta;
-- #75 permanece preservada até poder ser concluída no ambiente seguro aprovado.
+- usuário financeiro autorizado consegue anexar arquivo suportado no documento;
+- viewer autorizado consegue listar/baixar, mas não anexar;
+- cross-org/fora do escopo e anon não acessam;
+- metadata guarda nome/MIME/tamanho/SHA-256/vínculo/ator;
+- bucket é privado e não existe URL pública permanente;
+- browser não recebe secret/service key;
+- invalid MIME/tamanho/path/checksum falham;
+- direct mutation da metadata por Data API continua fechada;
+- falha de metadata após upload dispara tentativa de compensação;
+- audit trail registra criação da metadata;
+- CI e homologação comprovam o fluxo sem dados reais.
 
 ## Backup Production / #75
 
@@ -95,10 +168,14 @@ Somente quando o operador estiver em computador pessoal/confiável:
 - não pedir/receber secrets no chat;
 - não versionar dump/config/token;
 - não ativar backup antes dos secrets restantes;
-- não restaurar Production para teste;
 - não fechar #75 sem run real;
-- não reabrir `REQ-PLAT-003`, `REQ-SEC-005` ou outros requisitos fechados sem regressão concreta;
+- não restaurar Production para teste;
+- não iniciar exportação em paralelo com #92;
 - não implementar requisito `PENDING` por inferência;
+- não manipular objetos de Storage por SQL;
+- não criar bucket público;
+- não expor secret/service key no browser;
+- não inventar migration filename;
 - não reaplicar migrations existentes;
-- não criar deployment Vercel apenas para auditoria;
+- não criar deployment Vercel apenas para auditoria/feature intermediária;
 - não importar dados reais/cutover.
