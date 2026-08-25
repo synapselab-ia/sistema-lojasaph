@@ -4,82 +4,74 @@
 
 ## Estado atual
 
-Fase 43 — primeira vertical slice de `REQ-EXPOR-001 — Exportação` — **implementada no PR #96 e em validação final antes do merge**.
+Fase 43 — primeira vertical slice de `REQ-EXPOR-001 — Exportação` — **concluída e integrada na `main` pelo PR #96**.
 
-- `main` na entrada da Fase 43: `751eea1b8c4a76c7f511f94d61024b22976c855a` (PR #94);
-- Issue #95: `Fase 43 — exportar contas a pagar em CSV (REQ-EXPOR-001)`;
-- branch: `agent/payables-csv-export`;
-- PR #96: `feat(finance): export payables as CSV`;
-- head de código validado antes dos docs: `abd9f0559d231f4526c9c40add46c95465d2fc4c`;
-- CI #374: success;
-- Business Transactions Integration #178: success;
-- Inventory Count Integration #194: success;
-- única Issue operacional anterior preservada: #75 — backup Production, ainda desarmada;
+- `main` pós-Fase 43: `8bf116bb05681d52e57f5f67f4a4d55c0c28e5ba`;
+- PR #96: squash-mergeado;
+- Issue #95: closed/completed;
+- head final validado do PR #96: `1de8326fa0e03b587c78d7992c25171916e43e08`;
+- CI #381: success (`database`, lint, typecheck, Vitest, production build);
+- Business Transactions Integration #185: success;
+- Inventory Count Integration #201: success;
+- única Issue aberta restante: #75 — backup Production, ainda desarmada;
 - nenhum deploy Vercel;
-- nenhuma migration/DDL/DML da Fase 43.
+- nenhuma migration/DDL/DML na Fase 43.
 
-## Decisão da Fase 43
+## Entrega da Fase 43
 
-A comparação das superfícies atuais encontrou um candidato claramente superior para a primeira exportação do MVP: **Financeiro / contas a pagar**.
+A primeira exportação do MVP foi escolhida após comparação explícita das superfícies atuais. Financeiro / contas a pagar foi o candidato superior porque `Controle NFs Espeticho.xlsx` tinha `Lista` como base operacional principal e `payable_installment_summary` já representa os mesmos conceitos normalizados.
 
-Motivo:
+`/workspace/financeiro` agora oferece `Exportar CSV` para `manageFinance = owner/admin/manager/finance`.
 
-- `Controle NFs Espeticho.xlsx` tinha `Lista` como principal base operacional;
-- `payable_installment_summary` já normaliza documento, unidade/setor, fornecedor, parcela, vencimento, valores e status;
-- Estoque atual mostra saldo vigente, não ledger tabular completo;
-- Inventário e Compras exibem históricos visuais truncados;
-- Caixa tem formato menos estável por meios de pagamento dinâmicos.
+Características:
+
+- fonte `payable_installment_summary`;
+- browser client autenticado, sem service/admin key;
+- `organization_id` explícito + RLS/resource scope;
+- paginação de 500 em 500 com ordem `due_date + installment_id`;
+- lookup de fornecedor/unidade/setor sob a mesma sessão;
+- CSV BOM UTF-8 + CRLF;
+- quoting/escaping e proteção contra spreadsheet formula injection;
+- dinheiro com `Money.toDecimal()` e datas ISO;
+- mensagens de erro públicas genéricas;
+- sem access key, Pix/Boleto, payment notes, actor IDs ou anexos;
+- sem XLSX/PDF e sem infraestrutura genérica de `exportar tudo`.
 
 Evidência: `docs/qa/payables-csv-export.md`.
-
-## Entrega funcional
-
-O Financeiro passa a oferecer `Exportar CSV` para `manageFinance = owner/admin/manager/finance`.
-
-A exportação:
-
-- lê `payable_installment_summary` pelo browser client autenticado;
-- filtra `organization_id` explicitamente e continua sujeita a RLS/resource scope;
-- pagina em blocos de 500 com ordenação estável `due_date + installment_id`;
-- não depende do `.limit(100)` da lista visual de documentos;
-- resolve fornecedor/unidade/setor pela mesma sessão/RLS;
-- gera CSV com BOM UTF-8, CRLF, escaping e neutralização de formula injection;
-- preserva dinheiro com `Money.toDecimal()` e datas ISO;
-- não exporta access key, Pix/Boleto, observações de pagamento, actor IDs ou anexos;
-- não adiciona XLSX/PDF, endpoint admin ou infraestrutura genérica de exportação.
 
 ## Supabase Production
 
 Projeto `fhbvwyttikrbeaanatlr` permanece `ACTIVE_HEALTHY`.
 
-A Fase 43 usou Production somente para introspecção read-only e confirmou:
+A Fase 43 foi read-only em Production. Foi confirmado:
 
 - `payable_installment_summary` com `security_invoker=true`;
 - `authenticated` com SELECT;
 - `anon` sem SELECT;
-- `payable_documents` e `installments` filtrados pelas policies atuais com `private.can_read_payable_document(...)`.
+- policies de `payable_documents` e `installments` usando `private.can_read_payable_document(...)`.
 
-Nenhuma migration ou mutation remota foi necessária. A migration mais recente continua `20260822195823_finance_attachments`.
+O histórico final de migrations continua terminando em `20260822195823_finance_attachments`. Não existe migration da Fase 43.
+
+## Próxima ação
+
+**Fase 44 — reconciliar o MVP depois das Fases 42–43 e determinar se existe alguma lacuna não-PENDING restante que justifique nova frente funcional.**
+
+Não abrir automaticamente outra exportação. Uma nova superfície só entra se houver processo real, usuário beneficiado, prioridade material e critério de aceite objetivo.
+
+Ver `docs/ai/NEXT_ACTION.md`.
 
 ## Fases anteriores que não devem ser refeitas
 
 - Fase 41: reconciliação do MVP;
-- Fase 42 / #92: anexos financeiros privados, mergeados no PR #93;
+- Fase 42 / #92: anexos financeiros privados, PR #93;
+- Fase 43 / #95: contas a pagar em CSV, PR #96;
 - Fase 38 / #75: automação de backup preparada, faltando somente ativação operacional em computador pessoal/confiável.
 
 O bucket `finance-attachments` continua lazy via Storage API no primeiro upload autorizado; não manipular `storage.buckets`/`storage.objects` por SQL.
 
-## Próxima ação depois do merge do PR #96
-
-**Fase 44 — reconciliar o MVP após a primeira entrega de `REQ-EXPOR-001` e determinar se existe alguma lacuna não-PENDING restante que justifique nova frente.**
-
-Não abrir automaticamente uma segunda exportação. O requisito diz `dados tabulares relevantes` / `exportação onde fizer sentido`; nova superfície só entra se houver processo real, usuário beneficiado e critério de aceite identificável.
-
-Ver `docs/ai/NEXT_ACTION.md`.
-
 ## Backup Production / #75
 
-Permanece deliberadamente pendente até computador pessoal/confiável:
+Pendências somente em computador pessoal/confiável:
 
 - OAuth Google Drive/rclone `[lojasaph-drive]`;
 - `BACKUP_RCLONE_CONFIG_B64`;
