@@ -1,7 +1,8 @@
+import { asEntityId } from "@/domain/common/entity-id";
 import { describe, expect, it } from "vitest";
 import { normalizeSupplierItemDraft } from "./supplier-items";
 
-const stockItemId = "00000000-0000-4000-8000-000000000400" as const;
+const stockItemId = asEntityId("00000000-0000-4000-8000-000000000400");
 
 describe("supplier item normalization", () => {
   it("trims purchase unit and preserves exact package quantity", () => {
