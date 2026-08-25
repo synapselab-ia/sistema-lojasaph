@@ -2,88 +2,97 @@
 
 ## Estado
 
-Fase 43 — `REQ-EXPOR-001 — Exportação` — está **concluída e integrada na `main` pelo PR #96** com a primeira vertical slice: contas a pagar em CSV.
+Fase 44 está **concluída e integrada**.
 
-- `main` pós-Fase 43: `8bf116bb05681d52e57f5f67f4a4d55c0c28e5ba`;
-- PR #96: squash-mergeado;
-- Issue #95: closed/completed;
-- head final validado: `1de8326fa0e03b587c78d7992c25171916e43e08`;
-- CI #381 — success;
-- Business Transactions #185 — success;
-- Inventory Count #201 — success;
-- Production Supabase usada somente read-only;
-- nenhuma migration/DDL/DML;
+- `main` na entrada: `752572abbc1f3ae64d34500c446ecc24ecfe3530`;
+- Issue #98 — `REQ-SUP-003 — Condições comerciais`: closed/completed;
+- PR #99 — `feat(suppliers): expose commercial terms`: squash-mergeado;
+- merge SHA: `82f401bd73036d82fc5ac9418fc7f97e32adc3ba`;
+- head final validado: `20c472255e8bde0bf52c094bace16d7734bb2824`;
+- CI #387 — success;
+- Business Transactions #188 — success;
+- Inventory Count #204 — success;
 - nenhum deploy Vercel;
-- única Issue aberta: #75, preservada/desarmada.
+- nenhuma migration/DDL/DML ou mutation manual de Production;
+- #75 continua aberta/desarmada.
 
-**Não refazer Fase 43.** A próxima ação é a Fase 44 em `docs/ai/NEXT_ACTION.md`.
+**Não refazer a Fase 44.** A próxima frente é a Fase 45 definida em `docs/ai/NEXT_ACTION.md`.
 
-## O que a Fase 43 decidiu
+## O que a reconciliação decidiu
 
-A primeira exportação foi escolhida após comparar as superfícies tabulares atuais.
+Depois de anexos (#92) e da primeira exportação (#95), a Fase 44 revisou os SHOULDs restantes sem promover `PENDING` nem fase posterior.
 
-Financeiro / contas a pagar foi o candidato inequívoco porque `Controle NFs Espeticho.xlsx` tinha `Lista` como base operacional principal e `payable_installment_summary` já representa documento, fornecedor, unidade/setor, parcela, vencimento, valores e status derivados.
+`REQ-SUP-003` foi a única lacuna claramente superior porque:
 
-Outros candidatos não justificaram uma frente paralela:
+- existe processo real documentado na planilha de fornecedores;
+- os campos ausentes no runtime eram valor mínimo, agenda de pedido/entrega, condição de pagamento e observações;
+- `supplier_terms`/`suppliers.notes` já existiam desde a foundation;
+- não exigia inventar semântica, novo schema ou compra avançada.
 
-- Estoque: snapshot de saldo, sem ledger tabular completo na tela;
-- Inventário: histórico visual limitado a 10;
-- Compras: histórico visual limitado a 15;
-- Caixa: shape depende de meios de pagamento dinâmicos.
+Ver `docs/qa/mvp-reconciliation-fase44.md`.
 
-Ver `docs/qa/payables-csv-export.md`.
+## Contrato entregue em fornecedores
 
-## Contrato entregue
+`/workspace/fornecedores` possui painel de condições comerciais por fornecedor.
 
-- `Exportar CSV` em `/workspace/financeiro` para UX `manageFinance`;
-- sessão autenticada + RLS continuam sendo o boundary real;
-- `payable_installment_summary` como fonte;
-- filtro explícito `organization_id`;
-- paginação de 500 em 500 via range inclusivo;
-- ordem determinística `due_date + installment_id`;
-- fornecedor/unidade/setor resolvidos pela mesma sessão;
-- CSV BOM UTF-8 + CRLF;
-- escaping de aspas/vírgulas/quebras de linha;
-- formula-injection protection em texto;
-- dinheiro por `Money.toDecimal()`;
-- datas ISO;
-- erros públicos genéricos, sem mensagem bruta do Supabase;
-- sem access key, referência Pix/Boleto, payment notes, actor IDs ou anexos;
-- sem XLSX/PDF, endpoint privilegiado, dependency nova ou migration.
+Leitura:
 
-## Supabase / boundary
+- todos os membros autorizados pela RLS podem consultar;
+- usa browser client autenticado normal;
+- termo corrente = `valid_to IS NULL`, com escolha determinística do mais recente por `valid_from`/criação.
 
-Production `fhbvwyttikrbeaanatlr` foi apenas inspecionada:
+Escrita:
 
-- `payable_installment_summary`: `security_invoker=true`;
-- `authenticated`: SELECT true;
-- `anon`: SELECT false;
-- `payable_documents_select_member`: `private.can_read_payable_document(organization_id, id)`;
-- `installments_select_member`: `private.can_read_payable_document(organization_id, payable_document_id)`.
+- UX somente para `manageSuppliers`;
+- RLS final exige `owner/admin/manager/purchases` Organization-wide;
+- observações ficam em `suppliers.notes`;
+- pedido mínimo/pagamento/agendas ficam em `supplier_terms`;
+- primeiro save cria a linha corrente se houver conteúdo comercial;
+- saves seguintes atualizam essa linha;
+- limpar campos de uma linha já existente grava NULL, não DELETE;
+- não existe versionamento temporal automático nesta slice.
 
-A checagem final de migration history ainda termina em `20260822195823_finance_attachments`. Não existe migration da Fase 43.
+Validação:
 
-## Testes
+- pedido mínimo usa `Money`, preserva decimal exato e não aceita negativo;
+- strings são trimadas; vazio vira ausência/NULL;
+- gateway/panel não usam secret/admin client;
+- agenda permanece texto livre informativo, sem automação.
 
-`src/lib/finance/payables-csv.test.ts` cobre BOM/CRLF/cabeçalho, acentos, escaping, formula injection, decimais exatos, saldo negativo, filename e paginação multi-range.
+## Production / Supabase
 
-`src/lib/runtime/client-boundary.test.ts` confirma ausência de secret/admin na exportação.
+Projeto `fhbvwyttikrbeaanatlr` foi somente inspecionado read-only.
 
-Head final `1de8326...` passou CI #381, Business Transactions #185 e Inventory Count #201.
+Confirmado antes da implementação:
 
-## Próxima ação
+- colunas necessárias já presentes;
+- RLS habilitado;
+- `authenticated` com SELECT/INSERT/UPDATE;
+- `anon` sem SELECT;
+- policies de write Organization-wide para `owner/admin/manager/purchases`;
+- 0 linhas reais em `supplier_terms` naquele momento.
 
-**Fase 44 — reconciliar o MVP após as Fases 42–43.**
+Não criar migration retrospectiva para a Fase 44. O migration history continua terminando em `20260822195823_finance_attachments`.
 
-Revisar escopo/requisitos e estado real para determinar se resta alguma lacuna não-PENDING com processo, usuário, prioridade material e critério de aceite concretos.
+## Próxima ação — Fase 45
 
-Não assumir que `REQ-EXPOR-001` exige exportar cada tabela. Se não houver nova lacuna inequívoca, registrar o núcleo/MVP como reconciliado e manter apenas bloqueios operacionais condicionais ou novas prioridades explícitas de produto.
+Revisar **`REQ-SUP-004 — Produtos por fornecedor`** como o próximo ponto de decisão, não como feature pré-aprovada.
 
-Ver `docs/ai/NEXT_ACTION.md`.
+A pergunta é: o fluxo real atual já mantém de forma suficiente os vínculos `supplier_items` usados pelas compras, ou existe uma lacuna operacional comprovada antes de operar com dados reais?
+
+A Fase 45 deve:
+
+- inspecionar schema, adapters e UI de `supplier_items`/`supplier_prices` e compras;
+- confrontar com os campos reais do catálogo por fornecedor (`produto`, medida, quantidade/embalagem, preço unitário/pacote);
+- separar manutenção básica de vínculo fornecedor-produto de cotações/comparação/sugestão de compra, que ficam fora;
+- abrir no máximo uma Issue se a ausência estiver comprovada e for material para o MVP;
+- se o fluxo atual já for suficiente, registrar SUP-004 como coberto e **encerrar a abertura automática de novas frentes funcionais do MVP**.
+
+Não puxar SUP-005 avançado, outra exportação ou dashboards avançados por conveniência.
 
 ## Backup Production / #75
 
-Não refazer a Fase 38. Política já aprovada:
+Não refazer a automação. Política já aprovada:
 
 - RPO 24h;
 - diário;
@@ -103,17 +112,18 @@ Pendências somente em computador pessoal/confiável:
 - primeiro backup real + archive/checksum;
 - fechar #75.
 
-Não pedir secrets no chat.
+Nunca pedir secrets no chat.
 
 ## Não fazer
 
-- não reabrir Fases 41–43 sem regressão;
-- não criar exportação global/genérica;
-- não criar XLSX/PDF sem processo concreto;
-- não contornar RLS;
+- não reabrir Fases 41–44 sem regressão;
+- não versionar termos comerciais automaticamente sem nova regra;
+- não transformar agenda em cron/sugestão de compra;
+- não misturar SUP-004 com cotações/comparação avançada;
+- não promover `PENDING`;
 - não criar migration sem necessidade;
+- não contornar RLS com service/admin client;
 - não manipular Storage por SQL;
 - não ativar/fechar #75 sem run real;
-- não implementar `PENDING` por inferência;
 - não criar deploy Vercel só para teste;
 - não importar dados reais/cutover.
