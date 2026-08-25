@@ -1,6 +1,6 @@
 # Módulo — Cadastros base
 
-Status: núcleo cadastral persistente; Fase 19 implementa funcionários operacionais separados da identidade de acesso; Fase 22 torna categoria obrigatória no item canônico; Fase 44 expõe as condições comerciais de fornecedor já previstas no schema.
+Status: núcleo cadastral persistente; Fase 19 implementa funcionários operacionais separados da identidade de acesso; Fase 22 torna categoria obrigatória no item canônico; Fase 44 expõe condições comerciais; Fase 45 fecha a manutenção básica de produtos por fornecedor.
 
 ## Objetivo
 
@@ -12,7 +12,8 @@ Fornecer os dados mestres usados por estoque, compras, financeiro, caixa e admin
 - StockItem com categoria obrigatória, unidade, tipo e flags operacionais;
 - Supplier com múltiplos contatos;
 - condições comerciais correntes de Supplier: pedido mínimo, agenda de pedido/entrega, condição de pagamento e observações;
-- SupplierItem/offer e histórico de preço observado;
+- vínculo Supplier ↔ StockItem com unidade de compra, quantidade por embalagem e status ativo/inativo;
+- histórico de preço observado do fornecedor alimentado pelo fluxo de compras;
 - Employee operacional separado de `auth.users`;
 - vínculo opcional e explícito de Employee com identidade autenticada;
 - escopo operacional padrão opcional por Unit/Sector;
@@ -60,9 +61,32 @@ A primeira slice operacional trabalha com **um termo corrente por fornecedor**:
 
 Agenda de pedido/entrega permanece texto informativo, como na fonte histórica. Esta entrega não agenda pedidos, não sugere compras e não compara fornecedores automaticamente.
 
-A manutenção usa o browser client autenticado normal. RLS é a autoridade: leitura para membro autenticado da Organization e escrita somente para papel Organization-wide `owner/admin/manager/purchases`. `manageSuppliers` espelha esse boundary apenas para UX; não substitui o banco.
+## Produtos por fornecedor
 
-Nenhuma migration foi necessária na Fase 44 porque o schema e as policies já estavam homologados.
+`REQ-SUP-004` usa `public.supplier_items`, estrutura já existente desde a foundation:
+
+- `supplier_id` e `stock_item_id` definem o vínculo comercial;
+- `purchase_unit` registra a unidade informada pelo fornecedor;
+- `units_per_package` registra a quantidade da unidade-base contida na embalagem, quando conhecida;
+- `active` controla disponibilidade sem apagar histórico;
+- `supplier_sku` continua fora da primeira slice operacional; a UI mantém apenas o vínculo default com `supplier_sku IS NULL`.
+
+A Fase 45 adiciona um caminho persistente normal em `/workspace/fornecedores` para listar, criar, reativar, editar e inativar esses vínculos. Antes dela, `/workspace/compras` apenas consumia `supplier_items` preexistentes; os registros disponíveis em Production eram demo/seed e não havia UI/adaptor Supabase de manutenção.
+
+Regras desta slice:
+
+1. leituras filtram explicitamente `organization_id`, `supplier_id` e `supplier_sku IS NULL`;
+2. um novo vínculo verifica primeiro se já existe linha default para o mesmo fornecedor/produto e a reutiliza/reativa em vez de inserir duplicata acidental;
+3. edição não permite trocar silenciosamente o produto da linha; para outro produto cria-se outro vínculo;
+4. `purchase_unit` é texto opcional normalizado;
+5. `units_per_package` é opcional, positivo e usa precisão de até três casas via `Quantity`;
+6. inativação usa `active=false`; o cliente autenticado nem possui `DELETE` em `supplier_items`;
+7. unidade/embalagem são informativas nesta fase: pedidos continuam usando quantidade na unidade-base e não fazem conversão automática de caixa/pacote;
+8. preço não é cadastrado nesta tela. O preço efetivo continua sendo informado no pedido e, na emissão, o fluxo de compras registra o observado em `supplier_prices`.
+
+RLS é a autoridade: membros autenticados da Organization podem ler, enquanto INSERT/UPDATE exigem papel Organization-wide `owner/admin/manager/purchases`. `manageSuppliers` apenas espelha essa regra para UX. Não há service/admin client.
+
+Nenhuma migration foi necessária nas Fases 44–45 porque schema, grants e policies já estavam presentes e foram verificados read-only em Production.
 
 ## Autorização de Employee
 
@@ -84,7 +108,9 @@ A autorização continua pertencendo exclusivamente a `organization_memberships`
 - a UI não oferece estado `Sem categoria` para item canônico e bloqueia submit sem opção válida;
 - fornecedor pode ter múltiplos contatos;
 - fornecedor pode registrar condições comerciais livres sem transformar texto histórico em regra automática;
+- fornecedor pode manter o catálogo básico de produtos compráveis sem depender de seed/SQL;
 - pedido mínimo é monetário não-negativo e usa precisão decimal exata;
+- quantidade por embalagem deve ser positiva quando informada;
 - catálogo e fornecedores são compartilhados conforme autorização da Organization;
 - escopos Business/Unit/Sector são aplicados conforme a política homologada na Fase 14;
 - dados de demonstração/teste devem ser sintéticos;
@@ -96,7 +122,9 @@ A autorização continua pertencendo exclusivamente a `organization_memberships`
 
 `/workspace/produtos` exige seleção de categoria tanto na criação quanto na edição. Quando não há categorias disponíveis, a gravação fica bloqueada em vez de criar classificação implícita.
 
-`/workspace/fornecedores` oferece cadastro de fornecedor/contatos e, em cada fornecedor, consulta/manutenção das condições comerciais correntes. Perfis sem `manageSuppliers` continuam com leitura, enquanto a gravação permanece condicionada ao papel Organization-wide autorizado pelo RLS.
+`/workspace/fornecedores` oferece cadastro de fornecedor/contatos e, em cada fornecedor, consulta/manutenção das condições comerciais correntes e dos produtos compráveis. Perfis sem `manageSuppliers` continuam com leitura, enquanto a gravação permanece condicionada ao papel Organization-wide autorizado pelo RLS.
+
+`/workspace/compras` reutiliza diretamente os vínculos ativos de `supplier_items`; uma alteração feita no fornecedor passa a definir quais produtos aparecem para um novo pedido daquele fornecedor. O preço do pedido permanece um snapshot operacional e a emissão continua alimentando `supplier_prices`.
 
 `/workspace/funcionarios` oferece listagem e manutenção administrativa mínima, responsiva e persistente para `owner`, `admin` e `manager`. As opções de Unit/Sector já chegam filtradas por RLS, e o banco reaplica a autorização na gravação.
 
@@ -108,5 +136,8 @@ O ID de usuário autenticado pode ser informado explicitamente quando conhecido.
 - cron/alerta de dia de pedido;
 - sugestão automática de compra;
 - cotações/aprovações e comparação avançada de fornecedores;
-- expansão de `REQ-SUP-004`/`REQ-SUP-005` sem nova priorização;
+- preço/package price manual no cadastro de vínculo;
+- múltiplos SKUs/variantes do mesmo fornecedor/produto;
+- conversão automática de unidade/embalagem no pedido;
+- BI/análise avançada de `REQ-SUP-005`;
 - importação real/cutover de fornecedores.
