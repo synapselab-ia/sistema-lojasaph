@@ -1,6 +1,6 @@
 # Módulo — Cadastros base
 
-Status: núcleo cadastral persistente; Fase 19 implementa funcionários operacionais separados da identidade de acesso; Fase 22 torna categoria obrigatória no item canônico.
+Status: núcleo cadastral persistente; Fase 19 implementa funcionários operacionais separados da identidade de acesso; Fase 22 torna categoria obrigatória no item canônico; Fase 44 expõe as condições comerciais de fornecedor já previstas no schema.
 
 ## Objetivo
 
@@ -11,6 +11,7 @@ Fornecer os dados mestres usados por estoque, compras, financeiro, caixa e admin
 - estrutura Organization → Business → Unit → Sector/StockLocation;
 - StockItem com categoria obrigatória, unidade, tipo e flags operacionais;
 - Supplier com múltiplos contatos;
+- condições comerciais correntes de Supplier: pedido mínimo, agenda de pedido/entrega, condição de pagamento e observações;
 - SupplierItem/offer e histórico de preço observado;
 - Employee operacional separado de `auth.users`;
 - vínculo opcional e explícito de Employee com identidade autenticada;
@@ -37,6 +38,32 @@ Employee é persistido em `public.employees` com:
 
 Não existe `DELETE` para o cliente autenticado em Employee. Correções de ciclo de vida usam inativação para preservar a referência operacional.
 
+## Condições comerciais de fornecedor
+
+`REQ-SUP-003` reutiliza estruturas existentes desde a foundation:
+
+- `suppliers.notes` para observações gerais;
+- `supplier_terms.minimum_order_value` para pedido mínimo;
+- `supplier_terms.payment_terms` para condição/forma de pagamento;
+- `supplier_terms.order_schedule` para agenda/dia de pedido;
+- `supplier_terms.delivery_schedule` para agenda/dia de entrega;
+- `supplier_terms.valid_from/valid_to` para permitir evolução futura sem exigir nova modelagem.
+
+A primeira slice operacional trabalha com **um termo corrente por fornecedor**:
+
+1. leitura considera `valid_to IS NULL`;
+2. em caso de mais de um registro legado corrente, usa deterministicamente o mais recente por `valid_from` e criação;
+3. se ainda não existe termo e algum campo comercial foi informado, cria uma linha corrente usando o `valid_from` default do banco;
+4. edições posteriores atualizam a mesma linha corrente;
+5. limpar os campos não executa `DELETE`;
+6. nenhum versionamento temporal automático é criado sem regra de negócio específica para vigência.
+
+Agenda de pedido/entrega permanece texto informativo, como na fonte histórica. Esta entrega não agenda pedidos, não sugere compras e não compara fornecedores automaticamente.
+
+A manutenção usa o browser client autenticado normal. RLS é a autoridade: leitura para membro autenticado da Organization e escrita somente para papel Organization-wide `owner/admin/manager/purchases`. `manageSuppliers` espelha esse boundary apenas para UX; não substitui o banco.
+
+Nenhuma migration foi necessária na Fase 44 porque o schema e as policies já estavam homologados.
+
 ## Autorização de Employee
 
 A autorização continua pertencendo exclusivamente a `organization_memberships`.
@@ -56,6 +83,8 @@ A autorização continua pertencendo exclusivamente a `organization_memberships`
 - criação e edição de StockItem sem categoria falham antes da persistência;
 - a UI não oferece estado `Sem categoria` para item canônico e bloqueia submit sem opção válida;
 - fornecedor pode ter múltiplos contatos;
+- fornecedor pode registrar condições comerciais livres sem transformar texto histórico em regra automática;
+- pedido mínimo é monetário não-negativo e usa precisão decimal exata;
 - catálogo e fornecedores são compartilhados conforme autorização da Organization;
 - escopos Business/Unit/Sector são aplicados conforme a política homologada na Fase 14;
 - dados de demonstração/teste devem ser sintéticos;
@@ -67,6 +96,17 @@ A autorização continua pertencendo exclusivamente a `organization_memberships`
 
 `/workspace/produtos` exige seleção de categoria tanto na criação quanto na edição. Quando não há categorias disponíveis, a gravação fica bloqueada em vez de criar classificação implícita.
 
+`/workspace/fornecedores` oferece cadastro de fornecedor/contatos e, em cada fornecedor, consulta/manutenção das condições comerciais correntes. Perfis sem `manageSuppliers` continuam com leitura, enquanto a gravação permanece condicionada ao papel Organization-wide autorizado pelo RLS.
+
 `/workspace/funcionarios` oferece listagem e manutenção administrativa mínima, responsiva e persistente para `owner`, `admin` e `manager`. As opções de Unit/Sector já chegam filtradas por RLS, e o banco reaplica a autorização na gravação.
 
 O ID de usuário autenticado pode ser informado explicitamente quando conhecido. Essa associação serve somente para identidade da pessoa; administração de acesso permanece separada.
+
+## Fora do escopo desta slice
+
+- versionamento automático de termos comerciais;
+- cron/alerta de dia de pedido;
+- sugestão automática de compra;
+- cotações/aprovações e comparação avançada de fornecedores;
+- expansão de `REQ-SUP-004`/`REQ-SUP-005` sem nova priorização;
+- importação real/cutover de fornecedores.
