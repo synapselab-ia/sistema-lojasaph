@@ -3,6 +3,7 @@
 Data: 2026-08-25
 Issue: #95 — `REQ-EXPOR-001 — Exportação`
 PR: #96
+Merge: `8bf116bb05681d52e57f5f67f4a4d55c0c28e5ba`
 
 ## Decisão da vertical slice
 
@@ -33,6 +34,7 @@ Financeiro foi escolhido porque `Controle NFs Espeticho.xlsx` tinha `Lista` como
 - neutralização de spreadsheet formula injection em campos textuais;
 - dinheiro via `Money.toDecimal()`;
 - datas ISO;
+- erros públicos genéricos, sem texto bruto do Supabase;
 - sem XLSX, PDF, endpoint privilegiado, migration ou deploy Vercel.
 
 ## Colunas
@@ -66,22 +68,22 @@ Introspecção em 2026-08-25 confirmou:
 - `payable_documents_select_member` usando `private.can_read_payable_document(organization_id, id)`;
 - `installments_select_member` usando `private.can_read_payable_document(organization_id, payable_document_id)`.
 
-Nenhuma mutation, DDL, DML ou migration foi executada para a Fase 43.
+Nenhuma mutation, DDL, DML ou migration foi executada para a Fase 43. A checagem final do histórico hospedado confirmou `20260822195823_finance_attachments` como migration mais recente.
 
-## Testes
+## Testes e CI
 
-Head de código antes da documentação: `abd9f0559d231f4526c9c40add46c95465d2fc4c`.
+Head funcional final do PR #96: `1de8326fa0e03b587c78d7992c25171916e43e08`.
 
-Resultados:
+Resultados finais antes do merge:
 
-- CI #374 — success;
+- CI #381 — success;
   - database — success;
   - lint — success;
   - typecheck — success;
   - Vitest — success;
   - production build — success;
-- Business Transactions Integration #178 — success;
-- Inventory Count Integration #194 — success.
+- Business Transactions Integration #185 — success;
+- Inventory Count Integration #201 — success.
 
 `src/lib/finance/payables-csv.test.ts` cobre:
 
@@ -97,8 +99,8 @@ Resultados:
 
 `src/lib/runtime/client-boundary.test.ts` confirma que export button/gateway não contêm `SUPABASE_SECRET_KEY` nem admin client.
 
-O head final com documentação deve ser revalidado antes do merge; registrar no PR #96 o run final correspondente.
+O PR #96 foi squash-mergeado em `8bf116bb05681d52e57f5f67f4a4d55c0c28e5ba`, fechando a Issue #95 como `completed`.
 
 ## Conclusão
 
-A primeira vertical slice explícita de `REQ-EXPOR-001` está implementada sem expandir o requisito para `exportar tudo`. A próxima fase deve reconciliar o MVP depois desta entrega e só abrir nova exportação se houver nova lacuna concreta com processo, usuário e critério de aceite próprios.
+A primeira vertical slice explícita de `REQ-EXPOR-001` está integrada na `main` sem expandir o requisito para `exportar tudo`. A próxima fase deve reconciliar o MVP depois desta entrega e só abrir nova exportação se houver nova lacuna concreta com processo, usuário e critério de aceite próprios.
