@@ -1,6 +1,6 @@
 # Módulo — Financeiro, parcelas, contas a pagar e anexos
 
-Status: núcleo transacional concluído na Fase 11 / PR #32; anexos privados adicionados na Fase 42 / Issue #92.
+Status: núcleo transacional concluído na Fase 11 / PR #32; anexos privados adicionados na Fase 42 / Issue #92; primeira exportação tabular adicionada na Fase 43 / Issue #95.
 
 ## Objetivo
 
@@ -144,13 +144,33 @@ Fluxo de download:
 
 Não se manipula `storage.objects` por SQL. O bucket é provisionado de forma idempotente pela Storage API no primeiro upload autorizado.
 
+## Exportação de contas a pagar
+
+A primeira vertical slice de `REQ-EXPOR-001` reutiliza a lista financeira que substitui a aba `Lista` do controle histórico de NFs. Ela não cria uma infraestrutura genérica de exportação nem altera o banco.
+
+- fonte autoritativa: `payable_installment_summary`;
+- client: sessão Supabase normal do browser, nunca service/secret key;
+- escopo explícito: `organization_id` + RLS/resource scope existente;
+- paginação: 500 linhas por range, ordenadas por `due_date` e `installment_id` para não depender do limite de 100 documentos usado pela UI principal;
+- lookups de fornecedor, unidade e setor também usam a mesma sessão/RLS;
+- UX disponível apenas para `manageFinance = owner/admin/manager/finance`;
+- formato inicial: CSV UTF-8 com BOM, CRLF e cabeçalho fixo;
+- texto é quoted/escaped e neutralizado contra spreadsheet formula injection;
+- dinheiro usa `Money.toDecimal()`, preservando centavos e sobrepagamentos sem float;
+- datas usam ISO `YYYY-MM-DD`;
+- não são exportados nesta slice access key, referência Pix/Boleto, observações de pagamento, actor IDs ou anexos.
+
+Colunas: Fornecedor, Unidade, Setor, Tipo documento, Número documento, Série, Data emissão, Parcela, Vencimento, Status parcela, Situação documento, Valor nominal, Pago líquido e Saldo.
+
+A tela Financeiro ainda não possui filtros de relatório; portanto o CSV representa todas as parcelas visíveis à sessão na Organization atual. Se filtros forem introduzidos depois, a exportação deve ser revisada para acompanhar sua semântica.
+
 ## Segurança
 
 As tabelas críticas permitem leitura de membros no escopo autorizado por RLS, mas não aceitam write direto do browser. Commands de mutação são `SECURITY DEFINER` intencionais, executáveis somente por `authenticated`, e revalidam `auth.uid()`, papel, Organization, referências e payload.
 
 `finance_attachments` concede somente `SELECT` direto a `authenticated`; `INSERT/UPDATE/DELETE` permanecem revogados. Viewer pode listar/baixar metadata visível, mas não passa no preflight nem no command de registro.
 
-`payable_installment_summary` usa `security_invoker`, portanto não contorna as policies das tabelas-base.
+`payable_installment_summary` usa `security_invoker`, portanto não contorna as policies das tabelas-base. A exportação usa exatamente esse boundary e não introduz endpoint privilegiado.
 
 ## UI persistente
 
@@ -164,7 +184,8 @@ As tabelas críticas permitem leitura de membros no escopo autorizado por RLS, m
 - histórico de eventos;
 - estorno sem exclusão;
 - cancelamento apenas conforme regra do banco;
-- painel de anexos por documento, com listagem/download para quem pode ver o documento e upload para perfis financeiros autorizados.
+- painel de anexos por documento, com listagem/download para quem pode ver o documento e upload para perfis financeiros autorizados;
+- exportação CSV das contas a pagar visíveis para perfis financeiros autorizados.
 
 `manageFinance = owner/admin/manager/finance` controla ações visíveis. A UI não é fronteira de segurança.
 
@@ -186,6 +207,8 @@ As tabelas críticas permitem leitura de membros no escopo autorizado por RLS, m
 
 Vitest cobre a política de MIME/tamanho/path e a compensação do objeto quando o registro de metadata falha. `client-boundary.test.ts` protege a separação do admin Storage server-only.
 
+`src/lib/finance/payables-csv.test.ts` cobre BOM, CRLF, cabeçalhos, escaping de aspas/vírgulas/quebras de linha, acentos, formula injection, decimais exatos, filename e paginação multi-range. `client-boundary.test.ts` também garante que a exportação usa browser client e não importa secret/admin client.
+
 ## Supabase remoto
 
 A migration histórica `finance_payables_flow` permanece aplicada no projeto homologado em `sa-east-1`.
@@ -195,6 +218,8 @@ A migration hospedada de anexos é `20260822195823_finance_attachments`, e o arq
 RLS/grants hospedados confirmam `SELECT` apenas para `authenticated`, mutations diretas negadas, `anon` sem leitura/EXECUTE e os dois RPCs acessíveis somente ao papel autenticado previsto. Security Advisor reporta os dois RPCs como `SECURITY DEFINER` executáveis por `authenticated`; isso é intencional e segue o boundary dos demais commands críticos, que revalidam sessão, papel e escopo. Performance Advisor reporta apenas INFO de FKs/índices para tuning orientado a carga, sem finding bloqueante.
 
 O conector operacional usado na homologação não expõe mutações de Storage. Por segurança, nenhum bucket/objeto foi criado por SQL. O bucket físico continua sendo garantido pela Storage API no primeiro upload autorizado, conforme o boundary implementado e testado.
+
+Na Fase 43, Production foi novamente usada somente para introspecção read-only: `payable_installment_summary` permanece `security_invoker=true`, `authenticated` mantém SELECT, `anon` não possui SELECT e as policies atuais de `payable_documents`/`installments` usam `private.can_read_payable_document(...)`. Não houve migration, DDL ou DML para a exportação.
 
 ## Fora do escopo atual
 
@@ -206,4 +231,5 @@ O conector operacional usado na homologação não expõe mutações de Storage.
 - classificação automática do tipo de anexo;
 - vínculo de Attachment com parcela/pagamento/recebimento nesta primeira entrega;
 - exclusão física/lifecycle de anexos;
-- URL pública permanente.
+- URL pública permanente;
+- XLSX/PDF e exportação genérica de todas as tabelas nesta primeira slice.
