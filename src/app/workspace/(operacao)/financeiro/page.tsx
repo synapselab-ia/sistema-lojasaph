@@ -12,6 +12,7 @@ import {
 } from "@/modules/finance/adapters/supabase-finance-gateway";
 import { useRuntimeWorkspace } from "@/modules/master-data/ui/runtime-workspace-provider";
 import { FinanceAttachmentsPanel } from "@/modules/finance/ui/finance-attachments-panel";
+import { PayablesCsvExportButton } from "@/modules/finance/ui/payables-csv-export-button";
 
 interface InstallmentDraft {
   key: string;
@@ -286,6 +287,12 @@ export default function RuntimeFinancePage() {
         <h1 className="mt-1 text-3xl font-semibold tracking-tight">Documentos, parcelas e pagamentos</h1>
         <p className="mt-3 max-w-4xl text-sm leading-6 text-neutral-600">Status é derivado de vencimento e saldo. Pagamentos são eventos separados e podem ser estornados sem apagar histórico. O sistema preserva qualquer diferença entre valor nominal e valor efetivamente pago sem classificá-la automaticamente como juros, multa ou desconto.</p>
       </header>
+
+      {workspace.permissions.manageFinance && (
+        <div className="flex justify-end">
+          <PayablesCsvExportButton organizationId={organizationId} />
+        </div>
+      )}
 
       {message && <p className="rounded-xl border border-neutral-200 bg-white px-4 py-3 text-sm shadow-sm">{message}</p>}
 

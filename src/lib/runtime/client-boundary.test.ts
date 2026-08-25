@@ -45,4 +45,16 @@ describe("environment client/server boundary", () => {
     expect(uploadRoute).not.toContain("SUPABASE_SECRET_KEY");
     expect(downloadRoute).not.toContain("SUPABASE_SECRET_KEY");
   });
+
+  it("keeps payables CSV export on the authenticated browser boundary", () => {
+    const button = source("src/modules/finance/ui/payables-csv-export-button.tsx");
+    const gateway = source("src/modules/finance/adapters/supabase-payables-export-gateway.ts");
+
+    expect(button).toContain("createBrowserSupabaseClient");
+    expect(gateway).toContain("payable_installment_summary");
+    expect(button).not.toContain("SUPABASE_SECRET_KEY");
+    expect(gateway).not.toContain("SUPABASE_SECRET_KEY");
+    expect(button).not.toContain("createServerAdminSupabaseClient");
+    expect(gateway).not.toContain("createServerAdminSupabaseClient");
+  });
 });
