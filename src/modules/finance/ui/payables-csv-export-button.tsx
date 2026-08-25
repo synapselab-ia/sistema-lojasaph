@@ -29,8 +29,8 @@ export function PayablesCsvExportButton({ organizationId }: { organizationId: En
       anchor.remove();
       URL.revokeObjectURL(url);
       setMessage(`${rows.length} parcela${rows.length === 1 ? "" : "s"} exportada${rows.length === 1 ? "" : "s"}.`);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Não foi possível exportar as contas a pagar.");
+    } catch {
+      setMessage("Não foi possível exportar as contas a pagar.");
     } finally {
       setExporting(false);
     }
