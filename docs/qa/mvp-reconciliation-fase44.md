@@ -2,7 +2,7 @@
 
 Data: 2026-08-25
 Issue funcional selecionada: #98 — `REQ-SUP-003 — Condições comerciais`
-PR funcional: #99
+PR funcional: #99 — squash-mergeado em `82f401bd73036d82fc5ac9418fc7f97e32adc3ba`
 
 ## Objetivo
 
@@ -24,8 +24,8 @@ Reconciliar novamente o MVP depois das Fases 42–43, sem abrir feature por iné
 | `REQ-ITEM-003` código de barras/fiscal | schema possui EAN/NCM/CEST, mas leitura de barcode está em fase posterior e a fonte `Gabarito` ainda depende da distinção de item de venda | não promover |
 | `REQ-STK-011` estoque mínimo | explicitamente colocado em fase posterior no `scope.md` | não promover |
 | `REQ-EXP-003` alertas de validade | Dashboard já mostra lotes vencidos e vencendo em horizonte 7/15/30 dias | coberto no MVP básico |
-| `REQ-SUP-003` condições comerciais | fonte real possui valor mínimo, pedido/entrega, pagamento e observações; schema já possui os campos, mas runtime não os expunha | **lacuna inequívoca selecionada** |
-| `REQ-SUP-004` produtos por fornecedor | `supplier_items` existe e participa do modelo de compras; manutenção comercial completa exige recorte próprio | não co-agrupar com #98; reavaliar separadamente se houver prioridade material |
+| `REQ-SUP-003` condições comerciais | fonte real possui valor mínimo, pedido/entrega, pagamento e observações; schema já possui os campos, mas runtime não os expunha | **lacuna inequívoca selecionada e entregue** |
+| `REQ-SUP-004` produtos por fornecedor | `supplier_items` existe e participa do modelo de compras; manutenção comercial completa exige recorte próprio | não co-agrupar com #98; reavaliar separadamente na Fase 45 |
 | `REQ-SUP-005` histórico de preços | `supplier_prices` existe e emissão de pedido registra preço observado; análise avançada de custo permanece em fase posterior | núcleo de histórico coberto; não criar BI/comparação |
 | `REQ-PUR-001/002` pedido e recebimento | fluxo create/issue/partial receive/full receive/cancel está integrado e homologado | coberto |
 | `REQ-FIN-008` anexos | Fase 42 / #92 | coberto |
@@ -93,13 +93,21 @@ Semântica deliberada:
 - nenhum versionamento temporal automático é inventado;
 - agenda permanece texto informativo, não cron/automação de compras.
 
-## Testes do primeiro head funcional
+## Validação
 
-Head: `8f4c51821a8ccec36afd66f0d8229d4c5ce36036`.
+Primeiro head funcional `8f4c51821a8ccec36afd66f0d8229d4c5ce36036`:
 
-- CI #385: database, lint, typecheck, Vitest e production build — success;
+- CI #385 — success;
 - Business Transactions Integration #186 — success;
 - Inventory Count Integration #202 — success.
+
+Head final do PR, incluindo QA e documentação de módulo: `20c472255e8bde0bf52c094bace16d7734bb2824`:
+
+- CI #387 — success (`database`, lint, typecheck, Vitest, production build);
+- Business Transactions Integration #188 — success;
+- Inventory Count Integration #204 — success.
+
+PR #99 foi squash-mergeado em `82f401bd73036d82fc5ac9418fc7f97e32adc3ba` e fechou a Issue #98 como `completed`.
 
 Os testes novos cobrem:
 
@@ -112,4 +120,4 @@ Os testes novos cobrem:
 
 ## Conclusão
 
-A Fase 44 encontrou exatamente uma lacuna funcional claramente superior e a isolou em #98/#99. Nenhuma segunda frente foi aberta. O próximo ciclo deve avaliar o estado depois desta entrega antes de assumir que `REQ-SUP-004`, outra exportação ou qualquer item de fase posterior precisa entrar no MVP.
+A Fase 44 encontrou exatamente uma lacuna funcional claramente superior e a entregou em #98/#99. Nenhuma segunda frente foi aberta. A Fase 45 deve verificar `REQ-SUP-004` contra o fluxo real já existente; se não houver gap operacional comprovado, o MVP funcional deve ser registrado como reconciliado em vez de abrir novas features por inércia.
