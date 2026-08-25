@@ -41,8 +41,8 @@ interface SupplierNameRow {
   trade_name: string;
 }
 
-function exportError(scope: string, message: string): DomainError {
-  return new DomainError("SUPABASE_PERSISTENCE_ERROR", `${scope}: ${message}`);
+function exportError(message: string): DomainError {
+  return new DomainError("PAYABLES_EXPORT_ERROR", message);
 }
 
 function uniqueIds(values: readonly (string | null)[]): string[] {
@@ -70,7 +70,7 @@ export class SupabasePayablesExportGateway {
         .order("installment_id", { ascending: true })
         .range(from, to);
 
-      if (error) throw exportError("Não foi possível carregar as parcelas para exportação", error.message);
+      if (error) throw exportError("Não foi possível carregar as contas a pagar para exportação.");
       return (data ?? []) as ExportSummaryRow[];
     }, EXPORT_PAGE_SIZE);
 
@@ -116,7 +116,7 @@ export class SupabasePayablesExportGateway {
         .eq("organization_id", organizationId)
         .in("id", idChunk);
 
-      if (error) throw exportError("Não foi possível carregar os fornecedores da exportação", error.message);
+      if (error) throw exportError("Não foi possível carregar os fornecedores da exportação.");
       for (const row of (data ?? []) as SupplierNameRow[]) names.set(row.id, row.trade_name);
     }
 
@@ -137,7 +137,7 @@ export class SupabasePayablesExportGateway {
         .eq("organization_id", organizationId)
         .in("id", idChunk);
 
-      if (error) throw exportError(`Não foi possível carregar ${table === "units" ? "as unidades" : "os setores"} da exportação`, error.message);
+      if (error) throw exportError(`Não foi possível carregar ${table === "units" ? "as unidades" : "os setores"} da exportação.`);
       for (const row of (data ?? []) as IdNameRow[]) names.set(row.id, row.name);
     }
 
