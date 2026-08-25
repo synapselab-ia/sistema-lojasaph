@@ -25,8 +25,8 @@ Determinar se o sistema possuía um caminho operacional normal para manter os v�
 Porém:
 
 - o gateway de compras não possui INSERT/UPDATE de `supplier_items`;
-- `/workspace/compras` somente lista vínculos já existentes;
-- quando o fornecedor não possui vínculos ativos, a UI mostra `Fornecedor sem itens de compra ativos`;
+- `/workspace/compras` somente listava vínculos já existentes;
+- quando o fornecedor não possuía vínculos ativos, a UI mostrava `Fornecedor sem itens de compra ativos`;
 - `/workspace/fornecedores` mantinha fornecedor, contatos e condições comerciais, mas não produtos;
 - o repository `SupplierItemOfferRepository` existente possuía apenas implementação in-memory e seu domínio antigo nem modelava `purchase_unit`/`units_per_package`.
 
@@ -50,7 +50,7 @@ A infraestrutura de importação é explicitamente dry-run/staging e não escrev
 - Valor;
 - Valor Un.
 
-Para `REQ-SUP-004`, a slice atual mapeia apenas Produto → `stock_item_id`, Medida → `purchase_unit` e Quantidade → `units_per_package`.
+Para `REQ-SUP-004`, a slice mapeia apenas Produto → `stock_item_id`, Medida → `purchase_unit` e Quantidade → `units_per_package`.
 
 `Valor`/`Valor Un.` não foram puxados para esta tela: o fluxo de pedido já recebe preço efetivo e a emissão registra o observado em `supplier_prices`, cobrindo o núcleo de `REQ-SUP-005` sem criar cotação/comparação/BI.
 
@@ -73,9 +73,11 @@ Inspeção somente leitura confirmou:
 
 A documentação atual do Supabase foi consultada e confirma o padrão Data API + browser client autenticado + RLS/grants e filtros explícitos. A URL prescrita `https://supabase.com/changelog.md` não pôde ser lida pelo fetch disponível porque respondeu `text/markdown` não suportado; nenhuma alteração de plataforma/schema foi necessária nesta slice.
 
+Após o merge, `list_migrations` confirmou novamente que o histórico hospedado termina em `20260822195823 / finance_attachments`. Não existe migration da Fase 45.
+
 ## Slice entregue
 
-Em `/workspace/fornecedores`, cada fornecedor passa a ter `Produtos do fornecedor`:
+Em `/workspace/fornecedores`, cada fornecedor passou a ter `Produtos do fornecedor`:
 
 - leitura dos vínculos default (`supplier_sku IS NULL`);
 - criação de vínculo para produto ativo do catálogo;
@@ -89,7 +91,7 @@ Em `/workspace/fornecedores`, cada fornecedor passa a ter `Produtos do fornecedo
 
 A UI usa `manageSuppliers` somente como gating de experiência; a autorização final continua no RLS.
 
-## Testes
+## Testes e CI
 
 Novos testes:
 
@@ -108,16 +110,22 @@ Novos testes:
   - ausência de DELETE;
   - verificação/reuso antes de INSERT.
 
-Primeiro head funcional validado: `bb63217131a5b57f8920b59a4f68694282e07988`.
+Primeiro head funcional: `bb63217131a5b57f8920b59a4f68694282e07988`.
 
-- CI #391 — success (`database`, lint, typecheck, Vitest, production build);
+- CI #391 — success;
 - Business Transactions Integration #189 — success;
 - Inventory Count Integration #205 — success.
 
-O head final com documentação deve ser revalidado antes do merge e registrado no PR #102.
+Head final do PR #102, incluindo documentação: `c9898f7dd90fd453e14775c89a336fc49636463f`.
+
+- CI #393 — success (`database`, lint, typecheck, Vitest, production build);
+- Business Transactions Integration #191 — success;
+- Inventory Count Integration #207 — success.
+
+PR #102 foi squash-mergeado em `6a86922ef705af25a4897068e223b0e26c1b670a`. A Issue #101 fechou automaticamente como `completed`.
 
 ## Conclusão
 
 `REQ-SUP-004` tinha uma lacuna operacional real e independente de itens PENDING: o modelo e o consumidor em compras existiam, mas não havia manutenção persistente normal dos vínculos. A Fase 45 fecha somente essa lacuna básica.
 
-Depois desta entrega, não resta justificativa automática para abrir SUP-005 avançado, cotação, comparação, sugestão, outra exportação, estoque mínimo, barcode/PWA ou dashboards avançados. O próximo ciclo deve tratar o núcleo funcional como reconciliado e separar prontidão operacional/homologação/cutover, #75 e novas prioridades explícitas de produto.
+Depois desta entrega, não resta justificativa automática para abrir SUP-005 avançado, cotação, comparação, sugestão, outra exportação, estoque mínimo, barcode/PWA ou dashboards avançados. O núcleo funcional do MVP passa a ser tratado como reconciliado. O próximo ciclo deve separar prontidão operacional/homologação/cutover, #75, decisões PENDING e novas prioridades explícitas de produto.

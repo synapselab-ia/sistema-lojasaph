@@ -2,93 +2,143 @@
 
 ## Estado
 
-Fase 44 está **concluída e integrada**.
+Fase 45 — `REQ-SUP-004 — Produtos por fornecedor` — está **concluída e integrada funcionalmente na `main`**.
 
-- `main` na entrada: `752572abbc1f3ae64d34500c446ecc24ecfe3530`;
-- Issue #98 — `REQ-SUP-003 — Condições comerciais`: closed/completed;
-- PR #99 — `feat(suppliers): expose commercial terms`: squash-mergeado;
-- merge SHA: `82f401bd73036d82fc5ac9418fc7f97e32adc3ba`;
-- head final validado: `20c472255e8bde0bf52c094bace16d7734bb2824`;
-- CI #387 — success;
-- Business Transactions #188 — success;
-- Inventory Count #204 — success;
-- nenhum deploy Vercel;
+- base da Fase 45: `d774f5ea96d28bffb6fcf377427b0ff6845e458f`;
+- Issue #101: closed/completed;
+- PR #102 — `feat(suppliers): maintain supplier items`: squash-mergeado;
+- merge funcional: `6a86922ef705af25a4897068e223b0e26c1b670a`;
+- head final validado: `c9898f7dd90fd453e14775c89a336fc49636463f`;
+- CI #393 — success (`database`, lint, typecheck, Vitest, production build);
+- Business Transactions Integration #191 — success;
+- Inventory Count Integration #207 — success;
 - nenhuma migration/DDL/DML ou mutation manual de Production;
+- nenhum deploy Vercel;
 - #75 continua aberta/desarmada.
 
-**Não refazer a Fase 44.** A próxima frente é a Fase 45 definida em `docs/ai/NEXT_ACTION.md`.
+A continuidade documental pode fazer o HEAD final de `main` ficar posterior ao merge funcional acima. O SHA `6a86922e...` identifica a entrega da Fase 45 e não deve ser confundido com eventual commit documental posterior.
 
-## O que a reconciliação decidiu
+**Não refazer a Fase 45.** O próximo ciclo é a Fase 46 definida em `docs/ai/NEXT_ACTION.md`.
 
-Depois de anexos (#92) e da primeira exportação (#95), a Fase 44 revisou os SHOULDs restantes sem promover `PENDING` nem fase posterior.
+## O que a Fase 45 comprovou
 
-`REQ-SUP-003` foi a única lacuna claramente superior porque:
+A manutenção básica de `supplier_items` era uma lacuna real, não uma feature escolhida por conveniência:
 
-- existe processo real documentado na planilha de fornecedores;
-- os campos ausentes no runtime eram valor mínimo, agenda de pedido/entrega, condição de pagamento e observações;
-- `supplier_terms`/`suppliers.notes` já existiam desde a foundation;
-- não exigia inventar semântica, novo schema ou compra avançada.
+- `/workspace/compras` já dependia de `supplier_items` ativos para permitir itens no pedido;
+- sem vínculo, a UI informava `Fornecedor sem itens de compra ativos`;
+- o gateway de compras apenas lia esses registros;
+- não existia adapter Supabase/UI persistente para criar ou editar o vínculo;
+- o repository antigo de SupplierItem era apenas in-memory e não cobria `purchase_unit`/`units_per_package`;
+- os dois vínculos existentes em Production eram coerentes com seed/demo;
+- import staging continua dry-run e não escreve tabelas operacionais.
 
-Ver `docs/qa/mvp-reconciliation-fase44.md`.
+A fonte histórica `Fornecedores Tabatinga` também possui Produto, Medida e Quantidade por embalagem, portanto o recorte tinha processo e dados de origem concretos.
 
-## Contrato entregue em fornecedores
+Ver `docs/qa/supplier-items-maintenance.md`.
 
-`/workspace/fornecedores` possui painel de condições comerciais por fornecedor.
+## Contrato entregue
+
+`/workspace/fornecedores` agora possui painel `Produtos do fornecedor`.
 
 Leitura:
 
-- todos os membros autorizados pela RLS podem consultar;
 - usa browser client autenticado normal;
-- termo corrente = `valid_to IS NULL`, com escolha determinística do mais recente por `valid_from`/criação.
+- filtra explicitamente `organization_id` e `supplier_id`;
+- a primeira slice trabalha somente com vínculo default `supplier_sku IS NULL`;
+- membros autorizados pela RLS podem consultar os vínculos.
 
 Escrita:
 
 - UX somente para `manageSuppliers`;
 - RLS final exige `owner/admin/manager/purchases` Organization-wide;
-- observações ficam em `suppliers.notes`;
-- pedido mínimo/pagamento/agendas ficam em `supplier_terms`;
-- primeiro save cria a linha corrente se houver conteúdo comercial;
-- saves seguintes atualizam essa linha;
-- limpar campos de uma linha já existente grava NULL, não DELETE;
-- não existe versionamento temporal automático nesta slice.
+- pode criar vínculo para produto ativo do catálogo;
+- pode manter `purchase_unit` opcional;
+- pode manter `units_per_package` opcional e positivo, com até três casas decimais via `Quantity`;
+- pode ativar/inativar;
+- criação procura primeiro vínculo default existente do mesmo fornecedor/produto e o reutiliza/reativa;
+- edição não troca silenciosamente o produto do vínculo;
+- não existe DELETE nesta slice e `authenticated` também não possui privilégio DELETE em `supplier_items`.
 
-Validação:
+A unidade/embalagem permanece informação comercial. O pedido continua recebendo quantidade na unidade-base do estoque; não foi criada conversão automática de caixa/pacote.
 
-- pedido mínimo usa `Money`, preserva decimal exato e não aceita negativo;
-- strings são trimadas; vazio vira ausência/NULL;
-- gateway/panel não usam secret/admin client;
-- agenda permanece texto livre informativo, sem automação.
+## SUP-005 / preço observado
+
+Não abrir automaticamente uma nova frente para `REQ-SUP-005`.
+
+O núcleo de histórico já existe:
+
+- o preço efetivo é informado no pedido;
+- `issue_purchase_order` registra o preço observado em `supplier_prices`;
+- compras consegue consultar o preço observado mais recente.
+
+A Fase 45 deliberadamente não adicionou:
+
+- preço/package price manual no cadastro do fornecedor;
+- cotação;
+- comparação entre fornecedores;
+- sugestão automática de compra;
+- BI/histórico avançado de custo.
+
+Esses itens precisam de prioridade explícita e/ou regras de negócio ainda PENDING.
 
 ## Production / Supabase
 
 Projeto `fhbvwyttikrbeaanatlr` foi somente inspecionado read-only.
 
-Confirmado antes da implementação:
+Confirmado:
 
-- colunas necessárias já presentes;
+- `supplier_items` já contém os campos necessários;
 - RLS habilitado;
-- `authenticated` com SELECT/INSERT/UPDATE;
-- `anon` sem SELECT;
-- policies de write Organization-wide para `owner/admin/manager/purchases`;
-- 0 linhas reais em `supplier_terms` naquele momento.
+- `authenticated`: SELECT/INSERT/UPDATE e sem DELETE;
+- `anon`: sem SELECT;
+- SELECT exige membership da Organization;
+- INSERT/UPDATE exigem `owner/admin/manager/purchases` Organization-wide;
+- havia 2 vínculos ativos antes da feature, coerentes com os dados demo/seed.
 
-Não criar migration retrospectiva para a Fase 44. O migration history continua terminando em `20260822195823_finance_attachments`.
+Nenhuma alteração remota foi necessária. A checagem pós-merge confirmou que o histórico hospedado continua terminando em `20260822195823_finance_attachments`. Não criar migration retrospectiva para a Fase 45.
 
-## Próxima ação — Fase 45
+## Estado do MVP após Fase 45
 
-Revisar **`REQ-SUP-004 — Produtos por fornecedor`** como o próximo ponto de decisão, não como feature pré-aprovada.
+O núcleo funcional passa a ser tratado como **reconciliado**. Não há outra lacuna não-PENDING comprovada que justifique abrir automaticamente uma feature.
 
-A pergunta é: o fluxo real atual já mantém de forma suficiente os vínculos `supplier_items` usados pelas compras, ou existe uma lacuna operacional comprovada antes de operar com dados reais?
+Isso não equivale a dizer que o sistema está pronto para migração/cutover real.
 
-A Fase 45 deve:
+A fundação de importação já possui staging, idempotência, validação, preview/dry run e relatório, mas `ready` significa apenas preview validado. Não existe hoje command que aplique o lote às tabelas operacionais.
 
-- inspecionar schema, adapters e UI de `supplier_items`/`supplier_prices` e compras;
-- confrontar com os campos reais do catálogo por fornecedor (`produto`, medida, quantidade/embalagem, preço unitário/pacote);
-- separar manutenção básica de vínculo fornecedor-produto de cotações/comparação/sugestão de compra, que ficam fora;
-- abrir no máximo uma Issue se a ausência estiver comprovada e for material para o MVP;
-- se o fluxo atual já for suficiente, registrar SUP-004 como coberto e **encerrar a abertura automática de novas frentes funcionais do MVP**.
+Antes de dados reais ainda existem condições como:
 
-Não puxar SUP-005 avançado, outra exportação ou dashboards avançados por conveniência.
+- fontes reais finais congeladas e armazenadas com segurança;
+- importadores específicos por fonte;
+- regras de transformação aprovadas;
+- resolução das questões de negócio necessárias em `open-questions.md`;
+- reconciliação e validação de amostras;
+- estratégia/execução de backup real antes do cutover;
+- definição e aceite da data/hora de corte;
+- mapeamento das pessoas reais, memberships, roles e escopos;
+- procedimento para interromper ou controlar uso paralelo das planilhas.
+
+## Próxima ação — Fase 46
+
+**Reconciliar a prontidão operacional para homologação e cutover sem executar importação real, sem criar/invitar usuários reais, sem manipular secrets e sem abrir nova feature funcional por inércia.**
+
+A Fase 46 deve produzir uma matriz/checklist objetiva separando:
+
+1. fundações já prontas e comprovadas;
+2. decisões de negócio/PENDING que realmente bloqueiam etapas futuras;
+3. pré-condições operacionais, credenciais e fontes reais que dependem do usuário/ambiente confiável;
+4. funcionalidades futuras que não bloqueiam o MVP básico.
+
+Inspecionar especialmente:
+
+- `docs/modules/imports.md`;
+- `docs/source-data/migration-plan.md`;
+- `docs/product/open-questions.md`;
+- `docs/operations/bootstrap-owner.md`;
+- `docs/operations/environments.md`;
+- `docs/operations/backup-restore.md`;
+- QA de importação, validação e isolamento.
+
+Se houver uma preparação operacional totalmente independente de secrets, dados reais e decisões ainda abertas, ela pode ser delimitada de forma explícita. Caso contrário, documentar os bloqueios e parar — não criar Issue para parecer que existe trabalho funcional pendente.
 
 ## Backup Production / #75
 
@@ -116,14 +166,14 @@ Nunca pedir secrets no chat.
 
 ## Não fazer
 
-- não reabrir Fases 41–44 sem regressão;
-- não versionar termos comerciais automaticamente sem nova regra;
-- não transformar agenda em cron/sugestão de compra;
-- não misturar SUP-004 com cotações/comparação avançada;
-- não promover `PENDING`;
+- não reabrir Fases 41–45 sem regressão concreta;
+- não criar SUP-005 avançado, cotação, comparação ou sugestão por inércia;
+- não promover item `PENDING` por inferência;
+- não criar outra exportação/dashboard por conveniência;
 - não criar migration sem necessidade;
 - não contornar RLS com service/admin client;
 - não manipular Storage por SQL;
 - não ativar/fechar #75 sem run real;
-- não criar deploy Vercel só para teste;
-- não importar dados reais/cutover.
+- não importar planilhas reais nem executar cutover sem critérios/aceite;
+- não criar/invitar pessoas reais sem aprovação e mapeamento de roles/escopos;
+- não criar deploy Vercel só para auditoria.
