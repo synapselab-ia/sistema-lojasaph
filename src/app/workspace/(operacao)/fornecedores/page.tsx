@@ -4,6 +4,7 @@ import { FormEvent, useState } from "react";
 import { EntityId } from "@/domain/common/entity-id";
 import { useRuntimeWorkspace } from "@/modules/master-data/ui/runtime-workspace-provider";
 import { Supplier, SupplierContactInput } from "@/modules/suppliers/domain/supplier";
+import { SupplierCommercialTermsPanel } from "@/modules/suppliers/ui/supplier-commercial-terms-panel";
 
 interface SupplierFormState {
   tradeName: string;
@@ -74,7 +75,7 @@ export default function RuntimeSuppliersPage() {
       <header>
         <p className="text-sm font-medium text-emerald-700">Compras — cadastro persistente</p>
         <h1 className="mt-1 text-3xl font-semibold tracking-tight">Fornecedores</h1>
-        <p className="mt-3 text-sm text-neutral-600">Fornecedor e contatos são persistidos com RLS. Histórico de preços permanece fora deste workspace até receber adapter real próprio.</p>
+        <p className="mt-3 text-sm text-neutral-600">Fornecedor, contatos e condições comerciais são persistidos com RLS. Agenda de pedido/entrega permanece informativa e não dispara compras automaticamente.</p>
       </header>
       {message && <p className="rounded-xl border border-neutral-200 bg-white px-4 py-3 text-sm shadow-sm">{message}</p>}
 
@@ -89,6 +90,7 @@ export default function RuntimeSuppliersPage() {
               <div className="mt-4 grid gap-2 sm:grid-cols-2">
                 {supplier.contacts.length ? supplier.contacts.map((contact) => <div key={contact.id} className="rounded-xl bg-neutral-50 p-3 text-sm"><div className="flex items-center gap-2"><span className="font-medium">{contact.name}</span>{contact.isPrimary && <span className="rounded-full bg-neutral-900 px-2 py-0.5 text-[10px] font-semibold text-white">Principal</span>}</div><p className="mt-1 text-neutral-600">{contact.phone || contact.email || "Sem telefone/e-mail"}</p></div>) : <p className="text-sm text-neutral-500">Nenhum contato cadastrado.</p>}
               </div>
+              <SupplierCommercialTermsPanel supplierId={supplier.id} />
             </article>
           ))}
           {workspace.suppliers.length === 0 && <p className="rounded-2xl border border-dashed border-neutral-300 bg-white p-6 text-sm text-neutral-500">Nenhum fornecedor cadastrado nesta organização.</p>}
@@ -96,7 +98,7 @@ export default function RuntimeSuppliersPage() {
 
         {workspace.permissions.manageSuppliers ? (
           <form onSubmit={submit} className="h-fit space-y-4 rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-            <div><h2 className="text-lg font-semibold">{editingId ? "Editar fornecedor" : "Novo fornecedor"}</h2><p className="mt-1 text-xs text-neutral-500">A autorização final é conferida novamente pelo RLS.</p></div>
+            <div><h2 className="text-lg font-semibold">{editingId ? "Editar fornecedor" : "Novo fornecedor"}</h2><p className="mt-1 text-xs text-neutral-500">A autorização final é conferida novamente pelo RLS. Condições comerciais são mantidas no card do fornecedor depois do cadastro.</p></div>
             <label className="block text-sm font-medium">Nome fantasia<input required value={form.tradeName} onChange={(event) => setForm({ ...form, tradeName: event.target.value })} className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 font-normal" /></label>
             <label className="block text-sm font-medium">CNPJ/CPF (opcional)<input value={form.taxId} onChange={(event) => setForm({ ...form, taxId: event.target.value })} className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 font-normal" /></label>
             <div className="space-y-3">
@@ -106,7 +108,7 @@ export default function RuntimeSuppliersPage() {
             {editingId && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.active} onChange={(event) => setForm({ ...form, active: event.target.checked })} />Fornecedor ativo</label>}
             <div className="flex gap-2"><button disabled={saving} type="submit" className="flex-1 rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{saving ? "Salvando..." : editingId ? "Salvar" : "Criar fornecedor"}</button>{editingId && <button type="button" onClick={reset} className="rounded-lg border border-neutral-300 px-4 py-2 text-sm">Cancelar</button>}</div>
           </form>
-        ) : <aside className="h-fit rounded-2xl border border-neutral-200 bg-white p-5 text-sm leading-6 text-neutral-600 shadow-sm"><h2 className="font-semibold text-neutral-900">Somente leitura</h2><p className="mt-1">Seu perfil pode consultar fornecedores, mas não possui papel autorizado para manutenção.</p></aside>}
+        ) : <aside className="h-fit rounded-2xl border border-neutral-200 bg-white p-5 text-sm leading-6 text-neutral-600 shadow-sm"><h2 className="font-semibold text-neutral-900">Somente leitura</h2><p className="mt-1">Seu perfil pode consultar fornecedores e condições comerciais, mas não possui papel autorizado para manutenção.</p></aside>}
       </div>
     </div>
   );
