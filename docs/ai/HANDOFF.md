@@ -2,116 +2,122 @@
 
 ## Estado
 
-Fase 42 — `REQ-FIN-008 — Anexos` — está **concluída, homologada no boundary disponível e integrada na `main`**.
+Fase 43 — `REQ-EXPOR-001 — Exportação` — possui uma única vertical slice implementada no PR #96: **contas a pagar em CSV**.
 
-- `main` pós-Fase 42: `7f38ecedb2d4e8662ef0e2e8c01dda8b20dd0a84`;
-- PR #93: squash-mergeado;
-- head validado: `3885c15989c3787c627c9f0c2008e20466f63abc`;
-- CI #369: success;
-- Business Transactions Integration #176: success;
-- Inventory Count Integration #192: success;
-- Issue #92: closed/completed;
-- única Issue aberta: #75;
-- Supabase Production: `fhbvwyttikrbeaanatlr`, `ACTIVE_HEALTHY`, PostgreSQL 17;
-- migration hospedada: `20260822195823_finance_attachments`;
-- nenhum deploy Vercel.
+- `main` na entrada: `751eea1b8c4a76c7f511f94d61024b22976c855a`;
+- Issue #95;
+- branch `agent/payables-csv-export`;
+- PR #96;
+- head de código validado antes dos docs: `abd9f0559d231f4526c9c40add46c95465d2fc4c`;
+- CI #374 — success;
+- Business Transactions #178 — success;
+- Inventory Count #194 — success;
+- Production Supabase usada somente read-only;
+- nenhuma migration/DDL/DML;
+- nenhum deploy Vercel;
+- #75 preservada/desarmada.
 
-Não refazer Fase 41 nem Fase 42 por rotina. Ler `docs/qa/mvp-reconciliation.md` e `docs/modules/finance.md` antes de reabrir anexos.
+Ao iniciar o próximo chat, conferir primeiro o estado real do PR #96/main/Issue #95. Se #96 já estiver mergeado, **não refazer Fase 43** e executar `NEXT_ACTION` / Fase 44.
 
-## O que foi entregue em anexos
+## Por que esta exportação foi escolhida
 
-Primeira vertical slice vinculada a `payable_document`:
+`Controle NFs Espeticho.xlsx` tinha a aba `Lista` como base operacional principal. O sistema atual já possui `payable_installment_summary` com documento, fornecedor, unidade/setor, parcela, vencimento, valores e status derivados.
 
-- tabela `finance_attachments` com metadata imutável;
-- FK escopada por Organization/documento;
-- RLS de leitura conforme `private.can_read_payable_document(...)`;
-- direct INSERT/UPDATE/DELETE negado a `authenticated`;
-- `anon` sem leitura/RPC;
-- `can_upload_finance_attachment` e `register_finance_attachment` revalidam sessão, papel e escopo;
-- audit trail no registro;
-- PDF/XML/JPEG/PNG/WebP, limite 10 MiB e SHA-256;
-- server-only Storage admin;
-- browser sem secret/service role;
-- path físico opaco por Organization/documento/anexo UUID;
-- `upsert=false`;
-- compensação do objeto se metadata falhar;
-- download autenticado sem URL pública permanente;
-- UI de listar/anexar/baixar em `/workspace/financeiro`;
-- SQL tests, unit tests e client/server boundary no CI.
+Outros candidatos não eram melhores para a primeira slice:
 
-## Production / Storage
+- Estoque: página atual é snapshot de saldos, não ledger tabular completo;
+- Inventário: histórico visual limitado a 10;
+- Compras: histórico visual limitado a 15;
+- Caixa: shape tabular depende de meios de pagamento dinâmicos.
 
-A migration foi aplicada depois de CI verde e o filename foi reconciliado para a versão realmente registrada pelo Supabase: `supabase/migrations/20260822195823_finance_attachments.sql`.
+Ver `docs/qa/payables-csv-export.md`.
 
-Homologação sintética em `BEGIN/ROLLBACK` confirmou preflight, registro, retry idempotente e audit único; a verificação posterior mostrou zero resíduo.
+## Contrato entregue
 
-RLS/grants hospedados foram verificados. Security Advisor reporta os dois RPCs novos como `SECURITY DEFINER` executáveis por `authenticated`; é intencional, pois eles revalidam `auth.uid()`, papel e resource scope. Performance Advisor retornou apenas INFO de tuning de FKs/índices; não otimizar por lint sem evidência de carga.
+- botão `Exportar CSV` em `/workspace/financeiro` somente para UX `manageFinance`;
+- autoridade de leitura continua sessão autenticada + RLS, não a UI;
+- fonte `payable_installment_summary`;
+- filtro explícito `organization_id`;
+- paginação 500 a 500 via range inclusivo;
+- ordem determinística `due_date + installment_id`;
+- lookups de fornecedor/unidade/setor pela mesma sessão;
+- CSV BOM UTF-8 + CRLF;
+- escaping de aspas/vírgulas/quebras de linha;
+- neutralização de spreadsheet formula injection em campos textuais;
+- dinheiro com `Money.toDecimal()`;
+- datas ISO;
+- sem access key, referência Pix/Boleto, payment notes, actor IDs ou anexos;
+- sem XLSX/PDF, endpoint privilegiado, dependency nova ou migration.
 
-O conector Supabase disponível não expõe criação/upload de Storage. Portanto:
+## Supabase / boundary
 
-- não foi criado bucket por SQL;
-- não foi manipulado `storage.objects`;
-- `storage.buckets` ainda não contém `finance-attachments`;
-- o código server-only cria/configura o bucket privado de forma idempotente no primeiro upload autorizado.
+Production `fhbvwyttikrbeaanatlr` foi apenas inspecionada:
 
-Se no futuro houver erro no primeiro upload, verificar a Storage API/runtime e os logs; **não** criar tabelas/policies paralelas nem escrever no schema `storage` por SQL para contornar.
+- `payable_installment_summary`: `security_invoker=true`;
+- `authenticated`: SELECT true;
+- `anon`: SELECT false;
+- `payable_documents_select_member`: `private.can_read_payable_document(organization_id, id)`;
+- `installments_select_member`: `private.can_read_payable_document(organization_id, payable_document_id)`.
 
-## Próxima frente de MVP
+A implementação usa `createBrowserSupabaseClient()`; não introduzir service/admin client na exportação.
 
-A Fase 41 deixou um único SHOULD explícito ainda sem implementação aparente: `REQ-EXPOR-001 — Exportação`.
+## Testes
 
-Requisito:
+`src/lib/finance/payables-csv.test.ts` cobre:
 
-- dados tabulares relevantes exportáveis em CSV/Excel;
-- PDF somente quando fizer sentido para relatório/documento.
+- BOM/CRLF/cabeçalho;
+- acentos;
+- escaping;
+- formula injection;
+- decimais exatos e saldo negativo;
+- filename;
+- paginação multi-range.
 
-Escopo MVP: `exportação onde fizer sentido`.
+`client-boundary.test.ts` cobre ausência de secret/admin na nova exportação.
 
-A Fase 43 deve primeiro descobrir **qual superfície concreta** satisfaz melhor esse requisito. A regra de escopo exige processo real, usuário beneficiado e critério de aceite identificável. Não iniciar “exportar tudo”.
+O head final com documentação deve ser validado antes do merge. Depois do merge, a Issue #95 deve fechar por `Closes #95` no PR #96.
+
+## Próxima ação
+
+Fase 44: **reconciliar o MVP após a entrega de contas a pagar em CSV**.
+
+Não assumir que `REQ-EXPOR-001` obriga exportar cada superfície. Revisar escopo/requisitos + estado real e identificar se resta alguma lacuna não-PENDING com processo e critério de aceite concretos. Se não houver, registrar o núcleo/MVP funcional como reconciliado e deixar apenas bloqueios operacionais condicionais, especialmente #75.
 
 Ver `docs/ai/NEXT_ACTION.md`.
 
 ## Backup Production / #75
 
-A Fase 38 permanece intacta; não refazer automação.
-
-Política aprovada — não perguntar novamente:
+Não refazer a Fase 38. Política já aprovada:
 
 - RPO 24h;
-- backup diário;
-- RTO objetivo até 4h;
-- Google Drive privado;
+- diário;
+- RTO <= 4h;
+- Drive privado;
 - retenção 30 dias;
-- owner/alerta `synapselab.ia@gmail.com`;
+- alerta `synapselab.ia@gmail.com`;
 - restore drill mensal isolado;
-- sem Pro/PITR por enquanto.
+- sem Pro/PITR.
 
-Já concluído:
+Pendências somente em computador pessoal/confiável:
 
-- `.github/workflows/production-backup.yml`;
-- `.github/workflows/backup-restore-drill.yml`;
-- `PRODUCTION_SUPABASE_DB_URL` via Session pooler 5432.
-
-Ainda pendente, deliberadamente para computador pessoal/confiável:
-
-- OAuth Google Drive/rclone `[lojasaph-drive]`;
+- OAuth/rclone `[lojasaph-drive]`;
 - `BACKUP_RCLONE_CONFIG_B64`;
 - `BACKUP_ALERT_GMAIL_APP_PASSWORD`;
 - `BACKUP_AUTOMATION_ENABLED=true`;
-- primeiro run real de `Production Database Backup`;
-- archive + `.sha256` confirmado no Drive;
-- fechamento da #75.
+- primeiro backup real + archive/checksum;
+- fechar #75.
+
+Não pedir secrets no chat.
 
 ## Não fazer
 
-- não reabrir Fases 38–42 sem regressão concreta;
-- não receber/publicar DB URL, OAuth token/config ou App Password;
-- não ativar backup nem fechar #75 sem run real;
-- não restaurar Production para teste;
-- não manipular objetos/buckets de Storage por SQL;
-- não criar bucket público;
-- não expor secret/service key ao client;
-- não iniciar exportação genérica/global;
-- não implementar item `PENDING` por inferência;
-- não criar deploy Vercel sem necessidade real;
+- não reabrir Fases 41–43 sem regressão;
+- não criar exportação global/genérica;
+- não criar XLSX/PDF sem processo concreto;
+- não contornar RLS;
+- não criar migration sem necessidade;
+- não manipular Storage por SQL;
+- não ativar/fechar #75 sem run real;
+- não implementar `PENDING` por inferência;
+- não criar deploy Vercel só para teste;
 - não importar dados reais/cutover.
