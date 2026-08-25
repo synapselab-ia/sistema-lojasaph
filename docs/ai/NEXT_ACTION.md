@@ -2,110 +2,98 @@
 
 ## Contexto
 
-Fases 41–42 concluídas:
+A Fase 43 selecionou e implementou uma única vertical slice explícita de `REQ-EXPOR-001 — Exportação`: **contas a pagar em CSV**.
 
-- o MVP foi reconciliado contra requisitos/escopo e estado real;
-- nenhum novo MUST funcional do núcleo apareceu sem cobertura;
-- `REQ-FIN-008 — Anexos` foi implementado no PR #93 e a Issue #92 foi fechada;
-- `main` pós-Fase 42: `7f38ecedb2d4e8662ef0e2e8c01dda8b20dd0a84`;
-- head funcional final `3885c15989c3787c627c9f0c2008e20466f63abc` passou CI #369, Business Transactions #176 e Inventory Count #192;
-- Supabase Production possui migration `20260822195823_finance_attachments` e homologação relacional sintética/rollback concluída;
-- Issue #75 continua aberta/desarmada e não bloqueia trabalho independente.
+Decisão e evidência: `docs/qa/payables-csv-export.md`.
 
-O SHOULD explícito restante confirmado pela Fase 41 é:
+A seleção não foi por conveniência técnica. Financeiro foi o candidato superior porque a planilha histórica de NFs tinha uma lista operacional principal e o sistema já possui `payable_installment_summary` com os mesmos conceitos normalizados. Estoque, Inventário, Compras e Caixa não apresentaram uma primeira superfície mais clara sem inventar semântica adicional.
 
-`REQ-EXPOR-001 — Exportação`: **dados tabulares relevantes devem poder ser exportados em CSV/Excel; PDF quando fizer sentido para relatório/documento.**
+PR funcional: #96 / Issue #95.
 
-O escopo MVP diz apenas `exportação onde fizer sentido`. A regra contra expansão descontrolada exige processo real, usuário beneficiado e critério de aceite identificável.
+A Issue #75 continua aberta/desarmada e depende de computador pessoal/confiável para os secrets e o primeiro backup real.
 
-## Objetivo ativo
+## Objetivo ativo após o merge do PR #96
 
-**Fase 43 — delimitar `REQ-EXPOR-001` a uma única vertical slice de exportação explicitamente justificável e, somente se houver candidato inequívoco, abrir/implementar essa frente.**
+**Fase 44 — reconciliar o MVP após a primeira entrega de `REQ-EXPOR-001` e decidir, com base no escopo/requisitos e estado real, se existe alguma lacuna não-PENDING restante que justifique nova frente funcional.**
 
-Não começar por uma infraestrutura genérica de “exportar tudo”. A fase deve descobrir qual tabela/relatório operacional já existente tem necessidade de exportação mais clara no MVP atual.
+A Fase 44 é uma reconciliação, não uma autorização para abrir automaticamente outra exportação.
 
 ## Fazer agora
 
-1. Ler `AGENTS.md`, `START-HERE`, `CURRENT_STATE`, `HANDOFF`, este arquivo, `WORKFLOW`, `docs/product/scope.md`, `docs/product/requirements.md` e `docs/qa/mvp-reconciliation.md`.
-2. Conferir estado real de `main`, Issues/PRs/branches/CI. Confirmar que #92 está fechada e #75 continua aberta/desarmada.
-3. Não reabrir anexos: `REQ-FIN-008` já está entregue no PR #93. Ler `docs/modules/finance.md` somente se necessário para evitar regressão.
-4. Inventariar as superfícies **tabulares/relatórios já implementados** que poderiam legitimamente ser exportados, por exemplo sem assumir prioridade:
-   - estoque/saldos/movimentações;
-   - inventário;
-   - compras/recebimentos;
-   - financeiro/parcelas/pagamentos;
-   - caixa/fechamentos;
-   - cadastros quando houver uso operacional claro.
-5. Para cada candidato relevante, verificar no código real:
-   - dados já disponíveis e filtros existentes;
-   - papel/escopo de acesso;
-   - volume/paginação;
-   - se a exportação precisa refletir exatamente filtros ativos;
-   - se há risco de dados sensíveis;
-   - se CSV é suficiente ou se Excel/PDF tem justificativa concreta.
-6. Aplicar os critérios de seleção da Fase 41:
-   - relevância explícita ao MVP;
-   - processo real já documentado;
-   - ausência comprovada da feature;
+1. Ler `AGENTS.md`, `START-HERE`, `CURRENT_STATE`, `HANDOFF`, este arquivo, `WORKFLOW`, `docs/product/scope.md`, `docs/product/requirements.md`, `docs/qa/mvp-reconciliation.md` e `docs/qa/payables-csv-export.md`.
+2. Conferir estado real de `main`, PRs, Issues, branches e CI.
+3. Confirmar o resultado do PR #96 / Issue #95. Se já mergeado/fechado, não refazer a Fase 43.
+4. Reconciliar novamente a matriz do MVP, agora considerando entregues:
+   - núcleo funcional já confirmado na Fase 41;
+   - `REQ-FIN-008 — Anexos` da Fase 42;
+   - primeira superfície explícita de `REQ-EXPOR-001` da Fase 43.
+5. Para `REQ-EXPOR-001`, não interpretar `dados tabulares relevantes` como obrigação de exportar toda tabela existente. Só apontar nova lacuna se uma superfície adicional tiver simultaneamente:
+   - processo real documentado;
    - usuário beneficiado claro;
-   - critério de aceite objetivo;
+   - tabela/relatório atual suficientemente definido;
+   - colunas/filtros/formato objetivos;
+   - ausência comprovada da feature;
    - independência de Q-001..Q-025/PENDING;
-   - não depender de cutover/backup #75.
-7. Escolher **exatamente uma** superfície somente se houver um candidato claramente superior. Não usar conveniência técnica como prioridade.
-8. Se houver candidato inequívoco:
-   - abrir uma única Issue funcional vinculada a `REQ-EXPOR-001`;
-   - definir colunas, filtros, autorização e formato mínimo no próprio critério de aceite;
-   - criar branch;
-   - implementar a menor vertical slice segura se for viável na mesma sessão;
-   - reutilizar os boundaries de autorização/dados existentes;
-   - testar escaping/encoding/formatação e escopo;
-   - não criar migration/Supabase change se exportação puder ser derivada dos read models atuais;
-   - não adicionar biblioteca de Excel/PDF sem necessidade comprovada; CSV UTF-8 é aceitável quando satisfizer o processo escolhido.
-9. Se **não** houver candidato inequívoco:
-   - não abrir Issue genérica;
-   - registrar a matriz curta e o ponto de decisão no handoff;
-   - deixar `REQ-EXPOR-001` como gap conhecido aguardando priorização concreta.
-10. Rodar CI/testes correspondentes para qualquer mudança funcional e mergear somente verde.
-11. Usar Supabase apenas se a implementação realmente exigir verificação de dados/permissões; evitar DDL/migration sem necessidade.
-12. Não criar deploy Vercel intermediário apenas para testar exportação; preservar a política de deploy limitado.
-13. Atualizar `CURRENT_STATE`, `HANDOFF` e `NEXT_ACTION` ao final.
+   - prioridade material para o MVP.
+6. Revisar SHOULDs restantes sem promover itens explicitamente colocados em fase posterior pelo `scope.md`. Em especial não puxar automaticamente estoque mínimo, compras avançadas, código de barras, PWA refinada ou dashboards avançados.
+7. Separar rigorosamente:
+   - lacuna funcional concreta;
+   - melhoria/otimização opcional;
+   - requisito `PENDING`/condicionado;
+   - bloqueio operacional, como cutover real e #75.
+8. Se houver **uma** lacuna inequívoca não-PENDING, abrir exatamente uma Issue e definir a menor vertical slice; implementar somente se o boundary e critério de aceite estiverem claros.
+9. Se não houver lacuna funcional inequívoca, não abrir feature por inércia. Registrar o MVP/núcleo como reconciliado e deixar a próxima ação condicionada aos bloqueios reais ou a nova prioridade explícita do produto.
+10. Não modificar Supabase se a Fase 44 for apenas reconciliação. Se alguma nova feature realmente exigir Supabase, seguir o workflow normal: docs atuais, branch/PR, CI verde antes de Production, migration versionada para DDL.
+11. Não criar deploy Vercel intermediário.
+12. Atualizar `CURRENT_STATE`, `HANDOFF` e `NEXT_ACTION` no final.
 
-## Critério de conclusão da Fase 43
+## Critério de conclusão da Fase 44
 
-- superfícies atuais de dados tabulares relevantes foram confrontadas com `REQ-EXPOR-001`;
-- nenhuma exportação já existente foi duplicada;
-- nenhum requisito PENDING foi promovido;
-- exatamente uma próxima vertical slice foi escolhida **ou** a falta de prioridade inequívoca foi documentada;
-- se uma Issue foi aberta, possui usuário/processo, colunas/filtros/formato e autorização objetivos;
-- no máximo uma nova frente funcional ficou ativa;
-- #75 permaneceu preservada.
+- matriz do MVP reconciliada depois das Fases 42–43;
+- `REQ-EXPOR-001` avaliado sem expansão automática para `exportar tudo`;
+- nenhum `PENDING` promovido sem decisão;
+- nenhuma fase posterior puxada por conveniência;
+- exatamente uma lacuna funcional concreta escolhida ou conclusão explícita de que não há nova frente funcional justificada;
+- #75 preservada enquanto as condições operacionais não forem atendidas;
+- continuidade atualizada para o próximo chat.
 
-## Fase 42 — não refazer
+## Fase 43 — não refazer
 
-`REQ-FIN-008` está fechado. Production possui a migration de metadata e o servidor provisiona o bucket privado via Storage API no primeiro upload autorizado. O conector usado na homologação não expõe mutação de Storage, portanto não tentar “completar” isso escrevendo em `storage.buckets` ou `storage.objects` via SQL.
+A exportação de contas a pagar usa:
+
+- `payable_installment_summary` sob `security_invoker`;
+- sessão/RLS normal;
+- filtro Organization explícito;
+- paginação 500 a 500;
+- CSV BOM UTF-8/CRLF;
+- escaping + formula-injection protection;
+- decimais exatos;
+- UX `manageFinance`.
+
+Não existe migration da Fase 43 e não deve ser criada retrospectivamente.
 
 ## Backup Production / #75
 
-Somente quando o operador estiver em computador pessoal/confiável:
+Somente em computador pessoal/confiável:
 
 1. configurar OAuth Google Drive/rclone;
 2. criar `BACKUP_RCLONE_CONFIG_B64`;
 3. criar `BACKUP_ALERT_GMAIL_APP_PASSWORD`;
 4. criar `BACKUP_AUTOMATION_ENABLED=true`;
-5. executar `Production Database Backup` manualmente;
-6. comprovar archive + `.sha256` no Drive;
+5. executar o primeiro `Production Database Backup` real;
+6. confirmar archive + `.sha256` no Drive;
 7. registrar evidência e fechar #75.
 
 ## Segurança / operação
 
 - não pedir/receber secrets no chat;
-- não versionar dump/config/token;
-- não ativar backup nem fechar #75 sem evidência real;
+- não reabrir Fases 41–43 sem regressão concreta;
+- não transformar exportação em infraestrutura global sem processo real;
+- não criar XLSX/PDF por conveniência;
+- não promover item `PENDING`;
+- não ativar/fechar #75 sem evidência real;
 - não restaurar Production para teste;
-- não reabrir anexos sem regressão;
 - não manipular Storage por SQL;
-- não implementar exportação global/genérica sem processo real;
-- não promover item `PENDING` por inferência;
 - não criar migration sem necessidade;
-- não criar deployment Vercel apenas para auditoria/feature intermediária;
+- não criar deploy Vercel só para auditoria;
 - não importar dados reais/cutover.
