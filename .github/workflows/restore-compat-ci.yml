@@ -44,7 +44,7 @@ jobs:
         run: |
           set -euo pipefail
           WORKFLOW=.github/workflows/backup-restore-drill.yml
-          grep -Fq 'SUPABASE_STORAGE_VERSION: "1.70.7"' "${WORKFLOW}"
+          grep -Fq 'SUPABASE_STORAGE_VERSION: "v1.70.7"' "${WORKFLOW}"
           grep -Fq 'SUPABASE_STORAGE_REQUIRED_MIGRATION: "64"' "${WORKFLOW}"
           grep -Fq '> supabase/.temp/storage-version' "${WORKFLOW}"
           grep -Fq -- '--exclude postgres-meta,realtime,imgproxy,mailpit,studio,edge-runtime,logflare,vector,supavisor' "${WORKFLOW}"
@@ -62,7 +62,7 @@ jobs:
     env:
       SUPABASE_CLI_VERSION: "2.111.0"
       SUPABASE_POSTGRES_VERSION: "17.6.1.141"
-      SUPABASE_STORAGE_VERSION: "1.70.7"
+      SUPABASE_STORAGE_VERSION: "v1.70.7"
       SUPABASE_STORAGE_REQUIRED_MIGRATION: "64"
 
     steps:
