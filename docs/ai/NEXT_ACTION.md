@@ -4,189 +4,157 @@
 
 A Fase 46 continua integrada e o núcleo funcional do MVP permanece reconciliado.
 
-Em 2026-08-26 o operador revisou explicitamente a Issue #75. Isso substituiu o gate antigo “estar em computador confiável para concluir rclone/Gmail” por uma nova prioridade de produto/arquitetura:
+A Issue #75 agora representa `REQ-PLAT-005 — Proteção, backup e recuperação de dados`.
 
-> `REQ-PLAT-005 — Proteção, backup e recuperação de dados`
+Slices executadas/ativas:
 
-A primeira slice da revisão é o PR #107, que formaliza `ADR-009 — Proteção, backup e recuperação de dados`.
+1. PR #107 — ADR-009 / arquitetura revisada;
+2. PR #108 — reconciliação do transporte S3-compatible provider-neutral.
 
-Baseline real na entrada dessa slice:
+O PR #108 deve ser integrado somente com CI verde. Ao iniciar uma nova sessão, verificar o estado real do PR #108 e da `main`; não presumir merge a partir deste arquivo e não criar um PR documental apenas para atualizar o SHA gerado pelo próprio merge.
 
-- `main`: `109961af5f07285c6dd61376768cb26f4eb5fd6b`;
-- CI #402: success;
-- PRs abertos antes da slice: nenhum;
-- única Issue aberta: #75;
-- Supabase `fhbvwyttikrbeaanatlr`: `ACTIVE_HEALTHY`, PostgreSQL 17, zero branches e migration final `20260822195823 / finance_attachments`;
-- nenhuma migration/DDL/DML, usuário real, dado real, secret ou deploy foi alterado pela slice arquitetural.
+## Estado que o PR #108 entrega
 
-## Decisão vigente da #75
+Quando integrado, a automação estará tecnicamente pronta para um provider S3-compatible, porém **continuará desarmada e sem infraestrutura externa real**.
 
-A proteção possui três camadas:
+Implementado:
 
-1. backup automático de recuperação;
-2. observabilidade `Proteção dos dados` dentro do produto;
-3. exportação manual complementar.
+- backup diário + `workflow_dispatch` fail-closed;
+- restore drill mensal isolado;
+- export roles/schema/data preservado;
+- bundle com archive, checksum, manifesto v1 e checksum do manifesto;
+- transporte S3-compatible;
+- verificação pós-upload por `HeadObject` + re-download/rehash SHA-256;
+- retenção deslocada para lifecycle/lock do provider;
+- alerta GitHub-native idempotente sem Gmail App Password;
+- rclone/Google Drive removidos da automação executável;
+- CI valida novos helpers e proíbe regressão para dependências legadas.
 
-Regras centrais:
+Ainda não existe:
 
-- backup automático continua obrigatório;
-- confirmação humana não prova backup;
-- não bloquear a operação inteira por atraso de backup;
-- destino off-site deve ser provider-neutral S3-compatible;
-- Cloudflare R2 é o primeiro provider preferido, mas **não está autorizado/provisionado**;
-- Google Drive/rclone e Gmail App Password deixam de ser requisitos arquiteturais;
-- PostgreSQL e Storage têm coberturas distintas;
-- `BACKUP_AUTOMATION_ENABLED` permanece desarmado até nova prova real.
+- bucket/provider real;
+- credentials S3 reais;
+- backup Production comprovado off-site;
+- persistência PostgreSQL de runs;
+- UI `Proteção dos dados`;
+- backup dos objetos do Supabase Storage;
+- exportação manual complementar.
 
-Consultar obrigatoriamente:
+## Objetivo ativo após integração verde do PR #108
 
-- Issue #75;
-- `docs/decisions/ADR-009-data-protection-architecture.md`;
-- `docs/operations/backup-restore.md`.
+**Aguardar/desbloquear o gate operacional para aprovar e provisionar um provider S3-compatible real. Não iniciar outra slice de código da #75 por inércia antes desse gate.**
 
-## Objetivo ativo
+Cloudflare R2 é a primeira opção preferida registrada em ADR-009, mas é reversível para B2, AWS S3 ou equivalente que cumpra os controles.
 
-**Após a integração do PR #107, reconciliar a automação existente para um contrato S3-compatible provider-neutral, sem provisionar serviço externo e sem executar backup Production real.**
+## Gate — provider off-site real
 
-Essa é a menor slice executável antes do próximo gate externo.
+Considerar desbloqueado somente quando o operador autorizar explicitamente prosseguir com o provider concreto e, quando aplicável, com cadastro/subscription/billing/custo.
 
-## Escopo da próxima slice
+### 1. Antes de provisionar
 
-### 1. Reconciliar o workflow de backup
+- reler `docs/decisions/ADR-009-data-protection-architecture.md`;
+- reler `docs/operations/backup-restore.md`;
+- verificar documentação e preço atuais do provider;
+- confirmar que o provider oferece API S3-compatible, bucket privado e retenção/lifecycle adequados;
+- confirmar suporte a lock/WORM quando possível;
+- não assumir que free tier elimina necessidade de subscription/billing.
 
-Partir de:
+### 2. Provisionar infraestrutura somente após autorização
 
-- `.github/workflows/production-backup.yml`;
-- `scripts/export-supabase-backup.sh`.
+Criar/configurar:
 
-Preservar:
+- bucket privado dedicado a Production;
+- nenhum public access;
+- nenhum CORS de navegador desnecessário;
+- namespace/prefixo de Production;
+- lifecycle de expiração compatível com retenção 30 dias;
+- lock/WORM coerente com a janela de retenção quando suportado;
+- credencial de menor privilégio suficiente para upload, listagem, head e download necessários ao backup/drill.
 
-- cron + `workflow_dispatch`;
-- fail-closed por `BACKUP_AUTOMATION_ENABLED`;
-- export roles/schema/data;
-- archive;
-- `SHA256SUMS` + `.sha256` externo;
-- cleanup de temporários;
-- `PRODUCTION_SUPABASE_DB_URL` server-side.
+Não dar ao runner permissão de administração de conta/billing e evitar permissão de delete quando o desenho de lifecycle/lock permitir.
 
-Substituir o acoplamento Drive/rclone por contrato S3-compatible:
+### 3. Provisionar configuração no GitHub fora do chat
 
-- endpoint;
-- bucket;
-- access key id;
-- secret access key;
-- region quando exigida;
-- prefixo/namespace de Production.
+Variables:
 
-Todos os valores sensíveis ficam em GitHub Actions Secrets. Não usar `NEXT_PUBLIC_*`.
+- `BACKUP_S3_ENDPOINT`;
+- `BACKUP_S3_BUCKET`;
+- `BACKUP_S3_REGION` quando necessário (`auto` é default atual compatível com R2);
+- `BACKUP_S3_PREFIX` quando diferente de `production/postgres`.
 
-Não hardcodar R2 no exportador de banco. Provider-specific details ficam na camada de transporte/configuração.
+Secrets:
 
-### 2. Manifesto e evidência off-site
+- `BACKUP_S3_ACCESS_KEY_ID`;
+- `BACKUP_S3_SECRET_ACCESS_KEY`;
+- `BACKUP_S3_SESSION_TOKEN` somente se o provider/credencial exigir.
 
-Além do archive/checksum, gerar manifesto seguro contendo no mínimo:
+Já existente:
 
-- `backup_id`;
-- environment;
-- timestamp UTC;
-- versão/formato;
-- cobertura (`postgres` nesta slice);
-- SHA-256;
-- tamanho;
-- referência não sensível da execução/exportador.
+- `PRODUCTION_SUPABASE_DB_URL`.
 
-Verificar o objeto remoto após upload antes de considerar sucesso.
+**Nunca pedir, receber ou reproduzir os valores dos secrets no chat/Issue/PR.**
 
-Não criar persistência de status PostgreSQL nesta mesma slice; isso virá depois da automação reconciliada.
+### 4. Armar somente depois da configuração completa
 
-### 3. Retenção
+Após bucket, lifecycle/lock e credenciais terem sido verificados:
 
-A política continua 30 dias.
+- definir `BACKUP_AUTOMATION_ENABLED=true`;
+- executar **uma única** prova manual de `Production Database Backup` via `workflow_dispatch`.
 
-A arquitetura alvo prefere lifecycle + lock no bucket em vez de dar ao runner responsabilidade de deletar backups antigos.
+Não restaurar Production.
 
-Nesta slice:
+### 5. Critério da primeira prova real
 
-- remover dependência da deleção via rclone;
-- documentar a configuração de lifecycle/lock exigida para o provider;
-- não configurar bucket real ainda.
+Exigir:
 
-### 4. Alertas
+- workflow verde;
+- archive off-site;
+- `.sha256` do archive;
+- manifesto `.manifest.json`;
+- `.sha256` do manifesto;
+- verificação remota do conteúdo concluída;
+- nenhuma credencial/conteúdo de backup em logs;
+- lifecycle/lock configurado conforme política;
+- evidência não sensível registrada na #75.
 
-Remover `BACKUP_ALERT_GMAIL_APP_PASSWORD` da dependência obrigatória.
+Se falhar, não mascarar o erro e não fechar #75. O incidente GitHub-native deve registrar somente informação sanitizada.
 
-Implementar um sinal GitHub-native persistente e sem secret adicional, com comportamento idempotente para não abrir uma nova Issue a cada falha.
+## Próxima slice somente depois do primeiro backup real
 
-Não incluir connection string, bucket secret ou conteúdo de dump no alerta.
+Depois de um backup PostgreSQL Production real comprovado, abrir a menor slice para **persistência autoritativa de proteção no PostgreSQL**:
 
-### 5. Restore drill
+- modelar runs globais e Organizations cobertas;
+- migration versionada;
+- RLS/leitura por Organization;
+- mutation restrita ao processo server-side autorizado;
+- histórico sanitizado para futura UI.
 
-Adaptar `.github/workflows/backup-restore-drill.yml` para baixar/validar o archive mais recente pelo mesmo contrato S3-compatible.
+Somente depois dessa persistência implementar card `Proteção dos dados` e `/workspace/backup`.
 
-Preservar:
+A trilha de Supabase Storage/anexos permanece separada e obrigatória antes de declarar cobertura completa.
 
-- execução mensal;
-- fail-closed;
-- checksum externo/interno;
-- PostgreSQL 17 isolado;
-- nunca restaurar Production.
+## Se o gate externo não estiver desbloqueado
 
-### 6. Testes e documentação
+Não alterar código, Supabase, Vercel, dados ou configuração operacional para produzir atividade.
 
-- atualizar testes/scripts afetados;
-- validar YAML/scripts sem secrets reais;
-- rodar CI completa;
-- atualizar `docs/operations/backup-restore.md` somente se a implementação divergir do ADR;
-- atualizar continuidade.
+A resposta correta é preservar a baseline e informar que a próxima ação depende da aprovação/provisionamento do provider.
 
-## Fora de escopo da próxima slice
+## Segurança / não fazer
 
-Não fazer ainda:
-
-- criar conta/bucket R2;
-- habilitar billing/purchase de provider;
-- criar secrets reais de object storage;
-- setar `BACKUP_AUTOMATION_ENABLED=true`;
-- executar backup Production real;
-- migration/tabela de `data_protection_runs`;
-- card `Proteção dos dados`;
-- `/workspace/backup`;
-- exportação manual;
-- backup de Storage;
-- restore hospedado de Production;
-- deploy Vercel.
-
-## Gate externo após a reconciliação
-
-Quando o workflow provider-neutral estiver integrado e verde, o próximo gate será:
-
-1. operador aprovar o provider concreto;
-2. se houver billing/custo, obter autorização explícita antes de ativar;
-3. criar bucket privado e configurar lifecycle/lock;
-4. provisionar secrets fora do chat;
-5. somente então armar e executar uma única prova real;
-6. validar archive + manifesto/checksum off-site.
-
-Depois do primeiro backup real comprovado, seguir para persistência autoritativa de status + UI.
-
-## Segurança
-
-- nunca pedir/receber secrets no chat;
-- não ativar rclone/Gmail por inércia;
-- não armazenar dump real em Git/GitHub Artifact;
+- não voltar a rclone/Drive/Gmail;
+- não pedir/receber secrets no chat;
+- não criar provider com billing/custo sem autorização explícita;
+- não setar `BACKUP_AUTOMATION_ENABLED=true` antes de toda a configuração estar pronta;
+- não armazenar dump real no Git ou GitHub Artifact;
 - não restaurar Production para teste;
-- não criar provider pago sem autorização;
+- não criar migration/UI/exportação manual antes do gate real por conveniência;
 - não declarar Storage protegido pelo dump PostgreSQL;
 - não bloquear mutations do negócio por atraso de backup sem nova decisão;
-- não misturar a reconciliação do transporte com UI/migration/exportação manual na mesma slice.
+- não criar deploy Vercel para esta frente de workflow/docs.
 
 ## Critério de conclusão do próximo chat
 
-Terminar com:
+Terminar em um destes estados:
 
-- automação provider-neutral implementada e testada em CI sem secrets reais;
-- restore drill reconciliado;
-- Gmail/rclone removidos como dependências obrigatórias;
-- `BACKUP_AUTOMATION_ENABLED` ainda desarmado;
-- nenhum provider real provisionado;
-- documentação/handoff apontando para o gate de aprovação/provisionamento externo.
+1. provider explicitamente aprovado/provisionado + primeira prova real executada e evidenciada com segurança; ou
+2. gate externo ainda bloqueado, baseline preservada e nenhuma atividade artificial criada.
