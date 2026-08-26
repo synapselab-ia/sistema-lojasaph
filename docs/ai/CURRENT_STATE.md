@@ -4,136 +4,152 @@
 
 ## Estado atual
 
-**Fase 46 — prontidão operacional — continua integrada.**  
-**Frente ativa pós-Fase 46: Issue #75 / `REQ-PLAT-005 — Proteção, backup e recuperação de dados`.**
+**Fase 46 continua integrada; frente ativa: Issue #75 / `REQ-PLAT-005 — Proteção, backup e recuperação de dados`.**
 
-O núcleo funcional do MVP das Fases 41–45 continua reconciliado. A nova frente não surgiu por inércia: em 2026-08-26 o operador revisou explicitamente a filosofia da #75, desbloqueando o Gate 4 de `NEXT_ACTION`.
+A arquitetura revisada foi formalizada pelo PR #107 / ADR-009. A slice seguinte está no PR #108, branch `agent/s3-backup-transport`, e reconcilia a automação de backup/restore para transporte S3-compatible provider-neutral.
 
-A Issue #75 deixou de significar “provisionar rclone/Gmail e ativar o workflow existente”. Ela agora exige três camadas complementares:
+O núcleo funcional das Fases 41–45 não foi reaberto.
 
-1. backup automático real de recuperação;
-2. observabilidade “Proteção dos dados” dentro do Lojasaph;
-3. exportação manual complementar, sem substituir o automático.
-
-## Entrada real desta slice
+## Baseline de entrada da slice #108
 
 ### GitHub
 
-- `main` na entrada: `109961af5f07285c6dd61376768cb26f4eb5fd6b`;
-- CI da `main`: #402 — success;
+- `main` na entrada: `1c0ddeb9153d5f7a1d9d64a685ae8d432788833c`;
+- CI #407 em `main`: success;
 - PRs abertos na entrada: nenhum;
-- única Issue aberta: #75, já com requisito revisado;
-- branches `agent/*` antigas sem PR continuam históricas.
+- única Issue aberta: #75;
+- branches `agent/*` antigas sem PR aberto continuam históricas.
 
 ### Supabase Production
 
-Projeto `fhbvwyttikrbeaanatlr` inspecionado read-only:
+Projeto `fhbvwyttikrbeaanatlr` revalidado read-only durante a slice:
 
 - `ACTIVE_HEALTHY`;
 - região `sa-east-1`;
 - PostgreSQL 17 (`17.6.1.141`);
 - zero development branches;
-- migration history continua terminando em `20260822195823 / finance_attachments`.
+- migration history termina em `20260822195823 / finance_attachments`.
 
-Nenhuma migration, DDL ou DML foi executada nesta slice.
+Nenhuma migration, DDL ou DML foi executada.
 
-### CI/infra
+## PR #108 — transporte S3-compatible
 
-A arquitetura desta slice não exige deploy Vercel nem mutação de Production. `BACKUP_AUTOMATION_ENABLED` deve permanecer desarmado.
+A implementação preserva o exportador `scripts/export-supabase-backup.sh` e substitui somente a camada de transporte/alerta da automação histórica.
 
-## Slice atual — arquitetura revisada da proteção
+### Backup Production
 
-Branch:
+`.github/workflows/production-backup.yml` agora:
 
-- `agent/data-protection-architecture`
+- mantém cron diário + `workflow_dispatch`;
+- mantém fail-closed por `BACKUP_AUTOMATION_ENABLED == 'true'`;
+- mantém `PRODUCTION_SUPABASE_DB_URL` server-side e valida Session pooler 5432;
+- usa Supabase CLI pinada `2.111.0`;
+- gera roles/schema/data + checksums internos;
+- cria archive `.tar.gz`, `.sha256`, manifesto v1 e checksum do manifesto;
+- transfere pelo contrato S3-compatible usando AWS CLI oficial pinada `amazon/aws-cli:2.36.30`;
+- verifica cada objeto remoto por `HeadObject` + download em streaming + SHA-256;
+- não usa rclone/Google Drive;
+- não usa Gmail App Password;
+- não deleta backups antigos no runner.
 
-PR:
+### Manifesto
 
-- #107 — `docs: formalize revised data protection architecture`
+`scripts/backup-bundle.py` cria/verifica o formato `lojasaph-postgres-logical-backup` versão 1 com metadata não sensível:
 
-Documentos principais:
+- backup id;
+- ambiente/timestamp;
+- cobertura `postgres`;
+- archive name/size/SHA-256;
+- Supabase project ref;
+- versão do exportador/CLI e Git SHA;
+- workflow/run id/run URL;
+- contrato `s3-compatible`;
+- retenção 30 dias.
 
-- `docs/decisions/ADR-009-data-protection-architecture.md`;
-- `docs/operations/backup-restore.md`.
+### Transporte
 
-### Decisões formalizadas
+`scripts/s3-backup-storage.sh` encapsula:
 
-#### Backup automático permanece obrigatório
+- endpoint HTTPS;
+- bucket;
+- region;
+- prefix;
+- upload do bundle;
+- existência remota;
+- rehash pós-upload;
+- descoberta/download do backup mais recente para drill.
 
-O backup automático continua sendo a linha principal de disaster recovery:
+O helper não hardcoda Cloudflare R2. R2 continua somente a primeira opção preferida do ADR-009.
 
-- sem clique diário;
-- dentro de RPO 24h;
-- off-site;
-- checksum/integridade;
-- retenção 30 dias;
-- restore drill mensal isolado.
+### Retenção
 
-A confirmação humana nunca equivale a backup válido.
+Retenção de 30 dias passa a ser responsabilidade do bucket/provider aprovado por lifecycle + lock/WORM quando suportado. A credencial de backup não recebe responsabilidade de apagar backups por idade.
 
-#### Destino provider-neutral
+### Alertas
 
-A arquitetura alvo deixa de depender de Google Drive/rclone e passa a usar contrato **S3-compatible**.
+`scripts/send-backup-alert.py` foi removido.
 
-Cloudflare R2 é a primeira implementação preferida porque a documentação atual oferece API S3-compatible, lifecycle, bucket locks e free tier em Standard. Entretanto esta decisão **não autoriza** cadastro financeiro, purchase/billing, bucket ou secrets. Se R2 não for aprovado, B2/S3/outro destino compatível pode substituí-lo sem alterar o contrato.
+`scripts/sync-backup-incident.py` usa o `GITHUB_TOKEN` efêmero para incidente persistente e idempotente:
 
-#### Gmail deixa de ser requisito estrutural
+- primeira falha abre uma Issue operacional do workflow;
+- falhas seguintes atualizam a mesma Issue;
+- o mesmo run/attempt não duplica evento;
+- recuperação fecha a Issue após registrar run verde;
+- sem secrets, connection string ou conteúdo do backup.
 
-`BACKUP_ALERT_GMAIL_APP_PASSWORD` não faz parte da arquitetura alvo. O primeiro mecanismo de escalonamento deve usar sinais persistentes do GitHub + estado crítico do produto; adapters externos de notificação podem ser adicionados depois.
+### Restore drill
 
-#### Evidência autoritativa em dois planos
+`.github/workflows/backup-restore-drill.yml` continua mensal, fail-closed e isolado. Ele usa o mesmo contrato S3-compatible para baixar o bundle mais recente, valida sidecars + manifesto + checksums internos e mantém a regressão PostgreSQL 17 sem restaurar Production.
 
-- archive + manifesto/checksum no storage off-site = evidência independente de recuperação;
-- espelho sanitizado de runs no PostgreSQL = fonte da UI por Organization.
+### CI
 
-O backup PostgreSQL é global por database/environment. Não duplicar fisicamente o mesmo dump para cada Organization. A UI associa Organizations incluídas a cada run.
+A CI ganhou validações para:
 
-#### UI futura
+- sintaxe Python/shell dos novos helpers;
+- contrato sintético do manifesto;
+- imagem AWS CLI pinada;
+- ausência de dependências executáveis de rclone/Drive/Gmail;
+- toda a suíte existente de lint, typecheck, testes, build e database.
 
-Planejada para slice posterior:
+A primeira execução da branch, CI #408, falhou somente porque o teste anti-legado encontrou a própria regex no `ci.yml`; database ficou verde. O teste foi corrigido na mesma branch para excluir o próprio `ci.yml`. Não interpretar #408 como falha do transporte ou do banco.
 
-- card global `Proteção dos dados` no `RuntimeShell`;
-- `/workspace/backup`;
-- verde/âmbar/vermelho;
-- última cópia válida, integridade, retenção, histórico e restore drill.
+## Requisito reconciliado
 
-Não bloquear automaticamente caixa/estoque/compras/financeiro porque o RPO foi violado.
+`docs/product/requirements.md` agora usa o nome aprovado:
 
-#### Storage/anexos
+- `REQ-PLAT-005 — Proteção, backup e recuperação de dados`
 
-Foi confirmado na documentação atual do Supabase que backup de banco não inclui objetos binários do Storage. `REQ-FIN-008` já possui anexos; portanto PostgreSQL protegido não pode ser descrito como “backup completo” dos arquivos.
+O requisito explicita backup automático real, off-site, integridade/retenção, restore isolado, status autoritativo, cobertura declarada de PostgreSQL/Storage e exportação manual apenas complementar.
 
-Antes de declarar cobertura completa será necessária uma trilha própria de cópia/reconciliação/restore de Storage.
+## O que deliberadamente NÃO foi feito
 
-## O que não foi feito
-
-- nenhum código runtime alterado;
-- nenhum workflow reconciliado ainda;
-- nenhum provider externo provisionado;
-- nenhum secret novo;
-- nenhum OAuth/rclone/Gmail configurado;
+- nenhum provider/bucket real provisionado;
+- nenhum billing/purchase iniciado;
+- nenhum secret S3 criado/manipulado;
+- `BACKUP_AUTOMATION_ENABLED` não foi ativado;
 - nenhum backup Production real executado;
+- nenhum restore sobre Production;
 - nenhuma migration/DDL/DML;
+- nenhuma persistência de status/UI criada;
+- nenhuma cópia de Supabase Storage implementada;
 - nenhum usuário/dado real alterado;
-- nenhum deploy Vercel.
+- nenhum deploy Vercel criado.
 
-## Próxima ação
+## Próxima ação após integração verde do PR #108
 
-Depois da integração do PR #107, a menor slice técnica da #75 é:
+**Gate externo: aprovar e provisionar o provider S3-compatible real antes de qualquer novo código da #75 por inércia.**
 
-**reconciliar a automação existente para um contrato S3-compatible provider-neutral, removendo rclone/Gmail da dependência obrigatória, mantendo fail-closed e sem provisionar storage externo.**
+Cloudflare R2 permanece a primeira opção preferida, mas não está autorizado/provisionado. Se o operador aprovar outro provider S3-compatible que cumpra os controles, o workflow não precisa ser redesenhado.
 
-Essa slice deve reutilizar o exportador lógico e os checksums existentes, preservar RPO/RTO/retenção e adaptar testes/CI. Não ativar `BACKUP_AUTOMATION_ENABLED`.
-
-A aprovação/provisionamento do destino externo continua um gate separado porque pode exigir cadastro/billing e secrets fora do chat.
+Ver `docs/ai/NEXT_ACTION.md` para o checklist exato.
 
 ## Não fazer
 
-- não voltar ao plano antigo de “só configurar rclone/Gmail”;
-- não armar o workflow Drive/rclone atual;
-- não provisionar R2/B2/S3 ou qualquer serviço com custo/billing sem autorização;
+- não ativar `BACKUP_AUTOMATION_ENABLED` antes de provider + lifecycle/lock + secrets estarem completos;
 - não pedir/receber secrets no chat;
-- não declarar Storage coberto pelo dump PostgreSQL;
-- não bloquear mutations do negócio por atraso de backup sem nova decisão;
-- não implementar UI/status/export manual antes da reconciliação da automação salvo regressão/prioridade explícita;
-- não criar deploy Vercel apenas por documentação/arquitetura.
+- não provisionar serviço com billing/custo sem autorização explícita;
+- não criar migration/UI de status antes do primeiro backup real comprovado, salvo nova prioridade explícita;
+- não declarar Storage/anexos cobertos pelo backup PostgreSQL;
+- não restaurar Production para teste;
+- não criar deploy Vercel para esta frente de workflow/docs;
+- não abrir outro PR apenas para atualizar o SHA criado pelo próprio merge do #108; sempre conferir `main` ao iniciar o próximo chat.
