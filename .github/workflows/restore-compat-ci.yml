@@ -1,0 +1,38 @@
+name: Restore Compatibility CI
+
+on:
+  pull_request:
+    paths:
+      - "scripts/prepare-supabase-restore-sql.py"
+      - "scripts/test-prepare-supabase-restore-sql.py"
+      - "scripts/restore-production-backup.sh"
+      - ".github/workflows/restore-compat-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "scripts/prepare-supabase-restore-sql.py"
+      - "scripts/test-prepare-supabase-restore-sql.py"
+      - "scripts/restore-production-backup.sh"
+      - ".github/workflows/restore-compat-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  restore-sql-compat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate restore compatibility tooling
+        run: |
+          python -m py_compile \
+            scripts/prepare-supabase-restore-sql.py \
+            scripts/test-prepare-supabase-restore-sql.py
+          bash -n scripts/restore-production-backup.sh
+
+      - name: Test managed-role normalization
+        run: python scripts/test-prepare-supabase-restore-sql.py
