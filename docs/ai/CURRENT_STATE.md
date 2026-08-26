@@ -25,14 +25,16 @@ Portanto não foi aberta nova Issue funcional, não foi criada feature e nenhum 
 
 ### GitHub
 
-- `main`: `b5caef11ef6e0a84b47101dc63fb1c0d05218e2d`;
-- PR #104 — `docs: reconcile operational readiness`: merged;
-- CI #398 em `main`: success (`database`, lint, typecheck, Vitest e production build);
-- nenhum PR aberto;
+- baseline integrada da Fase 46 antes do gate check: `b5caef11ef6e0a84b47101dc63fb1c0d05218e2d`;
+- PR #105 — `docs(ai): refresh operational gate handoff`: squash-mergeado;
+- merge do gate check/handoff: `f0ce56425d9e31aebbc3447112bd05f381fd2ccd`;
+- CI #399 no head do PR #105: success;
+- CI #400 em `main` após o merge: success (`database`, lint, typecheck, Vitest e production build);
+- nenhum PR aberto após o merge do #105;
 - única Issue aberta: #75 — backup automático real de Production;
-- branches `agent/*` existentes, inclusive `agent/operational-readiness`, são históricas quando não possuem PR aberto.
+- branches `agent/*` sem PR aberto são históricas, não frentes paralelas.
 
-O gate check documental usa branch própria somente para atualizar continuidade; não representa nova frente funcional.
+`f0ce5642...` identifica a integração do último gate check. **O HEAD literal de `main` pode ficar posterior a esse SHA por commits/PRs exclusivamente documentais de continuidade.** Um novo chat deve sempre conferir a `main` real antes de agir; não interpretar um SHA documental posterior como nova frente funcional.
 
 ### Supabase Production
 
@@ -55,7 +57,7 @@ O deployment Production mais recente continua:
 - estado `READY`;
 - commit hospedado `62c3af63939c808487434e6e539ef0870a60d530`.
 
-A diferença para a `main` atual (`b5caef11...`) é apenas o merge documental da Fase 46. Não foi criado deploy para sincronizar Markdown.
+Os commits posteriores até `f0ce5642...` são documentação de readiness/continuidade. Não foi criado deploy para sincronizar Markdown.
 
 `GET https://sistema-lojasaph.vercel.app/health` respondeu HTTP 200 no gate check com:
 

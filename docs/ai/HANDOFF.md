@@ -14,12 +14,16 @@ Não transformar essa ausência de gate em nova feature ou Issue.
 
 ### GitHub
 
-- `main`: `b5caef11ef6e0a84b47101dc63fb1c0d05218e2d`;
-- PR #104 — `docs: reconcile operational readiness`: merged;
-- CI #398 em `main`: success (`database`, lint, typecheck, Vitest e production build);
-- nenhum PR aberto;
+- baseline integrada antes do gate check: `b5caef11ef6e0a84b47101dc63fb1c0d05218e2d`;
+- PR #105 — `docs(ai): refresh operational gate handoff`: squash-mergeado;
+- merge do gate check/handoff: `f0ce56425d9e31aebbc3447112bd05f381fd2ccd`;
+- CI #399 no head do PR #105: success;
+- CI #400 em `main` após o merge: success (`database`, lint, typecheck, Vitest e production build);
+- nenhum PR aberto após o merge do #105;
 - única Issue aberta: #75;
 - branches `agent/*` sem PR aberto são históricas, não frentes paralelas.
+
+**Regra para o próximo chat:** `f0ce5642...` é o SHA de referência que identifica a integração do gate check. Este próprio handoff pode ser integrado por um commit/PR documental posterior, então o HEAD literal de `main` pode ser maior sem representar nova funcionalidade. Sempre conferir `main`, PRs, Issues e CI reais antes de agir.
 
 ### Supabase
 
@@ -46,7 +50,7 @@ Production continua saudável no deployment existente:
 - `supabaseReason=production_backend`;
 - `adminAccess=blocked`.
 
-A `main` está em `b5caef11...` porque a Fase 46 foi mergeada depois desse deployment. A diferença é documental. Não criar deploy apenas para sincronizar Markdown.
+Os commits posteriores observados até o gate-check merge `f0ce5642...` são documentação de readiness/continuidade. Não criar deploy apenas para sincronizar Markdown.
 
 ## Resultado dos quatro gates
 

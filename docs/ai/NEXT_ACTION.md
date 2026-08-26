@@ -2,21 +2,26 @@
 
 ## Contexto
 
-Fase 46 concluiu a reconciliação de prontidão operacional para homologação/cutover e foi integrada na `main` pelo PR #104.
+Fase 46 concluiu a reconciliação de prontidão operacional para homologação/cutover. O gate check pós-Fase 46 foi integrado pelo PR #105.
 
-Estado integrado confirmado em 2026-08-26:
+Baseline de referência confirmada em 2026-08-26:
 
-- `main`: `b5caef11ef6e0a84b47101dc63fb1c0d05218e2d`;
-- CI #398: success (`database`, lint, typecheck, Vitest e production build);
-- nenhum PR aberto;
+- baseline anterior ao gate check: `b5caef11ef6e0a84b47101dc63fb1c0d05218e2d`;
+- PR #105 — `docs(ai): refresh operational gate handoff`: merged;
+- merge do gate check/handoff: `f0ce56425d9e31aebbc3447112bd05f381fd2ccd`;
+- CI #399 no head do PR #105: success;
+- CI #400 em `main` após o merge: success (`database`, lint, typecheck, Vitest e production build);
+- nenhum PR aberto após o merge do #105;
 - única Issue aberta: #75 — backup automático real de Production;
 - Supabase Production `fhbvwyttikrbeaanatlr`: `ACTIVE_HEALTHY`, PostgreSQL 17, zero development branches e migration final `20260822195823 / finance_attachments`;
 - Vercel Production continua `READY` no deployment existente `dpl_RRAzMvYKVLKAjbrNV6hAGqg42wfg`, hospedando o SHA `62c3af63939c808487434e6e539ef0870a60d530`;
-- a diferença entre esse deployment e a `main` atual é documental; `/health` continua HTTP 200 com Production/Supabase permitidos e admin bloqueado;
+- `/health` continua HTTP 200 com Production/Supabase permitidos e admin bloqueado;
 - nenhum deploy foi criado para sincronizar documentação;
 - nenhum dado real, usuário real, secret, migration, DDL ou DML foi manipulado no gate check.
 
-O primeiro gate check pós-Fase 46 encontrou **todos os quatro gates ainda bloqueados**. A próxima ação continua sendo gate-driven, não uma nova fase funcional automática.
+`f0ce5642...` é **SHA de referência do gate check**, não um HEAD eterno. Este arquivo pode ser integrado por commit/PR exclusivamente documental posterior. Um novo chat deve sempre conferir a `main` real e distinguir um avanço documental de uma nova frente funcional.
+
+O gate check encontrou **todos os quatro gates ainda bloqueados**. A próxima ação continua sendo gate-driven, não uma nova fase funcional automática.
 
 ## Objetivo ativo
 
@@ -115,16 +120,17 @@ Não abrir Issue para representar:
 
 A resposta correta é preservar a baseline e deixar explícito qual evento externo precisa acontecer primeiro.
 
-Um update documental de continuidade só se justifica quando houver drift real de baseline/handoff, como SHA/CI/estado integrado desatualizado; não criar PR documental repetitivo sem nova informação.
+Um update documental de continuidade só se justifica quando houver drift real de baseline/handoff. **Não criar PR documental repetitivo apenas para atualizar o SHA produzido pelo próprio PR documental.** O SHA de referência do último gate check é suficiente; o HEAD real deve ser consultado ao iniciar cada chat.
 
 ## Baseline a preservar
 
 ### GitHub/CI
 
-- `main`: `b5caef11ef6e0a84b47101dc63fb1c0d05218e2d`;
-- CI #398: success;
-- PRs abertos: nenhum;
-- Issue aberta: somente #75.
+- referência do gate check integrado: `f0ce56425d9e31aebbc3447112bd05f381fd2ccd`;
+- CI #400: success;
+- PRs abertos após o gate check: nenhum;
+- Issue aberta: somente #75;
+- se `main` estiver em SHA posterior, verificar se é apenas continuidade documental antes de interpretar como nova frente.
 
 ### Supabase
 
@@ -144,7 +150,7 @@ Não criar migration/branch/projeto sem necessidade e autorização.
 - estado `READY`;
 - commit hospedado `62c3af63...`;
 - `/health` saudável;
-- diferença para `main` apenas documental no último gate check.
+- commits posteriores observados são documentais no último gate check.
 
 Não consumir deploy por conveniência.
 
