@@ -236,8 +236,8 @@ Status: inicial, derivado das planilhas e do plano do produto. Requisitos depend
 ## REQ-PLAT-004 — Migrações de banco
 **MUST quando banco for adotado** — Toda mudança estrutural deve ser versionada.
 
-## REQ-PLAT-005 — Backup e restauração
-**MUST antes de produção** — Definir backup automático e testar restauração.
+## REQ-PLAT-005 — Proteção, backup e recuperação de dados
+**MUST antes de produção** — Manter backup automático real de Production, independente de ação humana, em destino off-site protegido, com integridade e retenção verificáveis e restauração testada em ambiente isolado. O produto deve evoluir para expor estado autoritativo da proteção sem transformar confirmação humana em prova de backup. Coberturas distintas, como PostgreSQL e Storage, devem ser declaradas explicitamente; exportações manuais são complementares e não substituem o backup automático.
 
 ## REQ-PLAT-006 — Logs e erros
 **MUST antes de produção** — Erros relevantes devem ser rastreáveis por logs/observabilidade.
