@@ -5,186 +5,163 @@
 **Fase 46 continua concluída e integrada.**  
 A frente ativa continua sendo a Issue #75 / `REQ-PLAT-005 — Proteção, backup e recuperação de dados`.
 
-A slice de **persistência autoritativa dos runs de proteção** foi integrada pelo PR #113 em `main`, validada no CI e aplicada ao Supabase Production pela migration `20260826201252 / protection_run_persistence`.
+Não reimplementar as slices já concluídas de R2, backup PostgreSQL, hard cap, persistência autoritativa ou UI read-only.
 
-A próxima slice é a UI read-only `Proteção dos dados`. Não reimplementar a persistência.
+A slice atual é o PR #115 / branch `agent/data-protection-ui`: `Proteção dos dados` no `RuntimeShell` + `/workspace/backup`.
 
-## Estado vivo no encerramento desta slice
+## GitHub
 
-### GitHub
+- `main` de entrada da slice: `e7aba67845a92a4dbafa9c202aeda01c066d55d2`;
+- esse SHA já passou o CI pós-merge #429 / run `33010676236`;
+- PR #115: `feat(protection): add read-only data protection UI`;
+- CI funcional inicial #430 / run `33011319175`: verde em `database` e `validate`;
+- `inventory-database` e `business-database` do mesmo head também verdes;
+- lint, typecheck, unit tests e production build passaram;
+- o head final após esta reconciliação documental deve permanecer verde antes do merge;
+- Issues abertas relevantes: #75 e #110;
+- repositório continua temporariamente `public`; não alterar automaticamente.
 
-- `main`: `61224515d361607a0a97e0bbab3b9d1bddd3352a` — squash merge do PR #113;
-- PR #113: integrado — `feat(backup): persist authoritative protection runs`;
-- head final do PR `c532f68dfb388bfdc2a8466a9820e13947bd5377`: `database`, `validate`, `inventory-database` e `business-database` verdes;
-- CI pós-merge #427 / run `33009978256` em `main`: `database` e `validate` verdes, incluindo lint, typecheck, unit tests e production build;
-- a branch `agent/protection-run-persistence` é histórica após o merge;
-- Issue #75 permanece aberta;
-- repositório segue temporariamente `public` por decisão operacional do operador; não alterar automaticamente.
+Se o próximo chat encontrar o PR #115 ainda aberto, não reescrever a UI: conferir apenas o head/CI final e integrar se estiver seguro. Se já estiver merged, seguir diretamente `NEXT_ACTION`.
 
-### Supabase Production
+## Supabase Production
 
 Projeto `fhbvwyttikrbeaanatlr`:
 
+- `ACTIVE_HEALTHY`;
 - PostgreSQL 17 / `sa-east-1`;
-- migration final: `20260826201252 / protection_run_persistence`;
-- arquivo versionado do Git foi reconciliado para a mesma versão;
-- objetos novos não colidiram com schema pré-existente;
-- teste hospedado de RLS em transação + rollback passou;
-- nenhum dado sintético de validação permaneceu;
-- security advisors não criaram warning novo ligado à nova persistência;
-- performance advisor marcou apenas o índice novo como ainda não utilizado, esperado enquanto a tabela está vazia.
+- migration final `20260826201252 / protection_run_persistence`;
+- zero development branches na revalidação desta sessão;
+- `public.protection_runs = 0` rows reais.
 
-## O que a slice criou
+Zero rows é legítimo. Não fazer backfill do run histórico `33006253661`.
 
-### Fonte autoritativa
+## Persistência autoritativa — não refazer
 
-`public.protection_runs` guarda metadata sanitizada de:
+`public.protection_runs` + `public.protection_run_organizations` já existem com RLS e boundary privado server-side.
 
-- `automatic_database`;
-- `automatic_storage`;
-- `manual_export`;
-- `restore_drill`.
+- leitura depende de membership ativa;
+- cross-Organization é bloqueado;
+- `authenticated` não muta as tabelas;
+- `service_role` não recebe mutation direta;
+- `private.begin_protection_run(...)` e `private.complete_protection_run(...)` são os comandos autorizados;
+- idempotência ocorre por `execution_reference`.
 
-Estados suportados:
+## UI `Proteção dos dados` implementada
 
-- `running`;
-- `succeeded`;
-- `failed`.
+### Arquivos principais
 
-Também registra início/fim, cópia válida, integridade, tamanho, provider/destino lógico, cobertura, referência de execução, erro sanitizado e timestamps de criação/atualização.
-
-`public.protection_run_organizations` relaciona cada run às Organizations cobertas. O PostgreSQL Production continua produzindo **um único backup global**, sem dump duplicado por Organization.
+- `src/components/runtime-shell.tsx` — link `Proteção dos dados`;
+- `src/app/workspace/(operacao)/backup/page.tsx` — Server Component read-only;
+- `src/modules/protection/adapters/supabase-protection-query.ts` — leitura escopada por Organization/RLS;
+- `src/modules/protection/application/protection-summary.ts` — política de RPO/saúde;
+- `src/modules/protection/application/protection-summary.test.ts` — testes de estados e ordenação.
 
 ### Segurança
 
-- RLS está habilitada nas duas tabelas;
-- membro ativo lê somente runs que cobrem sua Organization;
-- tabela de relação também filtra por Organization;
-- `authenticated` não possui INSERT/UPDATE/DELETE;
-- `authenticated` não executa os comandos privados de mutation;
-- `service_role` também não possui mutation direta das tabelas;
-- escrita autorizada ocorre somente por:
-  - `private.begin_protection_run(...)`;
-  - `private.complete_protection_run(...)`;
-- os comandos são idempotentes por `execution_reference`;
-- replay divergente é rejeitado;
-- nenhuma credencial, connection string, dump, token ou conteúdo sensível é persistido.
+A página usa `createServerSupabaseClient()` com a sessão autenticada existente.
 
-### Workflow
+Ela **não** usa `createServerAdminSupabaseClient()`, não leva `service_role` ao browser e não cria endpoint de mutation.
 
-`.github/workflows/production-backup.yml` agora:
+A query primeiro filtra `protection_run_organizations` pela Organization selecionada e depois lê os runs correspondentes. Não seleciona nem exibe:
 
-1. abre o run autoritativo antes da exportação;
-2. executa dump/package/checksums/manifesto;
-3. envia ao R2 e revalida remotamente;
-4. limpa o material temporário;
-5. só depois finaliza `succeeded` com evidência sanitizada;
-6. em falha, tenta finalizar `failed` e mantém o incidente GitHub-native.
+- `execution_reference`;
+- GitHub run IDs/URLs;
+- bucket/endpoint físico;
+- secrets;
+- connection strings;
+- conteúdo do dump;
+- erro bruto.
 
-A automação é fail-closed: falha de persistência autoritativa impede um sucesso enganoso do job.
+### Estados
 
-## Validação realizada
+A regra visual é testada de forma pura:
 
-### CI
+- verde: PostgreSQL `succeeded` + integridade positiva + `valid_copy_at` dentro do RPO 24h;
+- âmbar: histórico inicial vazio ou execução transitória dentro da política;
+- vermelho: falha persistida ou ausência/cópia válida fora do RPO.
 
-A suíte `supabase/tests/protection_runs.sql` provou:
+A tela declara expressamente que Supabase Storage/anexos ainda não estão cobertos.
 
-- start/finalização idempotentes;
-- run global relacionado a múltiplas Organizations;
-- leitura autorizada;
-- cross-Organization negado;
-- outsider negado;
-- anon negado;
-- INSERT/UPDATE/DELETE por usuário comum negados;
-- RPC privada negada a `authenticated`;
-- `service_role` com EXECUTE dos comandos, mas sem mutation direta.
+## Validação da UI
 
-Além do CI funcional inicial, o head final do PR passou todos os checks aplicáveis e o push do merge em `main` passou o CI #427 integralmente.
+CI #430 comprovou:
 
-### Production hospedado
+- migrations/schema/RLS/hardening verdes;
+- `supabase/tests/protection_runs.sql` verde;
+- lint verde;
+- typecheck verde;
+- testes unitários verdes;
+- production build verde;
+- integrações de inventário e transações verdes.
 
-Foi feita validação não destrutiva em transação com rollback:
+Não houve migration nem DML para a UI.
 
-- um membro ativo leu um run sintético coberto;
-- o mesmo contexto autenticado não conseguiu inserir diretamente;
-- um UUID outsider não leu o run;
-- rollback removeu todo material sintético.
+## Backup real já existente
 
-Privilégios hospedados confirmados:
+O primeiro backup PostgreSQL Production real continua sendo o run histórico `33006253661`, criado em `2026-08-26T19:40:47Z`, com `53185` bytes, checksums/manifesto verificados e re-download/rehash off-site bem-sucedidos.
 
-- `service_role`: EXECUTE nos dois comandos privados;
-- `service_role`: sem INSERT/UPDATE direto em `protection_runs`;
-- `authenticated`: sem EXECUTE nos comandos;
-- `authenticated`: sem INSERT direto;
-- `authenticated`: SELECT sujeito à RLS.
+Ele aconteceu antes da persistência autoritativa e não deve ser backfillado.
 
-## Estado inicial importante
+## Issue #110 / restore drill
 
-No momento da validação, `public.protection_runs` possui **0 rows**.
+Issue #110 permanece aberta: `[backup-alert] Monthly restore drill failing`.
 
-Isso é correto: o workflow com persistência ainda não teve uma execução real pós-integração. Não inserir manualmente o backup histórico `33006253661` para “preencher” a UI; ele aconteceu antes do novo boundary e deve permanecer apenas como evidência histórica documental/GitHub-native.
+O run `33000481649` falhou em `2026-08-26T18:35:37Z` porque a etapa de download não encontrou nenhum archive Production no namespace off-site. Isso ocorreu **antes** do primeiro backup real, criado às `2026-08-26T19:40:47Z`.
 
-A primeira execução real futura do workflow integrado deve gerar o primeiro registro autoritativo automaticamente.
+O workflow atual `.github/workflows/backup-restore-drill.yml` também não é uma prova end-to-end do bundle real:
 
-## Backup PostgreSQL já comprovado antes desta slice
+1. baixa e valida o bundle Production real;
+2. cria separadamente um banco sintético com migrations + seed;
+3. `scripts/verify-backup-restore.sh` gera um novo dump desse banco sintético;
+4. restaura esse dump sintético em outro banco local.
 
-- run `33006253661`;
-- archive `lojasaph-production-20260826T194047Z-33006253661.tar.gz`;
-- `53185` bytes;
-- hard cap `300000000` bytes;
-- R2 upload + re-download + SHA-256 OK;
-- lifecycle 30 dias + Bucket Lock 30 dias já configurados;
-- Issue #111 de incidente já foi fechada após recuperação.
+Portanto, mesmo um run verde do workflow atual prova download/integridade do bundle real + regressão sintética de pg_dump/pg_restore, mas **não prova que roles/schema/data do bundle Production baixado restauram end-to-end**.
 
-Não repetir configuração/provisionamento sem regressão concreta.
+Warnings conhecidos do dump Production:
 
-## Warning para restore
+- constraints circulares em `stock_movements`;
+- constraints circulares em `payments`.
 
-O dump real anterior reportou constraints circulares em:
+## Próxima ação exata
 
-- `stock_movements`;
-- `payments`.
-
-Não declarar restore Production end-to-end comprovado. A prova real de restore ainda precisa acontecer em destino isolado e compatível.
-
-## Próxima slice exata
-
-**UI read-only `Proteção dos dados`.**
+**Evoluir e comprovar o restore drill real em ambiente isolado, reconciliando a Issue #110.**
 
 O próximo chat deve:
 
 1. ler `AGENTS.md`, `START-HERE`, `CURRENT_STATE`, este `HANDOFF`, `NEXT_ACTION`, ADR-009 e runbook;
-2. conferir GitHub/CI/Supabase reais antes de alterar código;
-3. verificar se já apareceu um run autoritativo real; se não, tratar zero rows como estado vazio legítimo;
-4. abrir Issue/branch/PR conforme workflow se necessário dentro da #75;
-5. adicionar acesso no `RuntimeShell` e rota `/workspace/backup`;
-6. consumir somente a fonte autoritativa existente sob RLS;
-7. mostrar estado/cópia válida/integridade/cobertura/retenção/histórico/restore drill apenas quando os dados existirem;
-8. não inferir sucesso a partir de cron/GitHub Actions e não backfillar manualmente run antigo;
-9. manter a slice read-only — nenhuma mutation operacional de backup no browser;
-10. provar estados vazio/sucesso/falha e isolamento, além de lint/typecheck/test/build;
-11. integrar somente com CI verde.
+2. conferir `main`, PRs, Issues e CI reais;
+3. conferir se PR #115 já foi integrado; se não, apenas completar o merge seguro sem reimplementar a UI;
+4. revalidar Issue #110 e o workflow `Backup Restore Drill`;
+5. como a falha anterior ocorreu antes da existência do archive, executar no máximo uma nova prova controlada do workflow atual para confirmar que download/checksums agora avançam;
+6. não tratar esse verde isolado como restore Production end-to-end;
+7. implementar a restauração do **bundle Production baixado** em PostgreSQL 17/destino isolado compatível, sem tocar Production;
+8. tratar explicitamente ordem de roles/schema/data, triggers/FKs e os warnings de `stock_movements`/`payments`;
+9. registrar `restore_drill` na fonte autoritativa por boundary server-side, sem mutation cliente;
+10. fechar/auto-resolver #110 somente após recuperação comprovada;
+11. atualizar documentação e integrar apenas com CI verde.
 
-## O que ainda falta na #75
+## Ainda falta na Issue #75
 
-1. UI `Proteção dos dados`;
-2. primeira execução real pós-integração persistida automaticamente;
-3. backup dos binários do Supabase Storage/anexos;
-4. restore real do backup Production em ambiente isolado compatível;
-5. exportação manual complementar por Organization, se mantida;
-6. evidência final suficiente para fechar #75;
-7. retorno do repositório a `private` quando o operador decidir encerrar a fase temporária de CI público.
+- primeiro backup pós-integração gravado automaticamente na fonte autoritativa;
+- restore end-to-end do bundle Production real em destino isolado;
+- evidência autoritativa de restore drill;
+- backup dos binários de Supabase Storage/anexos;
+- exportação manual complementar, se mantida;
+- fechamento final com cobertura declarada corretamente;
+- retorno do repositório a `private` quando o operador decidir.
 
-## Restrições importantes
+## Restrições
 
-- não refazer a migration/persistência já concluída;
-- não backfillar `33006253661` manualmente;
-- não reprovisionar R2 nem recriar tokens/secrets sem motivo concreto;
+- não refazer a UI do PR #115;
+- não refazer a migration/persistência;
+- não backfillar `33006253661`;
+- não reprovisionar R2/secrets sem regressão concreta;
 - não pedir secrets no chat;
-- não manipular `storage.*` diretamente por SQL para copiar arquivos;
-- não declarar Storage/anexos cobertos pelo dump PostgreSQL;
 - não restaurar Production para teste;
+- não declarar Storage protegido pelo dump PostgreSQL;
+- não manipular `storage.*` diretamente por SQL para copiar binários;
+- não expor infraestrutura/secrets na UI;
 - não voltar a Drive/rclone/Gmail;
-- não remover/reduzir o hard cap de 300 MB;
-- não retornar o repositório para private automaticamente;
-- não reabrir Fases 41–45 sem regressão concreta.
+- não remover o hard cap de 300 MB;
+- não tornar o repositório private automaticamente;
+- não gastar deploy Vercel para validar esta slice se o fluxo do projeto continuar bloqueado/limitado.

@@ -17,6 +17,7 @@ const links = [
   { href: "/workspace/compras", label: "Compras" },
   { href: "/workspace/financeiro", label: "Financeiro" },
   { href: "/workspace/caixa", label: "Caixa" },
+  { href: "/workspace/backup", label: "Proteção dos dados" },
 ];
 
 export function RuntimeShell({
