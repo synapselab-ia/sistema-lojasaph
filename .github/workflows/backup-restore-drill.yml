@@ -29,7 +29,7 @@ env:
   SUPABASE_CLI_VERSION: "2.111.0"
   SUPABASE_PROJECT_REF: fhbvwyttikrbeaanatlr
   SUPABASE_POSTGRES_VERSION: "17.6.1.141"
-  SUPABASE_STORAGE_VERSION: "1.70.7"
+  SUPABASE_STORAGE_VERSION: "v1.70.7"
   SUPABASE_STORAGE_REQUIRED_MIGRATION: "64"
   PROTECTION_EXECUTION_REFERENCE: github-actions:backup-restore-drill:${{ github.run_id }}:${{ github.run_attempt }}
   PROTECTION_TYPE: restore_drill
