@@ -3,6 +3,8 @@ set -euo pipefail
 
 MODE="${1:-}"
 EXECUTION_REFERENCE="${PROTECTION_EXECUTION_REFERENCE:-}"
+PROTECTION_TYPE="${PROTECTION_TYPE:-automatic_database}"
+COVERAGE="${PROTECTION_COVERAGE:-postgres}"
 PROVIDER="${PROTECTION_PROVIDER:-cloudflare_r2}"
 DESTINATION="${PROTECTION_DESTINATION:-s3_compatible_offsite}"
 
@@ -23,6 +25,22 @@ if [[ "${EXECUTION_REFERENCE}" == *$'\n'* || "${EXECUTION_REFERENCE}" == *$'\r'*
   echo "::error::Protection execution reference contains invalid control characters."
   exit 1
 fi
+
+case "${PROTECTION_TYPE}" in
+  automatic_database|automatic_storage|manual_export|restore_drill) ;;
+  *)
+    echo "::error::Unsupported protection run type." >&2
+    exit 1
+    ;;
+esac
+
+case "${COVERAGE}" in
+  postgres|storage|organization_export) ;;
+  *)
+    echo "::error::Unsupported protection coverage." >&2
+    exit 1
+    ;;
+esac
 
 run_psql() {
   if command -v psql >/dev/null 2>&1; then
@@ -48,12 +66,14 @@ case "${MODE}" in
       -v ON_ERROR_STOP=1 \
       -qAt \
       -v execution_reference="${EXECUTION_REFERENCE}" \
+      -v protection_type="${PROTECTION_TYPE}" \
+      -v coverage="${COVERAGE}" \
       -v provider="${PROVIDER}" \
       -v destination="${DESTINATION}" <<'SQL'
 select private.begin_protection_run(
   :'execution_reference',
-  'automatic_database',
-  'postgres',
+  :'protection_type',
+  :'coverage',
   :'provider',
   :'destination'
 );
@@ -93,13 +113,13 @@ SQL
     ;;
 
   failure)
-    ERROR_SUMMARY="${2:-Automatic PostgreSQL backup failed before verified off-site completion.}"
+    ERROR_SUMMARY="${2:-Protection run failed before verified completion.}"
     ERROR_SUMMARY="${ERROR_SUMMARY//$'\n'/ }"
     ERROR_SUMMARY="${ERROR_SUMMARY//$'\r'/ }"
     ERROR_SUMMARY="${ERROR_SUMMARY:0:500}"
 
     if [[ -z "${ERROR_SUMMARY//[[:space:]]/}" ]]; then
-      ERROR_SUMMARY="Automatic PostgreSQL backup failed before verified off-site completion."
+      ERROR_SUMMARY="Protection run failed before verified completion."
     fi
 
     run_psql \
