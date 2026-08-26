@@ -1,311 +1,296 @@
 # Proteção, backup, restauração e recuperação operacional
 
 Data da revisão: 2026-08-26  
-Status: **backup automático PostgreSQL Production ativo e comprovado off-site; persistência autoritativa implementada; cobertura completa ainda em andamento**  
+Status: **backup PostgreSQL Production off-site + persistência autoritativa + UI read-only implementados; restore end-to-end e Storage ainda pendentes**  
 Requisito: `REQ-PLAT-005`  
 Issue: #75  
 ADR: `ADR-009 — Proteção, backup e recuperação de dados`
 
 ## Objetivo
 
-Manter uma estratégia de recuperação de Production automática, independente de ação humana, verificável e armazenada fora do Supabase Production, além de tornar o estado da proteção compreensível dentro do Sistema Lojasaph.
+Manter recuperação de Production automática, independente de ação humana, verificável e armazenada fora do Supabase Production, além de tornar o estado da proteção compreensível dentro do Sistema Lojasaph.
 
-A política possui três camadas:
+Camadas:
 
-1. **backup automático de recuperação** — fonte principal de disaster recovery;
-2. **persistência + observabilidade `Proteção dos dados`** — fonte autoritativa por Organization;
-3. **exportação manual complementar** — cópia adicional sob custódia do cliente, sem substituir o automático.
+1. backup automático de recuperação;
+2. persistência autoritativa + observabilidade `Proteção dos dados`;
+3. restore drill isolado recorrente;
+4. futura exportação manual complementar.
 
 ## Política operacional
 
 - RPO: 24 horas;
-- cadência automática: diária;
+- backup automático: diário;
 - workflow: cron `17 6 * * *` + `workflow_dispatch`;
 - RTO objetivo: até 4 horas em condição operacional normal;
 - retenção: 30 dias;
 - restore drill: mensal e isolado;
 - Production nunca é restaurado para teste;
 - atraso de backup não bloqueia automaticamente mutations do negócio;
-- provider/custo externo exige autorização do operador antes do provisionamento.
+- provider/custo externo exige autorização do operador.
 
 ## Estado operacional atual
 
 ### Supabase Production
 
-- projeto: `fhbvwyttikrbeaanatlr`;
-- região: `sa-east-1`;
+- projeto `fhbvwyttikrbeaanatlr`;
+- região `sa-east-1`;
 - PostgreSQL 17;
-- `PRODUCTION_SUPABASE_DB_URL` usa Session pooler porta 5432;
-- conexão foi comprovada pelo backup real de 2026-08-26;
-- migration atual de proteção: `20260826201252 / protection_run_persistence`;
-- migrations versionadas no GitHub continuam fonte de verdade do schema do produto.
+- Session pooler 5432 comprovado pelo backup real;
+- migration `20260826201252 / protection_run_persistence`;
+- `public.protection_runs = 0` rows reais na última revalidação;
+- migrations versionadas continuam fonte de verdade do schema.
 
-### Cloudflare R2
+Zero rows é estado inicial legítimo. Não backfillar o backup histórico anterior ao boundary autoritativo.
 
-Cloudflare R2 foi autorizado e provisionado pelo operador em 2026-08-26.
+### Storage off-site
 
-Configuração operacional:
+Cloudflare R2 foi autorizado/provisionado pelo operador.
 
-- bucket privado `lojasaph-production-backups`;
-- prefixo `production/postgres`;
-- region `auto`;
+Controles ativos:
+
+- bucket privado dedicado a Production;
+- namespace `production/postgres`;
 - sem public access/CORS de navegador;
 - lifecycle 30 dias;
-- Bucket Lock 30 dias no namespace de Production;
-- token `Object Read & Write` limitado ao bucket;
-- credenciais armazenadas somente em GitHub Actions Secrets;
+- Bucket Lock 30 dias;
+- token limitado ao bucket;
+- credenciais somente em GitHub Actions Secrets;
 - `BACKUP_AUTOMATION_ENABLED=true`.
 
-Nunca registrar os valores de Secrets, connection strings ou conteúdo do dump em documentação, Issue, PR ou chat.
+Não registrar secrets, connection strings, endpoints sensíveis ou conteúdo do dump em documentação, Issue, PR ou chat.
 
 ## Primeira prova Production real
 
-Primeiro backup real comprovado:
+Backup real comprovado em 2026-08-26:
 
-- workflow: `Production Database Backup`;
-- run id: `33006253661`;
-- timestamp de criação do archive: `2026-08-26T19:40:47Z`;
-- conclusão: `success`;
-- archive: `lojasaph-production-20260826T194047Z-33006253661.tar.gz`;
-- tamanho: `53185` bytes;
-- hard cap pré-upload: `300000000` bytes;
-- checksums internos: OK;
-- manifesto: OK;
-- upload R2: OK;
-- existência remota: OK;
-- download pós-upload + SHA-256: OK;
-- cleanup local do runner: OK;
-- incidente #111: fechado automaticamente após a recuperação verde.
+- workflow `Production Database Backup`;
+- run `33006253661`;
+- archive criado em `2026-08-26T19:40:47Z`;
+- tamanho `53185` bytes;
+- hard cap `300000000` bytes;
+- checksums internos OK;
+- manifesto OK;
+- upload off-site OK;
+- existência remota OK;
+- re-download + SHA-256 OK;
+- cleanup do runner OK;
+- Issue #111 fechada após recuperação.
 
-Esse run antecede a persistência autoritativa. Ele permanece evidência histórica válida do backup off-site, mas **não deve ser inserido manualmente** em `protection_runs` como se tivesse sido produzido pelo novo processo.
+Esse run antecede a persistência autoritativa e **não deve ser inserido manualmente** em `protection_runs`.
 
-As tentativas anteriores falharam antes do upload por configuração da connection string. Elas não são backups válidos.
+## Exportador e bundle
 
-## Exportador lógico
-
-`scripts/export-supabase-backup.sh` produz fora do repositório:
-
-- `roles.sql`;
-- `schema.sql`;
-- `data.sql`;
-- `SHA256SUMS`.
-
-O helper usa diretório temporário protegido, recusa escrita dentro do Git e valida hashes antes de retornar sucesso.
-
-## Bundle off-site
-
-Cada execução válida produz quatro objetos:
-
-1. `lojasaph-production-<timestamp>-<run-id>.tar.gz`;
-2. `<archive>.sha256`;
-3. `<archive>.manifest.json`;
-4. `<archive>.manifest.json.sha256`.
-
-O archive contém:
+`scripts/export-supabase-backup.sh` produz fora do Git:
 
 - `roles.sql`;
 - `schema.sql`;
 - `data.sql`;
 - `SHA256SUMS`;
-- `BACKUP_METADATA.txt`.
+- metadata não sensível.
 
-`scripts/backup-bundle.py` cria e verifica manifesto v1 do formato `lojasaph-postgres-logical-backup` com metadata não sensível.
+Cada execução válida gera archive + checksum + manifesto + checksum do manifesto.
 
-## Hard cap de custo/segurança
+Antes do upload:
 
-Antes de checksum externo, manifesto e upload off-site, o workflow mede o `.tar.gz` comprimido.
+- validar hashes internos;
+- medir archive;
+- falhar se exceder `300000000` bytes.
 
-- limite: `300000000` bytes decimais;
-- se exceder: workflow falha antes do upload;
-- incidente operacional é registrado;
-- nenhum bundle parcial deve ser enviado ao R2.
+Após upload:
 
-O limite é por archive; não é teto matemático de uso agregado do bucket.
+1. confirmar objetos remotos;
+2. rebaixar/re-hashear;
+3. remover material temporário;
+4. só então finalizar a evidência autoritativa como `succeeded`.
 
-## Verificação pós-upload
+Não usar ETag como prova de conteúdo e não enviar dump real para GitHub Artifact.
 
-Um backup só pode avançar para sucesso depois de:
-
-1. validar checksums internos;
-2. validar `.sha256` do archive local;
-3. validar o manifesto local;
-4. enviar archive + sidecars ao R2 pelo contrato S3-compatible;
-5. confirmar os objetos remotos;
-6. baixar novamente os objetos e comparar SHA-256;
-7. remover o material temporário local;
-8. finalizar o run autoritativo como `succeeded`.
-
-Não confiar em ETag como prova de conteúdo.
-
-Nenhum dump real é enviado para GitHub Artifact ou versionado no repositório.
-
-## Retenção e exclusão
+## Retenção
 
 A automação não apaga backups antigos por idade.
 
-A retenção de 30 dias é aplicada pelo provider:
+Retenção ocorre no provider por lifecycle + lock. A credencial do runner não deve assumir responsabilidade por deleção periódica.
 
-- lifecycle de expiração;
-- Bucket Lock durante a janela de retenção;
-- credencial do runner limitada ao bucket.
+## Incidentes GitHub-native
 
-Lock prevalece enquanto ativo; lifecycle remove objetos somente quando a política permitir.
+`scripts/sync-backup-incident.py` mantém incidente persistente/idempotente:
 
-## Alertas GitHub-native
-
-`scripts/sync-backup-incident.py` usa o `GITHUB_TOKEN` efêmero para manter incidente persistente/idempotente:
-
-- primeira falha abre Issue operacional;
+- primeira falha abre Issue;
 - falhas seguintes atualizam a mesma Issue;
-- o mesmo run/attempt não duplica evento;
-- recuperação verde registra o run e fecha o incidente;
-- nenhum secret ou conteúdo de backup é incluído.
+- recuperação registra o run e fecha o incidente;
+- nenhum secret/conteúdo de backup é incluído.
 
-A sequência falha → recuperação foi comprovada pela Issue #111.
+A sequência falha → recuperação do backup automático foi comprovada pela Issue #111.
 
-## Fonte autoritativa de estado — implementada
+## Fonte autoritativa
 
-Migration Production:
+Migration:
 
 `20260826201252 / protection_run_persistence`
 
-### `public.protection_runs`
+### Tabelas
 
-Registra metadata operacional sanitizada:
+- `public.protection_runs`;
+- `public.protection_run_organizations`.
 
-- tipo: `automatic_database`, `automatic_storage`, `manual_export`, `restore_drill`;
-- status: `running`, `succeeded`, `failed`;
-- início/fim;
-- `valid_copy_at`;
-- `integrity_verified`;
-- `size_bytes` quando aplicável;
-- provider/destino lógico;
-- cobertura;
-- referência não sensível de execução;
-- `error_summary` sanitizado;
-- `created_at`/`updated_at`.
+Tipos de run:
 
-Constraints impedem sucesso inconsistente: `succeeded` exige cópia válida, integridade positiva e tamanho conhecido; `failed` exige erro sanitizado.
+- `automatic_database`;
+- `automatic_storage`;
+- `manual_export`;
+- `restore_drill`.
 
-### `public.protection_run_organizations`
+Estados:
 
-Relaciona o run às Organizations cobertas.
+- `running`;
+- `succeeded`;
+- `failed`.
 
-O backup PostgreSQL Production é global por database/environment. Não criar dump físico separado por Organization apenas para alimentar a UI.
-
-### RLS e boundary de mutation
+### Segurança
 
 - `authenticated` possui SELECT sujeito à RLS;
-- um run só é legível quando cobre Organization da qual o usuário é membro ativo;
-- a relação run↔Organization também é filtrada por membership;
-- `authenticated` não possui INSERT/UPDATE/DELETE nas tabelas;
-- `authenticated` não executa os comandos privilegiados;
+- membership ativa é obrigatória;
+- cross-Organization é bloqueado;
+- `authenticated` não possui INSERT/UPDATE/DELETE;
+- `authenticated` não executa comandos privados;
 - `service_role` também não possui mutation direta das tabelas;
-- mutation ocorre somente por:
-  - `private.begin_protection_run(...)`;
-  - `private.complete_protection_run(...)`;
-- ambos usam `execution_reference` para idempotência e rejeitam replay divergente.
+- mutation ocorre somente por `private.begin_protection_run(...)` e `private.complete_protection_run(...)`;
+- idempotência por `execution_reference`.
 
-A validação em CI cobriu leitura permitida, cross-Organization negado, outsider/anon negados, mutation negada e idempotência.
+CI e teste hospedado com rollback comprovaram leitura autorizada, outsider bloqueado e mutation comum bloqueada.
 
-Também foi executado teste hospedado em Production dentro de transação com `ROLLBACK`; leitura autorizada, bloqueio de INSERT autenticado e bloqueio de outsider passaram sem deixar dados de teste.
+## Integração do backup automático
 
-Security advisors não reportaram warning novo associado a essa persistência. Performance advisor marcou `protection_runs_recent_idx` como ainda não utilizado, esperado enquanto a tabela estava recém-criada e vazia.
+`scripts/record-protection-run.sh` é o adapter server-side atual para `automatic_database`.
 
-## Integração do workflow com a fonte autoritativa
+`.github/workflows/production-backup.yml`:
 
-`scripts/record-protection-run.sh` é o adapter server-side.
+1. valida configuração/tooling;
+2. abre run autoritativo;
+3. exporta/package/checksums/manifesto;
+4. envia e revalida off-site;
+5. limpa runner;
+6. finaliza `succeeded` somente após prova completa;
+7. em falha, tenta persistir `failed` com resumo sanitizado;
+8. mantém incidente GitHub-native.
 
-`.github/workflows/production-backup.yml` agora:
+O fluxo é fail-closed.
 
-1. valida configuração e tooling;
-2. chama `begin_protection_run` antes do dump;
-3. executa export/package/checksums/manifesto;
-4. faz upload e revalidação remota;
-5. limpa o runner;
-6. em sucesso, chama `complete_protection_run(..., 'succeeded', ...)` com timestamp/tamanho/integridade;
-7. em falha, tenta persistir `failed` com resumo fixo/sanitizado;
-8. mantém o incidente GitHub-native em paralelo.
+## UI `Proteção dos dados` — implementada no PR #115
 
-O desenho é fail-closed: falha ao abrir/finalizar a evidência autoritativa impede um sucesso enganoso do workflow.
+### Acesso
 
-No fim da implementação, `protection_runs` ainda possuía `0` rows reais porque nenhuma execução do workflow integrado tinha ocorrido. Não fabricar histórico; a primeira execução real pós-integração deve inaugurar a tabela automaticamente.
-
-## Experiência `Proteção dos dados` — próxima slice
-
-A próxima slice deve criar:
-
-- link `Proteção dos dados` no `RuntimeShell`;
+- link no `RuntimeShell`;
 - rota `/workspace/backup`;
-- leitura exclusivamente da fonte autoritativa sob RLS;
-- estado vazio legítimo;
-- última cópia válida;
-- status/integridade/cobertura;
-- histórico recente;
-- restore drill quando existir;
-- semântica verde/âmbar/vermelho baseada nos dados persistidos + RPO 24h;
-- retenção/política claramente separadas da evidência de execução.
+- Server Component read-only;
+- usa a sessão Supabase autenticada existente;
+- não usa cliente admin no browser.
 
-A UI não deve inferir sucesso pelo cron, não deve fazer backfill do run antigo e não deve expor GitHub internals ou credenciais.
+### Escopo
 
-Esta primeira UI deve ser read-only; iniciar/repetir backup pelo browser fica fora de escopo.
+A consulta:
 
-## Restore drill mensal
+1. filtra `protection_run_organizations` pela Organization selecionada;
+2. lê somente os runs correspondentes ainda sujeitos à RLS;
+3. não seleciona `execution_reference` nem detalhes internos desnecessários.
 
-`.github/workflows/backup-restore-drill.yml` é mensal e usa o mesmo contrato S3-compatible.
+### Estado visual
 
-Ele deve:
+- verde: PostgreSQL `succeeded` + integridade positiva + `valid_copy_at` dentro de 24h;
+- âmbar: histórico inicial vazio ou transição;
+- vermelho: falha persistida ou cópia ausente/vencida além do RPO.
 
-1. localizar o bundle Production mais recente;
-2. baixar archive + sidecars;
-3. validar checksums e manifesto;
-4. extrair em ambiente isolado;
-5. validar `SHA256SUMS` internos;
-6. executar regressão/restauração em PostgreSQL 17 isolado;
-7. nunca restaurar nem alterar Production.
+A página mostra política/retention separadamente da evidência de execução e declara que Storage/anexos ainda não estão cobertos.
 
-A infraestrutura de download/validação existe, mas **restaurabilidade end-to-end do backup Production ainda não deve ser declarada como comprovada**.
+Como Production continua com zero rows autoritativas, o estado inicial esperado é âmbar e vazio.
 
-### Warning conhecido para restore
+## Restore drill mensal — gap atual
 
-No primeiro dump real, `pg_dump` avisou sobre constraints circulares em:
+Workflow:
+
+`.github/workflows/backup-restore-drill.yml`
+
+Issue operacional aberta:
+
+#110 — `[backup-alert] Monthly restore drill failing`
+
+### Por que o primeiro run falhou
+
+O run `33000481649`, em `2026-08-26T18:35:37Z`, falhou na etapa de download porque ainda não existia archive Production no storage off-site.
+
+O primeiro archive real só foi produzido depois, em `2026-08-26T19:40:47Z`.
+
+Portanto, a causa daquele run não prova defeito de credencial nem de restore.
+
+### Limitação arquitetural do workflow atual
+
+O workflow hoje:
+
+1. localiza e baixa o bundle Production real;
+2. valida archive/manifesto/checksums;
+3. extrai o bundle real;
+4. **separadamente**, aplica migrations + seed em um banco sintético;
+5. chama `scripts/verify-backup-restore.sh`;
+6. esse helper faz `pg_dump` do banco sintético e restaura esse novo dump em outro banco local.
+
+Isso comprova integridade/download do bundle real e uma regressão sintética de dump/restore, mas **não restaura roles/schema/data do bundle Production baixado**.
+
+Não declarar restaurabilidade Production end-to-end enquanto esse gap existir.
+
+### Próxima evolução do drill
+
+A próxima slice deve:
+
+1. opcionalmente executar uma única nova prova do workflow atual, porque agora existe archive, para confirmar download/checksums e reconciliar a causa histórica da #110;
+2. não encerrar a slice apenas porque esse run ficar verde;
+3. restaurar o bundle Production real em PostgreSQL 17/destino isolado;
+4. aplicar sequência apropriada de roles/schema/data;
+5. tratar extensões/ownership/roles incompatíveis explicitamente;
+6. tratar os warnings de constraints circulares em `stock_movements` e `payments`;
+7. executar smoke tests no banco restaurado;
+8. persistir `restore_drill` na fonte autoritativa;
+9. nunca tocar Production;
+10. manter/fechar #110 apenas conforme resultado real.
+
+## Warning conhecido de FK/ciclos
+
+O primeiro dump real reportou constraints circulares em:
 
 - `stock_movements`;
 - `payments`.
 
-A trilha de restore real isolado deve verificar explicitamente essas tabelas e usar sequência compatível com Supabase/PostgreSQL para triggers/FKs. Não modificar Production para esse teste.
+A restauração real deve validar essas tabelas explicitamente e não silenciar perda/erro de FK ou trigger.
 
-## Cobertura atual
+## Cobertura
 
 ### PostgreSQL
 
-**Comprovado:** backup lógico Production, off-site, re-hash pós-upload e persistência autoritativa para runs futuros.
+**Comprovado:** backup lógico Production, off-site, re-hash pós-upload, persistência autoritativa para runs automáticos e UI read-only.
 
-Migrations ajudam a reconstruir schema, mas não substituem os dados.
+**Ainda não comprovado:** restauração end-to-end do bundle Production real.
 
 ### Auth
 
-Auth utiliza PostgreSQL internamente, mas recuperação completa do projeto Supabase também pode exigir reconfiguração de providers, API keys e outros elementos externos. Não descrever o dump SQL como clone integral da plataforma.
+O dump SQL não representa automaticamente todas as configurações externas do projeto Supabase. Providers, API keys e outros elementos podem exigir reconfiguração.
 
-### Supabase Storage / anexos
+### Supabase Storage/anexos
 
-**Ainda não coberto pelos binários.**
-
-Backups do banco não incluem os objetos binários armazenados pela Storage API. `REQ-FIN-008` já usa anexos financeiros.
+**Binários ainda não cobertos.**
 
 Antes de declarar cobertura completa:
 
-1. inventariar buckets usados pelo Lojasaph;
-2. copiar objetos off-site sem manipular `storage.*` diretamente por SQL;
-3. preservar keys/checksums/inventário para reconciliar metadata e objeto;
-4. testar recuperação em destino isolado;
-5. refletir a cobertura real na UI.
+1. inventariar buckets usados;
+2. copiar objetos off-site via APIs apropriadas;
+3. preservar keys/checksums/inventário;
+4. testar recuperação isolada;
+5. refletir cobertura real na UI.
 
-Até lá, usar a expressão **backup PostgreSQL**, não “backup completo dos anexos”.
+Não manipular `storage.*` diretamente por SQL para copiar arquivos.
 
 ## Exportação manual complementar
 
-Permanece para slice posterior e não entra no RPO automático.
+Permanece posterior/opcional e não entra no RPO automático.
 
 Se implementada:
 
@@ -314,55 +299,51 @@ Se implementada:
 - formato versionado;
 - manifesto/checksum;
 - audit trail;
-- sem secrets/material de autenticação;
+- sem secrets;
 - sem cross-Organization.
 
-## Runbook de restauração real
-
-Em incidente real:
+## Runbook de restauração real em incidente
 
 1. identificar o backup válido mais recente;
 2. validar sidecars/manifesto/checksums;
 3. extrair em diretório protegido;
 4. provisionar destino PostgreSQL/Supabase novo e isolado compatível;
-5. restaurar roles/schema/data conforme documentação vigente do Supabase;
-6. tratar explicitamente constraints/triggers/FKs e validar `stock_movements`/`payments`;
-7. reconfigurar componentes externos necessários;
-8. restaurar/reconciliar Storage separadamente quando essa trilha existir;
-9. validar migrations, extensões, funções, triggers, índices, RLS e grants;
-10. reconciliar dados operacionais críticos;
+5. restaurar roles/schema/data conforme orientação vigente;
+6. tratar extensões, ownership, triggers e FKs;
+7. validar `stock_movements` e `payments` explicitamente;
+8. reconfigurar componentes externos necessários;
+9. restaurar/reconciliar Storage separadamente quando essa trilha existir;
+10. validar migrations, funções, triggers, índices, RLS e grants;
 11. executar smoke tests não destrutivos;
 12. decidir cutover somente após aceite;
 13. preservar Production original sempre que possível.
 
-O RTO de até 4h é objetivo operacional, não garantia do provedor.
+RTO até 4h é objetivo operacional, não garantia de provedor.
 
 ## Sequência restante da Issue #75
 
-1. ADR-009 / arquitetura — concluído;
+1. arquitetura — concluída;
 2. transporte S3-compatible — concluído;
-3. Cloudflare R2 / lifecycle / lock / credentials — concluído;
-4. hard cap 300 MB — concluído;
-5. primeiro backup PostgreSQL real e integridade off-site — concluído;
-6. persistência autoritativa e histórico — **concluído**;
-7. UI `Proteção dos dados` — **próxima slice**;
-8. backup de Supabase Storage/anexos;
-9. restore real isolado com cobertura disponível;
+3. R2/lifecycle/lock — concluídos;
+4. hard cap — concluído;
+5. primeiro backup PostgreSQL real — concluído;
+6. persistência autoritativa — concluída;
+7. UI `Proteção dos dados` — implementada/PR #115;
+8. restore real isolado + `restore_drill` autoritativo — **próxima slice**;
+9. backup de Supabase Storage/anexos;
 10. exportação manual complementar, se mantida;
-11. fechar #75 somente com evidência suficiente e cobertura declarada corretamente.
+11. fechar #75 somente com evidência suficiente e cobertura correta.
 
 ## Segurança / não fazer
 
-- não pedir nem receber secrets no chat;
+- não pedir/receber secrets no chat;
 - não armazenar backup real em Git/GitHub Artifact;
-- não reprovisionar R2 sem motivo concreto;
-- não backfillar manualmente o run `33006253661` em `protection_runs`;
+- não reprovisionar R2 sem regressão concreta;
+- não backfillar `33006253661`;
 - não restaurar Production para teste;
-- não considerar confirmação humana prova de backup;
-- não bloquear mutations do negócio por atraso sem nova decisão;
 - não declarar Storage protegido pelo dump PostgreSQL;
-- não manipular `storage.*` diretamente por SQL para copiar binários;
-- não permitir mutation direta de `protection_runs` pelo cliente;
-- não usar o cron como fonte de verdade da UI;
-- não remover o hard cap de 300 MB;
-- não voltar a Drive/rclone/Gmail.
+- não mutar `protection_runs` pelo cliente;
+- não usar cron como fonte de verdade da UI;
+- não voltar a Drive/rclone/Gmail;
+- não remover o hard cap sem nova decisão;
+- não tornar o repositório private automaticamente.
