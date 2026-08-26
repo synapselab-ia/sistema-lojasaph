@@ -7,15 +7,18 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 concurrency:
   group: backup-restore-drill
   cancel-in-progress: false
 
 env:
-  BACKUP_ALERT_EMAIL: synapselab.ia@gmail.com
-  BACKUP_REMOTE: "lojasaph-drive:Lojasaph Backups"
-  RCLONE_IMAGE: rclone/rclone:1.75.0
+  BACKUP_AWS_CLI_IMAGE: amazon/aws-cli:2.36.30
+  BACKUP_S3_ENDPOINT: ${{ vars.BACKUP_S3_ENDPOINT }}
+  BACKUP_S3_BUCKET: ${{ vars.BACKUP_S3_BUCKET }}
+  BACKUP_S3_REGION: ${{ vars.BACKUP_S3_REGION || 'auto' }}
+  BACKUP_S3_PREFIX: ${{ vars.BACKUP_S3_PREFIX || 'production/postgres' }}
   PGHOST: 127.0.0.1
   PGPORT: "5432"
   PGUSER: postgres
@@ -45,8 +48,9 @@ jobs:
           --health-retries 10
 
     env:
-      BACKUP_RCLONE_CONFIG_B64: ${{ secrets.BACKUP_RCLONE_CONFIG_B64 }}
-      BACKUP_ALERT_GMAIL_APP_PASSWORD: ${{ secrets.BACKUP_ALERT_GMAIL_APP_PASSWORD }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.BACKUP_S3_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_S3_SECRET_ACCESS_KEY }}
+      AWS_SESSION_TOKEN: ${{ secrets.BACKUP_S3_SESSION_TOKEN }}
 
     steps:
       - name: Checkout
@@ -54,34 +58,28 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Validate required secrets
+      - name: Validate required drill configuration
         shell: bash
         run: |
           set -euo pipefail
           missing=0
-          for name in BACKUP_RCLONE_CONFIG_B64 BACKUP_ALERT_GMAIL_APP_PASSWORD; do
+          for name in BACKUP_S3_ENDPOINT BACKUP_S3_BUCKET AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do
             if [[ -z "${!name:-}" ]]; then
-              echo "::error::Required backup drill secret for ${name} is not configured."
+              echo "::error::Required backup drill configuration for ${name} is not configured."
               missing=1
             fi
           done
-          exit "${missing}"
-
-      - name: Materialize rclone configuration
-        shell: bash
-        run: |
-          set -euo pipefail
-          CONFIG_DIR="${RUNNER_TEMP}/lojasaph-rclone"
-          install -d -m 700 "${CONFIG_DIR}"
-          printf '%s' "${BACKUP_RCLONE_CONFIG_B64}" | base64 --decode > "${CONFIG_DIR}/rclone.conf"
-          chmod 600 "${CONFIG_DIR}/rclone.conf"
-          if ! grep -Fxq '[lojasaph-drive]' "${CONFIG_DIR}/rclone.conf"; then
-            echo "::error::BACKUP_RCLONE_CONFIG_B64 must contain a remote named [lojasaph-drive]."
+          if (( missing != 0 )); then
             exit 1
           fi
 
-      - name: Verify rclone tooling
-        run: docker run --rm "${RCLONE_IMAGE}" version
+          if [[ "${BACKUP_S3_ENDPOINT}" != https://* ]]; then
+            echo "::error::BACKUP_S3_ENDPOINT must use HTTPS."
+            exit 1
+          fi
+
+      - name: Verify S3-compatible tooling
+        run: bash scripts/s3-backup-storage.sh check-tooling
 
       - name: Download and verify latest real off-site backup
         id: latest
@@ -92,45 +90,22 @@ jobs:
           rm -rf "${DRILL_DIR}"
           install -d -m 700 "${DRILL_DIR}/download" "${DRILL_DIR}/extracted"
 
-          LATEST="$(
-            docker run --rm \
-              -v "${RUNNER_TEMP}/lojasaph-rclone:/config/rclone:ro" \
-              "${RCLONE_IMAGE}" \
-              lsf "${BACKUP_REMOTE}" \
-              --config /config/rclone/rclone.conf \
-              --files-only \
-              --include 'lojasaph-production-*.tar.gz' \
-            | sed '/^$/d' \
-            | sort \
-            | tail -n 1
+          ARCHIVE_NAME="$(
+            bash scripts/s3-backup-storage.sh download-latest "${DRILL_DIR}/download"
           )"
-
-          if [[ -z "${LATEST}" ]]; then
-            echo "::error::No Production backup archive exists in the approved Google Drive destination."
-            exit 1
-          fi
-
-          docker run --rm \
-            -v "${RUNNER_TEMP}/lojasaph-rclone:/config/rclone:ro" \
-            -v "${DRILL_DIR}/download:/data" \
-            "${RCLONE_IMAGE}" \
-            copyto "${BACKUP_REMOTE}/${LATEST}" "/data/${LATEST}" \
-            --config /config/rclone/rclone.conf \
-            --checksum
-
-          docker run --rm \
-            -v "${RUNNER_TEMP}/lojasaph-rclone:/config/rclone:ro" \
-            -v "${DRILL_DIR}/download:/data" \
-            "${RCLONE_IMAGE}" \
-            copyto "${BACKUP_REMOTE}/${LATEST}.sha256" "/data/${LATEST}.sha256" \
-            --config /config/rclone/rclone.conf
+          MANIFEST_NAME="${ARCHIVE_NAME}.manifest.json"
 
           (
             cd "${DRILL_DIR}/download"
-            sha256sum --check "${LATEST}.sha256"
+            sha256sum --check "${ARCHIVE_NAME}.sha256"
+            sha256sum --check "${MANIFEST_NAME}.sha256"
           )
 
-          tar -xzf "${DRILL_DIR}/download/${LATEST}" -C "${DRILL_DIR}/extracted"
+          python scripts/backup-bundle.py verify \
+            --archive "${DRILL_DIR}/download/${ARCHIVE_NAME}" \
+            --manifest "${DRILL_DIR}/download/${MANIFEST_NAME}"
+
+          tar -xzf "${DRILL_DIR}/download/${ARCHIVE_NAME}" -C "${DRILL_DIR}/extracted"
           (
             cd "${DRILL_DIR}/extracted"
             sha256sum --check SHA256SUMS
@@ -139,7 +114,8 @@ jobs:
             done
           )
 
-          echo "archive_name=${LATEST}" >> "${GITHUB_OUTPUT}"
+          echo "archive_name=${ARCHIVE_NAME}" >> "${GITHUB_OUTPUT}"
+          echo "manifest_name=${MANIFEST_NAME}" >> "${GITHUB_OUTPUT}"
 
       - name: Install PostgreSQL 17 client
         shell: bash
@@ -199,7 +175,8 @@ jobs:
             echo "## Monthly backup restore drill"
             echo
             echo "- Latest real off-site archive: \`${{ steps.latest.outputs.archive_name }}\`"
-            echo "- Archive checksum: verified after download"
+            echo "- Manifest: \`${{ steps.latest.outputs.manifest_name }}\`"
+            echo "- S3-compatible bundle checksums: verified after download"
             echo "- Internal SQL checksums: verified"
             echo "- Isolated PostgreSQL dump/restore regression: passed"
             echo "- Production database was not mutated"
@@ -208,21 +185,29 @@ jobs:
       - name: Remove local drill material
         if: ${{ always() }}
         shell: bash
-        run: |
-          rm -rf \
-            "${RUNNER_TEMP}/lojasaph-backup-drill" \
-            "${RUNNER_TEMP}/lojasaph-rclone"
+        run: rm -rf "${RUNNER_TEMP}/lojasaph-backup-drill"
 
-      - name: Email operator on drill failure
+      - name: Report persistent restore-drill incident
         if: ${{ failure() }}
+        continue-on-error: true
         env:
-          BACKUP_ALERT_SUBJECT: "[Sistema Lojasaph] Falha no restore drill mensal"
-          BACKUP_ALERT_BODY: |
-            O restore drill mensal do Sistema Lojasaph falhou.
+          GITHUB_TOKEN: ${{ github.token }}
+          BACKUP_INCIDENT_STATUS: failure
+          BACKUP_INCIDENT_KEY: backup-restore-drill
+          BACKUP_INCIDENT_TITLE: "[backup-alert] Monthly restore drill failing"
+          BACKUP_INCIDENT_WORKFLOW: Backup Restore Drill
+          BACKUP_INCIDENT_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          BACKUP_INCIDENT_DETAILS: "Monthly isolated restore drill failed; Production was not restored or mutated."
+        run: python scripts/sync-backup-incident.py
 
-            Workflow: Backup Restore Drill
-            Repositório: ${{ github.repository }}
-            Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-
-            O Production não é alterado por este drill.
-        run: python scripts/send-backup-alert.py
+      - name: Resolve persistent restore-drill incident after recovery
+        if: ${{ success() }}
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          BACKUP_INCIDENT_STATUS: success
+          BACKUP_INCIDENT_KEY: backup-restore-drill
+          BACKUP_INCIDENT_TITLE: "[backup-alert] Monthly restore drill failing"
+          BACKUP_INCIDENT_WORKFLOW: Backup Restore Drill
+          BACKUP_INCIDENT_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: python scripts/sync-backup-incident.py
