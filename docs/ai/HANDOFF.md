@@ -5,7 +5,7 @@
 **Fase 46 continua concluída e integrada.**  
 A frente ativa continua sendo a Issue #75 / `REQ-PLAT-005 — Proteção, backup e recuperação de dados`.
 
-A slice de **persistência autoritativa dos runs de proteção** foi implementada no PR #113, validada no CI e aplicada ao Supabase Production pela migration `20260826201252 / protection_run_persistence`.
+A slice de **persistência autoritativa dos runs de proteção** foi integrada pelo PR #113 em `main`, validada no CI e aplicada ao Supabase Production pela migration `20260826201252 / protection_run_persistence`.
 
 A próxima slice é a UI read-only `Proteção dos dados`. Não reimplementar a persistência.
 
@@ -13,11 +13,11 @@ A próxima slice é a UI read-only `Proteção dos dados`. Não reimplementar a 
 
 ### GitHub
 
-- `main` no início da sessão: `e0f46000637adcd2479f6a4322cfb9137a699752`;
-- branch: `agent/protection-run-persistence`;
-- PR #113: `feat(backup): persist authoritative protection runs`;
-- CI #419 comprovou database + lint + typecheck + unit tests + production build verdes para a implementação funcional;
-- commits finais de reconciliação/documentação também precisam estar verdes antes do merge;
+- `main`: `61224515d361607a0a97e0bbab3b9d1bddd3352a` — squash merge do PR #113;
+- PR #113: integrado — `feat(backup): persist authoritative protection runs`;
+- head final do PR `c532f68dfb388bfdc2a8466a9820e13947bd5377`: `database`, `validate`, `inventory-database` e `business-database` verdes;
+- CI pós-merge #427 / run `33009978256` em `main`: `database` e `validate` verdes, incluindo lint, typecheck, unit tests e production build;
+- a branch `agent/protection-run-persistence` é histórica após o merge;
 - Issue #75 permanece aberta;
 - repositório segue temporariamente `public` por decisão operacional do operador; não alterar automaticamente.
 
@@ -99,7 +99,7 @@ A suíte `supabase/tests/protection_runs.sql` provou:
 - RPC privada negada a `authenticated`;
 - `service_role` com EXECUTE dos comandos, mas sem mutation direta.
 
-O CI funcional #419 terminou verde inclusive com restore lógico isolado, hardening global, lint, typecheck, unit tests e build.
+Além do CI funcional inicial, o head final do PR passou todos os checks aplicáveis e o push do merge em `main` passou o CI #427 integralmente.
 
 ### Production hospedado
 
