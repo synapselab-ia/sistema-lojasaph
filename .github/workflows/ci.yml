@@ -175,6 +175,39 @@ jobs:
       - name: Validate backup scripts
         run: bash -n scripts/export-supabase-backup.sh scripts/verify-backup-restore.sh scripts/restore-production-backup.sh scripts/s3-backup-storage.sh scripts/record-protection-run.sh
 
+      - name: Verify restore safety guards
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if BACKUP_RESTORE_ISOLATED=true \
+             BACKUP_RESTORE_DB_URL='postgresql://postgres:postgres@db.example.invalid:5432/restore' \
+             BACKUP_RESTORE_EXPECTED_PROJECT_REF='ci-synthetic' \
+             bash scripts/restore-production-backup.sh /tmp; then
+            echo "::error::Restore helper accepted a non-loopback target."
+            exit 1
+          fi
+
+          TEST_DIR="$(mktemp -d)"
+          trap 'rm -rf "${TEST_DIR}"' EXIT
+          printf '%s\n' '-- roles' > "${TEST_DIR}/roles.sql"
+          printf '%s\n' '-- schema' > "${TEST_DIR}/schema.sql"
+          printf '%s\n' '-- data' > "${TEST_DIR}/data.sql"
+          cat > "${TEST_DIR}/BACKUP_METADATA.txt" <<'EOF'
+          project_ref=ci-synthetic
+          coverage=postgres
+          format=lojasaph-postgres-logical-backup-v1
+          EOF
+          printf '%064d  roles.sql\n' 0 > "${TEST_DIR}/SHA256SUMS"
+
+          if BACKUP_RESTORE_ISOLATED=true \
+             BACKUP_RESTORE_DB_URL='postgresql://postgres:postgres@127.0.0.1:5432/does_not_matter' \
+             BACKUP_RESTORE_EXPECTED_PROJECT_REF='ci-synthetic' \
+             bash scripts/restore-production-backup.sh "${TEST_DIR}"; then
+            echo "::error::Restore helper accepted a corrupt bundle checksum."
+            exit 1
+          fi
+
       - name: Bootstrap Supabase auth stubs
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/bootstrap.sql
 
