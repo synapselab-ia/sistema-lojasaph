@@ -3,153 +3,134 @@
 ## Estado
 
 **Fase 46 continua concluída e integrada.**  
-A frente ativa é a Issue #75 / `REQ-PLAT-005 — Proteção, backup e recuperação de dados`.
+A frente ativa continua sendo a Issue #75 / `REQ-PLAT-005 — Proteção, backup e recuperação de dados`.
 
-O PR #107 formalizou ADR-009. O PR #108, branch `agent/s3-backup-transport`, implementa a segunda slice: transporte S3-compatible provider-neutral para backup/restore, ainda sem infraestrutura externa real.
+Os PRs #107, #108 e #109 já estão integrados. A arquitetura S3-compatible foi implementada, Cloudflare R2 foi provisionado/configurado pelo operador e o primeiro backup PostgreSQL Production real foi executado com sucesso e validado off-site.
 
-## Estado vivo na entrada do PR #108
+## Estado vivo no encerramento desta sessão
 
 ### GitHub
 
-- `main`: `1c0ddeb9153d5f7a1d9d64a685ae8d432788833c`;
-- CI #407: success;
-- PRs abertos antes da slice: nenhum;
-- única Issue aberta: #75;
-- branches antigas sem PR aberto são históricas.
+- `main` antes deste handoff documental: `1f9e6b8a26640d2ac5f7ead31a6c9a11962017b6`;
+- PR #108 integrado: transporte S3-compatible provider-neutral;
+- PR #109 integrado: hard stop pré-upload em `300000000` bytes;
+- CI #416: success após o repositório ser tornado temporariamente público;
+- repositório atualmente `public` por decisão temporária para evitar bloqueio de minutos privados do GitHub Free;
+- Issue #75: aberta;
+- Issue #111: incidente automático de backup, resolvido e fechado automaticamente após a recuperação verde.
 
-Ao iniciar o próximo chat, conferir `main`, PR #108, Issues e CI reais. Não criar outro PR apenas para registrar o SHA produzido pelo próprio merge do #108.
+Ao iniciar o próximo chat, conferir `main`, Issues, PRs e CI reais. Não refazer provider/configuração de backup já concluídos.
 
 ### Supabase
 
-Production `fhbvwyttikrbeaanatlr` foi revalidado read-only durante a slice:
+Production `fhbvwyttikrbeaanatlr`:
 
-- `ACTIVE_HEALTHY`;
-- `sa-east-1`;
-- PostgreSQL 17 (`17.6.1.141`);
-- zero development branches;
-- migration final `20260822195823 / finance_attachments`.
+- região `sa-east-1`;
+- PostgreSQL 17;
+- migration final conhecida: `20260822195823 / finance_attachments`;
+- nenhuma migration/DDL/DML nesta etapa de ativação;
+- Session pooler 5432 comprovado funcionando pelo backup real.
 
-Nenhuma migration/DDL/DML foi feita.
+### R2 / GitHub Actions
 
-## PR #108 — o que foi implementado
+Operador concluiu manualmente:
 
-### Transporte S3-compatible
+- bucket `lojasaph-production-backups`;
+- acesso privado;
+- prefixo `production/postgres`;
+- lifecycle 30 dias;
+- Bucket Lock 30 dias;
+- token R2 `Object Read & Write` limitado ao bucket;
+- Secrets `BACKUP_S3_ACCESS_KEY_ID` e `BACKUP_S3_SECRET_ACCESS_KEY`;
+- Variables `BACKUP_S3_ENDPOINT`, `BACKUP_S3_BUCKET`, `BACKUP_S3_REGION=auto`, `BACKUP_S3_PREFIX=production/postgres`;
+- `BACKUP_AUTOMATION_ENABLED=true`;
+- `PRODUCTION_SUPABASE_DB_URL` atualizado e comprovado funcional.
 
-Google Drive/rclone foi removido da automação executável.
+Nunca pedir ao usuário para colar secrets/connection string no chat.
 
-O contrato usa:
+## Primeira prova real — concluída
 
-- `BACKUP_S3_ENDPOINT`;
-- `BACKUP_S3_BUCKET`;
-- `BACKUP_S3_REGION` com default `auto`;
-- `BACKUP_S3_PREFIX` com default `production/postgres`;
-- `BACKUP_S3_ACCESS_KEY_ID`;
-- `BACKUP_S3_SECRET_ACCESS_KEY`;
-- `BACKUP_S3_SESSION_TOKEN` opcional.
+Workflow `Production Database Backup`:
 
-A camada `scripts/s3-backup-storage.sh` usa `amazon/aws-cli:2.36.30` como cliente S3 pinado e não hardcoda provider. Cloudflare R2 continua primeira opção preferida, não obrigação.
+- run: `33006253661`;
+- URL: `https://github.com/synapselab-ia/sistema-lojasaph/actions/runs/33006253661`;
+- conclusão: `success`;
+- archive: `lojasaph-production-20260826T194047Z-33006253661.tar.gz`;
+- tamanho: `53185` bytes;
+- hard cap: `300000000` bytes;
+- roles/schema/data: exportados;
+- checksums internos: OK;
+- manifesto: OK;
+- upload R2: OK;
+- `HeadObject`/download/rehash remoto: OK;
+- cleanup do runner: OK;
+- Issue #111 fechada automaticamente por recuperação.
 
-### Bundle e integridade
+As tentativas anteriores falharam antes do upload por connection string e não são backups válidos.
 
-Cada backup produz quatro objetos:
+## Warning para a futura restauração
 
-1. archive `.tar.gz`;
-2. archive `.sha256`;
-3. manifesto `.manifest.json`;
-4. manifesto `.sha256`.
+Durante `data.sql`, `pg_dump` reportou constraints circulares em:
 
-`scripts/backup-bundle.py` cria/verifica manifesto v1 com metadata de recuperação não sensível e cobertura `postgres`.
+- `stock_movements`;
+- `payments`.
 
-Após upload, cada objeto é confirmado por `HeadObject` e baixado novamente em streaming para comparação SHA-256 com o arquivo local. Não confiar em ETag como prova de conteúdo.
+O backup é válido como artefato/export off-site, mas o restore real isolado precisa tratar/validar esse ponto. Não declarar restaurabilidade end-to-end completa ainda.
 
-### Retenção
+## O que está comprovado
 
-O runner não apaga mais backups por idade.
+- backup automático diário + dispatch manual;
+- PostgreSQL logical backup;
+- checksums + manifesto;
+- hard cap pré-upload de 300 MB decimal;
+- Cloudflare R2 off-site;
+- verificação remota por re-download/rehash;
+- lifecycle/lock configurados pelo operador;
+- incidente GitHub-native persistente e auto-resolve;
+- credenciais fora do repositório.
 
-A retenção aprovada de 30 dias deve ser configurada no bucket com lifecycle e lock/WORM compatível quando o provider suportar. Isso permanece parte do gate externo.
+## O que ainda falta na #75
 
-### Alerta
+1. persistência autoritativa de runs de proteção no PostgreSQL;
+2. relação run global ↔ Organizations cobertas + RLS;
+3. mutation server-side autorizada para registrar estado sanitizado;
+4. UI `Proteção dos dados` (`RuntimeShell` + `/workspace/backup`);
+5. backup dos binários do Supabase Storage/anexos;
+6. restore real do backup Production em ambiente isolado compatível;
+7. exportação manual complementar por Organization, se mantida;
+8. evidência final suficiente para fechar #75;
+9. retorno do repositório a `private` quando o operador decidir encerrar a fase temporária de CI público.
 
-Gmail App Password e `scripts/send-backup-alert.py` foram removidos.
+## Próxima slice exata
 
-`scripts/sync-backup-incident.py` mantém uma Issue GitHub-native idempotente por workflow usando somente `GITHUB_TOKEN` efêmero:
+**Persistência autoritativa de proteção no PostgreSQL.**
 
-- abre na primeira falha;
-- atualiza a mesma Issue nas falhas seguintes;
-- evita duplicar o mesmo run/attempt;
-- fecha após uma execução verde;
-- não registra secrets ou conteúdo de backup.
+Não pular direto para UI.
 
-### Restore drill
+O próximo chat deve:
 
-O drill mensal usa o mesmo contrato S3-compatible para descobrir/baixar o bundle mais recente, valida sidecars, manifesto e checksums internos e mantém a regressão PostgreSQL 17 isolada. Nunca restaura Production.
+1. ler `AGENTS.md`, `START-HERE`, `CURRENT_STATE`, `HANDOFF`, `NEXT_ACTION`, Issue #75, ADR-009 e runbook;
+2. conferir GitHub/CI/Supabase reais;
+3. usar o workflow Issue → branch → PR;
+4. pesquisar documentação Supabase atual antes de qualquer migration/RLS;
+5. modelar a menor estrutura capaz de registrar run global e Organizations cobertas;
+6. manter dados sensíveis fora da tabela e de logs;
+7. implementar migration + RLS + testes;
+8. provar acesso cross-Organization negado e leitura autorizada permitida;
+9. integrar somente com CI verde;
+10. atualizar este handoff ao encerrar.
 
-### CI
+A UI vem na slice seguinte, consumindo essa fonte autoritativa.
 
-A CI agora valida:
+## Restrições importantes
 
-- sintaxe Python/shell;
-- manifesto sintético;
-- imagem AWS CLI pinada;
-- ausência de rclone/Drive/Gmail na automação executável;
-- lint;
-- typecheck;
-- unit tests;
-- production build;
-- database/restore/testes SQL existentes.
-
-CI #408 falhou apenas no novo guard anti-legado porque `ci.yml` encontrou a própria regex; database passou. O guard foi corrigido na mesma branch para excluir `ci.yml` de sua busca. Verificar a execução final do head do PR antes do merge.
-
-## Requisito/documentação
-
-- `docs/product/requirements.md` foi reconciliado com o nome e alcance atuais de `REQ-PLAT-005`;
-- `docs/operations/backup-restore.md` descreve exatamente o novo bundle, transporte, alerta, fail-closed e gate de provider;
-- ADR-009 permanece a decisão arquitetural.
-
-## Estado operacional intencional
-
-Mesmo depois de o PR #108 ficar verde/integrado:
-
-- `BACKUP_AUTOMATION_ENABLED` continua desarmado;
-- nenhum provider/bucket foi criado;
-- nenhum billing/purchase foi autorizado;
-- nenhum secret S3 foi provisionado;
-- nenhum backup Production real foi executado;
-- nenhum status de proteção foi persistido no PostgreSQL;
-- nenhuma UI de backup foi criada;
-- Supabase Storage/anexos não estão cobertos;
-- nenhum deploy Vercel é necessário.
-
-## Próximo gate exato após integração do #108
-
-**Não puxar a próxima slice de código automaticamente.** O próximo evento necessário é aprovação/provisionamento do provider off-site real.
-
-Cloudflare R2 é a preferência atual por ADR-009, mas permanece reversível para B2/S3/equivalente S3-compatible.
-
-Quando o operador explicitamente desbloquear o gate:
-
-1. conferir documentação/preço atual do provider;
-2. obter autorização explícita antes de qualquer subscription/billing/custo;
-3. criar bucket privado dedicado a Production;
-4. desabilitar acesso público/CORS de navegador;
-5. configurar lifecycle 30 dias;
-6. configurar lock/WORM coerente com a retenção quando suportado;
-7. gerar credencial de menor privilégio para o bucket;
-8. provisionar Variables/Secrets diretamente no GitHub, fora do chat;
-9. somente então armar `BACKUP_AUTOMATION_ENABLED=true`;
-10. executar uma única prova real via `workflow_dispatch`;
-11. exigir run verde + quatro objetos off-site + verificação remota;
-12. registrar apenas evidência não sensível.
-
-Depois do primeiro backup PostgreSQL real comprovado, a próxima slice de engenharia é persistência autoritativa de runs/Organizations + RLS para a futura UI.
-
-## Não fazer
-
-- não pedir nem receber secrets no chat;
-- não criar provider/billing sem autorização explícita;
-- não armar a automação antes do bucket/credentials/lifecycle/lock;
+- não reprovisionar R2 nem recriar tokens/secrets sem motivo concreto;
+- não pedir secrets no chat;
+- não manipular `storage.*` por SQL para resolver backup de arquivos;
+- não declarar Storage/anexos cobertos pelo dump PostgreSQL;
 - não restaurar Production para teste;
-- não declarar Storage/anexos protegidos pelo dump PostgreSQL;
-- não criar migration/UI/exportação manual por inércia antes do gate real;
-- não criar deploy Vercel para workflow/docs;
-- não voltar ao fluxo Drive/rclone/Gmail.
+- não voltar a Drive/rclone/Gmail;
+- não remover/reduzir o hard cap de 300 MB;
+- não criar deploy Vercel desnecessário;
+- não reabrir Fases 41–45 sem regressão concreta;
+- não criar dashboards/BI especulativos fora da prioridade ativa.
