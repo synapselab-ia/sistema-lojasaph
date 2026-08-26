@@ -4,157 +4,162 @@
 
 A Fase 46 continua integrada e o núcleo funcional do MVP permanece reconciliado.
 
-A Issue #75 agora representa `REQ-PLAT-005 — Proteção, backup e recuperação de dados`.
+A frente ativa continua sendo a Issue #75 / `REQ-PLAT-005 — Proteção, backup e recuperação de dados`.
 
-Slices executadas/ativas:
+Slices concluídas:
 
 1. PR #107 — ADR-009 / arquitetura revisada;
-2. PR #108 — reconciliação do transporte S3-compatible provider-neutral.
+2. PR #108 — transporte S3-compatible provider-neutral;
+3. PR #109 — hard stop de archive em `300000000` bytes antes do upload;
+4. provisionamento operacional do Cloudflare R2 + lifecycle + Bucket Lock + token limitado + GitHub Secrets/Variables;
+5. ativação de `BACKUP_AUTOMATION_ENABLED=true`;
+6. primeiro backup PostgreSQL Production real comprovado no run `33006253661`.
 
-O PR #108 deve ser integrado somente com CI verde. Ao iniciar uma nova sessão, verificar o estado real do PR #108 e da `main`; não presumir merge a partir deste arquivo e não criar um PR documental apenas para atualizar o SHA gerado pelo próprio merge.
+## Prova real já concluída
 
-## Estado que o PR #108 entrega
+Run:
+`https://github.com/synapselab-ia/sistema-lojasaph/actions/runs/33006253661`
 
-Quando integrado, a automação estará tecnicamente pronta para um provider S3-compatible, porém **continuará desarmada e sem infraestrutura externa real**.
+Resultado:
 
-Implementado:
+- workflow `success`;
+- roles/schema/data exportados;
+- checksums internos verificados;
+- archive `53185` bytes, abaixo do limite de `300000000`;
+- manifesto verificado;
+- upload para R2 concluído;
+- objetos remotos rebaixados e re-hasheados com sucesso;
+- cleanup do runner concluído;
+- incidente #111 resolvido e fechado automaticamente.
 
-- backup diário + `workflow_dispatch` fail-closed;
-- restore drill mensal isolado;
-- export roles/schema/data preservado;
-- bundle com archive, checksum, manifesto v1 e checksum do manifesto;
-- transporte S3-compatible;
-- verificação pós-upload por `HeadObject` + re-download/rehash SHA-256;
-- retenção deslocada para lifecycle/lock do provider;
-- alerta GitHub-native idempotente sem Gmail App Password;
-- rclone/Google Drive removidos da automação executável;
-- CI valida novos helpers e proíbe regressão para dependências legadas.
+Warning a preservar para a trilha de restore: `pg_dump` reportou constraints circulares em `stock_movements` e `payments`.
 
-Ainda não existe:
+## Objetivo ativo
 
-- bucket/provider real;
-- credentials S3 reais;
-- backup Production comprovado off-site;
-- persistência PostgreSQL de runs;
-- UI `Proteção dos dados`;
-- backup dos objetos do Supabase Storage;
-- exportação manual complementar.
+**Implementar a menor slice de persistência autoritativa de proteção no PostgreSQL.**
 
-## Objetivo ativo após integração verde do PR #108
+A UI `Proteção dos dados` não deve ser implementada antes desta fonte autoritativa existir e estar protegida por RLS.
 
-**Aguardar/desbloquear o gate operacional para aprovar e provisionar um provider S3-compatible real. Não iniciar outra slice de código da #75 por inércia antes desse gate.**
+## Antes de alterar código/banco
 
-Cloudflare R2 é a primeira opção preferida registrada em ADR-009, mas é reversível para B2, AWS S3 ou equivalente que cumpra os controles.
+1. ler `AGENTS.md`;
+2. ler `docs/00-START-HERE.md`;
+3. reler `docs/ai/CURRENT_STATE.md`, `HANDOFF.md` e este arquivo;
+4. conferir Issue #75, PRs, branches e CI reais;
+5. reler `docs/decisions/ADR-009-data-protection-architecture.md`;
+6. reler `docs/operations/backup-restore.md`;
+7. conferir o estado real do Supabase Production;
+8. consultar documentação/changelog atuais do Supabase antes de qualquer migration/RLS;
+9. seguir Issue → branch → PR e integrar somente com CI verde.
 
-## Gate — provider off-site real
+## Escopo mínimo da próxima slice
 
-Considerar desbloqueado somente quando o operador autorizar explicitamente prosseguir com o provider concreto e, quando aplicável, com cadastro/subscription/billing/custo.
+Modelar uma fonte de verdade operacional para a proteção sem duplicar fisicamente o backup por Organization.
 
-### 1. Antes de provisionar
+A implementação deve suportar no mínimo:
 
-- reler `docs/decisions/ADR-009-data-protection-architecture.md`;
-- reler `docs/operations/backup-restore.md`;
-- verificar documentação e preço atuais do provider;
-- confirmar que o provider oferece API S3-compatible, bucket privado e retenção/lifecycle adequados;
-- confirmar suporte a lock/WORM quando possível;
-- não assumir que free tier elimina necessidade de subscription/billing.
+### Run de proteção
 
-### 2. Provisionar infraestrutura somente após autorização
+- identificador;
+- tipo: `automatic_database`, `automatic_storage`, `manual_export`, `restore_drill`;
+- estado: `running`, `succeeded`, `failed`;
+- início e fim;
+- timestamp da cópia válida;
+- integridade verificada;
+- tamanho seguro quando aplicável;
+- provider/destino lógico sem credenciais;
+- cobertura declarada, inicialmente `postgres`;
+- referência não sensível de execução quando útil;
+- erro sanitizado;
+- created/updated metadata conforme padrões existentes.
 
-Criar/configurar:
+### Organizations cobertas
 
-- bucket privado dedicado a Production;
-- nenhum public access;
-- nenhum CORS de navegador desnecessário;
-- namespace/prefixo de Production;
-- lifecycle de expiração compatível com retenção 30 dias;
-- lock/WORM coerente com a janela de retenção quando suportado;
-- credencial de menor privilégio suficiente para upload, listagem, head e download necessários ao backup/drill.
+Um backup PostgreSQL Production é global por database/environment. Não criar um dump por Organization.
 
-Não dar ao runner permissão de administração de conta/billing e evitar permissão de delete quando o desenho de lifecycle/lock permitir.
+Persistir relação entre um run global e as Organizations cobertas para permitir que a futura UI derive o estado de proteção de cada Organization.
 
-### 3. Provisionar configuração no GitHub fora do chat
+### Segurança / RLS
 
-Variables:
+- membros autorizados podem ler o estado da própria Organization;
+- cross-Organization deve ser negado;
+- usuários comuns não podem forjar um run de backup bem-sucedido;
+- escrita deve ser reservada ao processo server-side autorizado e ações administrativas explicitamente permitidas;
+- nenhuma connection string, secret R2, token, SQL dump ou conteúdo sensível na tabela;
+- erro deve ser sanitizado.
 
-- `BACKUP_S3_ENDPOINT`;
-- `BACKUP_S3_BUCKET`;
-- `BACKUP_S3_REGION` quando necessário (`auto` é default atual compatível com R2);
-- `BACKUP_S3_PREFIX` quando diferente de `production/postgres`.
+## Validação obrigatória da slice
 
-Secrets:
-
-- `BACKUP_S3_ACCESS_KEY_ID`;
-- `BACKUP_S3_SECRET_ACCESS_KEY`;
-- `BACKUP_S3_SESSION_TOKEN` somente se o provider/credencial exigir.
-
-Já existente:
-
-- `PRODUCTION_SUPABASE_DB_URL`.
-
-**Nunca pedir, receber ou reproduzir os valores dos secrets no chat/Issue/PR.**
-
-### 4. Armar somente depois da configuração completa
-
-Após bucket, lifecycle/lock e credenciais terem sido verificados:
-
-- definir `BACKUP_AUTOMATION_ENABLED=true`;
-- executar **uma única** prova manual de `Production Database Backup` via `workflow_dispatch`.
-
-Não restaurar Production.
-
-### 5. Critério da primeira prova real
-
-Exigir:
-
-- workflow verde;
-- archive off-site;
-- `.sha256` do archive;
-- manifesto `.manifest.json`;
-- `.sha256` do manifesto;
-- verificação remota do conteúdo concluída;
-- nenhuma credencial/conteúdo de backup em logs;
-- lifecycle/lock configurado conforme política;
-- evidência não sensível registrada na #75.
-
-Se falhar, não mascarar o erro e não fechar #75. O incidente GitHub-native deve registrar somente informação sanitizada.
-
-## Próxima slice somente depois do primeiro backup real
-
-Depois de um backup PostgreSQL Production real comprovado, abrir a menor slice para **persistência autoritativa de proteção no PostgreSQL**:
-
-- modelar runs globais e Organizations cobertas;
 - migration versionada;
-- RLS/leitura por Organization;
-- mutation restrita ao processo server-side autorizado;
-- histórico sanitizado para futura UI.
+- migration aplicada/testada em ambiente apropriado conforme workflow do projeto;
+- RLS habilitada;
+- teste positivo de leitura autorizada;
+- teste negativo cross-Organization;
+- teste negativo de mutation por usuário comum;
+- validações SQL/database existentes;
+- lint;
+- typecheck;
+- testes relevantes;
+- build;
+- CI verde antes do merge.
 
-Somente depois dessa persistência implementar card `Proteção dos dados` e `/workspace/backup`.
+## Depois desta slice
 
-A trilha de Supabase Storage/anexos permanece separada e obrigatória antes de declarar cobertura completa.
+A ordem planejada permanece:
 
-## Se o gate externo não estiver desbloqueado
+1. persistência autoritativa de proteção — **próxima ação**;
+2. UI `Proteção dos dados` no `RuntimeShell` + `/workspace/backup`;
+3. trilha de backup dos binários do Supabase Storage/anexos;
+4. restore real do bundle Production em destino isolado, considerando os warnings de FK circular;
+5. exportação manual complementar por Organization, se mantida;
+6. evidência final e fechamento da Issue #75 somente com cobertura real declarada.
 
-Não alterar código, Supabase, Vercel, dados ou configuração operacional para produzir atividade.
+## Estado operacional que não deve ser refeito
 
-A resposta correta é preservar a baseline e informar que a próxima ação depende da aprovação/provisionamento do provider.
+Já está concluído:
+
+- Cloudflare R2 autorizado/provisionado;
+- bucket `lojasaph-production-backups`;
+- prefixo `production/postgres`;
+- lifecycle 30 dias;
+- Bucket Lock 30 dias;
+- token limitado ao bucket;
+- GitHub Actions Variables/Secrets do R2;
+- Session pooler 5432 funcional;
+- `BACKUP_AUTOMATION_ENABLED=true`;
+- primeiro backup real verde;
+- hard cap pré-upload 300 MB.
+
+Não repetir essas etapas sem evidência concreta de regressão/configuração perdida.
+
+## Repositório público temporário
+
+O repositório está temporariamente `public` para evitar bloqueio por minutos de GitHub Actions no plano Free. Isso é uma decisão operacional temporária.
+
+Não voltar para `private` automaticamente; o operador pretende fazer isso depois da fase intensiva de CI.
 
 ## Segurança / não fazer
 
-- não voltar a rclone/Drive/Gmail;
 - não pedir/receber secrets no chat;
-- não criar provider com billing/custo sem autorização explícita;
-- não setar `BACKUP_AUTOMATION_ENABLED=true` antes de toda a configuração estar pronta;
+- não reprovisionar R2 por inércia;
 - não armazenar dump real no Git ou GitHub Artifact;
 - não restaurar Production para teste;
-- não criar migration/UI/exportação manual antes do gate real por conveniência;
 - não declarar Storage protegido pelo dump PostgreSQL;
+- não manipular tabelas internas `storage.*` via SQL para copiar objetos;
+- não pular a persistência e implementar UI baseada apenas em horário do cron;
 - não bloquear mutations do negócio por atraso de backup sem nova decisão;
-- não criar deploy Vercel para esta frente de workflow/docs.
+- não voltar a rclone/Drive/Gmail;
+- não remover o hard cap de 300 MB;
+- não criar deploy Vercel sem mudança runtime que realmente o exija.
 
 ## Critério de conclusão do próximo chat
 
-Terminar em um destes estados:
+A próxima sessão deve terminar com a slice de persistência autoritativa:
 
-1. provider explicitamente aprovado/provisionado + primeira prova real executada e evidenciada com segurança; ou
-2. gate externo ainda bloqueado, baseline preservada e nenhuma atividade artificial criada.
+- implementada em branch própria;
+- migration/RLS/testes validados;
+- PR com CI verde e integrado quando seguro;
+- documentação de continuidade atualizada;
+- próxima ação apontando para a UI `Proteção dos dados`.
+
+Se surgir bloqueio real de negócio/segurança, documentar o bloqueio e não inventar requisito para contorná-lo.

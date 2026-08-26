@@ -1,266 +1,261 @@
 # ADR-009 — Proteção, backup e recuperação de dados
 
-Status: **aceito para implementação; provisionamento externo ainda não autorizado**  
+Status: **aceito e parcialmente implementado; backup PostgreSQL off-site ativo, Storage/UI ainda pendentes**  
 Data: 2026-08-26  
 Requisito: `REQ-PLAT-005`  
 Issue: #75
 
 ## Contexto
 
-A implementação histórica da #75 criou uma rotina tecnicamente válida de backup lógico do Supabase Production com `supabase db dump`, checksum, Google Drive via rclone, Gmail App Password para alerta e restore drill mensal. A automação permaneceu fail-closed por `BACKUP_AUTOMATION_ENABLED` e nunca foi armada em Production.
+A estratégia histórica da #75 usava backup lógico do Supabase Production com `supabase db dump`, Google Drive/rclone, Gmail App Password e restore drill mensal. A revisão arquitetural de 2026-08-26 substituiu essas dependências pessoais por uma política de proteção própria para um produto comercial/multi-Organization.
 
-Em 2026-08-26 a decisão operacional foi revista. O objetivo deixa de ser “ativar o workflow atual” e passa a ser uma política completa de proteção dos dados que:
+A proteção precisa:
 
-1. mantenha backup automático real e independente da ação humana;
-2. exponha dentro do Lojasaph um estado compreensível e autoritativo da proteção;
-3. permita exportação manual complementar, sem transformá-la no mecanismo principal de disaster recovery;
-4. reduza dependência de integrações pessoais como Drive/Gmail e preserve evolução comercial multi-Organization.
-
-A revisão também precisa considerar que o Supabase separa o banco PostgreSQL dos objetos binários do Storage. Backup de banco preserva metadata de Storage, mas não os arquivos armazenados pela Storage API.
-
-Referências verificadas em 2026-08-26:
-
-- Supabase Database Backups: https://supabase.com/docs/guides/platform/backups
-- Supabase backup/restore via CLI: https://supabase.com/docs/guides/platform/migrating-within-supabase/backup-restore
-- Cloudflare R2 S3 API: https://developers.cloudflare.com/r2/api/
-- Cloudflare R2 pricing: https://developers.cloudflare.com/r2/pricing/
-- Cloudflare R2 lifecycle: https://developers.cloudflare.com/r2/buckets/object-lifecycles/
-- Cloudflare R2 bucket locks: https://developers.cloudflare.com/r2/buckets/bucket-locks/
+1. manter backup automático real e independente de ação humana;
+2. expor no Lojasaph um estado compreensível e autoritativo da proteção;
+3. permitir exportação manual complementar sem transformá-la no mecanismo principal de disaster recovery;
+4. preservar portabilidade entre provedores de object storage;
+5. distinguir claramente PostgreSQL dos objetos binários do Supabase Storage.
 
 ## Decisão
 
-### 1. Separar três responsabilidades
-
-A proteção de dados terá três camadas complementares.
+### 1. Três camadas complementares
 
 #### A — backup automático de recuperação
 
-É a fonte principal de disaster recovery.
+Fonte principal de disaster recovery:
 
 - roda sem clique do usuário;
-- cobre Production dentro do RPO aprovado;
+- cobre Production dentro do RPO;
 - gera snapshot lógico consistente do PostgreSQL;
-- transfere artefatos para armazenamento off-site fora do Supabase Production;
+- transfere artefatos para storage off-site fora do Supabase Production;
 - verifica integridade antes e depois da transferência;
 - aplica retenção;
 - mantém evidência de execução;
 - possui restore drill recorrente isolado.
 
-Nenhuma confirmação humana transforma um arquivo em backup válido.
+Confirmação humana não transforma um arquivo em backup válido.
 
-#### B — observabilidade “Proteção dos dados” no produto
-
-O Lojasaph passa a mostrar estado de proteção por Organization, sem depender de conhecimento de GitHub Actions, `pg_dump` ou do provedor de storage.
+#### B — observabilidade `Proteção dos dados`
 
 Experiência alvo:
 
 - card global no `RuntimeShell`;
 - página `/workspace/backup`;
-- verde: proteção dentro da política;
-- âmbar: aproximação do RPO ou degradação relevante;
-- vermelho: RPO violado ou falha;
+- verde/âmbar/vermelho conforme política;
 - última cópia válida;
 - próxima janela esperada;
 - integridade;
 - retenção;
-- histórico recente;
+- histórico;
 - último restore drill.
 
-Atraso do backup **não bloqueia automaticamente a operação transacional**. Caixa, estoque, compras e financeiro não devem ficar indisponíveis apenas porque a proteção passou do RPO. Qualquer política de bloqueio futuro exige decisão específica de continuidade.
+A UI deve consumir fonte autoritativa no PostgreSQL, não inferir sucesso pelo horário do cron.
+
+Atraso do backup não bloqueia automaticamente caixa, estoque, compras ou financeiro. Política de bloqueio futuro exige decisão específica.
 
 #### C — exportação manual complementar
 
-Uma exportação por Organization pode ser oferecida a `owner/admin` Organization-wide como cópia adicional sob custódia do cliente.
-
-Ela:
+Pode ser oferecida a `owner/admin` Organization-wide como cópia adicional sob custódia do cliente.
 
 - não substitui o automático;
-- deve ser versionada e auditada;
+- versionada e auditada;
 - preserva IDs/relacionamentos necessários;
-- inclui manifesto e checksums/fingerprint;
-- é tratada como conteúdo altamente sensível;
-- não é exigida diariamente.
+- inclui manifesto/checksum;
+- é conteúdo altamente sensível;
+- não entra no RPO automático.
 
-O formato final será decidido depois do inventário de cobertura e de uma prova de reconstrução/reconciliação. Não fixar antecipadamente `JSON` único versus `ZIP`/JSONL.
+## 2. Destino off-site por contrato S3-compatible
 
-### 2. Destino off-site: interface S3-compatible, não Drive-specific
+A automação não depende de Google Drive/rclone.
 
-A automação será desacoplada de Google Drive/rclone e passará a trabalhar contra uma interface de **object storage compatível com S3**.
+Contrato:
 
-Motivos:
+- endpoint HTTPS;
+- bucket privado;
+- region/prefix configuráveis;
+- credencial máquina-a-máquina de menor privilégio;
+- upload + existência remota + re-download/rehash;
+- provider substituível sem redesenhar a aplicação.
 
-- credenciais máquina-a-máquina mais simples que OAuth de conta pessoal;
-- melhor aderência a um produto comercial/multiempresa;
-- bucket privado e políticas de retenção no próprio storage;
-- troca futura de provedor sem reescrever a estratégia de backup;
-- elimina Gmail/Drive como requisito estrutural do produto.
+## 3. Provedor inicial: Cloudflare R2
 
-### 3. Provedor inicial preferido: Cloudflare R2, sem provisionamento nesta decisão
+Cloudflare R2 foi escolhido como primeiro provider porque oferece API S3-compatible, lifecycle, Bucket Lock, tokens limitados a bucket e custo adequado ao volume atual.
 
-Cloudflare R2 é o provedor inicial preferido para a primeira implementação porque, na documentação atual:
+### Atualização operacional de 2026-08-26
 
-- expõe API S3-compatible;
-- possui free tier de 10 GB-month em Standard e egress gratuito;
-- oferece lifecycle de objetos;
-- oferece bucket locks que impedem exclusão/overwrite durante a retenção;
-- permite token limitado a bucket.
+O gate externo originalmente preservado por este ADR foi posteriormente **explicitamente autorizado pelo operador** e concluído:
 
-A seleção técnica **não autoriza criar conta, habilitar billing/purchase, criar bucket ou gerar secrets**. A documentação atual da Cloudflare informa que é necessário habilitar/comprar R2 antes de gerar credenciais. Qualquer ativação que envolva cadastro financeiro permanece gate explícito do operador.
+- R2 habilitado;
+- bucket privado `lojasaph-production-backups`;
+- prefixo `production/postgres`;
+- lifecycle 30 dias;
+- Bucket Lock 30 dias;
+- token `Object Read & Write` limitado ao bucket;
+- GitHub Actions Secrets/Variables provisionados fora do chat;
+- `BACKUP_AUTOMATION_ENABLED=true`.
 
-Se R2 não for aprovado no momento da ativação, Backblaze B2, AWS S3 ou outro destino S3-compatible que atenda os mesmos controles pode substituir o provedor sem alterar o contrato de aplicação.
+Esta atualização não altera o princípio arquitetural: o código continua provider-neutral e R2 pode ser substituído por outro S3-compatible que cumpra os controles.
 
-### 4. Controles mínimos do bucket
+## 4. Controles mínimos do bucket
 
-Para o primeiro destino aprovado:
-
-- bucket privado e dedicado ao backup de Production;
+- privado e dedicado a Production;
 - nenhum acesso público/CORS de navegador;
-- credencial de automação escopada ao bucket;
-- prefixo por ambiente, nunca por usuário;
-- checksum SHA-256 do archive;
-- verificação pós-upload;
-- retenção operacional de 30 dias;
-- proteção contra exclusão/overwrite durante a janela de retenção quando o provedor oferecer lock/WORM;
-- lifecycle configurado pelo bucket, não por deleção ad-hoc do runner, sempre que possível;
-- segredos somente em GitHub Actions Secrets/secret manager apropriado.
+- credencial escopada ao bucket;
+- prefixo por ambiente, não por usuário;
+- retenção 30 dias;
+- proteção contra exclusão/overwrite durante a retenção quando suportado;
+- lifecycle pelo provider, não deleção ad-hoc do runner;
+- secrets somente em GitHub Actions Secrets/secret manager apropriado.
 
-Para R2, usar bucket lock compatível com a janela de retenção e lifecycle de expiração posterior. Lock e lifecycle precisam ser configurados de modo coerente; o lock prevalece enquanto estiver ativo.
+## 5. Hard cap pré-upload
 
-### 5. Modelo de evidência autoritativa
+Para limitar risco operacional/custo inesperado, o archive comprimido deve ser medido antes do upload.
 
-A UI não deve inferir sucesso pelo horário do cron nem por declaração humana.
+Política implementada:
 
-A arquitetura terá dois planos de evidência.
+- máximo `300000000` bytes decimais por archive;
+- acima disso o workflow falha antes do upload;
+- incidente operacional é registrado;
+- não enviar bundle parcial.
 
-#### Evidência off-site
+Esse cap é por archive e não substitui eventual guard futuro de uso agregado do bucket.
 
-Cada backup válido possui artefato e manifesto/checksum armazenados junto ao archive. Essa é a evidência independente necessária para recuperação quando o banco principal estiver indisponível.
+## 6. Evidência autoritativa
 
-O manifesto deve conter apenas metadata não sensível necessária à recuperação, como:
+### Evidência off-site
 
-- `backup_id`;
-- ambiente;
-- timestamp UTC;
-- versão/formato;
-- cobertura declarada (`postgres`, e futuramente `storage`);
-- SHA-256;
-- tamanho;
-- versão do exportador;
-- referências de execução não secretas.
+Cada backup válido possui:
 
-#### Espelho operacional no PostgreSQL
+- archive;
+- SHA-256 do archive;
+- manifesto não sensível;
+- SHA-256 do manifesto;
+- revalidação pós-upload por re-download/rehash.
 
-Para a UI, o Lojasaph terá registros de execução sanitizados no banco operacional. O modelo físico será implementado em migration própria e deverá suportar no mínimo:
+O manifesto contém somente metadata necessária à recuperação: `backup_id`, ambiente, timestamp, versão/formato, cobertura, hash, tamanho e referências não secretas de execução.
+
+### Espelho operacional no PostgreSQL
+
+Próxima slice da #75:
 
 - run global de proteção;
 - tipo (`automatic_database`, `automatic_storage`, `manual_export`, `restore_drill`);
 - estado (`running`, `succeeded`, `failed`);
 - início/fim;
-- integridade verificada;
+- integridade;
 - provider/destino lógico sem segredo;
-- tamanho e timestamps seguros;
+- tamanho/timestamps seguros;
 - erro sanitizado;
-- relação entre o run e as Organizations cobertas.
+- relação entre run e Organizations cobertas.
 
-Um backup completo do PostgreSQL é feito por database/environment, não duplicado por Organization. A UI por Organization deriva o estado a partir da relação “Organization incluída no run X”. Exportações manuais continuam específicas de uma Organization.
+O backup PostgreSQL é por database/environment, não duplicado fisicamente por Organization.
 
-Leitura segue RLS/escopo existente. Mutation desse estado não é concedida a usuários comuns; somente o processo de backup/server-side e actions administrativas explicitamente autorizadas podem registrar eventos.
+Leitura segue RLS/escopo da Organization; usuários comuns não podem forjar sucesso de backup.
 
-### 6. Alertas: remover Gmail como dependência obrigatória
+## 7. Alertas
 
-`BACKUP_ALERT_GMAIL_APP_PASSWORD` deixa de fazer parte da arquitetura alvo.
+Gmail App Password e rclone não fazem parte da arquitetura alvo.
 
-No primeiro estágio, falha deve produzir simultaneamente:
+Falha deve produzir:
 
-- conclusão `failure` no GitHub Actions;
-- evidência/estado crítico consultável pelo produto quando o banco estiver disponível;
-- issue/registro operacional persistente no GitHub sem conteúdo sensível, evitando spam por duplicação.
+- `failure` no GitHub Actions;
+- incidente operacional persistente/idempotente no GitHub;
+- futuramente, estado crítico consultável pela UI quando o banco estiver disponível.
 
-Um canal externo adicional (e-mail transacional, webhook, Slack etc.) pode ser adicionado depois como adapter de notificação quando houver necessidade comercial/operacional e provedor aprovado.
+Um canal externo adicional pode ser adicionado depois como adapter, se houver necessidade comercial.
 
-O sistema não deve depender de senha de aplicativo de uma conta Gmail pessoal para cumprir `REQ-PLAT-005`.
+## 8. Cobertura PostgreSQL
 
-### 7. Cobertura do PostgreSQL
-
-O exportador atual segue a sequência oficial do Supabase CLI:
+O exportador segue a sequência oficial Supabase CLI:
 
 - roles;
 - schema;
 - data;
-- checksum.
+- checksums.
 
-As migrations continuam fonte de verdade do schema do produto, mas não substituem dados.
+Migrations continuam fonte de verdade do schema do produto, mas não substituem dados.
 
-Auth utiliza PostgreSQL internamente, porém recuperação de um projeto Supabase completo ainda exige reconfiguração de itens externos. O runbook deve distinguir “dados de Auth presentes no banco/restauração” de “configurações Auth/API keys/provedores externos”.
+Auth utiliza PostgreSQL internamente, porém recuperação completa da plataforma pode exigir reconfiguração de elementos externos ao dump.
 
-### 8. Storage/anexos são trilha separada e obrigatória antes de declarar cobertura completa
+## 9. Storage/anexos: trilha separada obrigatória
 
-`REQ-FIN-008` permite anexos no Supabase Storage. O backup de banco não copia os binários.
+`REQ-FIN-008` usa Supabase Storage para anexos. O backup de banco não copia os binários.
 
 Portanto:
 
-- a primeira reconciliação da automação pode continuar protegendo PostgreSQL;
-- a UI deve declarar cobertura real sem dizer “backup completo” enquanto Storage não estiver coberto;
-- antes de anexos reais serem tratados como recuperáveis, implementar cópia off-site dos objetos do(s) bucket(s) usados pelo Lojasaph + inventário/checksum que permita reconciliar metadata e objeto;
-- restore drill de Storage deve ocorrer em destino isolado, nunca sobrescrevendo Production.
+- backup PostgreSQL pode ser considerado operacional;
+- a UI deve declarar cobertura real e não dizer “backup completo” enquanto Storage não estiver coberto;
+- implementar cópia off-site dos objetos + inventário/keys/checksums;
+- restore de Storage deve ocorrer em destino isolado;
+- não manipular `storage.*` diretamente por SQL para copiar objetos.
 
-### 9. Segurança da exportação manual
+## 10. Segurança da exportação manual
 
 Threat model mínimo:
 
 - arquivo pode conter praticamente toda a informação operacional de uma Organization;
-- somente `owner/admin` Organization-wide pode gerar;
-- autorização precisa ser revalidada server-side;
+- somente `owner/admin` Organization-wide;
+- autorização revalidada server-side;
 - nenhuma exportação cross-Organization;
-- geração preferencialmente server-side/streaming, sem persistência pública;
-- nomes de arquivo não carregam dados sensíveis;
-- evento é auditado;
-- não incluir secrets, chaves de API, senhas ou material de autenticação reutilizável;
-- mecanismos de download devem evitar URLs públicas permanentes e cache indevido.
+- geração preferencialmente server-side/streaming;
+- evento auditado;
+- sem secrets, chaves de API, senhas ou material de autenticação reutilizável.
 
-## Política operacional preservada
+## Política operacional
 
 - RPO: 24 horas;
 - cadência automática: diária ou mais frequente;
 - RTO objetivo: até 4 horas em condição operacional normal;
 - retenção: 30 dias;
 - restore drill: mensal e isolado;
-- nenhum plano/add-on/provider pago é ativado sem autorização explícita.
+- nenhum novo serviço pago/add-on é ativado sem autorização explícita.
+
+## Evidência de implementação
+
+Primeira prova real concluída em 2026-08-26:
+
+- workflow `Production Database Backup`;
+- run `33006253661`;
+- archive `53185` bytes;
+- checksums/manifesto válidos;
+- upload R2 concluído;
+- objetos remotos rebaixados e re-hasheados;
+- incidente #111 fechado automaticamente após recuperação verde.
+
+Warning de restore a preservar: constraints circulares em `stock_movements` e `payments` reportadas pelo `pg_dump`.
 
 ## Consequências
 
 ### Positivas
 
-- backup continua automático e independente de comportamento humano;
-- reduz credenciais pessoais/OAuth na operação;
-- storage de backup passa a ter contrato apropriado para automação;
-- arquitetura pode migrar entre provedores S3-compatible;
-- status de proteção vira funcionalidade observável dentro do produto;
+- backup automático independente de comportamento humano;
+- credenciais máquina-a-máquina;
+- provider substituível;
+- status de proteção pode evoluir para funcionalidade do produto;
 - backup global não é duplicado por Organization;
-- exportação manual fica disponível como camada adicional, sem degradar disaster recovery;
 - limites de cobertura de Storage/Auth ficam explícitos.
 
 ### Custos/limitações
 
-- a automação antiga de rclone/Gmail precisa ser reconciliada, não apenas ativada;
-- será necessária migration para persistir evidência operacional da proteção;
-- um destino S3-compatible real ainda precisa ser aprovado/provisionado antes do primeiro run;
-- Storage requer uma segunda trilha de backup antes de cobertura completa;
-- a exportação manual exige inventário e prova de restauração antes de fixar formato.
+- ainda é necessária migration para persistir evidência operacional;
+- Storage requer segunda trilha antes de cobertura completa;
+- restore real isolado ainda precisa comprovar restaurabilidade end-to-end;
+- exportação manual exige slice específica se mantida.
 
 ## Não fazer
 
-- não armar `BACKUP_AUTOMATION_ENABLED` no workflow Drive/rclone atual;
-- não provisionar OAuth/rclone ou Gmail App Password por inércia;
-- não contratar/ativar R2 ou outro serviço pago sem autorização;
-- não considerar “download + confirmei” prova de backup;
-- não bloquear mutations do negócio por atraso de backup sem nova decisão;
-- não declarar Storage protegido por causa do dump PostgreSQL;
+- não voltar a Drive/rclone/Gmail;
+- não pedir/armazenar secrets em chat/Issue/PR;
+- não considerar confirmação humana prova de backup;
+- não bloquear mutations do negócio por atraso sem nova decisão;
+- não declarar Storage protegido pelo dump PostgreSQL;
 - não colocar archives reais no Git/GitHub Artifacts;
-- não restaurar sobre Production para testar.
+- não restaurar Production para teste;
+- não remover o hard cap de 300 MB sem nova decisão registrada.
 
 ## Próxima slice técnica
 
-Após este ADR ser integrado, a menor slice executável da #75 é **reconciliar a automação existente para um contrato S3-compatible provider-neutral e remover Gmail/rclone da dependência obrigatória**, mantendo `BACKUP_AUTOMATION_ENABLED=false` e sem provisionar infraestrutura externa.
+**Persistência autoritativa de runs de proteção + relação com Organizations + RLS.**
 
-A persistência de status, UI e exportação manual vêm em slices posteriores, conforme a ordem da Issue #75.
+Somente depois dessa fonte autoritativa implementar a UI `Proteção dos dados`. Storage/anexos e restore real isolado permanecem obrigatórios antes do fechamento da #75.
