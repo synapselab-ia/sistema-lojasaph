@@ -6,6 +6,7 @@ on:
       - "scripts/prepare-supabase-restore-sql.py"
       - "scripts/test-prepare-supabase-restore-sql.py"
       - "scripts/restore-production-backup.sh"
+      - ".github/workflows/backup-restore-drill.yml"
       - ".github/workflows/restore-compat-ci.yml"
   push:
     branches: [main]
@@ -13,6 +14,7 @@ on:
       - "scripts/prepare-supabase-restore-sql.py"
       - "scripts/test-prepare-supabase-restore-sql.py"
       - "scripts/restore-production-backup.sh"
+      - ".github/workflows/backup-restore-drill.yml"
       - ".github/workflows/restore-compat-ci.yml"
 
 permissions:
@@ -36,3 +38,17 @@ jobs:
 
       - name: Test managed-role normalization
         run: python scripts/test-prepare-supabase-restore-sql.py
+
+      - name: Verify isolated Storage compatibility pin
+        shell: bash
+        run: |
+          set -euo pipefail
+          WORKFLOW=.github/workflows/backup-restore-drill.yml
+          grep -Fq 'SUPABASE_STORAGE_VERSION: "1.70.7"' "${WORKFLOW}"
+          grep -Fq 'SUPABASE_STORAGE_REQUIRED_MIGRATION: "64"' "${WORKFLOW}"
+          grep -Fq '> supabase/.temp/storage-version' "${WORKFLOW}"
+          grep -Fq -- '--exclude postgres-meta,realtime,imgproxy,mailpit,studio,edge-runtime,logflare,vector,supavisor' "${WORKFLOW}"
+          if grep -Fq -- '--exclude postgres-meta,realtime,imgproxy,inbucket' "${WORKFLOW}"; then
+            echo "::error::Backup restore drill still uses the obsolete inbucket exclude key."
+            exit 1
+          fi
