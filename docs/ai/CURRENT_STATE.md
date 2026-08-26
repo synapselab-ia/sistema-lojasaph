@@ -1,140 +1,149 @@
 # Current State — Sistema Lojasaph
 
-Última atualização: 2026-08-25
+Última atualização: 2026-08-26
 
 ## Estado atual
 
-Fase 45 — `REQ-SUP-004 — Produtos por fornecedor` — **concluída e integrada funcionalmente na `main` pelo PR #102**.
+**Fase 46 — prontidão operacional para homologação e cutover — concluída documentalmente.**
 
-- base da Fase 45: `d774f5ea96d28bffb6fcf377427b0ff6845e458f`;
+O núcleo funcional do MVP permanece reconciliado após as Fases 41–45. A Fase 46 não encontrou nova lacuna funcional não-PENDING que justifique abrir feature ou Issue por inércia.
+
+Artefato principal:
+
+- `docs/qa/operational-readiness.md`
+
+Ele separa a readiness em:
+
+- **A — pronto/comprovado**;
+- **B — decisão de negócio/PENDING**;
+- **C — pré-condição operacional/externa**;
+- **D — fase futura/opcional**.
+
+## Snapshot real da Fase 46
+
+### GitHub
+
+Na entrada:
+
+- `main`: `62c3af63939c808487434e6e539ef0870a60d530`;
+- PR #102 / Fase 45: merged;
 - Issue #101: closed/completed;
-- PR #102: squash-mergeado;
-- merge funcional: `6a86922ef705af25a4897068e223b0e26c1b670a`;
-- head final validado do PR #102: `c9898f7dd90fd453e14775c89a336fc49636463f`;
-- CI #393: success (`database`, lint, typecheck, Vitest, production build);
-- Business Transactions Integration #191: success;
-- Inventory Count Integration #207: success;
-- nenhuma migration/DDL/DML ou mutation manual de Production na Fase 45;
-- nenhum deploy Vercel;
-- Issue operacional preservada: #75 — backup Production, ainda desarmada.
+- PR #103 / handoff Fase 45: merged;
+- nenhum PR aberto;
+- única Issue aberta: #75 — backup automático real de Production;
+- CI #396 em `main`: success;
+- branches `agent/*` existentes são históricos, não frentes paralelas ativas.
 
-A continuidade documental desta fase pode gerar um commit posterior ao merge funcional acima; o SHA `6a86922e...` identifica a entrega funcional, não precisa ser o HEAD final de `main` ao ler este arquivo.
+A Fase 46 não abriu Issue porque os bloqueios encontrados dependem de fonte real, decisão, credencial/ambiente confiável ou aceite externo.
 
-## Decisão da Fase 45
+### Supabase Production
 
-A investigação provou uma lacuna operacional real em `REQ-SUP-004`:
+Projeto `fhbvwyttikrbeaanatlr` foi somente inspecionado read-only:
 
-- compras já dependiam de `supplier_items` ativos;
-- sem vínculo, o pedido não oferecia produto para aquele fornecedor;
-- o runtime não possuía caminho persistente para criar/manter `supplier_items`;
-- os vínculos existentes em Production eram apenas demo/seed;
-- import staging é dry-run e deliberadamente não escreve tabelas operacionais.
+- `ACTIVE_HEALTHY`;
+- região `sa-east-1`;
+- PostgreSQL 17 (`17.6.1.141`);
+- zero development branches;
+- migration history termina em `20260822195823 / finance_attachments`.
 
-A Fase 45 fechou somente a manutenção básica necessária, sem transformar SupplierItem em módulo de cotação/comparação.
+Nenhuma migration, DDL ou DML foi aplicada na Fase 46.
 
-Evidência: `docs/qa/supplier-items-maintenance.md`.
+### Vercel Production
 
-## Entrega funcional
+A auditoria corrigiu uma informação antiga do runbook de ambientes.
 
-`/workspace/fornecedores` agora permite consultar e manter os produtos compráveis de cada fornecedor.
+O deployment Production mais recente observado é:
 
-Campos/ações da slice:
+- `dpl_RRAzMvYKVLKAjbrNV6hAGqg42wfg`;
+- target `production`;
+- estado `READY`;
+- commit `62c3af63939c808487434e6e539ef0870a60d530`, igual à `main` na entrada da fase.
 
-- vínculo fornecedor ↔ produto do catálogo;
-- unidade de compra opcional (`purchase_unit`);
-- quantidade por embalagem opcional (`units_per_package`);
-- ativar/inativar vínculo;
-- reativar/reutilizar vínculo default existente em vez de criar duplicata acidental;
-- `supplier_sku` e múltiplas variantes permanecem fora desta primeira slice.
+`GET https://sistema-lojasaph.vercel.app/health` respondeu HTTP 200 em 2026-08-26 com:
 
-Boundary:
+- `environment=production`;
+- `supabaseAccess=allowed`;
+- `supabaseReason=production_backend`;
+- `adminAccess=blocked`.
 
-- browser client autenticado normal;
-- filtros explícitos de Organization e fornecedor;
-- RLS existente continua sendo autoridade;
-- UX de escrita espelha `manageSuppliers = owner/admin/manager/purchases` Organization-wide;
-- `authenticated` não possui DELETE em `supplier_items`;
-- inativação usa `active=false`;
-- nenhum secret/admin client;
-- `units_per_package` usa `Quantity`, aceita apenas valor positivo com até três casas decimais.
+A Fase 46 não criou deployment Vercel.
 
-Compras continuam usando quantidade na unidade-base do estoque. Não foi criada conversão automática de embalagem.
+A ferramenta conectada continua sem listagem material de environment variables por target; não inferir valores ou compartilhamento. O runtime fail-closed permanece o controle compensatório.
 
-## SUP-005 / preços
+## Prontidão já comprovada — classe A
 
-O núcleo de `REQ-SUP-005 — Histórico de preços` continua sendo considerado atendido pelo fluxo já existente:
+Entre as fundações prontas estão:
 
-- o preço efetivo é informado no pedido;
-- ao emitir o pedido, `issue_purchase_order` registra o preço observado em `supplier_prices`;
-- a leitura de compras usa o preço observado mais recente quando disponível.
+- núcleo funcional das Fases 41–45;
+- schema/migrations versionados;
+- RLS e autorização por papel + escopo;
+- validação autoritativa;
+- staging de importação com lineage;
+- idempotência de batch/staging;
+- preview/dry run;
+- relatório de inconsistências;
+- aliases explícitos sem fuzzy auto-merge;
+- isolamento de ambientes fail-closed;
+- Production web atual alinhada à `main` de entrada;
+- mecanismo técnico de bootstrap do primeiro owner;
+- mecânica de backup/restore e workflows já implementados;
+- CI completa verde.
 
-Não abrir por inércia:
+`ready` de importação continua significando apenas preview validado. Não existe command genérico de aplicação às tabelas operacionais.
 
-- cotação;
-- comparação de fornecedores;
-- package price manual no cadastro;
-- BI/histórico avançado de custo;
-- sugestão automática de compra.
+## Decisões PENDING — classe B
 
-Esses itens exigem prioridade explícita de produto e/ou regras ainda PENDING.
+`Q-001..Q-025` foram mapeadas por impacto em `docs/qa/operational-readiness.md`.
 
-## Supabase Production
+Regra central:
 
-Projeto: `fhbvwyttikrbeaanatlr`.
+**não é necessário responder todas antes de qualquer homologação.**
 
-A Fase 45 apenas inspecionou Production em modo read-only e confirmou:
+Responder somente as perguntas que bloqueiam o recorte real escolhido. Exemplos:
 
-- `supplier_items` já possuía todos os campos necessários;
-- RLS habilitado;
-- `authenticated`: SELECT/INSERT/UPDATE e sem DELETE;
-- `anon`: sem SELECT;
-- writes exigem `owner/admin/manager/purchases` Organization-wide;
-- havia 2 vínculos ativos, coerentes com o seed/demo.
+- estrutura/cadastros: Q-001/Q-002 e Q-006 quando `Gabarito` entrar;
+- transferências: Q-003/Q-004/Q-005 para linhas/campos afetados;
+- financeiro: Q-013 e, quando aplicável, Q-014/Q-015;
+- caixa: Q-009/Q-010 e, conforme a fonte, Q-011/Q-012;
+- estoque: Q-008/Q-021 antes de políticas/custos reais;
+- usuários: Q-022 antes de provisionamento multiusuário.
 
-Após o merge, o histórico hospedado de migrations continuou terminando em `20260822195823_finance_attachments`. Não existe migration da Fase 45.
+Questões de POS, FEFO, automação de compra, alertas refinados etc. não bloqueiam o MVP básico enquanto permanecem PENDING/futuras.
 
-## Estado do MVP funcional
+## Pré-condições externas — classe C
 
-Depois das reconciliações e slices das Fases 41–45, o núcleo funcional não possui outra lacuna não-PENDING comprovada que justifique abrir automaticamente uma nova feature.
+Ainda faltam antes de uma migração/cutover real:
 
-Isso **não significa que o sistema esteja liberado para cutover real**. Restam condições operacionais e decisões de negócio, especialmente:
-
-- questões `PENDING`/Q-001..Q-025 necessárias para dados reais e refinamentos;
-- importadores específicos por fonte e regras de transformação aprovadas;
-- dry run real, reconciliação e aceite da data de corte;
-- bootstrap/mapeamento das pessoas, memberships, roles e escopos reais;
-- backup automático real de Production (#75);
-- homologação operacional com dados e usuários aprovados.
-
-## Próxima ação
-
-**Fase 46 — reconciliar a prontidão operacional para homologação e cutover, sem importar dados reais, sem ativar backup automaticamente e sem abrir outra feature funcional por inércia.**
-
-A Fase 46 deve produzir uma visão objetiva do que já está pronto, do que depende de decisão/credencial/dado real e do que pode ser preparado com segurança antes do cutover.
-
-Ver `docs/ai/NEXT_ACTION.md`.
-
-## Fases que não devem ser refeitas
-
-- Fase 41: primeira reconciliação do MVP;
-- Fase 42 / #92: anexos financeiros privados;
-- Fase 43 / #95: contas a pagar em CSV;
-- Fase 44 / #98: condições comerciais de fornecedor;
-- Fase 45 / #101: manutenção básica de produtos por fornecedor;
-- Fase 38 / #75: automação de backup já preparada, aguardando ativação operacional.
+- fontes finais congeladas, timestamp/hash e armazenamento seguro fora do Git;
+- regras de transformação aprovadas por fonte;
+- importadores específicos por fonte;
+- idempotência da futura escrita definitiva;
+- dry run com fonte real;
+- reconciliação e validação de amostras;
+- e-mail/configuração do primeiro owner quando o bootstrap real for autorizado;
+- mapeamento das pessoas reais para roles/escopos (Q-022);
+- decisão sobre onboarding multiusuário após esse mapeamento;
+- ativação e primeiro run real do backup Production (#75);
+- data/hora de corte;
+- procedimento de interrupção/uso paralelo das planilhas;
+- inventário inicial quando a reconciliação de estoque indicar necessidade.
 
 ## Backup Production / #75
+
+A automação continua deliberadamente desarmada.
+
+O schedule observado em 2026-08-26 executou o workflow, mas concluiu como `skipped`, comportamento esperado enquanto `BACKUP_AUTOMATION_ENABLED` não estiver ativado.
 
 Política aprovada permanece:
 
 - RPO 24h;
-- backup diário;
+- diário;
 - RTO <= 4h;
-- Google Drive privado;
+- Drive privado;
 - retenção 30 dias;
 - owner/alerta `synapselab.ia@gmail.com`;
 - restore drill mensal isolado;
-- sem Pro/PITR por enquanto.
+- sem Pro/PITR.
 
 Pendências somente em computador pessoal/confiável:
 
@@ -143,18 +152,47 @@ Pendências somente em computador pessoal/confiável:
 - `BACKUP_ALERT_GMAIL_APP_PASSWORD`;
 - `BACKUP_AUTOMATION_ENABLED=true`;
 - primeiro backup real + archive/checksum off-site;
-- fechar #75.
+- fechar #75 somente após evidência real.
 
 Não pedir nem receber esses secrets no chat.
 
+## Próxima ação
+
+**Gate operacional após Fase 46.**
+
+O próximo chat deve primeiro verificar se surgiu algum desbloqueio concreto:
+
+1. ambiente confiável disponível para concluir #75;
+2. fonte final congelada disponível para um recorte de migração;
+3. e-mail/Organization/redirect aprovados para bootstrap controlado do primeiro owner;
+4. nova prioridade explícita de produto ou regressão concreta.
+
+Se nenhum desses fatos existir, não abrir feature ou Issue apenas para manter atividade.
+
+Ver `docs/ai/NEXT_ACTION.md`.
+
+## Fases que não devem ser refeitas
+
+- Fase 41: reconciliação inicial do MVP;
+- Fase 42 / #92: anexos financeiros privados;
+- Fase 43 / #95: contas a pagar em CSV;
+- Fase 44 / #98: condições comerciais de fornecedor;
+- Fase 45 / #101: manutenção básica de produtos por fornecedor;
+- Fase 46: readiness operacional A/B/C/D;
+- Fase 38 / #75: automação de backup já preparada, aguardando ativação operacional.
+
 ## Não fazer
 
-- não reabrir Fases 41–45 sem regressão concreta;
-- não promover `PENDING` ou fase posterior por inferência;
-- não transformar SupplierItem em cotação/comparação avançada;
-- não abrir nova exportação/dashboard por conveniência;
+- não reabrir Fases 41–46 sem regressão concreta;
+- não promover `PENDING` por inferência;
+- não criar importador/apply genérico sem fonte congelada + regra aprovada;
+- não tratar `ready` de staging como autorização de cutover;
+- não criar/invitar pessoas reais sem aprovação e mapeamento;
+- não pedir secrets no chat;
 - não criar migration sem necessidade;
 - não manipular Storage por SQL;
-- não ativar/fechar #75 sem evidência real;
+- não ativar/fechar #75 sem run real;
+- não criar Supabase branch/projeto por conveniência;
 - não criar deploy Vercel intermediário;
-- não importar dados reais nem executar cutover sem critérios/aceite.
+- não restaurar Production para teste;
+- não importar dados reais nem executar cutover sem gates e aceite.
