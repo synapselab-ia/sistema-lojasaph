@@ -2,147 +2,152 @@
 
 ## Estado
 
-Fase 45 — `REQ-SUP-004 — Produtos por fornecedor` — está **concluída e integrada funcionalmente na `main`**.
+**Fase 46 — prontidão operacional para homologação/cutover — concluída.**
 
-- base da Fase 45: `d774f5ea96d28bffb6fcf377427b0ff6845e458f`;
-- Issue #101: closed/completed;
-- PR #102 — `feat(suppliers): maintain supplier items`: squash-mergeado;
-- merge funcional: `6a86922ef705af25a4897068e223b0e26c1b670a`;
-- head final validado: `c9898f7dd90fd453e14775c89a336fc49636463f`;
-- CI #393 — success (`database`, lint, typecheck, Vitest, production build);
-- Business Transactions Integration #191 — success;
-- Inventory Count Integration #207 — success;
-- nenhuma migration/DDL/DML ou mutation manual de Production;
-- nenhum deploy Vercel;
-- #75 continua aberta/desarmada.
+Não existe nova frente funcional automaticamente autorizada. O núcleo do MVP permanece reconciliado depois das Fases 41–45.
 
-A continuidade documental pode fazer o HEAD final de `main` ficar posterior ao merge funcional acima. O SHA `6a86922e...` identifica a entrega da Fase 45 e não deve ser confundido com eventual commit documental posterior.
+Artefato principal da fase:
 
-**Não refazer a Fase 45.** O próximo ciclo é a Fase 46 definida em `docs/ai/NEXT_ACTION.md`.
+- `docs/qa/operational-readiness.md`
 
-## O que a Fase 45 comprovou
+A readiness foi separada em quatro classes:
 
-A manutenção básica de `supplier_items` era uma lacuna real, não uma feature escolhida por conveniência:
+- **A — pronto/comprovado**;
+- **B — decisão de negócio/PENDING**;
+- **C — pré-condição operacional/externa**;
+- **D — fase futura/opcional**.
 
-- `/workspace/compras` já dependia de `supplier_items` ativos para permitir itens no pedido;
-- sem vínculo, a UI informava `Fornecedor sem itens de compra ativos`;
-- o gateway de compras apenas lia esses registros;
-- não existia adapter Supabase/UI persistente para criar ou editar o vínculo;
-- o repository antigo de SupplierItem era apenas in-memory e não cobria `purchase_unit`/`units_per_package`;
-- os dois vínculos existentes em Production eram coerentes com seed/demo;
-- import staging continua dry-run e não escreve tabelas operacionais.
+**Não refazer a Fase 46.** O próximo trabalho deve ser disparado pelo primeiro gate externo que realmente for desbloqueado, conforme `docs/ai/NEXT_ACTION.md`.
 
-A fonte histórica `Fornecedores Tabatinga` também possui Produto, Medida e Quantidade por embalagem, portanto o recorte tinha processo e dados de origem concretos.
+## Snapshot real usado na auditoria
 
-Ver `docs/qa/supplier-items-maintenance.md`.
+### GitHub
 
-## Contrato entregue
+- `main` na entrada: `62c3af63939c808487434e6e539ef0870a60d530`;
+- CI #396: success;
+- nenhum PR aberto na entrada;
+- única Issue aberta: #75;
+- PR #102 e Issue #101 da Fase 45 já encerrados;
+- PR #103 de handoff da Fase 45 já integrado;
+- branches `agent/*` anteriores são históricos.
 
-`/workspace/fornecedores` agora possui painel `Produtos do fornecedor`.
+Nenhuma Issue nova foi criada na Fase 46 porque os bloqueios encontrados não são trabalho funcional independente de dados/decisões/credenciais.
 
-Leitura:
+### Supabase
 
-- usa browser client autenticado normal;
-- filtra explicitamente `organization_id` e `supplier_id`;
-- a primeira slice trabalha somente com vínculo default `supplier_sku IS NULL`;
-- membros autorizados pela RLS podem consultar os vínculos.
+Production `fhbvwyttikrbeaanatlr`:
 
-Escrita:
+- `ACTIVE_HEALTHY`;
+- região `sa-east-1`;
+- PostgreSQL 17 (`17.6.1.141`);
+- zero development branches;
+- migration history termina em `20260822195823 / finance_attachments`.
 
-- UX somente para `manageSuppliers`;
-- RLS final exige `owner/admin/manager/purchases` Organization-wide;
-- pode criar vínculo para produto ativo do catálogo;
-- pode manter `purchase_unit` opcional;
-- pode manter `units_per_package` opcional e positivo, com até três casas decimais via `Quantity`;
-- pode ativar/inativar;
-- criação procura primeiro vínculo default existente do mesmo fornecedor/produto e o reutiliza/reativa;
-- edição não troca silenciosamente o produto do vínculo;
-- não existe DELETE nesta slice e `authenticated` também não possui privilégio DELETE em `supplier_items`.
+A Fase 46 foi read-only no Supabase. Não criar migration retrospectiva.
 
-A unidade/embalagem permanece informação comercial. O pedido continua recebendo quantidade na unidade-base do estoque; não foi criada conversão automática de caixa/pacote.
+### Vercel
 
-## SUP-005 / preço observado
+A documentação antiga dizia que Production ainda estava no commit da Fase 26. Isso mudou.
 
-Não abrir automaticamente uma nova frente para `REQ-SUP-005`.
+Na Fase 46 foi observado:
 
-O núcleo de histórico já existe:
+- deployment `dpl_RRAzMvYKVLKAjbrNV6hAGqg42wfg`;
+- target `production`;
+- estado `READY`;
+- commit `62c3af63939c808487434e6e539ef0870a60d530`;
+- `sistema-lojasaph.vercel.app/health` → HTTP 200;
+- `environment=production`;
+- `supabaseAccess=allowed`;
+- `supabaseReason=production_backend`;
+- `adminAccess=blocked`.
 
-- o preço efetivo é informado no pedido;
-- `issue_purchase_order` registra o preço observado em `supplier_prices`;
-- compras consegue consultar o preço observado mais recente.
+A Fase 46 não criou deploy.
 
-A Fase 45 deliberadamente não adicionou:
+A conexão atual ainda não expõe listagem material de env vars por target. Não inferir valores/compartilhamento. Preview sem backend isolado deve continuar fail-closed.
 
-- preço/package price manual no cadastro do fornecedor;
-- cotação;
-- comparação entre fornecedores;
-- sugestão automática de compra;
-- BI/histórico avançado de custo.
+## O que já está pronto — classe A
 
-Esses itens precisam de prioridade explícita e/ou regras de negócio ainda PENDING.
+Não reimplementar:
 
-## Production / Supabase
+- schema/migrations;
+- RLS e role+scope;
+- validação autoritativa;
+- staging/import lineage;
+- idempotência do batch/staging;
+- preview/dry run;
+- relatório de inconsistências;
+- aliases explícitos;
+- isolamento de ambientes;
+- bootstrap técnico do primeiro owner;
+- workflows/scripts de backup e restore;
+- módulos funcionais reconciliados até Fase 45.
 
-Projeto `fhbvwyttikrbeaanatlr` foi somente inspecionado read-only.
+Importante: `ready` do import batch significa somente preview validado. **Não existe hoje command genérico de aplicação em tabelas operacionais.**
 
-Confirmado:
+## Q-001..Q-025 — regra de uso
 
-- `supplier_items` já contém os campos necessários;
-- RLS habilitado;
-- `authenticated`: SELECT/INSERT/UPDATE e sem DELETE;
-- `anon`: sem SELECT;
-- SELECT exige membership da Organization;
-- INSERT/UPDATE exigem `owner/admin/manager/purchases` Organization-wide;
-- havia 2 vínculos ativos antes da feature, coerentes com os dados demo/seed.
+Não exigir todas antes de avançar.
 
-Nenhuma alteração remota foi necessária. A checagem pós-merge confirmou que o histórico hospedado continua terminando em `20260822195823_finance_attachments`. Não criar migration retrospectiva para a Fase 45.
+Consultar a tabela completa em `docs/qa/operational-readiness.md` e responder somente as perguntas que bloqueiam a fonte/domínio em trabalho.
 
-## Estado do MVP após Fase 45
+Atalhos:
 
-O núcleo funcional passa a ser tratado como **reconciliado**. Não há outra lacuna não-PENDING comprovada que justifique abrir automaticamente uma feature.
+- estrutura real: Q-001/Q-002;
+- `Gabarito`: Q-006;
+- transferências ambíguas: Q-003/Q-004/Q-005;
+- financeiro histórico: Q-013 e, conforme casos, Q-014/Q-015;
+- caixa histórico: Q-009/Q-010 e quando aplicável Q-011/Q-012;
+- custeio/política de estoque: Q-008/Q-021;
+- pessoas reais: Q-022.
 
-Isso não equivale a dizer que o sistema está pronto para migração/cutover real.
+Não transformar Q-007, Q-019/Q-020, Q-024/Q-025 ou outros refinamentos em bloqueio global quando o recorte atual não depender deles.
 
-A fundação de importação já possui staging, idempotência, validação, preview/dry run e relatório, mas `ready` significa apenas preview validado. Não existe hoje command que aplique o lote às tabelas operacionais.
+## Caminho de importação
 
-Antes de dados reais ainda existem condições como:
+A fundação genérica já existe, mas a migração real exige por recorte:
 
-- fontes reais finais congeladas e armazenadas com segurança;
-- importadores específicos por fonte;
-- regras de transformação aprovadas;
-- resolução das questões de negócio necessárias em `open-questions.md`;
-- reconciliação e validação de amostras;
-- estratégia/execução de backup real antes do cutover;
-- definição e aceite da data/hora de corte;
-- mapeamento das pessoas reais, memberships, roles e escopos;
-- procedimento para interromper ou controlar uso paralelo das planilhas.
+1. fonte final congelada;
+2. timestamp/hash e armazenamento seguro fora do Git;
+3. target canônico definido;
+4. transformação documentada;
+5. respostas apenas às Qs necessárias;
+6. importador específico;
+7. dry run real;
+8. relatório sem pendência não aceita;
+9. aplicação definitiva idempotente delimitada;
+10. reconciliação;
+11. aceite explícito;
+12. backup Production real antes do cutover.
 
-## Próxima ação — Fase 46
+Não criar importador ou command de `apply` genérico por antecipação.
 
-**Reconciliar a prontidão operacional para homologação e cutover sem executar importação real, sem criar/invitar usuários reais, sem manipular secrets e sem abrir nova feature funcional por inércia.**
+## Identidade e permissões
 
-A Fase 46 deve produzir uma matriz/checklist objetiva separando:
+Capacidade técnica pronta:
 
-1. fundações já prontas e comprovadas;
-2. decisões de negócio/PENDING que realmente bloqueiam etapas futuras;
-3. pré-condições operacionais, credenciais e fontes reais que dependem do usuário/ambiente confiável;
-4. funcionalidades futuras que não bloqueiam o MVP básico.
+- roles `owner/admin/manager/finance/purchases/inventory/cashier/viewer`;
+- escopos Organization/Business/Unit/Sector;
+- múltiplos memberships;
+- RLS/wrappers já testados;
+- bootstrap seguro do primeiro owner.
 
-Inspecionar especialmente:
+Ainda externo/PENDING:
 
-- `docs/modules/imports.md`;
-- `docs/source-data/migration-plan.md`;
-- `docs/product/open-questions.md`;
-- `docs/operations/bootstrap-owner.md`;
-- `docs/operations/environments.md`;
-- `docs/operations/backup-restore.md`;
-- QA de importação, validação e isolamento.
+- e-mail exato do primeiro owner;
+- Organization alvo quando ambígua;
+- redirect HTTPS e capacidade de entrega do convite;
+- pessoas reais e respectivos roles/escopos (Q-022);
+- estratégia de onboarding multiusuário depois do mapeamento.
 
-Se houver uma preparação operacional totalmente independente de secrets, dados reais e decisões ainda abertas, ela pode ser delimitada de forma explícita. Caso contrário, documentar os bloqueios e parar — não criar Issue para parecer que existe trabalho funcional pendente.
+Não criar conta, convite ou membership real sem esses gates.
 
 ## Backup Production / #75
 
-Não refazer a automação. Política já aprovada:
+Issue #75 continua a única Issue aberta.
+
+A mecânica está pronta. O schedule de 2026-08-26 rodou o workflow e concluiu como `skipped`, comportamento esperado com a automação desarmada.
+
+Política aprovada:
 
 - RPO 24h;
 - diário;
@@ -153,27 +158,44 @@ Não refazer a automação. Política já aprovada:
 - restore drill mensal isolado;
 - sem Pro/PITR.
 
-Pendências somente em computador pessoal/confiável:
+Somente em computador pessoal/confiável:
 
 - OAuth/rclone `[lojasaph-drive]`;
 - `BACKUP_RCLONE_CONFIG_B64`;
 - `BACKUP_ALERT_GMAIL_APP_PASSWORD`;
 - `BACKUP_AUTOMATION_ENABLED=true`;
-- primeiro backup real + archive/checksum;
-- fechar #75.
+- primeiro backup Production real;
+- confirmação de archive + `.sha256`;
+- fechar #75 somente após evidência real.
 
 Nunca pedir secrets no chat.
 
+## Próximo gatilho
+
+No próximo chat, verificar primeiro se apareceu pelo menos um destes fatos:
+
+1. **#75 desbloqueada:** operador está em computador confiável e pronto para provisionar as credenciais fora do chat;
+2. **migração desbloqueada:** existe uma fonte final congelada para um recorte específico;
+3. **bootstrap desbloqueado:** e-mail/Organization/redirect/entrega do owner estão aprovados;
+4. **produto desbloqueado:** há nova prioridade explícita ou regressão concreta.
+
+Se nenhum estiver verdadeiro, não inventar feature nem Issue. Preservar a baseline e informar que o próximo passo depende do primeiro gate externo.
+
 ## Não fazer
 
-- não reabrir Fases 41–45 sem regressão concreta;
-- não criar SUP-005 avançado, cotação, comparação ou sugestão por inércia;
-- não promover item `PENDING` por inferência;
-- não criar outra exportação/dashboard por conveniência;
+- não reabrir Fases 41–46 sem regressão;
+- não abrir SUP-005 avançado, cotação, comparação ou sugestão por inércia;
+- não promover `PENDING`;
+- não construir importação definitiva sem fonte/regra;
+- não tratar `ready` do staging como cutover;
+- não criar/invitar pessoas reais sem aprovação;
+- não pedir/receber secrets no chat;
 - não criar migration sem necessidade;
-- não contornar RLS com service/admin client;
+- não contornar RLS;
 - não manipular Storage por SQL;
 - não ativar/fechar #75 sem run real;
-- não importar planilhas reais nem executar cutover sem critérios/aceite;
-- não criar/invitar pessoas reais sem aprovação e mapeamento de roles/escopos;
-- não criar deploy Vercel só para auditoria.
+- não usar outro projeto Supabase como Preview por inferência;
+- não criar branch/projeto pago sem autorização;
+- não restaurar Production para teste;
+- não criar deploy Vercel só para auditoria;
+- não importar dados reais/cutover sem gates e aceite.
