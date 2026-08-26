@@ -1,8 +1,9 @@
 \set ON_ERROR_STOP on
 
 -- This test is intentionally data-agnostic: it validates a real Production
--- point-in-time bundle without depending on synthetic seed UUIDs. The caller
--- must already have enforced that the target is an isolated local database.
+-- point-in-time bundle without depending on synthetic seed UUIDs or assuming
+-- that every valid snapshot must contain rows in every optional business table.
+-- The caller must already have enforced that the target is an isolated local DB.
 do $$
 declare
   fk record;
@@ -23,16 +24,16 @@ begin
     raise exception 'restored Production bundle is missing critical Lojasaph relations';
   end if;
 
+  -- These relations are known to contain core operational data in the current
+  -- Production baseline and provide a useful guard against a schema-only or
+  -- accidentally empty restore. Membership/payment row counts are intentionally
+  -- not hard-coded: a structurally valid point-in-time snapshot may contain 0.
   if (select count(*) from public.organizations) < 1 then
     raise exception 'restored Production bundle contains no organizations';
   end if;
 
   if (select count(*) from public.units) < 1 then
     raise exception 'restored Production bundle contains no units';
-  end if;
-
-  if (select count(*) from public.organization_memberships) < 1 then
-    raise exception 'restored Production bundle contains no organization memberships';
   end if;
 
   if (select count(*) from public.stock_items) < 1 then
