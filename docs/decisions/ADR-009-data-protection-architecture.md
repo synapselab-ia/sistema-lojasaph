@@ -1,6 +1,6 @@
 # ADR-009 — Proteção, backup e recuperação de dados
 
-Status: **aceito e parcialmente implementado; backup PostgreSQL off-site ativo, Storage/UI ainda pendentes**  
+Status: **aceito e parcialmente implementado; backup PostgreSQL off-site + persistência autoritativa ativos, Storage/UI ainda pendentes**  
 Data: 2026-08-26  
 Requisito: `REQ-PLAT-005`  
 Issue: #75
@@ -40,7 +40,7 @@ Confirmação humana não transforma um arquivo em backup válido.
 
 Experiência alvo:
 
-- card global no `RuntimeShell`;
+- card/link global no `RuntimeShell`;
 - página `/workspace/backup`;
 - verde/âmbar/vermelho conforme política;
 - última cópia válida;
@@ -50,7 +50,7 @@ Experiência alvo:
 - histórico;
 - último restore drill.
 
-A UI deve consumir fonte autoritativa no PostgreSQL, não inferir sucesso pelo horário do cron.
+A UI deve consumir a fonte autoritativa no PostgreSQL, não inferir sucesso pelo horário do cron.
 
 Atraso do backup não bloqueia automaticamente caixa, estoque, compras ou financeiro. Política de bloqueio futuro exige decisão específica.
 
@@ -135,33 +135,45 @@ Cada backup válido possui:
 
 O manifesto contém somente metadata necessária à recuperação: `backup_id`, ambiente, timestamp, versão/formato, cobertura, hash, tamanho e referências não secretas de execução.
 
-### Espelho operacional no PostgreSQL
+### Espelho operacional no PostgreSQL — implementado
 
-Próxima slice da #75:
+Migration Production:
 
-- run global de proteção;
-- tipo (`automatic_database`, `automatic_storage`, `manual_export`, `restore_drill`);
-- estado (`running`, `succeeded`, `failed`);
-- início/fim;
-- integridade;
-- provider/destino lógico sem segredo;
-- tamanho/timestamps seguros;
-- erro sanitizado;
-- relação entre run e Organizations cobertas.
+`20260826201252 / protection_run_persistence`
 
-O backup PostgreSQL é por database/environment, não duplicado fisicamente por Organization.
+A fonte autoritativa usa:
 
-Leitura segue RLS/escopo da Organization; usuários comuns não podem forjar sucesso de backup.
+- `public.protection_runs` para tipo, estado, início/fim, cópia válida, integridade, tamanho, provider/destino lógico, cobertura, referência de execução e erro sanitizado;
+- `public.protection_run_organizations` para relacionar cada run global às Organizations cobertas.
+
+Tipos suportados:
+
+- `automatic_database`;
+- `automatic_storage`;
+- `manual_export`;
+- `restore_drill`.
+
+Estados suportados:
+
+- `running`;
+- `succeeded`;
+- `failed`.
+
+O backup PostgreSQL permanece por database/environment, sem duplicação física por Organization.
+
+Leitura segue RLS/escopo de Organization. Usuários comuns não podem forjar sucesso de backup. Mutation ocorre somente pelo boundary server-side privado, com idempotência por `execution_reference`.
+
+No momento da implantação a tabela estava vazia por não haver execução real pós-integração ainda; o run histórico `33006253661` não deve ser backfillado manualmente.
 
 ## 7. Alertas
 
 Gmail App Password e rclone não fazem parte da arquitetura alvo.
 
-Falha deve produzir:
+Falha produz:
 
 - `failure` no GitHub Actions;
-- incidente operacional persistente/idempotente no GitHub;
-- futuramente, estado crítico consultável pela UI quando o banco estiver disponível.
+- tentativa de persistir `failed` na fonte autoritativa com erro sanitizado;
+- incidente operacional persistente/idempotente no GitHub.
 
 Um canal externo adicional pode ser adicionado depois como adapter, se houver necessidade comercial.
 
@@ -213,7 +225,7 @@ Threat model mínimo:
 
 ## Evidência de implementação
 
-Primeira prova real concluída em 2026-08-26:
+Primeira prova off-site real concluída em 2026-08-26:
 
 - workflow `Production Database Backup`;
 - run `33006253661`;
@@ -222,6 +234,14 @@ Primeira prova real concluída em 2026-08-26:
 - upload R2 concluído;
 - objetos remotos rebaixados e re-hasheados;
 - incidente #111 fechado automaticamente após recuperação verde.
+
+Persistência autoritativa concluída em 2026-08-26:
+
+- migration `20260826201252 / protection_run_persistence` aplicada em Production;
+- RLS e grants testados em CI;
+- validação hospedada em transação + rollback provou leitura autorizada, mutation autenticada bloqueada e outsider bloqueado;
+- workflow integrado passa a abrir/finalizar runs pelo boundary server-side;
+- nenhum secret é armazenado no espelho operacional.
 
 Warning de restore a preservar: constraints circulares em `stock_movements` e `payments` reportadas pelo `pg_dump`.
 
@@ -232,13 +252,14 @@ Warning de restore a preservar: constraints circulares em `stock_movements` e `p
 - backup automático independente de comportamento humano;
 - credenciais máquina-a-máquina;
 - provider substituível;
-- status de proteção pode evoluir para funcionalidade do produto;
+- fonte autoritativa pronta para a UI do produto;
 - backup global não é duplicado por Organization;
 - limites de cobertura de Storage/Auth ficam explícitos.
 
 ### Custos/limitações
 
-- ainda é necessária migration para persistir evidência operacional;
+- o primeiro run real pós-integração ainda precisa inaugurar o histórico automaticamente;
+- UI `Proteção dos dados` ainda precisa ser implementada;
 - Storage requer segunda trilha antes de cobertura completa;
 - restore real isolado ainda precisa comprovar restaurabilidade end-to-end;
 - exportação manual exige slice específica se mantida.
@@ -248,14 +269,16 @@ Warning de restore a preservar: constraints circulares em `stock_movements` e `p
 - não voltar a Drive/rclone/Gmail;
 - não pedir/armazenar secrets em chat/Issue/PR;
 - não considerar confirmação humana prova de backup;
+- não backfillar manualmente o run histórico anterior à persistência;
 - não bloquear mutations do negócio por atraso sem nova decisão;
 - não declarar Storage protegido pelo dump PostgreSQL;
 - não colocar archives reais no Git/GitHub Artifacts;
 - não restaurar Production para teste;
-- não remover o hard cap de 300 MB sem nova decisão registrada.
+- não remover o hard cap de 300 MB sem nova decisão registrada;
+- não permitir mutation de `protection_runs` pelo browser.
 
 ## Próxima slice técnica
 
-**Persistência autoritativa de runs de proteção + relação com Organizations + RLS.**
+**UI read-only `Proteção dos dados` no `RuntimeShell` + `/workspace/backup`, consumindo exclusivamente a fonte autoritativa sob RLS.**
 
-Somente depois dessa fonte autoritativa implementar a UI `Proteção dos dados`. Storage/anexos e restore real isolado permanecem obrigatórios antes do fechamento da #75.
+Storage/anexos e restore real isolado permanecem obrigatórios antes do fechamento da #75.
