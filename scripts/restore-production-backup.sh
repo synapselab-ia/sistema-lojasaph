@@ -4,6 +4,7 @@ set -euo pipefail
 BUNDLE_DIR="${1:-}"
 RESTORE_DB_URL="${BACKUP_RESTORE_DB_URL:-}"
 EXPECTED_PROJECT_REF="${BACKUP_RESTORE_EXPECTED_PROJECT_REF:-}"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 
 if [[ "${BACKUP_RESTORE_ISOLATED:-}" != "true" ]]; then
   echo "::error::Restore helper requires BACKUP_RESTORE_ISOLATED=true." >&2
@@ -27,6 +28,11 @@ fi
 
 if ! command -v psql >/dev/null 2>&1; then
   echo "::error::PostgreSQL client tooling is required for restore verification." >&2
+  exit 1
+fi
+
+if ! command -v python >/dev/null 2>&1; then
+  echo "::error::Python is required to prepare Supabase restore SQL safely." >&2
   exit 1
 fi
 
@@ -88,6 +94,26 @@ if ! grep -Fqx "format=lojasaph-postgres-logical-backup-v1" "${METADATA_FILE}"; 
   exit 1
 fi
 
+# The source files remain checksum-authoritative. A private derived copy is made
+# only after verification so legacy bundles can be restored into a modern
+# Supabase target without attempting to mutate platform-managed roles. The
+# preparer mirrors Supabase CLI's reserved-role filtering and fails closed on
+# role statements it cannot classify. The derived SQL is never uploaded.
+umask 077
+PREPARED_SQL_DIR="$(mktemp -d "${TMPDIR:-/tmp}/lojasaph-restore-sql.XXXXXX")"
+cleanup_prepared_sql() {
+  rm -rf "${PREPARED_SQL_DIR}"
+}
+trap cleanup_prepared_sql EXIT
+
+python "${REPO_ROOT}/scripts/prepare-supabase-restore-sql.py" \
+  --roles "${ROLES_FILE}" \
+  --schema "${SCHEMA_FILE}" \
+  --output-dir "${PREPARED_SQL_DIR}"
+
+PREPARED_ROLES_FILE="${PREPARED_SQL_DIR}/roles.restore.sql"
+PREPARED_SCHEMA_FILE="${PREPARED_SQL_DIR}/schema.restore.sql"
+
 # Supabase logical dumps expect the standard public schema to exist because
 # extensions such as pgcrypto may be installed into it before application DDL.
 # A normal Supabase target already has this schema; the IF NOT EXISTS keeps the
@@ -109,8 +135,8 @@ psql \
   --quiet \
   --single-transaction \
   --variable ON_ERROR_STOP=1 \
-  --file "${ROLES_FILE}" \
-  --file "${SCHEMA_FILE}" \
+  --file "${PREPARED_ROLES_FILE}" \
+  --file "${PREPARED_SCHEMA_FILE}" \
   --command 'SET session_replication_role = replica' \
   --file "${DATA_FILE}" \
   --dbname "${RESTORE_DB_URL}"
@@ -120,6 +146,6 @@ psql \
   --quiet \
   --variable ON_ERROR_STOP=1 \
   --dbname "${RESTORE_DB_URL}" \
-  --file "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)/supabase/tests/production_bundle_restore.sql"
+  --file "${REPO_ROOT}/supabase/tests/production_bundle_restore.sql"
 
 echo "Production PostgreSQL bundle restored and validated in an isolated target."
