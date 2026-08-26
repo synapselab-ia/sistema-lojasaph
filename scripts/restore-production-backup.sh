@@ -88,6 +88,17 @@ if ! grep -Fqx "format=lojasaph-postgres-logical-backup-v1" "${METADATA_FILE}"; 
   exit 1
 fi
 
+# Supabase logical dumps expect the standard public schema to exist because
+# extensions such as pgcrypto may be installed into it before application DDL.
+# A normal Supabase target already has this schema; the IF NOT EXISTS keeps the
+# same precondition explicit for minimal isolated CI databases.
+psql \
+  --no-psqlrc \
+  --quiet \
+  --variable ON_ERROR_STOP=1 \
+  --dbname "${RESTORE_DB_URL}" \
+  --command 'CREATE SCHEMA IF NOT EXISTS public'
+
 # Follow Supabase's logical restore sequence in one transaction. Using
 # session_replication_role=replica is intentional: pg_dump warns about the
 # self-referential stock_movements/payments foreign keys, and COPY order cannot
