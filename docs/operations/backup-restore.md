@@ -1,7 +1,7 @@
 # Proteção, backup, restauração e recuperação operacional
 
 Data da revisão: 2026-08-26  
-Status: arquitetura revisada na #75; automação histórica permanece desarmada  
+Status: transporte S3-compatible reconciliado; Production continua desarmada  
 Requisito: `REQ-PLAT-005`  
 Issue: #75  
 ADR: `ADR-009 — Proteção, backup e recuperação de dados`
@@ -30,6 +30,18 @@ Salvo nova decisão explícita:
 
 Violação do RPO gera estado crítico e escalonamento. Ela **não bloqueia automaticamente** caixa, estoque, compras, financeiro ou outras mutations do negócio.
 
+## Referências atuais verificadas
+
+Em 2026-08-26 foram conferidas novamente:
+
+- Supabase Changelog;
+- Supabase `Backup and Restore using the CLI`;
+- Supabase `Database Backups`;
+- Cloudflare R2 S3 API / AWS CLI;
+- AWS CLI v2 official Docker image guidance.
+
+A sequência vigente do Supabase para backup lógico continua sendo roles + schema + data com `supabase db dump`; a documentação continua recomendando Session pooler em redes IPv4 e confirma que backups de banco não incluem os objetos binários do Storage.
+
 ## Estado técnico atual
 
 ### Supabase Production
@@ -38,13 +50,19 @@ Violação do RPO gera estado crítico e escalonamento. Ela **não bloqueia auto
 - região: `sa-east-1`;
 - PostgreSQL 17;
 - plano atual permanece Free na última auditoria;
-- migrations versionadas no GitHub são fonte de verdade do schema do produto.
+- migrations versionadas no GitHub são fonte de verdade do schema do produto;
+- `PRODUCTION_SUPABASE_DB_URL` já foi provisionado com Session pooler na porta 5432.
 
-O Supabase recomenda exportações regulares via CLI com cópia off-site para projetos Free. Backup de banco não substitui backup dos objetos do Supabase Storage.
+Nenhuma mutation de Supabase é necessária para a reconciliação do transporte.
 
-### Exportador lógico existente
+### Exportador lógico preservado
 
-`scripts/export-supabase-backup.sh` exige `SUPABASE_DB_URL` por secret e diretório temporário fora do repositório.
+`scripts/export-supabase-backup.sh` continua sendo a única implementação de exportação lógica.
+
+Ele exige:
+
+- `SUPABASE_DB_URL` por secret;
+- `BACKUP_OUTPUT_DIR` fora do repositório.
 
 Produz:
 
@@ -55,84 +73,170 @@ Produz:
 
 O helper usa `umask 077`, recusa escrita dentro do Git e valida hashes antes de retornar sucesso.
 
-O fluxo corresponde à sequência documentada pelo Supabase CLI para backup lógico de roles/schema/data.
+### Transporte reconciliado
 
-### Automação histórica mergeada
+`.github/workflows/production-backup.yml` deixou de depender de Google Drive/rclone/Gmail e agora trabalha contra um contrato **S3-compatible** usando a imagem oficial e versionada `amazon/aws-cli:2.36.30`.
 
-`.github/workflows/production-backup.yml` e `.github/workflows/backup-restore-drill.yml` foram implementados antes da revisão arquitetural.
+`scripts/s3-backup-storage.sh` concentra a camada de transporte e não contém detalhes específicos de Cloudflare R2.
 
-A implementação atual:
+Configuração esperada quando o provider for aprovado:
 
-- possui cron diário e `workflow_dispatch`;
-- usa `BACKUP_AUTOMATION_ENABLED` como fail-closed;
-- reutiliza o exportador lógico;
-- cria archive + `.sha256`;
-- envia para Google Drive via rclone;
-- verifica upload;
-- aplica retenção de 30 dias;
-- envia alerta por Gmail App Password;
-- possui drill mensal isolado.
+#### GitHub Actions Variables
 
-`PRODUCTION_SUPABASE_DB_URL` já foi provisionado anteriormente com Session pooler na porta 5432.
+- `BACKUP_S3_ENDPOINT` — endpoint HTTPS S3-compatible;
+- `BACKUP_S3_BUCKET` — bucket privado de backup;
+- `BACKUP_S3_REGION` — opcional; default `auto` para compatibilidade com R2;
+- `BACKUP_S3_PREFIX` — opcional; default `production/postgres`;
+- `BACKUP_AUTOMATION_ENABLED` — permanece diferente de `true` até a prova real aprovada.
 
-**Não ativar essa automação em seu formato Drive/rclone/Gmail.** Ela é baseline técnica a reconciliar conforme ADR-009. Os schedules devem permanecer desarmados até a nova automação provider-neutral estar pronta e um destino off-site ter sido explicitamente aprovado/provisionado.
+#### GitHub Actions Secrets
 
-## Arquitetura alvo do destino off-site
+- `PRODUCTION_SUPABASE_DB_URL` — já existente;
+- `BACKUP_S3_ACCESS_KEY_ID`;
+- `BACKUP_S3_SECRET_ACCESS_KEY`;
+- `BACKUP_S3_SESSION_TOKEN` — opcional para providers/credenciais temporárias que o exijam.
 
-A automação deve depender de contrato **S3-compatible**, e não de Google Drive/OAuth.
+Não colocar endpoint com credenciais embutidas. Nenhum access key, secret, connection string ou conteúdo de backup deve aparecer em Markdown, Issue, PR, log ou chat.
 
-Provedor inicial preferido: **Cloudflare R2**, sujeito a aprovação operacional antes de qualquer criação de conta/bucket/billing/secret.
+## Bundle off-site
 
-Motivos registrados no ADR-009:
+Cada execução válida produz quatro objetos sob o namespace de Production:
 
-- API S3-compatible;
-- baixo custo/free tier documentado para Standard;
-- egress sem cobrança;
-- lifecycle de objetos;
-- bucket lock contra exclusão/overwrite antes do prazo;
-- credenciais escopáveis por bucket;
-- portabilidade futura para B2/S3/equivalente.
+1. `lojasaph-production-<timestamp>-<run-id>.tar.gz`;
+2. `<archive>.sha256`;
+3. `<archive>.manifest.json`;
+4. `<archive>.manifest.json.sha256`.
 
-### Controles mínimos do bucket
+O archive contém:
 
-Quando o destino for aprovado:
+- `roles.sql`;
+- `schema.sql`;
+- `data.sql`;
+- `SHA256SUMS`;
+- `BACKUP_METADATA.txt`.
 
-- bucket privado dedicado a Production;
-- sem public access e sem CORS de navegador;
-- credencial limitada ao bucket;
-- prefixo por environment;
-- checksum SHA-256;
-- verificação pós-upload;
-- retenção de 30 dias;
-- bucket lock/WORM compatível com a janela de retenção quando suportado;
-- lifecycle de expiração configurado no storage;
-- segredos somente em secret manager/GitHub Actions Secrets.
+### Manifesto
 
-Nenhuma credencial de storage deve aparecer em Markdown, Issue, PR, log ou chat.
+`scripts/backup-bundle.py` cria e verifica um manifesto não sensível, formato `lojasaph-postgres-logical-backup`, versão 1.
+
+Ele registra:
+
+- `backup_id`;
+- environment;
+- timestamp UTC;
+- cobertura declarada (`postgres`);
+- nome, tamanho e SHA-256 do archive;
+- project ref não secreto;
+- versão do Supabase CLI;
+- Git SHA;
+- repositório/workflow/run id/run attempt/run URL;
+- contrato `s3-compatible`;
+- retenção de 30 dias.
+
+O manifesto não contém connection string, access key, secret, token, SQL ou dados operacionais.
+
+## Verificação pós-upload
+
+Um backup só retorna sucesso depois de:
+
+1. validar os checksums internos do payload;
+2. validar o `.sha256` do archive local;
+3. validar o manifesto local;
+4. enviar archive + sidecars para o storage S3-compatible;
+5. confirmar a existência de cada objeto com `HeadObject`;
+6. baixar novamente cada objeto em streaming e comparar o SHA-256 remoto com o arquivo local.
+
+Essa estratégia evita tratar ETag como checksum e não depende de uma implementação provider-specific de checksum S3.
+
+Nenhum dump real é enviado para GitHub Artifact ou versionado no repositório.
+
+## Retenção e proteção contra exclusão
+
+A automação **não deleta mais backups antigos**.
+
+A retenção de 30 dias é requisito do provider aprovado:
+
+- lifecycle de expiração no bucket;
+- lock/WORM durante a janela de retenção quando suportado;
+- coerência entre lock e lifecycle;
+- credencial da rotina limitada ao menor conjunto de permissões necessário.
+
+Para Cloudflare R2, ADR-009 registra bucket lock + lifecycle como desenho preferido. O bucket real ainda não foi criado nem autorizado.
+
+## Alerta operacional GitHub-native
+
+Gmail App Password foi removido da automação.
+
+`scripts/sync-backup-incident.py` usa somente o `GITHUB_TOKEN` efêmero do próprio workflow com `issues: write` para manter um incidente persistente e idempotente:
+
+- na primeira falha, abre uma Issue operacional específica do workflow;
+- falhas posteriores atualizam a mesma Issue, sem abrir uma Issue por run;
+- o mesmo run/attempt não é registrado duas vezes;
+- uma execução posterior verde registra a recuperação e fecha automaticamente o incidente;
+- corpo/comentários contêm somente workflow, run URL, horário e mensagem sanitizada.
+
+Incidentes distintos são usados para:
+
+- `Production Database Backup`;
+- `Backup Restore Drill`.
+
+O reporter usa `continue-on-error` para que uma falha do próprio mecanismo de alerta nunca masque nem substitua a conclusão original do backup/drill.
+
+## Restore drill mensal
+
+`.github/workflows/backup-restore-drill.yml` continua mensal e fail-closed por `BACKUP_AUTOMATION_ENABLED`.
+
+Quando a automação for armada, ele:
+
+1. lista o mesmo namespace S3-compatible;
+2. seleciona o archive Production mais recente pelo naming contract;
+3. baixa archive + checksum + manifesto + checksum do manifesto;
+4. valida os sidecars;
+5. valida o manifesto contra o archive;
+6. extrai o bundle e valida `SHA256SUMS` internos;
+7. executa a regressão de dump/restore em PostgreSQL 17 isolado;
+8. nunca restaura nem altera Production.
+
+O drill real continua desarmado enquanto não houver provider aprovado/provisionado e primeiro backup real comprovado.
+
+## Fail-closed
+
+`BACKUP_AUTOMATION_ENABLED` continua sendo o disjuntor operacional.
+
+Enquanto seu valor não for exatamente `true`:
+
+- o job diário não acessa Production;
+- o restore drill não acessa storage externo;
+- ausência de bucket/credentials não provoca tentativas parciais;
+- nenhum schedule deve ser interpretado como “backup em funcionamento”.
+
+**Não armar antes do gate de provider + secrets + lifecycle/lock.**
+
+## Gate de provisionamento externo
+
+A reconciliação de código não autoriza infraestrutura externa.
+
+O próximo gate exige decisão do operador:
+
+1. aprovar o provider concreto;
+2. se houver subscription/billing/custo, autorizar explicitamente antes da ativação;
+3. criar bucket privado dedicado a Production;
+4. impedir public access/CORS de navegador;
+5. configurar lifecycle de 30 dias e lock compatível quando suportado;
+6. gerar credencial limitada ao bucket;
+7. provisionar Variables/Secrets diretamente no GitHub, fora do chat;
+8. somente então definir `BACKUP_AUTOMATION_ENABLED=true`;
+9. executar **uma** prova via `workflow_dispatch`;
+10. confirmar workflow verde e os quatro objetos off-site;
+11. registrar somente evidência não sensível.
+
+Para R2, a documentação atual exige uma conta/subscription R2 antes da geração das credenciais S3. Não iniciar checkout/billing sem autorização explícita.
 
 ## Fonte autoritativa do estado de proteção
 
-A UI não pode considerar um backup válido porque o cron “deveria ter rodado” ou porque um usuário clicou em “confirmei”.
+O bundle off-site é a evidência independente de recuperação, mas a UI ainda não possui espelho operacional.
 
-### Evidência off-site
-
-Cada backup válido precisa manter, junto ao archive:
-
-- manifesto não sensível;
-- identificador do backup;
-- ambiente;
-- timestamp UTC;
-- cobertura declarada;
-- versão/formato;
-- SHA-256;
-- tamanho;
-- referência segura da execução.
-
-Archive + manifesto/checksum são a evidência independente usada na recuperação quando o banco principal não estiver disponível.
-
-### Espelho para a UI
-
-Uma slice posterior criará persistência de runs sanitizados no PostgreSQL para alimentar a UI:
+Depois do primeiro backup real comprovado, uma slice posterior criará persistência de runs sanitizados no PostgreSQL para alimentar a UI, com pelo menos:
 
 - tipo (`automatic_database`, `automatic_storage`, `manual_export`, `restore_drill`);
 - estado (`running`, `succeeded`, `failed`);
@@ -143,9 +247,7 @@ Uma slice posterior criará persistência de runs sanitizados no PostgreSQL para
 - erro sanitizado;
 - Organizations incluídas no run.
 
-O backup automático do PostgreSQL é global por database/environment. Ele não deve gerar uma cópia física duplicada para cada Organization. A página da Organization deriva seu estado da relação entre a Organization e o run que a incluiu.
-
-Leitura será protegida por RLS. Usuários comuns não ganham mutation sobre a evidência de backup.
+O backup PostgreSQL é global por database/environment; não duplicar fisicamente o dump por Organization.
 
 ## Experiência “Proteção dos dados”
 
@@ -163,21 +265,7 @@ Slice posterior:
 - histórico;
 - último restore drill.
 
-Todos os membros da Organization podem ver estado geral quando autorizado pela política de leitura. Ações administrativas começam restritas a `owner/admin` Organization-wide.
-
-A UI usa linguagem de produto. Não expõe connection strings, bucket keys, GitHub internals ou detalhes de DBA.
-
-## Alertas
-
-`BACKUP_ALERT_GMAIL_APP_PASSWORD` não faz mais parte da arquitetura alvo.
-
-Primeiro estágio:
-
-- falha explícita no GitHub Actions;
-- estado crítico no espelho operacional quando possível;
-- Issue/registro operacional persistente no GitHub sem segredos e sem criar duplicatas a cada execução.
-
-Um adapter externo adicional de notificação pode ser adicionado futuramente se houver necessidade e provedor aprovado.
+A UI usa linguagem de produto e não expõe GitHub internals, connection strings ou credenciais do storage.
 
 ## Cobertura
 
@@ -189,13 +277,13 @@ Migrations versionadas ajudam a reconstruir schema, mas não substituem dados.
 
 ### Auth
 
-Auth usa PostgreSQL internamente, mas uma recuperação completa de plataforma também exige reconfigurar elementos que não são apenas dados do banco, como providers/configurações/API keys quando utilizados.
+Auth usa PostgreSQL internamente, mas uma recuperação completa da plataforma também exige reconfigurar elementos externos ao dump, como providers/configurações/API keys quando utilizados.
 
-Não descrever o dump SQL sozinho como clone integral da plataforma Supabase.
+Não descrever o SQL sozinho como clone integral do projeto Supabase.
 
 ### Supabase Storage / anexos
 
-O Supabase documenta que backups de banco **não incluem os objetos binários armazenados via Storage API**; preservam metadata, não os arquivos.
+Backups de banco do Supabase não incluem os objetos binários armazenados pela Storage API; incluem apenas metadata de banco relacionada.
 
 `REQ-FIN-008` já introduziu anexos financeiros. Portanto, antes de declarar “backup completo”:
 
@@ -205,36 +293,13 @@ O Supabase documenta que backups de banco **não incluem os objetos binários ar
 4. testar recuperação em destino isolado;
 5. refletir a cobertura real na UI.
 
-Enquanto essa trilha não estiver pronta, o produto deve dizer explicitamente que a proteção comprovada é do PostgreSQL, não dos arquivos anexados.
-
-### Outros recursos externos
-
-Reavaliar quando entrarem em uso material:
-
-- Edge Functions;
-- Realtime/publications;
-- domains/DNS;
-- secrets/config externos;
-- configurações específicas de Auth.
+Até essa trilha estar pronta, a proteção comprovada deve ser descrita como **backup PostgreSQL**, não backup completo dos anexos.
 
 ## Exportação manual complementar
 
 Não é o mecanismo de RPO.
 
-Requisitos:
-
-- somente `owner/admin` Organization-wide;
-- revalidação server-side de autorização;
-- uma única Organization por export;
-- formato versionado;
-- manifesto + checksums/fingerprint;
-- IDs/relacionamentos necessários preservados;
-- audit trail de geração;
-- sem secrets/material reutilizável de autenticação;
-- sem URL pública permanente;
-- tratar o download como altamente sensível.
-
-O formato definitivo (`JSON`, JSONL/ZIP etc.) só deve ser escolhido depois de inventário e prova de reconstrução/reconciliação.
+Permanece para slice posterior, com autorização `owner/admin` Organization-wide, formato versionado, manifesto/checksum, audit trail e sem material reutilizável de autenticação.
 
 ## Runbook de restauração real
 
@@ -258,26 +323,11 @@ Em incidente:
 
 O RTO de até 4h é objetivo operacional, não garantia do provedor.
 
-## Checks pós-restore mínimos
-
-- Organizations/Units esperadas;
-- catálogo e fornecedores;
-- compras;
-- financeiro/parcelas/pagamentos;
-- caixa;
-- saldos/lotes/movimentos de estoque;
-- anexos quando a cobertura de Storage estiver ativa;
-- audit trail;
-- Auth necessário ao login;
-- RLS/grants;
-- outsider/anon sem acesso operacional;
-- RPCs críticas com autorização intacta.
-
 ## Sequência de execução da #75
 
-1. ADR-009 / arquitetura revisada;
-2. reconciliar workflow para S3-compatible provider-neutral, ainda fail-closed e sem provisionar storage;
-3. aprovar/provisionar destino externo fora do chat;
+1. ADR-009 / arquitetura revisada — concluído;
+2. reconciliar workflow para S3-compatible provider-neutral — implementação desta slice;
+3. aprovar/provisionar destino externo fora do chat — próximo gate;
 4. executar primeiro backup PostgreSQL real e comprovar integridade off-site;
 5. persistir evidência autoritativa e histórico;
 6. adicionar UI “Proteção dos dados”;
@@ -288,12 +338,12 @@ O RTO de até 4h é objetivo operacional, não garantia do provedor.
 
 ## Segurança / não fazer
 
-- não ativar o workflow Drive/rclone/Gmail atual;
 - não pedir nem receber secrets em chat;
 - não armazenar backup real em Git/GitHub Artifact;
 - não provisionar serviço com cobrança sem autorização;
+- não setar `BACKUP_AUTOMATION_ENABLED=true` antes do gate;
 - não restaurar Production para teste;
 - não considerar confirmação humana prova de backup;
 - não bloquear mutations do negócio por atraso sem nova decisão;
 - não declarar Storage protegido pelo dump PostgreSQL;
-- não criar deploy Vercel apenas por documentação/arquitetura.
+- não criar deploy Vercel para esta frente de workflow/docs.
