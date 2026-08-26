@@ -15,6 +15,7 @@ concurrency:
 
 env:
   BACKUP_RETENTION_DAYS: "30"
+  BACKUP_MAX_ARCHIVE_BYTES: "300000000"
   BACKUP_AWS_CLI_IMAGE: amazon/aws-cli:2.36.30
   BACKUP_S3_ENDPOINT: ${{ vars.BACKUP_S3_ENDPOINT }}
   BACKUP_S3_BUCKET: ${{ vars.BACKUP_S3_BUCKET }}
@@ -117,6 +118,8 @@ jobs:
           tar -C "${PAYLOAD_DIR}" -czf "${UPLOAD_DIR}/${ARCHIVE_NAME}" .
           chmod 600 "${UPLOAD_DIR}/${ARCHIVE_NAME}"
 
+          bash scripts/enforce-backup-size-limit.sh "${UPLOAD_DIR}/${ARCHIVE_NAME}"
+
           (
             cd "${UPLOAD_DIR}"
             sha256sum "${ARCHIVE_NAME}" > "${ARCHIVE_NAME}.sha256"
@@ -172,6 +175,7 @@ jobs:
             echo "- Off-site contract: private S3-compatible object storage"
             echo "- Coverage: PostgreSQL logical backup"
             echo "- Retention policy: ${BACKUP_RETENTION_DAYS} days via provider lifecycle/lock"
+            echo "- Hard archive upload limit: ${BACKUP_MAX_ARCHIVE_BYTES} bytes"
             echo "- Internal checksums: verified"
             echo "- Remote objects: downloaded and re-hashed after upload"
           } >> "${GITHUB_STEP_SUMMARY}"
