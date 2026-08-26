@@ -2,32 +2,38 @@
 
 ## Contexto
 
-Fase 46 concluiu a reconciliação de prontidão operacional para homologação/cutover.
+Fase 46 concluiu a reconciliação de prontidão operacional para homologação/cutover e foi integrada na `main` pelo PR #104.
 
-Resultado:
+Estado integrado confirmado em 2026-08-26:
 
-- o núcleo funcional do MVP permanece reconciliado;
-- nenhuma nova lacuna funcional não-PENDING foi encontrada;
-- nenhuma Issue nova foi aberta;
-- `docs/qa/operational-readiness.md` publica a matriz A/B/C/D e o impacto de Q-001..Q-025;
-- Supabase Production permanece `ACTIVE_HEALTHY`, sem development branches e com migration final `20260822195823 / finance_attachments`;
-- Production Vercel observada está `READY` no SHA `62c3af63939c808487434e6e539ef0870a60d530`, igual à `main` na entrada da fase;
-- `/health` Production respondeu HTTP 200, `environment=production`, Supabase permitido e admin bloqueado;
-- nenhum deploy foi criado pela Fase 46;
-- #75 continua aberta/desarmada;
-- nenhum dado real, usuário real ou secret foi manipulado.
+- `main`: `b5caef11ef6e0a84b47101dc63fb1c0d05218e2d`;
+- CI #398: success (`database`, lint, typecheck, Vitest e production build);
+- nenhum PR aberto;
+- única Issue aberta: #75 — backup automático real de Production;
+- Supabase Production `fhbvwyttikrbeaanatlr`: `ACTIVE_HEALTHY`, PostgreSQL 17, zero development branches e migration final `20260822195823 / finance_attachments`;
+- Vercel Production continua `READY` no deployment existente `dpl_RRAzMvYKVLKAjbrNV6hAGqg42wfg`, hospedando o SHA `62c3af63939c808487434e6e539ef0870a60d530`;
+- a diferença entre esse deployment e a `main` atual é documental; `/health` continua HTTP 200 com Production/Supabase permitidos e admin bloqueado;
+- nenhum deploy foi criado para sincronizar documentação;
+- nenhum dado real, usuário real, secret, migration, DDL ou DML foi manipulado no gate check.
 
-A próxima ação **não é uma Fase funcional automática**. O projeto entrou em estado de gate operacional.
+O primeiro gate check pós-Fase 46 encontrou **todos os quatro gates ainda bloqueados**. A próxima ação continua sendo gate-driven, não uma nova fase funcional automática.
 
 ## Objetivo ativo
 
-**Verificar qual foi o primeiro desbloqueio concreto desde a Fase 46 e executar somente a trilha correspondente. Se nenhum gate foi desbloqueado, não abrir Issue/feature por inércia.**
+**Verificar qual foi o primeiro desbloqueio concreto desde o último gate check e executar somente a trilha correspondente. Se nenhum gate foi desbloqueado, preservar a baseline e não criar trabalho artificial.**
 
 ## Ordem de decisão
 
 ### Gate 1 — backup Production / Issue #75
 
 Considerar desbloqueado somente quando o operador estiver em computador pessoal/confiável e puder configurar as credenciais fora do chat.
+
+Estado conhecido:
+
+- implementação/workflows já prontos;
+- política aprovada: RPO 24h, diário, RTO <=4h, Drive privado, retenção 30 dias, alerta `synapselab.ia@gmail.com`, restore drill mensal isolado;
+- `PRODUCTION_SUPABASE_DB_URL` já foi provisionado anteriormente;
+- ainda faltam OAuth/rclone, `BACKUP_RCLONE_CONFIG_B64`, `BACKUP_ALERT_GMAIL_APP_PASSWORD`, arming e primeiro run real.
 
 Se estiver desbloqueado:
 
@@ -52,8 +58,8 @@ Se estiver desbloqueado:
 1. não começar por todas as seis planilhas;
 2. identificar uma única fonte/vertical;
 3. registrar timestamp de extração e SHA-256 sem versionar o arquivo real no Git;
-4. confrontar `field-catalog.md`, `migration-plan.md` e a tabela Q-001..Q-025 de `operational-readiness.md`;
-5. responder/solicitar somente as decisões que bloqueiam essa fonte;
+4. confrontar `docs/source-data/field-catalog.md`, `docs/source-data/migration-plan.md` e `docs/qa/operational-readiness.md`;
+5. responder/solicitar somente as decisões `Q-*` que bloqueiam aquela fonte;
 6. documentar target canônico, transformação, rejeições/pending mappings e reconciliação;
 7. somente depois abrir uma Issue de engenharia pequena para o importador específico;
 8. implementar staging/dry run primeiro;
@@ -64,10 +70,10 @@ Se estiver desbloqueado:
 
 ### Gate 3 — bootstrap do primeiro owner
 
-Considerar desbloqueado somente quando houver:
+Considerar desbloqueado somente quando houver, como conjunto aprovado:
 
-- e-mail exato aprovado para o primeiro owner;
-- Organization alvo confirmada quando necessário;
+- e-mail exato do primeiro owner;
+- Organization alvo confirmada quando necessária;
 - domínio HTTPS canônico;
 - redirect `/auth/invite` autorizado no Supabase Auth;
 - capacidade de entrega do convite verificada;
@@ -109,14 +115,16 @@ Não abrir Issue para representar:
 
 A resposta correta é preservar a baseline e deixar explícito qual evento externo precisa acontecer primeiro.
 
+Um update documental de continuidade só se justifica quando houver drift real de baseline/handoff, como SHA/CI/estado integrado desatualizado; não criar PR documental repetitivo sem nova informação.
+
 ## Baseline a preservar
 
 ### GitHub/CI
 
-- `main` de entrada da Fase 46: `62c3af63939c808487434e6e539ef0870a60d530`;
-- CI #396: success;
-- nenhuma nova Issue funcional na Fase 46;
-- #75 é a única Issue operacional aberta.
+- `main`: `b5caef11ef6e0a84b47101dc63fb1c0d05218e2d`;
+- CI #398: success;
+- PRs abertos: nenhum;
+- Issue aberta: somente #75.
 
 ### Supabase
 
@@ -132,11 +140,11 @@ Não criar migration/branch/projeto sem necessidade e autorização.
 
 ### Vercel
 
-Na Fase 46:
-
-- Production já estava `READY` no SHA da `main` de entrada;
-- `/health` estava saudável;
-- nenhuma mudança de configuração/deploy foi necessária.
+- deployment Production observado: `dpl_RRAzMvYKVLKAjbrNV6hAGqg42wfg`;
+- estado `READY`;
+- commit hospedado `62c3af63...`;
+- `/health` saudável;
+- diferença para `main` apenas documental no último gate check.
 
 Não consumir deploy por conveniência.
 
@@ -167,7 +175,7 @@ Para migração também ler:
 - não restaurar Production para teste;
 - não usar outro projeto Supabase como Preview por inferência;
 - não criar branch/projeto pago sem autorização;
-- não criar deploy Vercel só para auditoria;
+- não criar deploy Vercel só para documentação;
 - não fechar #75 sem backup real comprovado.
 
 ## Critério de conclusão do próximo chat
@@ -175,4 +183,4 @@ Para migração também ler:
 O próximo chat deve terminar em exatamente um destes estados:
 
 1. um gate concreto foi executado com evidência e handoff atualizado; ou
-2. nenhum gate estava desbloqueado e nenhuma mudança artificial foi criada.
+2. nenhum gate estava desbloqueado, a baseline foi preservada e nenhuma mudança artificial foi criada.
