@@ -36,7 +36,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if grep -R -n -E \
+          if grep -R --exclude='ci.yml' -n -E \
             'BACKUP_RCLONE_CONFIG_B64|BACKUP_ALERT_GMAIL_APP_PASSWORD|rclone/rclone|lojasaph-drive' \
             .github/workflows scripts; then
             echo "::error::Legacy rclone/Drive/Gmail backup dependency is still referenced by executable automation."
