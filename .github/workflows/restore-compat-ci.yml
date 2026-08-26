@@ -53,6 +53,9 @@ jobs:
             exit 1
           fi
 
+  # Mirrors the exact managed-schema pins used by the real drill, but without
+  # Production/R2 credentials. This proves the Storage image actually migrates
+  # the isolated target through the schema version currently present in Production.
   isolated-storage-schema:
     runs-on: ubuntu-latest
     timeout-minutes: 10
