@@ -6,19 +6,18 @@
 
 **Fase 46 continua integrada; frente ativa: Issue #75 / `REQ-PLAT-005 — Proteção, backup e recuperação de dados`.**
 
-A slice de **persistência autoritativa dos runs de proteção no PostgreSQL** foi implementada no PR #113 e aplicada ao Supabase Production pela migration `20260826201252 / protection_run_persistence`.
+A slice de **persistência autoritativa dos runs de proteção no PostgreSQL** foi integrada pelo PR #113 em `main` e aplicada ao Supabase Production pela migration `20260826201252 / protection_run_persistence`.
 
 O backup automático off-site do PostgreSQL Production continua operacional no Cloudflare R2. A nova persistência não substitui o bundle de recuperação: ela é o espelho operacional sanitizado que a futura UI `Proteção dos dados` deve consumir.
 
 O núcleo funcional das Fases 41–45 não foi reaberto.
 
-## GitHub / baseline desta slice
+## GitHub / baseline consolidada
 
-- `main` no início desta sessão: `e0f46000637adcd2479f6a4322cfb9137a699752`;
-- branch ativa: `agent/protection-run-persistence`;
-- PR #113: `feat(backup): persist authoritative protection runs`;
-- CI #419 comprovou a implementação inicial com `database`, lint, typecheck, unit tests e production build verdes;
-- qualquer commit documental/reconciliação posterior do PR também deve permanecer verde antes do merge;
+- `main`: `61224515d361607a0a97e0bbab3b9d1bddd3352a` — `feat(backup): persist authoritative protection runs (#113)`;
+- PR #113 foi integrado por squash após o head final `c532f68dfb388bfdc2a8466a9820e13947bd5377` ficar verde em `database`, `validate`, `inventory-database` e `business-database`;
+- CI pós-merge #427 / run `33009978256` em `main` terminou verde nos jobs `database` e `validate`, incluindo lint, typecheck, unit tests e production build;
+- a branch `agent/protection-run-persistence` é histórica após o merge e não deve ser tratada como trabalho ativo;
 - Issue #75 continua aberta: UI, Storage, restore real isolado e demais slices ainda não estão concluídos;
 - repositório continua temporariamente `public` por decisão operacional para evitar bloqueio por minutos privados do GitHub Free; não retornar para `private` automaticamente.
 
