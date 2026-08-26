@@ -30,7 +30,7 @@ jobs:
         run: python -m py_compile scripts/backup-bundle.py scripts/sync-backup-incident.py
 
       - name: Validate backup shell tooling
-        run: bash -n scripts/export-supabase-backup.sh scripts/verify-backup-restore.sh scripts/s3-backup-storage.sh
+        run: bash -n scripts/export-supabase-backup.sh scripts/verify-backup-restore.sh scripts/s3-backup-storage.sh scripts/record-protection-run.sh
 
       - name: Reject legacy Drive and Gmail backup dependencies
         shell: bash
@@ -173,7 +173,7 @@ jobs:
           pg_restore --version
 
       - name: Validate backup scripts
-        run: bash -n scripts/export-supabase-backup.sh scripts/verify-backup-restore.sh scripts/s3-backup-storage.sh
+        run: bash -n scripts/export-supabase-backup.sh scripts/verify-backup-restore.sh scripts/s3-backup-storage.sh scripts/record-protection-run.sh
 
       - name: Bootstrap Supabase auth stubs
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/bootstrap.sql
@@ -210,6 +210,9 @@ jobs:
 
       - name: Run finance attachment metadata tests
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/finance_attachments.sql
+
+      - name: Run protection run persistence tests
+        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/protection_runs.sql
 
       - name: Run transactional withdrawal tests
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/stock_withdrawal.sql

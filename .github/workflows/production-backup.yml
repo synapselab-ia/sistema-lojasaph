@@ -34,6 +34,9 @@ jobs:
       AWS_ACCESS_KEY_ID: ${{ secrets.BACKUP_S3_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_S3_SECRET_ACCESS_KEY }}
       AWS_SESSION_TOKEN: ${{ secrets.BACKUP_S3_SESSION_TOKEN }}
+      PROTECTION_EXECUTION_REFERENCE: github-actions:${{ github.run_id }}:${{ github.run_attempt }}
+      PROTECTION_PROVIDER: cloudflare_r2
+      PROTECTION_DESTINATION: s3_compatible_offsite
 
     steps:
       - name: Checkout
@@ -77,6 +80,11 @@ jobs:
           set -euo pipefail
           supabase --version
           bash scripts/s3-backup-storage.sh check-tooling
+          bash -n scripts/record-protection-run.sh
+
+      - name: Begin authoritative protection run
+        shell: bash
+        run: bash scripts/record-protection-run.sh start
 
       - name: Export and package Production backup
         id: package
@@ -119,6 +127,7 @@ jobs:
           chmod 600 "${UPLOAD_DIR}/${ARCHIVE_NAME}"
 
           bash scripts/enforce-backup-size-limit.sh "${UPLOAD_DIR}/${ARCHIVE_NAME}"
+          ARCHIVE_SIZE="$(stat -c '%s' "${UPLOAD_DIR}/${ARCHIVE_NAME}")"
 
           (
             cd "${UPLOAD_DIR}"
@@ -154,6 +163,8 @@ jobs:
           echo "archive_name=${ARCHIVE_NAME}" >> "${GITHUB_OUTPUT}"
           echo "manifest_name=${MANIFEST_NAME}" >> "${GITHUB_OUTPUT}"
           echo "backup_id=${BACKUP_ID}" >> "${GITHUB_OUTPUT}"
+          echo "valid_copy_at=${CREATED_AT}" >> "${GITHUB_OUTPUT}"
+          echo "archive_size=${ARCHIVE_SIZE}" >> "${GITHUB_OUTPUT}"
 
       - name: Upload and verify off-site S3-compatible backup
         shell: bash
@@ -185,6 +196,22 @@ jobs:
         shell: bash
         run: |
           rm -rf "${RUNNER_TEMP}/lojasaph-production-backup"
+
+      - name: Finalize successful protection run
+        if: ${{ success() }}
+        shell: bash
+        run: |
+          bash scripts/record-protection-run.sh success \
+            "${{ steps.package.outputs.valid_copy_at }}" \
+            "${{ steps.package.outputs.archive_size }}"
+
+      - name: Finalize failed protection run
+        if: ${{ failure() }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          bash scripts/record-protection-run.sh failure \
+            "Automatic PostgreSQL backup failed before verified off-site completion."
 
       - name: Report persistent backup incident
         if: ${{ failure() }}
