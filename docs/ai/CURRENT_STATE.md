@@ -4,41 +4,30 @@
 
 ## Estado atual
 
-**Fase 46 — prontidão operacional para homologação e cutover — concluída e integrada.**
+**Fase 46 — prontidão operacional — continua integrada.**  
+**Frente ativa pós-Fase 46: Issue #75 / `REQ-PLAT-005 — Proteção, backup e recuperação de dados`.**
 
-O núcleo funcional do MVP permanece reconciliado após as Fases 41–45. A Fase 46 publicou `docs/qa/operational-readiness.md` e não encontrou nova lacuna funcional não-PENDING que justifique abrir feature ou Issue por inércia.
+O núcleo funcional do MVP das Fases 41–45 continua reconciliado. A nova frente não surgiu por inércia: em 2026-08-26 o operador revisou explicitamente a filosofia da #75, desbloqueando o Gate 4 de `NEXT_ACTION`.
 
-### Gate check pós-Fase 46 — 2026-08-26
+A Issue #75 deixou de significar “provisionar rclone/Gmail e ativar o workflow existente”. Ela agora exige três camadas complementares:
 
-O `NEXT_ACTION` foi reexecutado contra o estado real depois do merge da Fase 46.
+1. backup automático real de recuperação;
+2. observabilidade “Proteção dos dados” dentro do Lojasaph;
+3. exportação manual complementar, sem substituir o automático.
 
-Resultado: **nenhum dos quatro gates operacionais foi desbloqueado**.
-
-1. **Backup Production / #75:** continua aguardando computador pessoal/confiável para provisionar OAuth/rclone, Gmail App Password, armar a automação e executar o primeiro backup real. Nenhuma nova evidência foi registrada na Issue.
-2. **Fonte final para migração:** nenhuma fonte final congelada/aprovada apareceu no repositório ou foi fornecida para esta sessão.
-3. **Bootstrap do primeiro owner:** e-mail/Organization/redirect/entrega e autorização operacional não foram fornecidos como conjunto aprovado; nenhum usuário real foi criado ou convidado.
-4. **Nova prioridade/regressão:** não surgiu nova Issue, PR, requisito explícito ou regressão reproduzível.
-
-Portanto não foi aberta nova Issue funcional, não foi criada feature e nenhum dado/ambiente foi alterado.
-
-## Snapshot real após o gate check
+## Entrada real desta slice
 
 ### GitHub
 
-- baseline integrada da Fase 46 antes do gate check: `b5caef11ef6e0a84b47101dc63fb1c0d05218e2d`;
-- PR #105 — `docs(ai): refresh operational gate handoff`: squash-mergeado;
-- merge do gate check/handoff: `f0ce56425d9e31aebbc3447112bd05f381fd2ccd`;
-- CI #399 no head do PR #105: success;
-- CI #400 em `main` após o merge: success (`database`, lint, typecheck, Vitest e production build);
-- nenhum PR aberto após o merge do #105;
-- única Issue aberta: #75 — backup automático real de Production;
-- branches `agent/*` sem PR aberto são históricas, não frentes paralelas.
-
-`f0ce5642...` identifica a integração do último gate check. **O HEAD literal de `main` pode ficar posterior a esse SHA por commits/PRs exclusivamente documentais de continuidade.** Um novo chat deve sempre conferir a `main` real antes de agir; não interpretar um SHA documental posterior como nova frente funcional.
+- `main` na entrada: `109961af5f07285c6dd61376768cb26f4eb5fd6b`;
+- CI da `main`: #402 — success;
+- PRs abertos na entrada: nenhum;
+- única Issue aberta: #75, já com requisito revisado;
+- branches `agent/*` antigas sem PR continuam históricas.
 
 ### Supabase Production
 
-Projeto `fhbvwyttikrbeaanatlr` foi novamente inspecionado em modo read-only:
+Projeto `fhbvwyttikrbeaanatlr` inspecionado read-only:
 
 - `ACTIVE_HEALTHY`;
 - região `sa-east-1`;
@@ -46,129 +35,105 @@ Projeto `fhbvwyttikrbeaanatlr` foi novamente inspecionado em modo read-only:
 - zero development branches;
 - migration history continua terminando em `20260822195823 / finance_attachments`.
 
-Nenhuma migration, DDL ou DML foi aplicada.
+Nenhuma migration, DDL ou DML foi executada nesta slice.
 
-### Vercel Production
+### CI/infra
 
-O deployment Production mais recente continua:
+A arquitetura desta slice não exige deploy Vercel nem mutação de Production. `BACKUP_AUTOMATION_ENABLED` deve permanecer desarmado.
 
-- `dpl_RRAzMvYKVLKAjbrNV6hAGqg42wfg`;
-- target `production`;
-- estado `READY`;
-- commit hospedado `62c3af63939c808487434e6e539ef0870a60d530`.
+## Slice atual — arquitetura revisada da proteção
 
-Os commits posteriores até `f0ce5642...` são documentação de readiness/continuidade. Não foi criado deploy para sincronizar Markdown.
+Branch:
 
-`GET https://sistema-lojasaph.vercel.app/health` respondeu HTTP 200 no gate check com:
+- `agent/data-protection-architecture`
 
-- `environment=production`;
-- `supabaseAccess=allowed`;
-- `supabaseReason=production_backend`;
-- `adminAccess=blocked`.
+PR:
 
-Nenhum deploy Vercel foi criado nesta checagem.
+- #107 — `docs: formalize revised data protection architecture`
 
-## Readiness — fonte de verdade
+Documentos principais:
 
-Artefato principal:
+- `docs/decisions/ADR-009-data-protection-architecture.md`;
+- `docs/operations/backup-restore.md`.
 
-- `docs/qa/operational-readiness.md`
+### Decisões formalizadas
 
-A matriz separa:
+#### Backup automático permanece obrigatório
 
-- **A — pronto/comprovado**;
-- **B — decisão de negócio/PENDING**;
-- **C — pré-condição operacional/externa**;
-- **D — fase futura/opcional**.
+O backup automático continua sendo a linha principal de disaster recovery:
 
-Regra central: não é necessário responder `Q-001..Q-025` em bloco. Somente as perguntas que bloqueiam o recorte real escolhido devem ser resolvidas.
-
-## Fundações já prontas — não reimplementar
-
-Entre as fundações comprovadas estão:
-
-- núcleo funcional das Fases 41–45;
-- schema/migrations versionados;
-- RLS e autorização por papel + escopo;
-- validação autoritativa;
-- staging de importação com lineage;
-- idempotência de batch/staging;
-- preview/dry run e relatório de inconsistências;
-- aliases explícitos sem fuzzy auto-merge;
-- isolamento de ambientes fail-closed;
-- mecanismo técnico de bootstrap do primeiro owner;
-- workflows/scripts de backup e restore;
-- CI completa verde.
-
-`ready` de importação significa somente preview validado. Não existe command genérico de aplicação às tabelas operacionais.
-
-## Pré-condições externas ainda pendentes
-
-Antes de migração/cutover real continuam necessários, conforme o recorte:
-
-- fonte final congelada com timestamp/hash e armazenamento seguro fora do Git;
-- regras de transformação aprovadas;
-- importador específico por fonte;
-- idempotência da escrita definitiva;
-- dry run real, reconciliação e validação de amostras;
-- decisões `Q-*` materialmente necessárias à fonte escolhida;
-- primeiro owner e, depois, mapeamento das pessoas/roles/escopos reais (Q-022);
-- backup Production real comprovado (#75);
-- data/hora de corte e procedimento para uso paralelo das planilhas;
-- inventário inicial quando a reconciliação de estoque indicar necessidade.
-
-## Backup Production / #75
-
-A automação continua deliberadamente desarmada.
-
-Política aprovada permanece:
-
-- RPO 24h;
-- diário;
-- RTO <= 4h;
-- Google Drive privado;
+- sem clique diário;
+- dentro de RPO 24h;
+- off-site;
+- checksum/integridade;
 - retenção 30 dias;
-- owner/alerta `synapselab.ia@gmail.com`;
-- restore drill mensal isolado;
-- sem Pro/PITR.
+- restore drill mensal isolado.
 
-`PRODUCTION_SUPABASE_DB_URL` já foi provisionado anteriormente. Restam, somente em computador pessoal/confiável:
+A confirmação humana nunca equivale a backup válido.
 
-- OAuth/rclone `[lojasaph-drive]`;
-- `BACKUP_RCLONE_CONFIG_B64`;
-- `BACKUP_ALERT_GMAIL_APP_PASSWORD`;
-- `BACKUP_AUTOMATION_ENABLED=true`;
-- primeiro backup real + archive/checksum off-site;
-- fechar #75 somente após evidência real.
+#### Destino provider-neutral
 
-Nunca pedir nem receber esses secrets no chat.
+A arquitetura alvo deixa de depender de Google Drive/rclone e passa a usar contrato **S3-compatible**.
+
+Cloudflare R2 é a primeira implementação preferida porque a documentação atual oferece API S3-compatible, lifecycle, bucket locks e free tier em Standard. Entretanto esta decisão **não autoriza** cadastro financeiro, purchase/billing, bucket ou secrets. Se R2 não for aprovado, B2/S3/outro destino compatível pode substituí-lo sem alterar o contrato.
+
+#### Gmail deixa de ser requisito estrutural
+
+`BACKUP_ALERT_GMAIL_APP_PASSWORD` não faz parte da arquitetura alvo. O primeiro mecanismo de escalonamento deve usar sinais persistentes do GitHub + estado crítico do produto; adapters externos de notificação podem ser adicionados depois.
+
+#### Evidência autoritativa em dois planos
+
+- archive + manifesto/checksum no storage off-site = evidência independente de recuperação;
+- espelho sanitizado de runs no PostgreSQL = fonte da UI por Organization.
+
+O backup PostgreSQL é global por database/environment. Não duplicar fisicamente o mesmo dump para cada Organization. A UI associa Organizations incluídas a cada run.
+
+#### UI futura
+
+Planejada para slice posterior:
+
+- card global `Proteção dos dados` no `RuntimeShell`;
+- `/workspace/backup`;
+- verde/âmbar/vermelho;
+- última cópia válida, integridade, retenção, histórico e restore drill.
+
+Não bloquear automaticamente caixa/estoque/compras/financeiro porque o RPO foi violado.
+
+#### Storage/anexos
+
+Foi confirmado na documentação atual do Supabase que backup de banco não inclui objetos binários do Storage. `REQ-FIN-008` já possui anexos; portanto PostgreSQL protegido não pode ser descrito como “backup completo” dos arquivos.
+
+Antes de declarar cobertura completa será necessária uma trilha própria de cópia/reconciliação/restore de Storage.
+
+## O que não foi feito
+
+- nenhum código runtime alterado;
+- nenhum workflow reconciliado ainda;
+- nenhum provider externo provisionado;
+- nenhum secret novo;
+- nenhum OAuth/rclone/Gmail configurado;
+- nenhum backup Production real executado;
+- nenhuma migration/DDL/DML;
+- nenhum usuário/dado real alterado;
+- nenhum deploy Vercel.
 
 ## Próxima ação
 
-O projeto permanece em **gate operacional**.
+Depois da integração do PR #107, a menor slice técnica da #75 é:
 
-O próximo chat deve verificar novamente, nesta ordem, se apareceu:
+**reconciliar a automação existente para um contrato S3-compatible provider-neutral, removendo rclone/Gmail da dependência obrigatória, mantendo fail-closed e sem provisionar storage externo.**
 
-1. ambiente confiável para concluir #75;
-2. fonte final congelada para uma vertical de migração;
-3. condições aprovadas para bootstrap controlado do primeiro owner;
-4. nova prioridade explícita de produto ou regressão concreta.
+Essa slice deve reutilizar o exportador lógico e os checksums existentes, preservar RPO/RTO/retenção e adaptar testes/CI. Não ativar `BACKUP_AUTOMATION_ENABLED`.
 
-Se nenhum gate estiver desbloqueado, preservar a baseline e não criar trabalho artificial.
-
-Ver `docs/ai/NEXT_ACTION.md`.
+A aprovação/provisionamento do destino externo continua um gate separado porque pode exigir cadastro/billing e secrets fora do chat.
 
 ## Não fazer
 
-- não reabrir Fases 41–46 sem regressão concreta;
-- não promover `PENDING` por inferência;
-- não criar importador/apply genérico sem fonte congelada + regra aprovada;
-- não tratar `ready` de staging como autorização de cutover;
-- não criar/invitar pessoas reais sem gate aprovado;
-- não pedir secrets no chat;
-- não criar migration/branch Supabase sem necessidade e autorização;
-- não manipular Storage por SQL;
-- não ativar/fechar #75 sem run real;
-- não restaurar Production para teste;
-- não criar deploy Vercel só para sincronizar documentação;
-- não importar dados reais nem executar cutover sem gates e aceite.
+- não voltar ao plano antigo de “só configurar rclone/Gmail”;
+- não armar o workflow Drive/rclone atual;
+- não provisionar R2/B2/S3 ou qualquer serviço com custo/billing sem autorização;
+- não pedir/receber secrets no chat;
+- não declarar Storage coberto pelo dump PostgreSQL;
+- não bloquear mutations do negócio por atraso de backup sem nova decisão;
+- não implementar UI/status/export manual antes da reconciliação da automação salvo regressão/prioridade explícita;
+- não criar deploy Vercel apenas por documentação/arquitetura.

@@ -2,166 +2,149 @@
 
 ## Estado
 
-**Fase 46 — prontidão operacional para homologação/cutover — concluída e integrada.**
+**Fase 46 continua concluída e integrada.**  
+A frente ativa agora é a revisão explícita de `REQ-PLAT-005` na Issue #75.
 
-O núcleo do MVP permanece reconciliado. A auditoria da Fase 46 continua sendo a referência em `docs/qa/operational-readiness.md`.
+Em 2026-08-26 o operador mudou a prioridade da #75: não executar mais por inércia o plano “Google Drive/rclone + Gmail App Password + arming”. A Issue foi reescrita como **Proteção, backup e recuperação de dados**.
 
-Em 2026-08-26 o `NEXT_ACTION` foi reexecutado contra o estado real depois do merge da Fase 46. **Nenhum gate operacional foi desbloqueado.**
+Isso desbloqueou o Gate 4 do `NEXT_ACTION` e justificou a slice arquitetural atual.
 
-Não transformar essa ausência de gate em nova feature ou Issue.
-
-## Snapshot real do último gate check
+## Estado real na entrada
 
 ### GitHub
 
-- baseline integrada antes do gate check: `b5caef11ef6e0a84b47101dc63fb1c0d05218e2d`;
-- PR #105 — `docs(ai): refresh operational gate handoff`: squash-mergeado;
-- merge do gate check/handoff: `f0ce56425d9e31aebbc3447112bd05f381fd2ccd`;
-- CI #399 no head do PR #105: success;
-- CI #400 em `main` após o merge: success (`database`, lint, typecheck, Vitest e production build);
-- nenhum PR aberto após o merge do #105;
+- `main`: `109961af5f07285c6dd61376768cb26f4eb5fd6b`;
+- CI #402: success;
+- PRs abertos na entrada: nenhum;
 - única Issue aberta: #75;
-- branches `agent/*` sem PR aberto são históricas, não frentes paralelas.
-
-**Regra para o próximo chat:** `f0ce5642...` é o SHA de referência que identifica a integração do gate check. Este próprio handoff pode ser integrado por um commit/PR documental posterior, então o HEAD literal de `main` pode ser maior sem representar nova funcionalidade. Sempre conferir `main`, PRs, Issues e CI reais antes de agir.
+- branches antigas sem PR aberto são históricas.
 
 ### Supabase
 
-Production `fhbvwyttikrbeaanatlr` foi somente inspecionado read-only:
+Production `fhbvwyttikrbeaanatlr` foi inspecionado read-only:
 
 - `ACTIVE_HEALTHY`;
-- região `sa-east-1`;
+- `sa-east-1`;
 - PostgreSQL 17 (`17.6.1.141`);
 - zero development branches;
-- migration history termina em `20260822195823 / finance_attachments`.
+- migration final `20260822195823 / finance_attachments`.
 
-Nenhuma migration, DDL ou DML foi executada no gate check.
+Nenhuma mutation foi feita.
 
-### Vercel
+## Slice atual
 
-Production continua saudável no deployment existente:
+Branch:
 
-- `dpl_RRAzMvYKVLKAjbrNV6hAGqg42wfg`;
-- `READY`;
-- commit hospedado `62c3af63939c808487434e6e539ef0870a60d530`;
-- `/health` → HTTP 200;
-- `environment=production`;
-- `supabaseAccess=allowed`;
-- `supabaseReason=production_backend`;
-- `adminAccess=blocked`.
+- `agent/data-protection-architecture`
 
-Os commits posteriores observados até o gate-check merge `f0ce5642...` são documentação de readiness/continuidade. Não criar deploy apenas para sincronizar Markdown.
+PR:
 
-## Resultado dos quatro gates
+- #107 — `docs: formalize revised data protection architecture`
 
-### Gate 1 — backup Production / #75
+Arquivos centrais:
 
-**Não desbloqueado.**
+- `docs/decisions/ADR-009-data-protection-architecture.md`;
+- `docs/operations/backup-restore.md`;
+- docs de continuidade.
 
-A Issue continua aberta e não recebeu nova evidência operacional desde o adiamento para máquina confiável.
+### Decisão consolidada
 
-Já pronto:
+A proteção passa a ter três camadas:
 
-- workflows/scripts de backup e restore;
-- política RPO/RTO/retenção/destino/alerta;
-- `PRODUCTION_SUPABASE_DB_URL` já provisionado anteriormente.
+1. **backup automático de recuperação** — obrigatório e independente de usuário;
+2. **observabilidade no produto** — card/página `Proteção dos dados`, por Organization e baseado em evidência real;
+3. **exportação manual complementar** — opcional, autorizada e auditada, nunca substituta do automático.
 
-Ainda depende de computador pessoal/confiável:
+### Destino off-site
 
-- OAuth/rclone `[lojasaph-drive]`;
-- `BACKUP_RCLONE_CONFIG_B64`;
-- `BACKUP_ALERT_GMAIL_APP_PASSWORD`;
-- `BACKUP_AUTOMATION_ENABLED=true`;
-- primeiro `Production Database Backup` real;
-- confirmação do archive + `.sha256` no Drive;
-- fechar #75 somente depois da evidência completa.
+A arquitetura deixa de ser Drive-specific e passa a usar contrato **S3-compatible**.
 
-Nunca pedir nem receber esses valores no chat.
+Primeiro provider preferido: **Cloudflare R2**, por API S3-compatible, lifecycle, bucket lock e custo baixo/free tier documentado. A escolha é reversível para B2/S3/equivalente.
 
-### Gate 2 — fonte final para migração
+**Importante:** a decisão arquitetural não autoriza criar conta, habilitar billing/purchase, bucket ou secrets. A própria documentação atual da Cloudflare indica que R2 precisa ser habilitado/comprado antes de gerar API token. O provisionamento é gate do operador.
 
-**Não desbloqueado.**
+### Alertas
 
-Nenhuma fonte final congelada/aprovada foi fornecida para o recorte de migração.
+Gmail App Password deixa de ser dependência obrigatória.
 
-Quando existir uma fonte:
+Primeiro estágio alvo:
 
-1. escolher uma única vertical;
-2. registrar timestamp/hash sem versionar arquivo real no Git;
-3. confrontar `field-catalog.md`, `migration-plan.md` e `operational-readiness.md`;
-4. resolver apenas as `Q-*` que bloqueiam aquela fonte;
-5. documentar transformação/target/reconciliação;
-6. só então abrir uma Issue pequena para o importador específico;
-7. staging/dry run antes de qualquer apply;
-8. escrita real somente com idempotência, reconciliação, aceite e backup Production comprovado.
+- GitHub Actions falha explicitamente;
+- registro/Issue operacional persistente sem segredo;
+- estado crítico dentro do produto quando o banco estiver disponível.
 
-`ready` do staging não autoriza cutover.
+Um notifier externo pode ser plugado depois se houver necessidade e provider aprovado.
 
-### Gate 3 — bootstrap do primeiro owner
+### Evidência de backup
 
-**Não desbloqueado.**
+Dois planos:
 
-O mecanismo técnico existe, mas não há conjunto aprovado de:
+- **off-site:** archive + manifesto/checksum, independente do banco principal;
+- **produto:** espelho sanitizado de runs no PostgreSQL para a UI.
 
-- e-mail exato do primeiro owner;
-- Organization alvo quando necessária;
-- redirect HTTPS `/auth/invite` autorizado;
-- capacidade de entrega do convite;
-- autorização operacional para abrir a janela curta de bootstrap.
+Backup PostgreSQL é global por database/environment; não duplicar dump por Organization. Cada run deve registrar quais Organizations estavam cobertas.
 
-Não criar conta, convite ou membership real até esse gate existir.
+### Storage/anexos
 
-Pessoas adicionais continuam dependendo do mapeamento real de roles/escopos e Q-022.
+Supabase documenta que backup de banco não inclui objetos binários do Storage. Portanto os anexos de `REQ-FIN-008` precisam de trilha própria antes de qualquer afirmação de “backup completo”.
 
-### Gate 4 — nova prioridade/regressão
+O status da UI deve declarar cobertura real.
 
-**Não desbloqueado.**
+### Política preservada
 
-Não existe nova Issue/PR/prioridade explícita nem regressão reproduzível. Não puxar SHOULD/COULD/PENDING por conveniência.
+- RPO 24h;
+- automático diário ou mais frequente;
+- RTO objetivo <=4h;
+- retenção 30 dias;
+- restore drill mensal isolado;
+- nunca restaurar Production para teste;
+- não bloquear automaticamente operação do negócio por atraso de backup.
 
-## Readiness que não deve ser refeita
+## Automação antiga
 
-Não reimplementar:
+Já existem:
 
-- schema/migrations;
-- RLS e autorização role+scope;
-- validação autoritativa;
-- staging/import lineage;
-- idempotência do batch/staging;
-- preview/dry run;
-- relatório de inconsistências;
-- aliases explícitos;
-- isolamento fail-closed de ambientes;
-- bootstrap técnico do primeiro owner;
-- workflows/scripts de backup e restore;
-- módulos funcionais reconciliados nas Fases 41–45;
-- matriz A/B/C/D da Fase 46.
+- `scripts/export-supabase-backup.sh`;
+- `.github/workflows/production-backup.yml`;
+- `.github/workflows/backup-restore-drill.yml`;
+- archive/checksum;
+- rclone/Drive;
+- Gmail notifier;
+- `PRODUCTION_SUPABASE_DB_URL` provisionado.
 
-## Próximo passo
+Essa implementação é **baseline técnica**, não a arquitetura final.
 
-No próximo chat, **reexecutar o gate check antes de qualquer alteração**.
+`BACKUP_AUTOMATION_ENABLED` deve permanecer false/desarmado. Não provisionar OAuth/rclone/Gmail para satisfazer o fluxo antigo.
 
-A ordem permanece:
+## Próxima ação exata após #107
 
-1. #75 em ambiente confiável;
-2. fonte final congelada para migração;
-3. bootstrap owner aprovado;
-4. prioridade explícita/regressão.
+Abrir/usar uma única slice de engenharia para:
 
-Se nenhum gate estiver desbloqueado, preservar a baseline. Não abrir feature, Issue, migration, deploy ou mutação apenas para produzir atividade.
+> Reconciliar o workflow de backup e restore drill para um contrato S3-compatible provider-neutral, removendo rclone/Gmail da dependência obrigatória, sem provisionar provider externo e mantendo a automação fail-closed.
+
+Escopo esperado:
+
+- preservar `scripts/export-supabase-backup.sh` e SHA-256;
+- trocar configuração Drive-specific por variáveis S3-compatible (`endpoint`, bucket, access key/secret/region quando aplicável), todas server-side/secrets;
+- manter archive + manifesto/checksum;
+- verificação pós-upload;
+- preparar lifecycle/lock como configuração operacional do provider, não deleção arbitrária do runner;
+- substituir Gmail por sinal persistente GitHub-native sem segredo adicional;
+- adaptar restore drill para baixar do mesmo contrato S3-compatible;
+- testes/CI;
+- manter `BACKUP_AUTOMATION_ENABLED=false`;
+- não executar backup Production real nesta slice.
+
+Depois dessa reconciliação, o próximo gate externo será aprovar/provisionar o provider real e então provar o primeiro backup off-site.
 
 ## Não fazer
 
-- não reabrir Fases 41–46 sem regressão;
-- não promover `PENDING`;
-- não construir importação definitiva sem fonte/regra;
-- não tratar `ready` de staging como cutover;
-- não criar/invitar pessoas reais sem gate;
-- não pedir/receber secrets no chat;
-- não criar migration ou Supabase branch/projeto por conveniência;
-- não contornar RLS;
-- não manipular Storage por SQL;
-- não ativar/fechar #75 sem run real;
+- não voltar ao checklist antigo de rclone/Gmail;
+- não ativar o workflow legado;
+- não provisionar serviço com cobrança/billing sem autorização;
+- não pedir secrets no chat;
+- não criar migration de status/UI nesta mesma slice de reconciliação;
+- não criar UI antes da persistência autoritativa;
+- não declarar Storage protegido pelo dump;
 - não restaurar Production para teste;
-- não criar deploy Vercel só para documentação;
-- não importar dados reais/cutover sem gates e aceite.
+- não criar deploy Vercel para docs/workflow de backup sem necessidade de runtime web.
