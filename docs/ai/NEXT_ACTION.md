@@ -2,128 +2,177 @@
 
 ## Contexto
 
-Fase 45 concluída:
+Fase 46 concluiu a reconciliação de prontidão operacional para homologação/cutover.
 
-- `REQ-SUP-004 — Produtos por fornecedor` foi confrontado com schema, runtime, compras e fonte histórica;
-- a ausência de manutenção persistente normal de `supplier_items` foi comprovada;
-- Issue #101 foi fechada pelo PR #102;
-- PR #102 squash-mergeado funcionalmente em `6a86922ef705af25a4897068e223b0e26c1b670a`;
-- head final `c9898f7dd90fd453e14775c89a336fc49636463f` passou CI #393, Business Transactions #191 e Inventory Count #207;
-- nenhuma migration ou mutation manual de Production;
-- Issue #75 continua aberta/desarmada.
+Resultado:
 
-A entrega permite manter vínculo fornecedor↔produto, unidade de compra, quantidade por embalagem e status ativo/inativo. O fluxo de pedidos continua usando quantidade na unidade-base; preço observado continua sendo registrado em `supplier_prices` na emissão do pedido.
+- o núcleo funcional do MVP permanece reconciliado;
+- nenhuma nova lacuna funcional não-PENDING foi encontrada;
+- nenhuma Issue nova foi aberta;
+- `docs/qa/operational-readiness.md` publica a matriz A/B/C/D e o impacto de Q-001..Q-025;
+- Supabase Production permanece `ACTIVE_HEALTHY`, sem development branches e com migration final `20260822195823 / finance_attachments`;
+- Production Vercel observada está `READY` no SHA `62c3af63939c808487434e6e539ef0870a60d530`, igual à `main` na entrada da fase;
+- `/health` Production respondeu HTTP 200, `environment=production`, Supabase permitido e admin bloqueado;
+- nenhum deploy foi criado pela Fase 46;
+- #75 continua aberta/desarmada;
+- nenhum dado real, usuário real ou secret foi manipulado.
 
-Com as reconciliações e slices das Fases 41–45, **não existe outra lacuna funcional não-PENDING comprovada que autorize abrir automaticamente uma feature**. O próximo trabalho deve mudar de foco: prontidão operacional para homologação/migração/cutover.
+A próxima ação **não é uma Fase funcional automática**. O projeto entrou em estado de gate operacional.
 
 ## Objetivo ativo
 
-**Fase 46 — reconciliar a prontidão operacional para homologação e cutover, produzindo uma matriz objetiva de readiness e bloqueios sem importar dados reais, sem criar usuários reais, sem manipular secrets e sem reabrir o núcleo funcional do MVP.**
+**Verificar qual foi o primeiro desbloqueio concreto desde a Fase 46 e executar somente a trilha correspondente. Se nenhum gate foi desbloqueado, não abrir Issue/feature por inércia.**
 
-Esta fase é uma auditoria/preparação operacional. Não é autorização para executar migração real.
+## Ordem de decisão
 
-## Fazer agora
+### Gate 1 — backup Production / Issue #75
 
-1. Ler `AGENTS.md`, `START-HERE`, `CURRENT_STATE`, `HANDOFF`, este arquivo e `WORKFLOW`.
-2. Ler também:
-   - `docs/modules/imports.md`;
-   - `docs/source-data/migration-plan.md`;
-   - `docs/source-data/field-catalog.md`;
-   - `docs/product/open-questions.md`;
-   - `docs/operations/bootstrap-owner.md`;
-   - `docs/operations/environments.md`;
-   - `docs/operations/backup-restore.md`;
-   - `docs/qa/import-foundation-audit.md`;
-   - `docs/qa/data-validation.md`;
-   - `docs/qa/environment-isolation.md`;
-   - `docs/qa/supplier-items-maintenance.md`.
-3. Conferir estado real de `main`, Issues, PRs, branches e CI. Confirmar PR #102 mergeado, #101 fechada e #75 ainda aberta/desarmada.
-4. Não reabrir Fases 41–45 nem procurar nova feature funcional por inércia. O núcleo funcional está reconciliado até existir regressão ou prioridade explícita nova.
-5. Reconciliar o caminho até homologação/cutover em quatro classes:
-   - **A — pronto/comprovado:** fundações já existentes e validadas;
-   - **B — decisão de negócio/PENDING:** perguntas cuja resposta é necessária antes de uma transformação, configuração ou dado real específico;
-   - **C — pré-condição operacional/externa:** credencial, computador confiável, fonte real congelada, aprovação ou atividade que depende do usuário/cliente;
-   - **D — fase futura/opcional:** funcionalidade que não bloqueia o MVP básico nem o cutover atual.
-6. Para importação, confirmar explicitamente o que já existe e o que falta:
-   - staging, idempotência, dry run, relatório e RLS já existem;
-   - `ready` de import batch não significa autorização de escrita operacional;
-   - não existe command genérico de aplicação às tabelas finais;
-   - importadores específicos por fonte, transformações aprovadas, reconciliação e cutover continuam necessários.
-7. Mapear `Q-001..Q-025` por impacto. **Não exigir responder todas antes de qualquer homologação.** Identificar somente quais perguntas bloqueiam concretamente cada domínio/fonte/etapa e quais podem permanecer para refinamento posterior.
-8. Revisar bootstrap/identidade/permissões:
-   - confirmar como owner inicial, memberships, roles e escopos são preparados;
-   - distinguir capacidade técnica já pronta do mapeamento das pessoas reais ainda não fornecido;
-   - não criar conta, convite ou membership real nesta fase.
-9. Revisar ambientes e isolamento:
-   - confirmar o que pode ser homologado com dados sintéticos/ambiente existente;
-   - não copiar dados reais para ambiente inadequado;
-   - não mudar configuração Vercel por conveniência.
-10. Revisar backup/cutover:
-    - #75 continua bloqueio operacional antes de produção real;
-    - não pedir secrets;
-    - não ativar automação de backup sem computador confiável e credenciais apropriadas;
-    - não executar restore em Production.
-11. Produzir um artefato de QA/readiness, por exemplo `docs/qa/operational-readiness.md`, contendo no mínimo:
-    - checklist/matriz A/B/C/D;
-    - evidência ou documento de origem para cada item;
-    - condição objetiva para desbloquear cada bloqueio;
-    - indicação de quem/qual contexto precisa fornecer a decisão ou recurso quando isso já estiver documentado;
-    - sequência segura recomendada até uma futura homologação/cutover.
-12. Não inventar `owner` humano para decisão que não esteja documentada. Use categorias como `produto/cliente`, `operacional`, `credencial/ambiente confiável` quando a responsabilidade nominal não estiver definida.
-13. Só abrir uma Issue nova se surgir uma preparação operacional **concreta, independente de secrets/dados reais/PENDING e claramente executável agora**. Não abrir Issue apenas para representar um bloqueio externo ou uma pergunta ao usuário.
-14. Não implementar importador real, command de apply/cutover ou mutation de dados reais nesta fase sem fonte congelada + regra aprovada + aceite explícito.
-15. Não criar deploy Vercel intermediário.
-16. Atualizar `CURRENT_STATE`, `HANDOFF` e `NEXT_ACTION` ao final.
+Considerar desbloqueado somente quando o operador estiver em computador pessoal/confiável e puder configurar as credenciais fora do chat.
 
-## Critério de conclusão da Fase 46
+Se estiver desbloqueado:
 
-- estado real do repositório/CI/Issues reconciliado;
-- núcleo funcional explicitamente preservado como concluído;
-- prontidão operacional publicada em matriz/checklist rastreável;
-- fundações prontas separadas de decisões PENDING, pré-condições externas e features futuras;
-- perguntas abertas associadas apenas aos bloqueios que realmente causam;
-- #75 preservada até evidência operacional real;
-- nenhum dado real importado e nenhum secret manipulado;
-- próxima ação condicionada ao primeiro desbloqueio seguro e concreto, em vez de uma nova feature inventada.
+1. reler `docs/operations/backup-restore.md` e a Issue #75;
+2. nunca pedir valores de secrets no chat;
+3. configurar OAuth/rclone `[lojasaph-drive]` em máquina confiável;
+4. provisionar, fora do chat, os secrets pendentes;
+5. criar `BACKUP_AUTOMATION_ENABLED=true` somente depois dos secrets;
+6. executar uma única vez `Production Database Backup` via `workflow_dispatch`;
+7. confirmar run verde, archive + `.sha256` no Drive e integridade pós-upload;
+8. registrar somente evidência não sensível;
+9. fechar #75 somente depois da evidência completa.
 
-## Fase 45 — não refazer
+Não restaurar Production para teste e não criar deploy Vercel para essa trilha.
 
-Produtos por fornecedor já usam:
+### Gate 2 — fonte final para migração
 
-- `supplier_items` existente;
-- browser client autenticado;
-- RLS Organization-wide existente;
-- vínculo default `supplier_sku IS NULL`;
-- `purchase_unit` opcional;
-- `units_per_package` positivo via `Quantity`;
-- inativação com `active=false`, sem DELETE;
-- preço observado separado em `supplier_prices` pelo fluxo de compras.
+Considerar desbloqueado somente quando existir uma fonte final congelada para um recorte específico, com arquivo/cópia aprovada disponível de forma segura.
 
-Não criar migration retrospectiva nem puxar cotação/comparação para essa entrega.
+Se estiver desbloqueado:
 
-## Backup Production / #75
+1. não começar por todas as seis planilhas;
+2. identificar uma única fonte/vertical;
+3. registrar timestamp de extração e SHA-256 sem versionar o arquivo real no Git;
+4. confrontar `field-catalog.md`, `migration-plan.md` e a tabela Q-001..Q-025 de `operational-readiness.md`;
+5. responder/solicitar somente as decisões que bloqueiam essa fonte;
+6. documentar target canônico, transformação, rejeições/pending mappings e reconciliação;
+7. somente depois abrir uma Issue de engenharia pequena para o importador específico;
+8. implementar staging/dry run primeiro;
+9. não criar aplicação definitiva genérica por antecipação;
+10. antes de qualquer escrita real, exigir idempotência do apply, reconciliação, aceite e backup Production comprovado.
 
-Somente em computador pessoal/confiável:
+`ready` de import batch nunca significa autorização de cutover.
 
-1. configurar OAuth Google Drive/rclone;
-2. criar `BACKUP_RCLONE_CONFIG_B64`;
-3. criar `BACKUP_ALERT_GMAIL_APP_PASSWORD`;
-4. criar `BACKUP_AUTOMATION_ENABLED=true`;
-5. executar o primeiro `Production Database Backup` real;
-6. confirmar archive + `.sha256` no Drive;
-7. registrar evidência e fechar #75.
+### Gate 3 — bootstrap do primeiro owner
+
+Considerar desbloqueado somente quando houver:
+
+- e-mail exato aprovado para o primeiro owner;
+- Organization alvo confirmada quando necessário;
+- domínio HTTPS canônico;
+- redirect `/auth/invite` autorizado no Supabase Auth;
+- capacidade de entrega do convite verificada;
+- autorização operacional para abrir a janela curta de bootstrap.
+
+Se estiver desbloqueado:
+
+1. reler `docs/operations/bootstrap-owner.md` e `docs/operations/environments.md`;
+2. não aceitar e-mail arbitrário do browser;
+3. não criar senha conhecida pelo operador/agente;
+4. usar somente envs server-only temporárias;
+5. enviar uma única vez o convite ao e-mail autorizado;
+6. deixar o usuário definir a própria senha;
+7. criar o membership owner somente pela action prevista;
+8. validar audit/login/RLS;
+9. remover as envs temporárias após o bootstrap;
+10. não provisionar outros usuários até Q-022 e o mapeamento real de roles/escopos estarem aprovados.
+
+### Gate 4 — nova prioridade explícita/regressão
+
+Se houver uma regressão reproduzível ou nova prioridade de produto fornecida explicitamente:
+
+1. confrontar requirements/scope/ADRs e o estado real;
+2. abrir no máximo uma Issue clara para a menor slice necessária;
+3. não reabrir Fases 41–46 sem evidência;
+4. não puxar SHOULD/COULD/PENDING apenas porque existe capacidade técnica.
+
+## Se nenhum gate estiver desbloqueado
+
+Não alterar código, Supabase, Vercel ou dados.
+
+Não abrir Issue para representar:
+
+- pergunta PENDING;
+- ausência de fonte final;
+- secret/credencial ainda não provisionado;
+- usuário/role ainda não mapeado;
+- data de cutover ainda não aprovada.
+
+A resposta correta é preservar a baseline e deixar explícito qual evento externo precisa acontecer primeiro.
+
+## Baseline a preservar
+
+### GitHub/CI
+
+- `main` de entrada da Fase 46: `62c3af63939c808487434e6e539ef0870a60d530`;
+- CI #396: success;
+- nenhuma nova Issue funcional na Fase 46;
+- #75 é a única Issue operacional aberta.
+
+### Supabase
+
+Projeto `fhbvwyttikrbeaanatlr`:
+
+- Production;
+- `ACTIVE_HEALTHY`;
+- PostgreSQL 17;
+- zero development branches;
+- última migration `20260822195823 / finance_attachments`.
+
+Não criar migration/branch/projeto sem necessidade e autorização.
+
+### Vercel
+
+Na Fase 46:
+
+- Production já estava `READY` no SHA da `main` de entrada;
+- `/health` estava saudável;
+- nenhuma mudança de configuração/deploy foi necessária.
+
+Não consumir deploy por conveniência.
+
+## Readiness — consulta obrigatória
+
+Antes de qualquer trilha, ler:
+
+- `docs/qa/operational-readiness.md`;
+- `docs/ai/CURRENT_STATE.md`;
+- `docs/ai/HANDOFF.md`;
+- documentação específica do gate.
+
+Para migração também ler:
+
+- `docs/modules/imports.md`;
+- `docs/source-data/migration-plan.md`;
+- `docs/source-data/field-catalog.md`;
+- `docs/product/open-questions.md`.
 
 ## Segurança / operação
 
-- não pedir/receber secrets no chat;
-- não reabrir Fases 41–45 sem regressão concreta;
+- nunca pedir/receber secrets no chat;
+- não importar dados reais sem fonte congelada, regra, dry run, reconciliação e aceite;
+- não criar/invitar usuários reais sem gate específico;
 - não promover `PENDING` por inferência;
-- não transformar readiness em nova feature funcional;
-- não importar dados reais sem fonte/regra/aceite;
-- não criar/invitar usuários reais sem mapeamento e aprovação;
-- não criar migration sem necessidade;
 - não contornar RLS;
 - não manipular Storage por SQL;
-- não ativar/fechar #75 sem run real;
 - não restaurar Production para teste;
-- não criar deploy Vercel só para auditoria.
+- não usar outro projeto Supabase como Preview por inferência;
+- não criar branch/projeto pago sem autorização;
+- não criar deploy Vercel só para auditoria;
+- não fechar #75 sem backup real comprovado.
+
+## Critério de conclusão do próximo chat
+
+O próximo chat deve terminar em exatamente um destes estados:
+
+1. um gate concreto foi executado com evidência e handoff atualizado; ou
+2. nenhum gate estava desbloqueado e nenhuma mudança artificial foi criada.
