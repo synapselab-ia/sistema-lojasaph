@@ -30,7 +30,7 @@ jobs:
         run: python -m py_compile scripts/backup-bundle.py scripts/sync-backup-incident.py
 
       - name: Validate backup shell tooling
-        run: bash -n scripts/export-supabase-backup.sh scripts/verify-backup-restore.sh scripts/s3-backup-storage.sh scripts/record-protection-run.sh
+        run: bash -n scripts/export-supabase-backup.sh scripts/verify-backup-restore.sh scripts/restore-production-backup.sh scripts/s3-backup-storage.sh scripts/record-protection-run.sh
 
       - name: Reject legacy Drive and Gmail backup dependencies
         shell: bash
@@ -173,7 +173,40 @@ jobs:
           pg_restore --version
 
       - name: Validate backup scripts
-        run: bash -n scripts/export-supabase-backup.sh scripts/verify-backup-restore.sh scripts/s3-backup-storage.sh scripts/record-protection-run.sh
+        run: bash -n scripts/export-supabase-backup.sh scripts/verify-backup-restore.sh scripts/restore-production-backup.sh scripts/s3-backup-storage.sh scripts/record-protection-run.sh
+
+      - name: Verify restore safety guards
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if BACKUP_RESTORE_ISOLATED=true \
+             BACKUP_RESTORE_DB_URL='postgresql://postgres:postgres@db.example.invalid:5432/restore' \
+             BACKUP_RESTORE_EXPECTED_PROJECT_REF='ci-synthetic' \
+             bash scripts/restore-production-backup.sh /tmp; then
+            echo "::error::Restore helper accepted a non-loopback target."
+            exit 1
+          fi
+
+          TEST_DIR="$(mktemp -d)"
+          trap 'rm -rf "${TEST_DIR}"' EXIT
+          printf '%s\n' '-- roles' > "${TEST_DIR}/roles.sql"
+          printf '%s\n' '-- schema' > "${TEST_DIR}/schema.sql"
+          printf '%s\n' '-- data' > "${TEST_DIR}/data.sql"
+          cat > "${TEST_DIR}/BACKUP_METADATA.txt" <<'EOF'
+          project_ref=ci-synthetic
+          coverage=postgres
+          format=lojasaph-postgres-logical-backup-v1
+          EOF
+          printf '%064d  roles.sql\n' 0 > "${TEST_DIR}/SHA256SUMS"
+
+          if BACKUP_RESTORE_ISOLATED=true \
+             BACKUP_RESTORE_DB_URL='postgresql://postgres:postgres@127.0.0.1:5432/does_not_matter' \
+             BACKUP_RESTORE_EXPECTED_PROJECT_REF='ci-synthetic' \
+             bash scripts/restore-production-backup.sh "${TEST_DIR}"; then
+            echo "::error::Restore helper accepted a corrupt bundle checksum."
+            exit 1
+          fi
 
       - name: Bootstrap Supabase auth stubs
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/bootstrap.sql
@@ -192,6 +225,45 @@ jobs:
 
       - name: Verify logical backup and isolated restore
         run: bash scripts/verify-backup-restore.sh
+
+      - name: Verify separated Production bundle restore path
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUNDLE_DIR="$(mktemp -d)"
+          RESTORE_DB="lojasaph_bundle_restore_ci"
+          cleanup() {
+            PGDATABASE=postgres dropdb --if-exists "${RESTORE_DB}" >/dev/null 2>&1 || true
+            rm -rf "${BUNDLE_DIR}"
+          }
+          trap cleanup EXIT
+
+          printf '%s\n' '-- roles are cluster-scoped and already bootstrapped in CI' > "${BUNDLE_DIR}/roles.sql"
+          pg_dump --schema-only --no-owner --no-privileges --dbname="${PGDATABASE}" > "${BUNDLE_DIR}/schema.sql"
+          pg_dump --data-only --no-owner --no-privileges --dbname="${PGDATABASE}" > "${BUNDLE_DIR}/data.sql"
+          cat > "${BUNDLE_DIR}/BACKUP_METADATA.txt" <<'EOF'
+          service=Sistema Lojasaph
+          source=CI synthetic database
+          project_ref=ci-synthetic
+          created_at_utc=2026-08-26T19:40:47Z
+          coverage=postgres
+          format=lojasaph-postgres-logical-backup-v1
+          rpo_hours=24
+          retention_days=30
+          EOF
+          (
+            cd "${BUNDLE_DIR}"
+            sha256sum roles.sql schema.sql data.sql BACKUP_METADATA.txt > SHA256SUMS
+            sha256sum --check SHA256SUMS
+          )
+
+          PGDATABASE=postgres createdb --template=template0 "${RESTORE_DB}"
+          PGDATABASE="${RESTORE_DB}" psql -v ON_ERROR_STOP=1 -c 'drop schema public cascade'
+
+          BACKUP_RESTORE_ISOLATED=true \
+          BACKUP_RESTORE_DB_URL="postgresql://postgres:postgres@127.0.0.1:5432/${RESTORE_DB}" \
+          BACKUP_RESTORE_EXPECTED_PROJECT_REF="ci-synthetic" \
+            bash scripts/restore-production-backup.sh "${BUNDLE_DIR}"
 
       - name: Run schema and RLS smoke tests
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/schema_smoke.sql
@@ -213,6 +285,9 @@ jobs:
 
       - name: Run protection run persistence tests
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/protection_runs.sql
+
+      - name: Run restore drill protection persistence tests
+        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/restore_drill_protection.sql
 
       - name: Run transactional withdrawal tests
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/stock_withdrawal.sql
