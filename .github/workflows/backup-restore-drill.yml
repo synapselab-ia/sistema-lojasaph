@@ -1,6 +1,13 @@
 name: Backup Restore Drill
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/backup-restore-drill.yml"
+      - "scripts/restore-production-backup.sh"
+      - "scripts/record-protection-run.sh"
+      - "supabase/tests/production_bundle_restore.sql"
   schedule:
     - cron: "43 6 1 * *"
   workflow_dispatch:
@@ -19,33 +26,20 @@ env:
   BACKUP_S3_BUCKET: ${{ vars.BACKUP_S3_BUCKET }}
   BACKUP_S3_REGION: ${{ vars.BACKUP_S3_REGION || 'auto' }}
   BACKUP_S3_PREFIX: ${{ vars.BACKUP_S3_PREFIX || 'production/postgres' }}
-  PGHOST: 127.0.0.1
-  PGPORT: "5432"
-  PGUSER: postgres
-  PGPASSWORD: postgres
-  PGDATABASE: lojasaph
-  PATH: /usr/lib/postgresql/17/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+  SUPABASE_CLI_VERSION: "2.111.0"
+  SUPABASE_PROJECT_REF: fhbvwyttikrbeaanatlr
+  SUPABASE_POSTGRES_VERSION: "17.6.1.141"
+  PROTECTION_EXECUTION_REFERENCE: github-actions:backup-restore-drill:${{ github.run_id }}:${{ github.run_attempt }}
+  PROTECTION_TYPE: restore_drill
+  PROTECTION_COVERAGE: postgres
+  PROTECTION_PROVIDER: cloudflare_r2
+  PROTECTION_DESTINATION: isolated_supabase_postgres_restore
 
 jobs:
   drill:
     if: ${{ vars.BACKUP_AUTOMATION_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
-
-    services:
-      postgres:
-        image: postgres:17-alpine
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: lojasaph
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres -d lojasaph"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
 
     env:
       AWS_ACCESS_KEY_ID: ${{ secrets.BACKUP_S3_ACCESS_KEY_ID }}
@@ -60,10 +54,12 @@ jobs:
 
       - name: Validate required drill configuration
         shell: bash
+        env:
+          SUPABASE_DB_URL: ${{ secrets.PRODUCTION_SUPABASE_DB_URL }}
         run: |
           set -euo pipefail
           missing=0
-          for name in BACKUP_S3_ENDPOINT BACKUP_S3_BUCKET AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do
+          for name in SUPABASE_DB_URL BACKUP_S3_ENDPOINT BACKUP_S3_BUCKET AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do
             if [[ -z "${!name:-}" ]]; then
               echo "::error::Required backup drill configuration for ${name} is not configured."
               missing=1
@@ -73,13 +69,34 @@ jobs:
             exit 1
           fi
 
+          if [[ "${SUPABASE_DB_URL}" != *".pooler.supabase.com:5432/"* ]]; then
+            echo "::error::PRODUCTION_SUPABASE_DB_URL must use the Supabase Session pooler on port 5432."
+            exit 1
+          fi
+
           if [[ "${BACKUP_S3_ENDPOINT}" != https://* ]]; then
             echo "::error::BACKUP_S3_ENDPOINT must use HTTPS."
             exit 1
           fi
 
-      - name: Verify S3-compatible tooling
-        run: bash scripts/s3-backup-storage.sh check-tooling
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@3c2f5e2ae34c34e428e8e206e2c4d21fa2d20fbf # v2.1.1
+        with:
+          version: ${{ env.SUPABASE_CLI_VERSION }}
+
+      - name: Verify restore tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase --version
+          bash scripts/s3-backup-storage.sh check-tooling
+          bash -n scripts/restore-production-backup.sh scripts/record-protection-run.sh
+
+      - name: Begin authoritative restore drill
+        shell: bash
+        env:
+          SUPABASE_DB_URL: ${{ secrets.PRODUCTION_SUPABASE_DB_URL }}
+        run: bash scripts/record-protection-run.sh start
 
       - name: Download and verify latest real off-site backup
         id: latest
@@ -114,78 +131,119 @@ jobs:
             done
           )
 
+          python - \
+            "${DRILL_DIR}/download/${MANIFEST_NAME}" \
+            "${DRILL_DIR}/download/${ARCHIVE_NAME}" \
+            "${GITHUB_OUTPUT}" <<'PY'
+          import json
+          import os
+          import sys
+
+          manifest_path, archive_path, output_path = sys.argv[1:]
+          with open(manifest_path, encoding="utf-8") as handle:
+              manifest = json.load(handle)
+
+          generated_at = manifest.get("generated_at_utc")
+          if not isinstance(generated_at, str) or not generated_at.endswith("Z"):
+              raise SystemExit("verified manifest is missing generated_at_utc")
+
+          with open(output_path, "a", encoding="utf-8") as handle:
+              handle.write(f"valid_copy_at={generated_at}\n")
+              handle.write(f"archive_size={os.path.getsize(archive_path)}\n")
+          PY
+
           echo "archive_name=${ARCHIVE_NAME}" >> "${GITHUB_OUTPUT}"
           echo "manifest_name=${MANIFEST_NAME}" >> "${GITHUB_OUTPUT}"
 
-      - name: Install PostgreSQL 17 client
+      - name: Restore Production bundle into isolated Supabase
         shell: bash
         run: |
           set -euo pipefail
-          sudo install -d /usr/share/postgresql-common/pgdg
-          sudo curl \
-            --fail \
-            --silent \
-            --show-error \
-            --location \
-            --output /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
-            https://www.postgresql.org/media/keys/ACCC4CF8.asc
-          . /etc/os-release
-          ARCH="$(dpkg --print-architecture)"
-          cat <<EOF | sudo tee /etc/apt/sources.list.d/pgdg.sources >/dev/null
-          Types: deb
-          URIs: https://apt.postgresql.org/pub/repos/apt
-          Suites: ${VERSION_CODENAME}-pgdg
-          Architectures: ${ARCH}
-          Components: main
-          Signed-By: /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
-          EOF
-          if [[ -f /etc/apt/apt-mirrors.txt ]]; then
-            sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/apt-mirrors.txt
+          RESTORE_PROJECT_DIR="${RUNNER_TEMP}/lojasaph-isolated-supabase"
+          rm -rf "${RESTORE_PROJECT_DIR}"
+          install -d -m 700 "${RESTORE_PROJECT_DIR}"
+
+          pushd "${RESTORE_PROJECT_DIR}" >/dev/null
+          supabase init >/dev/null
+          install -d -m 700 supabase/.temp
+          printf '%s\n' "${SUPABASE_POSTGRES_VERSION}" > supabase/.temp/postgres-version
+
+          # Keep the database, Auth and Storage migrations required by a real
+          # Supabase logical restore while skipping unrelated UI/observability
+          # services to reduce CI resource use.
+          supabase start \
+            --exclude postgres-meta,realtime,imgproxy,inbucket,studio,edge-runtime,logflare,vector,supavisor \
+            >/dev/null
+
+          STATUS_ENV="$(supabase status -o env 2>/dev/null)"
+          BACKUP_RESTORE_DB_URL="$(
+            printf '%s\n' "${STATUS_ENV}" \
+              | sed -n 's/^DB_URL=//p' \
+              | head -n 1 \
+              | sed -E 's/^"//; s/"$//'
+          )"
+          unset STATUS_ENV
+          popd >/dev/null
+
+          if [[ -z "${BACKUP_RESTORE_DB_URL}" ]]; then
+            echo "::error::Isolated Supabase database URL was not available." >&2
+            exit 1
           fi
-          sudo apt-get update \
-            -o Dir::Etc::sourcelist="/etc/apt/sources.list.d/pgdg.sources" \
-            -o Dir::Etc::sourceparts="-" \
-            -o APT::Get::List-Cleanup="0" \
-            -o Acquire::Retries=3 \
-            -o Acquire::https::Timeout=30
-          sudo apt-get install --yes --no-install-recommends \
-            -o Acquire::Retries=3 \
-            -o Acquire::http::Timeout=30 \
-            -o Acquire::https::Timeout=30 \
-            postgresql-client-17
 
-      - name: Build isolated synthetic source database
-        shell: bash
-        run: |
-          set -euo pipefail
-          psql -v ON_ERROR_STOP=1 -f supabase/tests/bootstrap.sql
-          while IFS= read -r migration; do
-            echo "Applying ${migration}"
-            psql -v ON_ERROR_STOP=1 -f "${migration}"
-          done < <(find supabase/migrations -maxdepth 1 -type f -name '*.sql' | sort)
-          psql -v ON_ERROR_STOP=1 -f supabase/seed.sql
+          BACKUP_RESTORE_ISOLATED=true \
+          BACKUP_RESTORE_DB_URL="${BACKUP_RESTORE_DB_URL}" \
+          BACKUP_RESTORE_EXPECTED_PROJECT_REF="${SUPABASE_PROJECT_REF}" \
+            bash scripts/restore-production-backup.sh \
+              "${RUNNER_TEMP}/lojasaph-backup-drill/extracted"
 
-      - name: Run isolated restore drill
-        run: bash scripts/verify-backup-restore.sh
-
-      - name: Record successful drill
+      - name: Record successful real restore drill
         shell: bash
         run: |
           {
-            echo "## Monthly backup restore drill"
+            echo "## Monthly Production bundle restore drill"
             echo
             echo "- Latest real off-site archive: \`${{ steps.latest.outputs.archive_name }}\`"
             echo "- Manifest: \`${{ steps.latest.outputs.manifest_name }}\`"
             echo "- S3-compatible bundle checksums: verified after download"
             echo "- Internal SQL checksums: verified"
-            echo "- Isolated PostgreSQL dump/restore regression: passed"
-            echo "- Production database was not mutated"
+            echo "- Production roles/schema/data: restored into isolated Supabase PostgreSQL 17"
+            echo "- Public foreign-key data: revalidated after replica-mode import"
+            echo "- Critical Lojasaph schema/data/RLS smoke tests: passed"
+            echo "- Production database was not restored or mutated"
           } >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Remove local drill material
         if: ${{ always() }}
         shell: bash
-        run: rm -rf "${RUNNER_TEMP}/lojasaph-backup-drill"
+        run: |
+          RESTORE_PROJECT_DIR="${RUNNER_TEMP}/lojasaph-isolated-supabase"
+          if [[ -f "${RESTORE_PROJECT_DIR}/supabase/config.toml" ]]; then
+            (
+              cd "${RESTORE_PROJECT_DIR}"
+              supabase stop --no-backup >/dev/null 2>&1 || true
+            )
+          fi
+          rm -rf "${RUNNER_TEMP}/lojasaph-backup-drill" "${RESTORE_PROJECT_DIR}"
+
+      - name: Finalize successful restore drill
+        if: ${{ success() }}
+        shell: bash
+        env:
+          SUPABASE_DB_URL: ${{ secrets.PRODUCTION_SUPABASE_DB_URL }}
+        run: |
+          bash scripts/record-protection-run.sh success \
+            "${{ steps.latest.outputs.valid_copy_at }}" \
+            "${{ steps.latest.outputs.archive_size }}"
+
+      - name: Finalize failed restore drill
+        if: ${{ failure() }}
+        continue-on-error: true
+        shell: bash
+        env:
+          SUPABASE_DB_URL: ${{ secrets.PRODUCTION_SUPABASE_DB_URL }}
+        run: |
+          bash scripts/record-protection-run.sh failure \
+            "Production PostgreSQL bundle restore drill failed before isolated verification completed."
 
       - name: Report persistent restore-drill incident
         if: ${{ failure() }}
@@ -197,7 +255,7 @@ jobs:
           BACKUP_INCIDENT_TITLE: "[backup-alert] Monthly restore drill failing"
           BACKUP_INCIDENT_WORKFLOW: Backup Restore Drill
           BACKUP_INCIDENT_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          BACKUP_INCIDENT_DETAILS: "Monthly isolated restore drill failed; Production was not restored or mutated."
+          BACKUP_INCIDENT_DETAILS: "Production PostgreSQL bundle restore drill failed in isolated verification; Production was not restored or mutated."
         run: python scripts/sync-backup-incident.py
 
       - name: Resolve persistent restore-drill incident after recovery
