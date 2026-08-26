@@ -7,16 +7,21 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 concurrency:
   group: production-database-backup
   cancel-in-progress: false
 
 env:
-  BACKUP_ALERT_EMAIL: synapselab.ia@gmail.com
-  BACKUP_REMOTE: "lojasaph-drive:Lojasaph Backups"
   BACKUP_RETENTION_DAYS: "30"
-  RCLONE_IMAGE: rclone/rclone:1.75.0
+  BACKUP_AWS_CLI_IMAGE: amazon/aws-cli:2.36.30
+  BACKUP_S3_ENDPOINT: ${{ vars.BACKUP_S3_ENDPOINT }}
+  BACKUP_S3_BUCKET: ${{ vars.BACKUP_S3_BUCKET }}
+  BACKUP_S3_REGION: ${{ vars.BACKUP_S3_REGION || 'auto' }}
+  BACKUP_S3_PREFIX: ${{ vars.BACKUP_S3_PREFIX || 'production/postgres' }}
+  SUPABASE_CLI_VERSION: "2.111.0"
+  SUPABASE_PROJECT_REF: fhbvwyttikrbeaanatlr
 
 jobs:
   backup:
@@ -25,8 +30,9 @@ jobs:
     timeout-minutes: 45
     env:
       SUPABASE_DB_URL: ${{ secrets.PRODUCTION_SUPABASE_DB_URL }}
-      BACKUP_RCLONE_CONFIG_B64: ${{ secrets.BACKUP_RCLONE_CONFIG_B64 }}
-      BACKUP_ALERT_GMAIL_APP_PASSWORD: ${{ secrets.BACKUP_ALERT_GMAIL_APP_PASSWORD }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.BACKUP_S3_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_S3_SECRET_ACCESS_KEY }}
+      AWS_SESSION_TOKEN: ${{ secrets.BACKUP_S3_SESSION_TOKEN }}
 
     steps:
       - name: Checkout
@@ -34,14 +40,14 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Validate required secrets
+      - name: Validate required backup configuration
         shell: bash
         run: |
           set -euo pipefail
           missing=0
-          for name in SUPABASE_DB_URL BACKUP_RCLONE_CONFIG_B64 BACKUP_ALERT_GMAIL_APP_PASSWORD; do
+          for name in SUPABASE_DB_URL BACKUP_S3_ENDPOINT BACKUP_S3_BUCKET AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do
             if [[ -z "${!name:-}" ]]; then
-              echo "::error::Required backup secret for ${name} is not configured."
+              echo "::error::Required backup configuration for ${name} is not configured."
               missing=1
             fi
           done
@@ -50,34 +56,26 @@ jobs:
           fi
 
           if [[ "${SUPABASE_DB_URL}" != *".pooler.supabase.com:5432/"* ]]; then
-            echo "::error::PRODUCTION_SUPABASE_DB_URL must use the Supabase Session pooler on port 5432. GitHub Actions runners are IPv4-only; do not use the direct IPv6 database URL."
+            echo "::error::PRODUCTION_SUPABASE_DB_URL must use the Supabase Session pooler on port 5432."
+            exit 1
+          fi
+
+          if [[ "${BACKUP_S3_ENDPOINT}" != https://* ]]; then
+            echo "::error::BACKUP_S3_ENDPOINT must use HTTPS."
             exit 1
           fi
 
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@3c2f5e2ae34c34e428e8e206e2c4d21fa2d20fbf # v2.1.1
         with:
-          version: 2.111.0
-
-      - name: Materialize rclone configuration
-        shell: bash
-        run: |
-          set -euo pipefail
-          CONFIG_DIR="${RUNNER_TEMP}/lojasaph-rclone"
-          install -d -m 700 "${CONFIG_DIR}"
-          printf '%s' "${BACKUP_RCLONE_CONFIG_B64}" | base64 --decode > "${CONFIG_DIR}/rclone.conf"
-          chmod 600 "${CONFIG_DIR}/rclone.conf"
-          if ! grep -Fxq '[lojasaph-drive]' "${CONFIG_DIR}/rclone.conf"; then
-            echo "::error::BACKUP_RCLONE_CONFIG_B64 must contain a remote named [lojasaph-drive]."
-            exit 1
-          fi
+          version: ${{ env.SUPABASE_CLI_VERSION }}
 
       - name: Verify backup tooling
         shell: bash
         run: |
           set -euo pipefail
           supabase --version
-          docker run --rm "${RCLONE_IMAGE}" version
+          bash scripts/s3-backup-storage.sh check-tooling
 
       - name: Export and package Production backup
         id: package
@@ -95,13 +93,17 @@ jobs:
 
           STAMP="$(date -u +'%Y%m%dT%H%M%SZ')"
           CREATED_AT="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          BACKUP_ID="postgres-${STAMP}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+
           cat > "${PAYLOAD_DIR}/BACKUP_METADATA.txt" <<EOF
           service=Sistema Lojasaph
           source=Supabase Production
-          project_ref=fhbvwyttikrbeaanatlr
+          project_ref=${SUPABASE_PROJECT_REF}
           created_at_utc=${CREATED_AT}
+          coverage=postgres
+          format=lojasaph-postgres-logical-backup-v1
           rpo_hours=24
-          retention_days=30
+          retention_days=${BACKUP_RETENTION_DAYS}
           EOF
           chmod 600 "${PAYLOAD_DIR}/BACKUP_METADATA.txt"
 
@@ -111,86 +113,96 @@ jobs:
             sha256sum --check SHA256SUMS
           )
 
-          ARCHIVE_NAME="lojasaph-production-${STAMP}.tar.gz"
+          ARCHIVE_NAME="lojasaph-production-${STAMP}-${GITHUB_RUN_ID}.tar.gz"
           tar -C "${PAYLOAD_DIR}" -czf "${UPLOAD_DIR}/${ARCHIVE_NAME}" .
           chmod 600 "${UPLOAD_DIR}/${ARCHIVE_NAME}"
+
           (
             cd "${UPLOAD_DIR}"
             sha256sum "${ARCHIVE_NAME}" > "${ARCHIVE_NAME}.sha256"
             sha256sum --check "${ARCHIVE_NAME}.sha256"
           )
 
+          MANIFEST_NAME="${ARCHIVE_NAME}.manifest.json"
+          python scripts/backup-bundle.py create \
+            --archive "${UPLOAD_DIR}/${ARCHIVE_NAME}" \
+            --output "${UPLOAD_DIR}/${MANIFEST_NAME}" \
+            --backup-id "${BACKUP_ID}" \
+            --generated-at "${CREATED_AT}" \
+            --source-project-ref "${SUPABASE_PROJECT_REF}" \
+            --supabase-cli-version "${SUPABASE_CLI_VERSION}" \
+            --git-sha "${GITHUB_SHA}" \
+            --repository "${GITHUB_REPOSITORY}" \
+            --workflow "${GITHUB_WORKFLOW}" \
+            --run-id "${GITHUB_RUN_ID}" \
+            --run-attempt "${GITHUB_RUN_ATTEMPT}" \
+            --run-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+          (
+            cd "${UPLOAD_DIR}"
+            sha256sum "${MANIFEST_NAME}" > "${MANIFEST_NAME}.sha256"
+            sha256sum --check "${MANIFEST_NAME}.sha256"
+          )
+
+          python scripts/backup-bundle.py verify \
+            --archive "${UPLOAD_DIR}/${ARCHIVE_NAME}" \
+            --manifest "${UPLOAD_DIR}/${MANIFEST_NAME}"
+
           echo "archive_name=${ARCHIVE_NAME}" >> "${GITHUB_OUTPUT}"
+          echo "manifest_name=${MANIFEST_NAME}" >> "${GITHUB_OUTPUT}"
+          echo "backup_id=${BACKUP_ID}" >> "${GITHUB_OUTPUT}"
 
-      - name: Upload backup to private Google Drive
+      - name: Upload and verify off-site S3-compatible backup
         shell: bash
         run: |
           set -euo pipefail
-          docker run --rm \
-            -v "${RUNNER_TEMP}/lojasaph-rclone:/config/rclone:ro" \
-            -v "${RUNNER_TEMP}/lojasaph-production-backup/upload:/data:ro" \
-            "${RCLONE_IMAGE}" \
-            copy /data "${BACKUP_REMOTE}" \
-            --config /config/rclone/rclone.conf \
-            --checksum
-
-      - name: Verify uploaded backup
-        shell: bash
-        run: |
-          set -euo pipefail
-          docker run --rm \
-            -v "${RUNNER_TEMP}/lojasaph-rclone:/config/rclone:ro" \
-            -v "${RUNNER_TEMP}/lojasaph-production-backup/upload:/data:ro" \
-            "${RCLONE_IMAGE}" \
-            check /data "${BACKUP_REMOTE}" \
-            --config /config/rclone/rclone.conf \
-            --checksum \
-            --one-way
-
-      - name: Enforce 30-day retention
-        shell: bash
-        run: |
-          set -euo pipefail
-          docker run --rm \
-            -v "${RUNNER_TEMP}/lojasaph-rclone:/config/rclone:ro" \
-            "${RCLONE_IMAGE}" \
-            delete "${BACKUP_REMOTE}" \
-            --config /config/rclone/rclone.conf \
-            --min-age "${BACKUP_RETENTION_DAYS}d" \
-            --include 'lojasaph-production-*.tar.gz' \
-            --include 'lojasaph-production-*.tar.gz.sha256' \
-            --drive-use-trash=false
+          bash scripts/s3-backup-storage.sh upload-bundle \
+            "${RUNNER_TEMP}/lojasaph-production-backup/upload" \
+            "${{ steps.package.outputs.archive_name }}"
 
       - name: Record successful backup
         shell: bash
         run: |
           {
-            echo "## Production backup"
+            echo "## Production PostgreSQL backup"
             echo
+            echo "- Backup ID: \`${{ steps.package.outputs.backup_id }}\`"
             echo "- Archive: \`${{ steps.package.outputs.archive_name }}\`"
-            echo "- Off-site destination: private Google Drive"
-            echo "- Retention: ${BACKUP_RETENTION_DAYS} days"
-            echo "- Internal and transfer checksums: verified"
+            echo "- Manifest: \`${{ steps.package.outputs.manifest_name }}\`"
+            echo "- Off-site contract: private S3-compatible object storage"
+            echo "- Coverage: PostgreSQL logical backup"
+            echo "- Retention policy: ${BACKUP_RETENTION_DAYS} days via provider lifecycle/lock"
+            echo "- Internal checksums: verified"
+            echo "- Remote objects: downloaded and re-hashed after upload"
           } >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Remove local backup material
         if: ${{ always() }}
         shell: bash
         run: |
-          rm -rf \
-            "${RUNNER_TEMP}/lojasaph-production-backup" \
-            "${RUNNER_TEMP}/lojasaph-rclone"
+          rm -rf "${RUNNER_TEMP}/lojasaph-production-backup"
 
-      - name: Email operator on failure
+      - name: Report persistent backup incident
         if: ${{ failure() }}
+        continue-on-error: true
         env:
-          BACKUP_ALERT_SUBJECT: "[Sistema Lojasaph] Falha no backup de Production"
-          BACKUP_ALERT_BODY: |
-            O backup automático do Sistema Lojasaph falhou.
+          GITHUB_TOKEN: ${{ github.token }}
+          BACKUP_INCIDENT_STATUS: failure
+          BACKUP_INCIDENT_KEY: production-database-backup
+          BACKUP_INCIDENT_TITLE: "[backup-alert] Production database backup failing"
+          BACKUP_INCIDENT_WORKFLOW: Production Database Backup
+          BACKUP_INCIDENT_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          BACKUP_INCIDENT_DETAILS: "Automatic PostgreSQL backup failed before verified off-site completion."
+        run: python scripts/sync-backup-incident.py
 
-            Workflow: Production Database Backup
-            Repositório: ${{ github.repository }}
-            Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-
-            Nenhuma credencial ou conteúdo do backup é incluído neste alerta.
-        run: python scripts/send-backup-alert.py
+      - name: Resolve persistent backup incident after recovery
+        if: ${{ success() }}
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          BACKUP_INCIDENT_STATUS: success
+          BACKUP_INCIDENT_KEY: production-database-backup
+          BACKUP_INCIDENT_TITLE: "[backup-alert] Production database backup failing"
+          BACKUP_INCIDENT_WORKFLOW: Production Database Backup
+          BACKUP_INCIDENT_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: python scripts/sync-backup-incident.py
