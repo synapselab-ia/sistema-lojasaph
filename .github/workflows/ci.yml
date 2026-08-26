@@ -26,8 +26,65 @@ jobs:
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
 
-      - name: Validate backup notifier
-        run: python -m py_compile scripts/send-backup-alert.py
+      - name: Validate backup Python tooling
+        run: python -m py_compile scripts/backup-bundle.py scripts/sync-backup-incident.py
+
+      - name: Validate backup shell tooling
+        run: bash -n scripts/export-supabase-backup.sh scripts/verify-backup-restore.sh scripts/s3-backup-storage.sh
+
+      - name: Reject legacy Drive and Gmail backup dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -R -n -E \
+            'BACKUP_RCLONE_CONFIG_B64|BACKUP_ALERT_GMAIL_APP_PASSWORD|rclone/rclone|lojasaph-drive' \
+            .github/workflows scripts; then
+            echo "::error::Legacy rclone/Drive/Gmail backup dependency is still referenced by executable automation."
+            exit 1
+          fi
+
+      - name: Verify backup manifest contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          TEST_DIR="$(mktemp -d)"
+          trap 'rm -rf "${TEST_DIR}"' EXIT
+          ARCHIVE="${TEST_DIR}/lojasaph-production-20260826T120000Z-123.tar.gz"
+          MANIFEST="${ARCHIVE}.manifest.json"
+
+          printf 'synthetic backup archive\n' > "${ARCHIVE}"
+          (
+            cd "${TEST_DIR}"
+            sha256sum "$(basename "${ARCHIVE}")" > "$(basename "${ARCHIVE}").sha256"
+          )
+
+          python scripts/backup-bundle.py create \
+            --archive "${ARCHIVE}" \
+            --output "${MANIFEST}" \
+            --backup-id postgres-20260826T120000Z-123-1 \
+            --generated-at 2026-08-26T12:00:00Z \
+            --source-project-ref synthetic-project \
+            --supabase-cli-version 2.111.0 \
+            --git-sha 0000000000000000000000000000000000000000 \
+            --repository synapselab-ia/sistema-lojasaph \
+            --workflow ci-synthetic-backup \
+            --run-id 123 \
+            --run-attempt 1 \
+            --run-url https://github.com/synapselab-ia/sistema-lojasaph/actions/runs/123
+
+          (
+            cd "${TEST_DIR}"
+            sha256sum "$(basename "${MANIFEST}")" > "$(basename "${MANIFEST}").sha256"
+            sha256sum --check "$(basename "${ARCHIVE}").sha256"
+            sha256sum --check "$(basename "${MANIFEST}").sha256"
+          )
+
+          python scripts/backup-bundle.py verify \
+            --archive "${ARCHIVE}" \
+            --manifest "${MANIFEST}"
+
+      - name: Verify pinned S3 client image
+        run: bash scripts/s3-backup-storage.sh check-tooling
 
       - name: Lint
         run: npm run lint
@@ -116,7 +173,7 @@ jobs:
           pg_restore --version
 
       - name: Validate backup scripts
-        run: bash -n scripts/export-supabase-backup.sh scripts/verify-backup-restore.sh
+        run: bash -n scripts/export-supabase-backup.sh scripts/verify-backup-restore.sh scripts/s3-backup-storage.sh
 
       - name: Bootstrap Supabase auth stubs
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/bootstrap.sql
