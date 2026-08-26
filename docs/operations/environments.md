@@ -1,6 +1,6 @@
 # Ambientes — Development, Preview e Production
 
-Status: Fase 18 implementada e revalidada na Fase 33; bootstrap inicial deve respeitar os mesmos guardrails de isolamento.
+Status: Fase 18 implementada, revalidada na Fase 33 e novamente observada na Fase 46; bootstrap inicial deve respeitar os mesmos guardrails de isolamento.
 
 ## Objetivo
 
@@ -107,7 +107,7 @@ Confirmar especialmente:
 - Preview não recebe backend de Production;
 - variáveis temporárias de bootstrap não permanecem ativas.
 
-A documentação/API atual da Vercel suporta auditoria por ambiente (`env ls`/API de project envs), mas a conexão disponível na Fase 33 não expôs a ação de listagem. Portanto targets/nomes atuais continuam **não observáveis por esta conexão**, não comprovadamente compartilhados.
+A documentação/API da Vercel suporta auditoria por ambiente, mas a conexão disponível na Fase 46 continua sem ação para listar materialmente environment variables/targets. Portanto nomes/targets atuais permanecem **não observáveis por esta conexão**, não comprovadamente compartilhados. O runtime fail-closed é o controle compensatório versionado.
 
 ## Health check seguro
 
@@ -122,9 +122,15 @@ A documentação/API atual da Vercel suporta auditoria por ambiente (`env ls`/AP
 
 Não retorna URL Supabase, project ref, publishable key, secret ou conteúdo de dados.
 
-### Production observado em 2026-08-20
+### Production observado em 2026-08-26
 
-`https://sistema-lojasaph.vercel.app/health` respondeu:
+O deployment Production `dpl_RRAzMvYKVLKAjbrNV6hAGqg42wfg` está `READY` e foi construído do commit:
+
+`62c3af63939c808487434e6e539ef0870a60d530`
+
+Esse SHA era o HEAD real de `main` na entrada da Fase 46.
+
+`https://sistema-lojasaph.vercel.app/health` respondeu HTTP 200 com:
 
 - `environment=production`;
 - `supabaseAccess=allowed`;
@@ -132,6 +138,8 @@ Não retorna URL Supabase, project ref, publishable key, secret ou conteúdo de 
 - `adminAccess=blocked`.
 
 O payload não continha dados sensíveis.
+
+A Fase 46 **não criou deployment**; apenas observou o deployment já existente.
 
 ### Preview sem backend isolado
 
@@ -158,16 +166,20 @@ Smoke mínimo de Preview:
 
 Não criar deployment apenas para repetir esse smoke quando o código funcional é idêntico ao Preview já homologado.
 
-## Estado da plataforma — revalidação 2026-08-20
+## Estado da plataforma — revalidação 2026-08-26
 
 ### Vercel
 
 - projeto `sistema-lojasaph`;
-- latest deployment `dpl_824q6umKyUyRhYzAmxLREjNeoFK1`, `READY`, target Production;
-- commit hospedado `046c4a3392f85e2361c6ddeac0ae3ee1817145c5`;
-- deployments mais recentes que os Previews da Fase 18 são de Production;
-- `vercel.json` mantém `git.deploymentEnabled=false`;
-- Production e `main` mantêm o mesmo blob de `src/lib/runtime/environment.ts` do Preview homologado (`fc39f1a2b393815a6d1a853a23a4fbcff86614b0`).
+- project id `prj_Sutt2hmT3S54QjWR4jR6mBi3DlcY`;
+- team `team_PtLOXR0VIFdK0yAIAx8IOBjj`, plano Hobby;
+- latest deployment observado `dpl_RRAzMvYKVLKAjbrNV6hAGqg42wfg`;
+- target `production`;
+- estado `READY`;
+- commit hospedado `62c3af63939c808487434e6e539ef0870a60d530`;
+- alias canônico `sistema-lojasaph.vercel.app` presente;
+- `vercel.json` continua sendo a fonte versionada para a política de deploy do repositório; não alterar essa configuração por conveniência;
+- a ferramenta conectada continua sem listagem material de env vars por target.
 
 ### Supabase
 
@@ -177,15 +189,12 @@ Projeto do Sistema Lojasaph:
 - `ACTIVE_HEALTHY`;
 - PostgreSQL `17.6.1.141`;
 - região `sa-east-1`;
-- zero development branches.
+- zero development branches;
+- migration history termina em `20260822195823 / finance_attachments`.
 
-Organização `wopgwaqlnksvqavegljp` permanece no plano Free.
+Não criar branch/projeto ou custo para auditoria sem autorização explícita. Outro projeto Supabase da conta não deve ser tratado como Preview/Development do Lojasaph por inferência.
 
-A mesma organização possui agora um segundo projeto, `easy-v2` (`hrmkkhqfyfoqucwbcszq`), com migrations próprias que não correspondem ao histórico do Lojasaph. Não há evidência de que ele seja ambiente Preview/Development do Lojasaph; **não reutilizá-lo por inferência**.
-
-A documentação atual do Supabase recomenda desenvolvimento local e oferece Branching como ambiente isolado sem dados Production quando o recurso/plano for adotado. Não criar branch/projeto ou custo para esta auditoria sem autorização explícita.
-
-Evidência detalhada: `docs/qa/environment-isolation.md`.
+Evidência consolidada da readiness: `docs/qa/operational-readiness.md`.
 
 ## Incidente de configuração
 
