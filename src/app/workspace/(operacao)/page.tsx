@@ -7,6 +7,7 @@ import { Money } from "@/domain/common/money";
 import { createBrowserSupabaseClient } from "@/lib/supabase/browser";
 import { SupabaseDashboardQuery, DashboardSnapshot } from "@/modules/dashboard/adapters/supabase-dashboard-query";
 import { buildDashboardSummary, DashboardAttentionItem } from "@/modules/dashboard/application/dashboard-summary";
+import { PurchaseOverviewSection } from "@/modules/dashboard/ui/purchase-overview-section";
 import { StockOverviewSection } from "@/modules/dashboard/ui/stock-overview-section";
 import { useRuntimeWorkspace } from "@/modules/master-data/ui/runtime-workspace-provider";
 
@@ -273,6 +274,17 @@ export default function WorkspacePage() {
               expiredBatchCount={summary.stock.expiredBatchCount}
               expiringSoonCount={summary.stock.expiringSoonCount}
               belowMinimumCount={summary.stock.belowMinimumCount}
+            />
+          )}
+
+          {snapshot && (
+            <PurchaseOverviewSection
+              organizationId={organizationId}
+              unitId={unitId ? unitId as EntityId : undefined}
+              sectorId={sectorId ? sectorId as EntityId : undefined}
+              dateFrom={appliedDateFrom || undefined}
+              dateTo={appliedDateTo || undefined}
+              timeZone={snapshot.timeZone}
             />
           )}
 
