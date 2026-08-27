@@ -4,97 +4,76 @@
 
 ## Estado atual
 
-**Fase 49 / Issue #136 — `REQ-DASH-005` implementada e validada no PR #137 (`agent/dashboard-purchases-supplier-history`).**
+**Fase 50 / Issue #138 — `REQ-ITEM-003` em implementação na branch `agent/item-fiscal-identifiers`.**
 
-Baseline integrada antes da Fase 49:
+Baseline reconciliada antes da Fase 50:
 
-- `main=e3583b14280e6919834e53e958d00cf8d3946434` — merge da Fase 48 / PR #135;
-- Issue #134 encerrada;
-- CI pós-merge da Fase 48 `33113803812`: success.
+- Fase 49 / PR #137 integrada;
+- Issue #136 encerrada;
+- `main=749894ad6ea013a32ede044d4d70662cd6abcd98`;
+- CI pós-merge #498 / run `33117294551`: success;
+- nenhum PR aberto no início da Fase 50;
+- Issues #75 e #121 permanecem abertas, mas ON HOLD e fora da frente ativa.
 
-Não refazer Fase 48/#134.
+Não refazer Fase 49/#136/#137.
 
-## Fase 49 — #136 / PR #137
+## Fase 50 — #138 / REQ-ITEM-003
 
-A slice fecha a cobertura determinística de Fornecedores/Compras no Dashboard sem migration, view, RPC, fixture Production ou nova regra transacional.
+### Gap confirmado
 
-### Entregue
+O requisito pede permitir EAN/código de barras e atributos fiscais quando aplicáveis.
 
-- pedidos emitidos: `purchase_orders.ordered_at IS NOT NULL`;
-- período de pedidos por `ordered_at` no timezone da Organization;
-- recebimentos por `purchase_receipts.received_at`, independentes da data de emissão do pedido;
-- Unit/Setor para compras exclusivamente por `purchase_orders.stock_location_id` e locais visíveis/compatíveis;
-- sem período: histórico visível completo;
-- `horizonDays` não recorta histórico de pedidos/recebimentos;
-- histórico factual por fornecedor: pedidos emitidos, recebimentos e última atividade;
-- histórico de preços por `supplier_prices.observed_at`;
-- variação somente entre as duas observações mais recentes do mesmo `supplier_item_id`;
-- comparação somente de `unit_price`, usando `Money`/centavos exatos;
-- preço permanece Organization-wide com Unit/Setor ativo porque `supplier_prices` não possui vínculo local explícito;
-- ausência de duas observações comparáveis aparece como histórico insuficiente, não como falsa variação zero;
-- timestamps são comparados por instante, não pela representação textual ISO;
-- paginação do read model possui ordenação estável.
+O schema já possui desde a foundation em `public.stock_items`:
 
-Explicitamente não implementado:
+- `ean text null`;
+- `ncm text null`;
+- `cest text null`;
+- unicidade de EAN por Organization.
 
-- score/ranking/“melhor fornecedor”;
-- SLA, lead time, atraso médio ou qualidade inferida;
-- soma de quantidades de UOMs heterogêneas;
-- comparação/conversão automática de `package_price`/embalagem;
-- economia estimada sem baseline canônico;
-- forecast/IA/compra automática.
+Porém o domínio `StockItem`, o adapter `SupabaseStockItemRepository` e `/workspace/produtos` não usavam esses campos.
 
-### Código
+### Production — inventário read-only
 
-- `src/modules/dashboard/adapters/supabase-purchase-overview-query.ts`;
-- `src/modules/dashboard/adapters/supabase-purchase-overview-query.test.ts`;
-- `src/modules/dashboard/ui/purchase-overview-section.tsx`;
-- integração em `src/app/workspace/(operacao)/page.tsx`;
-- documentação em `docs/modules/dashboard.md`.
+Projeto `fhbvwyttikrbeaanatlr`, em 2026-08-27:
 
-O browser usa sessão autenticada + RLS. Nenhuma service/admin key foi adicionada.
+- 3 `stock_items`;
+- 0 com EAN preenchido;
+- 0 com NCM preenchido;
+- 0 com CEST preenchido;
+- 3 com `internal_code` já existente.
 
-### Validação do head de implementação
+Nenhum dado foi criado/alterado para fabricar evidência.
 
-Head de implementação validado: `f050bf5450958a2200e2571f4bc2c98202c22418`.
+### Decisões da slice
 
-- CI #496 / `33116796708`: database, lint, typecheck, Vitest e production build verdes;
-- Inventory Count Integration #239 / `33116796712`: success;
-- Business Transactions Integration #223 / `33116796785`: success.
+A menor entrega coerente é somente cadastro/leitura/edição dos campos já persistidos:
 
-O commit documental final posterior a esses checks não altera código de runtime; ainda assim, o PR #137 só deve ser integrado com os checks do head final verdes.
+- `StockItem.ean`, `ncm` e `cest` opcionais;
+- normalização apenas por `trim`;
+- branco vira ausência no domínio e `null` na persistência;
+- EAN continua usando a unicidade já garantida pelo banco;
+- sem validação de dígito verificador, comprimento, máscara ou consulta externa;
+- sem validação tributária/obrigatoriedade de NCM/CEST;
+- sem cálculo fiscal;
+- sem migration/view/RPC;
+- browser continua com sessão autenticada + RLS e permissões atuais de catálogo.
 
-### Production — validação read-only
+### Q-006 continua aberta
 
-Projeto `fhbvwyttikrbeaanatlr`, sem DDL/DML/fixtures:
+O `Gabarito` histórico contém código, EAN, NCM e CEST, mas a documentação ainda não confirma se ele representa produto de venda/POS separado do item de estoque.
 
-- `suppliers`: 2;
-- `supplier_contacts`: 1;
-- `supplier_terms`: 0;
-- `supplier_items`: 2;
-- `supplier_prices`: 2;
-- `purchase_orders`: 0;
-- `purchase_order_items`: 0;
-- `purchase_receipts`: 0;
-- `purchase_receipt_items`: 0;
-- pares com duas ou mais observações comparáveis: 0.
+A Fase 50 **não**:
 
-As duas observações atuais têm `source='demo_seed'`, `observed_at=2026-08-01 12:00:00+00` e pertencem a vínculos fornecedor/item distintos.
+- resolve Q-006;
+- cria conceito de produto de venda;
+- associa/importa automaticamente linhas do `Gabarito` para `stock_items`;
+- redefine `internal_code`.
 
-Portanto o estado correto em Production hoje é:
+## #121 — ON HOLD
 
-- zero pedidos emitidos no histórico;
-- zero recebimentos;
-- observações de preço existentes;
-- histórico insuficiente para calcular variação.
+`REQ-PLAT-005 — Backup e recuperação off-site do Supabase Storage` continua fora da frente ativa.
 
-Não criar dados Production para fabricar demonstração.
-
-## Issue #121 — ON HOLD
-
-`REQ-PLAT-005 — Backup e recuperação off-site do Supabase Storage` continua aberta, mas não é frente ativa.
-
-Última checagem válida em 2026-08-27:
+Última checagem válida em 2026-08-27 encontrou:
 
 - 0 buckets Storage;
 - 0 anexos financeiros;
@@ -102,34 +81,31 @@ Não criar dados Production para fabricar demonstração.
 
 Retomar somente com gatilho real:
 
-1. primeira execução agendada do `Production Storage Backup` — próxima janela esperada: 2026-08-28 06:47 UTC / 03:47 America/Sao_Paulo;
-2. primeiro anexo Production legítimo criado pelo fluxo normal;
+1. primeira execução **agendada** do `Production Storage Backup` — janela esperada em 2026-08-28 03:47 America/Sao_Paulo;
+2. primeiro anexo Production legítimo pelo fluxo normal;
 3. incidente/regressão real do pipeline Storage.
 
 Sem gatilho: não fazer `workflow_dispatch` artificial, fixture Production ou repetição da mesma introspecção vazia.
 
 A Issue #75 permanece umbrella de proteção de dados e não é frente ativa.
 
-## Ordem de trabalho
+## Próxima transição
 
-Antes de abrir nova frente, reconciliar o estado real do PR #137 / Issue #136 / `main`.
+Antes de abrir outra frente, reconciliar #138, eventual PR da branch e `main`.
 
-Se #137 estiver mergeado, #136 fechada e a CI pós-merge da `main` estiver verde:
+Se a Fase 50 estiver integrada e a CI pós-merge estiver verde:
 
-1. não refazer a Fase 49;
-2. promover `REQ-ITEM-003` — EAN/código de barras/dados fiscais;
-3. requisitos PENDING somente após decisão de negócio real.
-
-A #121 pode ser retomada quando seu gatilho existir, mas simples espera não bloqueia essa ordem.
+1. não refazer `REQ-ITEM-003`;
+2. verificar se o gatilho real da #121 já ocorreu — apenas uma vez e somente se a data/evento justificar;
+3. reconciliar `docs/product/requirements.md` contra o código para identificar eventual MUST/SHOULD ainda não entregue;
+4. não iniciar requisitos `PENDING` sem validação de negócio.
 
 ## Não fazer
 
-- não reabrir Fase 48/#134 sem regressão concreta;
-- não reabrir/ampliar #136 com score/SLA/forecast sem requisito novo;
+- não reabrir Fase 49/#136 sem regressão concreta;
+- não ampliar #138 com POS, tributação ou importação do Gabarito;
 - não tocar #121 sem gatilho real;
-- não criar dados Production para fabricar evidência;
-- não somar quantidades de UOMs diferentes;
-- não inferir Unit/Setor para `supplier_prices`;
-- não antecipar requisitos PENDING por conveniência;
+- não criar dados Production para demonstração;
+- não inventar regras de NCM/CEST/EAN;
 - não fazer deploy Vercel rotineiro;
 - não tornar o repositório private automaticamente.

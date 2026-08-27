@@ -1,82 +1,56 @@
 # Next Action — Sistema Lojasaph
 
-## Estado de transição
+## Frente em andamento
 
-A **Fase 49 / Issue #136 (`REQ-DASH-005`)** foi implementada e validada no PR #137 (`agent/dashboard-purchases-supplier-history`).
+**Fase 50 / Issue #138 — `REQ-ITEM-003 — Código de barras e dados fiscais`.**
 
-Head de implementação validado: `f050bf5450958a2200e2571f4bc2c98202c22418`.
+Branch: `agent/item-fiscal-identifiers`.
 
-Validação desse head:
+A Fase 49 / PR #137 já foi integrada e a CI pós-merge #498 (`33117294551`) está verde. Não refazer #136/#137.
 
-- CI #496 / `33116796708`: success — database, lint, typecheck, Vitest e production build;
-- Inventory Count Integration #239 / `33116796712`: success;
-- Business Transactions Integration #223 / `33116796785`: success.
+## Nesta frente
 
-O commit documental final posterior não altera runtime. Ainda assim, antes de qualquer nova frente, confirmar os checks do **head final** do PR e o estado real de merge.
+O schema já possui `stock_items.ean`, `ncm` e `cest`; a tarefa é somente fechar o gap de aplicação.
 
-## Próxima ação imediata
+Recorte obrigatório:
 
-1. conferir PR #137, Issue #136, branch `agent/dashboard-purchases-supplier-history` e `main`;
-2. se #137 ainda estiver aberto:
-   - confirmar que os checks do head final estão verdes;
-   - corrigir somente falha real, se houver;
-   - não ampliar a Fase 49;
-   - seguir o fluxo normal de merge com `Closes #136`;
-3. se #137 já estiver mergeado:
-   - não refazer a Fase 49;
-   - confirmar #136 fechada;
-   - confirmar o novo SHA de `main`;
-   - confirmar CI pós-merge da `main`;
-4. com a transição íntegra, promover **`REQ-ITEM-003 — EAN/código de barras/dados fiscais`** como próxima frente independente, salvo bug/regressão/nova prioridade explícita.
+1. `StockItem` deve suportar EAN/NCM/CEST opcionais;
+2. normalizar somente espaços externos; branco = ausência;
+3. repository Supabase deve ler/persistir os campos existentes;
+4. `/workspace/produtos` deve permitir criar/editar e consultar os valores;
+5. manter a unicidade de EAN já existente no banco;
+6. não criar migration, regra fiscal, lookup externo ou importação automática;
+7. manter sessão autenticada + RLS.
 
-## Semântica que não deve ser reaberta sem evidência nova
+Q-006 continua aberta: não inferir que o `Gabarito` é o catálogo de `stock_items` e não iniciar `REQ-ITEM-004`.
 
-Fase 49:
+## Validação e integração
 
-- pedido histórico por `ordered_at IS NOT NULL`;
-- período de pedidos por `ordered_at`;
-- recebimentos por `received_at`, independentes da data de emissão do pedido;
-- Unit/Setor de compras somente por `purchase_orders.stock_location_id`;
-- `horizonDays` não recorta histórico;
-- histórico factual por fornecedor, sem score/ranking/SLA;
-- preço por `supplier_prices.observed_at`;
-- comparação somente das duas observações mais recentes do mesmo `supplier_item_id`;
-- somente `unit_price` + `Money`;
-- Unit/Setor não são inferidos para `supplier_prices`;
-- ausência de duas observações comparáveis = histórico insuficiente, não falsa variação zero;
-- nenhuma soma de UOMs heterogêneas;
-- nenhuma migration/view/RPC/fixture Production nesta fase.
+Se ainda não houver PR da branch:
 
-## Production — estado observado
+1. revisar o diff contra `main`;
+2. confirmar que só existem mudanças da #138 e documentação associada;
+3. abrir PR fechando #138;
+4. aguardar os workflows oficiais;
+5. corrigir apenas falhas reais de CI/review;
+6. integrar somente com o head final verde;
+7. confirmar Issue fechada, novo SHA da `main` e CI pós-merge.
 
-Inventário read-only de 2026-08-27:
+Não fazer deploy Vercel manual/rotineiro para provar a entrega.
 
-- 2 suppliers;
-- 2 supplier_items;
-- 2 supplier_prices;
-- 0 purchase_orders;
-- 0 purchase_receipts;
-- 0 pares com duas observações comparáveis.
+## Depois do merge da Fase 50
 
-Não criar pedido, recebimento, preço ou fixture em Production para fabricar evidência visual.
+Antes de iniciar outra implementação:
 
-## Se `REQ-ITEM-003` for promovido
-
-Antes de implementar:
-
-1. ler novamente `AGENTS.md`, `00-START-HERE.md`, `CURRENT_STATE.md`, `HANDOFF.md`, este arquivo e `WORKFLOW.md`;
-2. reconciliar Issues/PRs/branches/CI reais;
-3. localizar o estado atual de EAN/código de barras/dados fiscais em schema, domínio, UI, importação e documentação;
-4. revisar requisitos e questões abertas relacionadas;
-5. consultar Production somente read-only quando isso ajudar a provar o gap;
-6. definir a menor slice coerente a partir de campos/regras existentes;
-7. não inventar NCM/CEST/regra fiscal, validação comercial ou integração externa sem requisito canônico.
+1. confirmar #138 fechada e a CI pós-merge verde;
+2. **não refazer `REQ-ITEM-003`**;
+3. verificar #121 somente se houver gatilho real novo;
+4. reconciliar `docs/product/requirements.md` com o código/Issues para identificar eventual requisito MUST/SHOULD ainda não implementado;
+5. se não houver frente independente comprovada, parar a expansão técnica e aguardar validação de negócio para requisitos PENDING.
 
 ## #121 — continua ON HOLD
 
-Não tocar #121 sem gatilho novo.
-
-Última checagem válida em 2026-08-27:
+Última evidência válida em 2026-08-27:
 
 - 0 buckets Storage;
 - 0 anexos financeiros;
@@ -84,25 +58,19 @@ Não tocar #121 sem gatilho novo.
 
 Gatilhos válidos:
 
-- primeira execução **agendada** do Storage backup; próxima janela esperada: 2026-08-28 03:47 America/Sao_Paulo;
+- primeira execução **agendada** do Storage backup — janela esperada 2026-08-28 03:47 America/Sao_Paulo;
 - primeiro anexo Production legítimo;
 - incidente/regressão real.
 
-Sem isso, não fazer dispatch manual, fixture Production ou revalidação repetitiva.
+Sem gatilho: não fazer dispatch manual, fixture ou revalidação repetitiva.
 
-## Ordem posterior
+## Fora de escopo
 
-Salvo regressão/nova prioridade:
-
-1. concluir a transição do PR #137 / #136;
-2. `REQ-ITEM-003` — EAN/código de barras/dados fiscais;
-3. requisitos PENDING somente após validação de negócio.
-
-## Fora de escopo imediato
-
-- reabrir #132/#134/#136 sem regressão ou requisito novo;
-- score/ranking/SLA/forecast de fornecedor;
-- valuation/CMV/forecast genérico;
-- POS/vendas ou outras questões PENDING;
+- POS/produto de venda enquanto Q-006 estiver aberta;
+- importação automática do `Gabarito`;
+- validação/consulta de EAN/GTIN/NCM/CEST;
+- cálculo tributário ou emissão fiscal;
+- redefinição de `internal_code`;
+- requisitos PENDING por inferência;
 - deploy Vercel rotineiro;
 - tornar o repositório private automaticamente.

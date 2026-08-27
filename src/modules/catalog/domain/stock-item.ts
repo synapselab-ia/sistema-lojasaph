@@ -10,6 +10,9 @@ export interface StockItem {
   readonly name: string;
   readonly baseUnitCode: string;
   readonly type: StockItemType;
+  readonly ean?: string;
+  readonly ncm?: string;
+  readonly cest?: string;
   readonly active: boolean;
   readonly trackExpiration: boolean;
   readonly trackBatch: boolean;
@@ -22,6 +25,9 @@ export interface CreateStockItemInput {
   name: string;
   baseUnitCode: string;
   type: StockItemType;
+  ean?: string;
+  ncm?: string;
+  cest?: string;
   trackExpiration?: boolean;
   trackBatch?: boolean;
   isReturnable?: boolean;
@@ -32,6 +38,9 @@ export interface UpdateStockItemInput {
   name: string;
   baseUnitCode: string;
   type: StockItemType;
+  ean?: string;
+  ncm?: string;
+  cest?: string;
   active: boolean;
   trackExpiration: boolean;
   trackBatch: boolean;
@@ -61,6 +70,20 @@ function normalizeUnit(value: string): string {
   return unit;
 }
 
+function normalizeOptionalIdentifier(value: string | undefined): string | undefined {
+  const normalized = value?.trim();
+  return normalized || undefined;
+}
+
+function updatedOptionalIdentifier(
+  item: StockItem,
+  input: UpdateStockItemInput,
+  field: "ean" | "ncm" | "cest",
+): string | undefined {
+  if (!Object.prototype.hasOwnProperty.call(input, field)) return item[field];
+  return normalizeOptionalIdentifier(input[field]);
+}
+
 export function createStockItem(input: CreateStockItemInput): StockItem {
   return Object.freeze({
     id: newEntityId(),
@@ -69,6 +92,9 @@ export function createStockItem(input: CreateStockItemInput): StockItem {
     name: normalizeName(input.name),
     baseUnitCode: normalizeUnit(input.baseUnitCode),
     type: input.type,
+    ean: normalizeOptionalIdentifier(input.ean),
+    ncm: normalizeOptionalIdentifier(input.ncm),
+    cest: normalizeOptionalIdentifier(input.cest),
     active: true,
     trackExpiration: input.trackExpiration ?? false,
     trackBatch: input.trackBatch ?? false,
@@ -83,6 +109,9 @@ export function updateStockItem(item: StockItem, input: UpdateStockItemInput): S
     name: normalizeName(input.name),
     baseUnitCode: normalizeUnit(input.baseUnitCode),
     type: input.type,
+    ean: updatedOptionalIdentifier(item, input, "ean"),
+    ncm: updatedOptionalIdentifier(item, input, "ncm"),
+    cest: updatedOptionalIdentifier(item, input, "cest"),
     active: input.active,
     trackExpiration: input.trackExpiration,
     trackBatch: input.trackBatch,

@@ -1,6 +1,6 @@
 # Módulo — Cadastros base
 
-Status: núcleo cadastral persistente; Fase 19 implementa funcionários operacionais separados da identidade de acesso; Fase 22 torna categoria obrigatória no item canônico; Fase 44 expõe condições comerciais; Fase 45 fecha a manutenção básica de produtos por fornecedor.
+Status: núcleo cadastral persistente; Fase 19 implementa funcionários operacionais separados da identidade de acesso; Fase 22 torna categoria obrigatória no item canônico; Fases 44–45 completam condições comerciais e produtos por fornecedor; Fase 50 expõe EAN/NCM/CEST já existentes no schema.
 
 ## Objetivo
 
@@ -9,7 +9,7 @@ Fornecer os dados mestres usados por estoque, compras, financeiro, caixa e admin
 ## Escopo implementado
 
 - estrutura Organization → Business → Unit → Sector/StockLocation;
-- StockItem com categoria obrigatória, unidade, tipo e flags operacionais;
+- StockItem com categoria obrigatória, unidade, tipo, flags operacionais e identificadores opcionais EAN/NCM/CEST;
 - Supplier com múltiplos contatos;
 - condições comerciais correntes de Supplier: pedido mínimo, agenda de pedido/entrega, condição de pagamento e observações;
 - vínculo Supplier ↔ StockItem com unidade de compra, quantidade por embalagem e status ativo/inativo;
@@ -28,116 +28,104 @@ Migrations versionadas no GitHub são a fonte de verdade do schema. Operações 
 
 `public.stock_items.category_id` é obrigatório. O FK composto existente continua exigindo que item e categoria pertençam à mesma Organization. A migration da Fase 22 não cria categoria genérica nem faz backfill silencioso: se houver qualquer item legado com `category_id IS NULL`, ela aborta com `STOCK_ITEM_CATEGORY_REQUIRED_PRECONDITION` e exige classificação explícita antes de prosseguir.
 
-Employee é persistido em `public.employees` com:
+Desde a foundation, `public.stock_items` também possui:
 
-- Organization obrigatória;
-- nome obrigatório;
-- código operacional opcional;
-- status `active`/`inactive`;
-- Unit e Sector padrão opcionais e hierarquicamente coerentes;
-- `auth_user_id` opcional, referenciando `auth.users` sem criar autorização por efeito colateral.
+- `internal_code text null` com unicidade por Organization;
+- `ean text null` com unicidade por Organization;
+- `ncm text null`;
+- `cest text null`.
 
-Não existe `DELETE` para o cliente autenticado em Employee. Correções de ciclo de vida usam inativação para preservar a referência operacional.
+A Fase 50 não altera esse schema. Ela apenas passa a ler e manter `ean`, `ncm` e `cest` no domínio/adaptor/UI de StockItem. Valores são opcionais, recebem somente `trim`, e branco é persistido como `null`. Não há validação automática de dígito verificador, máscara, comprimento ou enquadramento tributário.
+
+`internal_code` não faz parte da Fase 50 e permanece com sua semântica atual; não confundir código interno com EAN.
+
+## EAN e dados fiscais — REQ-ITEM-003
+
+A manutenção operacional de `/workspace/produtos` permite informar:
+
+- EAN/código de barras;
+- NCM;
+- CEST.
+
+Regras conservadoras:
+
+1. todos são opcionais;
+2. valores informados são preservados como texto após `trim`;
+3. string vazia equivale a ausência;
+4. EAN continua sujeito à unicidade por Organization já existente no banco;
+5. NCM/CEST são dados informativos nesta fase e não disparam cálculo/regra fiscal;
+6. não há consulta automática a catálogo externo;
+7. não há validação de GTIN/dígito verificador;
+8. a UI não decide se NCM/CEST são obrigatórios para determinado item/regime;
+9. o browser usa a sessão autenticada e as mesmas policies/roles de manutenção do catálogo;
+10. nenhuma migration, RPC, view ou chave privilegiada é necessária.
+
+A planilha histórica `Gabarito` contém EAN/NCM/CEST, porém Q-006 continua aberta sobre representar produto de venda/POS separado de item de estoque. Por isso a Fase 50 **não** importa, associa ou transforma automaticamente linhas do `Gabarito` em `stock_items`.
+
+## Employee
+
+Employee é persistido em `public.employees` com Organization obrigatória, nome obrigatório, código operacional opcional, status, Unit/Sector padrão opcionais e `auth_user_id` opcional. A autorização continua pertencendo exclusivamente a `organization_memberships`.
+
+- cadastrar Employee não cria login nem membership;
+- vincular `auth_user_id` não concede role ou escopo;
+- remover/inativar Employee não encerra sessão nem revoga membership;
+- perfis operacionais sem papel administrativo não recebem manutenção do diretório apenas por pertencerem à Organization;
+- ciclo de vida usa inativação em vez de apagar referência operacional.
 
 ## Condições comerciais de fornecedor
 
-`REQ-SUP-003` reutiliza estruturas existentes desde a foundation:
+`REQ-SUP-003` reutiliza `suppliers.notes` e `supplier_terms` para pedido mínimo, condição de pagamento e agendas de pedido/entrega. A primeira slice trabalha com um termo corrente por fornecedor (`valid_to IS NULL`) e não cria versionamento temporal, cron ou sugestão de compra automaticamente.
 
-- `suppliers.notes` para observações gerais;
-- `supplier_terms.minimum_order_value` para pedido mínimo;
-- `supplier_terms.payment_terms` para condição/forma de pagamento;
-- `supplier_terms.order_schedule` para agenda/dia de pedido;
-- `supplier_terms.delivery_schedule` para agenda/dia de entrega;
-- `supplier_terms.valid_from/valid_to` para permitir evolução futura sem exigir nova modelagem.
-
-A primeira slice operacional trabalha com **um termo corrente por fornecedor**:
-
-1. leitura considera `valid_to IS NULL`;
-2. em caso de mais de um registro legado corrente, usa deterministicamente o mais recente por `valid_from` e criação;
-3. se ainda não existe termo e algum campo comercial foi informado, cria uma linha corrente usando o `valid_from` default do banco;
-4. edições posteriores atualizam a mesma linha corrente;
-5. limpar os campos não executa `DELETE`;
-6. nenhum versionamento temporal automático é criado sem regra de negócio específica para vigência.
-
-Agenda de pedido/entrega permanece texto informativo, como na fonte histórica. Esta entrega não agenda pedidos, não sugere compras e não compara fornecedores automaticamente.
+Agenda de pedido/entrega permanece texto informativo, como na fonte histórica.
 
 ## Produtos por fornecedor
 
-`REQ-SUP-004` usa `public.supplier_items`, estrutura já existente desde a foundation:
+`REQ-SUP-004` usa `public.supplier_items`:
 
-- `supplier_id` e `stock_item_id` definem o vínculo comercial;
-- `purchase_unit` registra a unidade informada pelo fornecedor;
-- `units_per_package` registra a quantidade da unidade-base contida na embalagem, quando conhecida;
-- `active` controla disponibilidade sem apagar histórico;
-- `supplier_sku` continua fora da primeira slice operacional; a UI mantém apenas o vínculo default com `supplier_sku IS NULL`.
+- `supplier_id` e `stock_item_id` definem o vínculo;
+- `purchase_unit` é texto opcional;
+- `units_per_package` é opcional e positivo;
+- `active=false` inativa sem apagar histórico;
+- `supplier_sku` permanece fora da primeira slice operacional;
+- unidade/embalagem são informativas e pedidos continuam usando quantidade na unidade-base;
+- preço efetivo é snapshot do pedido e a emissão alimenta `supplier_prices`.
 
-A Fase 45 adiciona um caminho persistente normal em `/workspace/fornecedores` para listar, criar, reativar, editar e inativar esses vínculos. Antes dela, `/workspace/compras` apenas consumia `supplier_items` preexistentes; os registros disponíveis em Production eram demo/seed e não havia UI/adaptor Supabase de manutenção.
-
-Regras desta slice:
-
-1. leituras filtram explicitamente `organization_id`, `supplier_id` e `supplier_sku IS NULL`;
-2. um novo vínculo verifica primeiro se já existe linha default para o mesmo fornecedor/produto e a reutiliza/reativa em vez de inserir duplicata acidental;
-3. edição não permite trocar silenciosamente o produto da linha; para outro produto cria-se outro vínculo;
-4. `purchase_unit` é texto opcional normalizado;
-5. `units_per_package` é opcional, positivo e usa precisão de até três casas via `Quantity`;
-6. inativação usa `active=false`; o cliente autenticado nem possui `DELETE` em `supplier_items`;
-7. unidade/embalagem são informativas nesta fase: pedidos continuam usando quantidade na unidade-base e não fazem conversão automática de caixa/pacote;
-8. preço não é cadastrado nesta tela. O preço efetivo continua sendo informado no pedido e, na emissão, o fluxo de compras registra o observado em `supplier_prices`.
-
-RLS é a autoridade: membros autenticados da Organization podem ler, enquanto INSERT/UPDATE exigem papel Organization-wide `owner/admin/manager/purchases`. `manageSuppliers` apenas espelha essa regra para UX. Não há service/admin client.
-
-Nenhuma migration foi necessária nas Fases 44–45 porque schema, grants e policies já estavam presentes e foram verificados read-only em Production.
-
-## Autorização de Employee
-
-A autorização continua pertencendo exclusivamente a `organization_memberships`.
-
-- cadastrar Employee não cria login nem membership;
-- vincular `auth_user_id` não concede role, Organization, Unit ou Sector;
-- remover/inativar Employee não encerra sessão nem revoga membership;
-- leitura e manutenção do diretório exigem `owner`, `admin` ou `manager` dentro do escopo permitido;
-- Employee sem Unit/Sector é Organization-wide e exige membership administrativo Organization-wide;
-- Employee de Unit/Setor só é visível e mutável para membership administrativo que alcance aquele escopo;
-- perfis operacionais como `viewer`, `inventory`, `purchases`, `finance` e `cashier` não recebem o diretório administrativo apenas por pertencerem à Organization.
+RLS é a autoridade: membros autenticados da Organization podem ler, enquanto INSERT/UPDATE exigem papel Organization-wide autorizado. Não há service/admin client no browser.
 
 ## Regras consolidadas
 
 - IDs de domínio são estáveis;
-- todo StockItem canônico deve possuir categoria explícita, válida e da mesma Organization;
-- criação e edição de StockItem sem categoria falham antes da persistência;
-- a UI não oferece estado `Sem categoria` para item canônico e bloqueia submit sem opção válida;
-- fornecedor pode ter múltiplos contatos;
-- fornecedor pode registrar condições comerciais livres sem transformar texto histórico em regra automática;
-- fornecedor pode manter o catálogo básico de produtos compráveis sem depender de seed/SQL;
-- pedido mínimo é monetário não-negativo e usa precisão decimal exata;
+- todo StockItem canônico possui categoria explícita e válida da mesma Organization;
+- criação/edição sem categoria falham antes da persistência;
+- EAN/NCM/CEST são opcionais e não implicam regra tributária automática;
+- fornecedor pode ter múltiplos contatos e condições comerciais livres;
+- fornecedor pode manter catálogo básico de produtos compráveis sem seed/SQL;
+- pedido mínimo usa precisão monetária exata;
 - quantidade por embalagem deve ser positiva quando informada;
-- catálogo e fornecedores são compartilhados conforme autorização da Organization;
-- escopos Business/Unit/Sector são aplicados conforme a política homologada na Fase 14;
 - dados de demonstração/teste devem ser sintéticos;
 - correções críticas preservam rastreabilidade em vez de apagar histórico material;
-- Employee não contém folha, salário, jornada, CPF ou outros dados pessoais não exigidos pelo escopo atual;
-- Q-022 continua aberta para definir pessoas/perfis reais e não é respondida pela existência do cadastro.
+- Q-006 continua aberta e não é resolvida pela existência dos campos fiscais em `stock_items`;
+- Q-022 continua aberta para perfis/pessoas reais e não é respondida pelo cadastro de Employee.
 
 ## UI
 
-`/workspace/produtos` exige seleção de categoria tanto na criação quanto na edição. Quando não há categorias disponíveis, a gravação fica bloqueada em vez de criar classificação implícita.
+`/workspace/produtos` exige categoria na criação e edição, permite EAN/NCM/CEST opcionais e mostra os identificadores cadastrados. Sem categorias disponíveis, a gravação fica bloqueada. Perfis sem `manageCatalog` permanecem somente leitura.
 
-`/workspace/fornecedores` oferece cadastro de fornecedor/contatos e, em cada fornecedor, consulta/manutenção das condições comerciais correntes e dos produtos compráveis. Perfis sem `manageSuppliers` continuam com leitura, enquanto a gravação permanece condicionada ao papel Organization-wide autorizado pelo RLS.
+`/workspace/fornecedores` oferece cadastro de fornecedor/contatos, condições comerciais correntes e produtos compráveis. `/workspace/compras` reutiliza diretamente os vínculos ativos de `supplier_items`.
 
-`/workspace/compras` reutiliza diretamente os vínculos ativos de `supplier_items`; uma alteração feita no fornecedor passa a definir quais produtos aparecem para um novo pedido daquele fornecedor. O preço do pedido permanece um snapshot operacional e a emissão continua alimentando `supplier_prices`.
-
-`/workspace/funcionarios` oferece listagem e manutenção administrativa mínima, responsiva e persistente para `owner`, `admin` e `manager`. As opções de Unit/Sector já chegam filtradas por RLS, e o banco reaplica a autorização na gravação.
-
-O ID de usuário autenticado pode ser informado explicitamente quando conhecido. Essa associação serve somente para identidade da pessoa; administração de acesso permanece separada.
+`/workspace/funcionarios` oferece manutenção administrativa mínima e persistente para os papéis autorizados.
 
 ## Fora do escopo desta slice
 
+- resolver Q-006 ou criar produto de venda/POS;
+- importar automaticamente EAN/NCM/CEST do `Gabarito`;
+- consulta externa de GTIN/EAN;
+- validação tributária de NCM/CEST;
+- CFOP, CST, CSOSN, alíquotas, emissão NF-e/NFC-e;
+- redefinir `internal_code`;
 - versionamento automático de termos comerciais;
 - cron/alerta de dia de pedido;
 - sugestão automática de compra;
 - cotações/aprovações e comparação avançada de fornecedores;
-- preço/package price manual no cadastro de vínculo;
-- múltiplos SKUs/variantes do mesmo fornecedor/produto;
 - conversão automática de unidade/embalagem no pedido;
-- BI/análise avançada de `REQ-SUP-005`;
 - importação real/cutover de fornecedores.
