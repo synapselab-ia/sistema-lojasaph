@@ -1,7 +1,7 @@
 # Proteção, backup, restauração e recuperação operacional
 
-Data da revisão: 2026-08-26  
-Status: **backup PostgreSQL Production off-site + persistência autoritativa + UI read-only implementados; restore end-to-end e Storage ainda pendentes**  
+Data da revisão: 2026-08-27  
+Status: **PostgreSQL Production off-site + persistência + UI + restore end-to-end comprovados; Supabase Storage/anexos ainda pendentes**  
 Requisito: `REQ-PLAT-005`  
 Issue: #75  
 ADR: `ADR-009 — Proteção, backup e recuperação de dados`
@@ -12,16 +12,17 @@ Manter recuperação de Production automática, independente de ação humana, v
 
 Camadas:
 
-1. backup automático de recuperação;
+1. backup automático de recuperação PostgreSQL;
 2. persistência autoritativa + observabilidade `Proteção dos dados`;
 3. restore drill isolado recorrente;
-4. futura exportação manual complementar.
+4. próxima trilha: Supabase Storage/anexos;
+5. futura exportação manual complementar.
 
 ## Política operacional
 
 - RPO: 24 horas;
 - backup automático: diário;
-- workflow: cron `17 6 * * *` + `workflow_dispatch`;
+- workflow PostgreSQL: cron `17 6 * * *` + `workflow_dispatch`;
 - RTO objetivo: até 4 horas em condição operacional normal;
 - retenção: 30 dias;
 - restore drill: mensal e isolado;
@@ -35,15 +36,12 @@ Camadas:
 
 - projeto `fhbvwyttikrbeaanatlr`;
 - região `sa-east-1`;
-- PostgreSQL 17;
-- Session pooler 5432 comprovado pelo backup real;
+- PostgreSQL 17 / platform Postgres `17.6.1.141`;
+- Session pooler 5432 comprovado;
 - migration `20260826201252 / protection_run_persistence`;
-- `public.protection_runs = 0` rows reais na última revalidação;
 - migrations versionadas continuam fonte de verdade do schema.
 
-Zero rows é estado inicial legítimo. Não backfillar o backup histórico anterior ao boundary autoritativo.
-
-### Storage off-site
+### Storage off-site PostgreSQL
 
 Cloudflare R2 foi autorizado/provisionado pelo operador.
 
@@ -60,7 +58,7 @@ Controles ativos:
 
 Não registrar secrets, connection strings, endpoints sensíveis ou conteúdo do dump em documentação, Issue, PR ou chat.
 
-## Primeira prova Production real
+## Primeira prova Production real de backup
 
 Backup real comprovado em 2026-08-26:
 
@@ -74,12 +72,11 @@ Backup real comprovado em 2026-08-26:
 - upload off-site OK;
 - existência remota OK;
 - re-download + SHA-256 OK;
-- cleanup do runner OK;
-- Issue #111 fechada após recuperação.
+- cleanup do runner OK.
 
-Esse run antecede a persistência autoritativa e **não deve ser inserido manualmente** em `protection_runs`.
+Esse run antecede a persistência autoritativa de `automatic_database` e **não deve ser inserido manualmente** em `protection_runs`.
 
-## Exportador e bundle
+## Exportador e bundle PostgreSQL
 
 `scripts/export-supabase-backup.sh` produz fora do Git:
 
@@ -102,7 +99,7 @@ Após upload:
 1. confirmar objetos remotos;
 2. rebaixar/re-hashear;
 3. remover material temporário;
-4. só então finalizar a evidência autoritativa como `succeeded`.
+4. só então finalizar evidência autoritativa como `succeeded`.
 
 Não usar ETag como prova de conteúdo e não enviar dump real para GitHub Artifact.
 
@@ -121,7 +118,9 @@ Retenção ocorre no provider por lifecycle + lock. A credencial do runner não 
 - recuperação registra o run e fecha o incidente;
 - nenhum secret/conteúdo de backup é incluído.
 
-A sequência falha → recuperação do backup automático foi comprovada pela Issue #111.
+A sequência de falha→recuperação está comprovada para backup automático e restore drill.
+
+Issue #110 foi fechada automaticamente após o restore verde `33069706382`.
 
 ## Fonte autoritativa
 
@@ -154,46 +153,24 @@ Estados:
 - cross-Organization é bloqueado;
 - `authenticated` não possui INSERT/UPDATE/DELETE;
 - `authenticated` não executa comandos privados;
-- `service_role` também não possui mutation direta das tabelas;
 - mutation ocorre somente por `private.begin_protection_run(...)` e `private.complete_protection_run(...)`;
 - idempotência por `execution_reference`.
 
-CI e teste hospedado com rollback comprovaram leitura autorizada, outsider bloqueado e mutation comum bloqueada.
+## UI `Proteção dos dados`
 
-## Integração do backup automático
-
-`scripts/record-protection-run.sh` é o adapter server-side atual para `automatic_database`.
-
-`.github/workflows/production-backup.yml`:
-
-1. valida configuração/tooling;
-2. abre run autoritativo;
-3. exporta/package/checksums/manifesto;
-4. envia e revalida off-site;
-5. limpa runner;
-6. finaliza `succeeded` somente após prova completa;
-7. em falha, tenta persistir `failed` com resumo sanitizado;
-8. mantém incidente GitHub-native.
-
-O fluxo é fail-closed.
-
-## UI `Proteção dos dados` — implementada no PR #115
+Implementada no PR #115.
 
 ### Acesso
 
 - link no `RuntimeShell`;
 - rota `/workspace/backup`;
 - Server Component read-only;
-- usa a sessão Supabase autenticada existente;
+- usa sessão Supabase autenticada existente;
 - não usa cliente admin no browser.
 
 ### Escopo
 
-A consulta:
-
-1. filtra `protection_run_organizations` pela Organization selecionada;
-2. lê somente os runs correspondentes ainda sujeitos à RLS;
-3. não seleciona `execution_reference` nem detalhes internos desnecessários.
+A consulta filtra `protection_run_organizations` pela Organization selecionada e continua sujeita à RLS. Não seleciona/exibe `execution_reference` nem detalhes internos desnecessários.
 
 ### Estado visual
 
@@ -201,78 +178,103 @@ A consulta:
 - âmbar: histórico inicial vazio ou transição;
 - vermelho: falha persistida ou cópia ausente/vencida além do RPO.
 
-A página mostra política/retention separadamente da evidência de execução e declara que Storage/anexos ainda não estão cobertos.
+Storage/anexos continua explicitamente fora da cobertura até existir `automatic_storage` real suficientemente comprovado.
 
-Como Production continua com zero rows autoritativas, o estado inicial esperado é âmbar e vazio.
-
-## Restore drill mensal — gap atual
+## Restore drill PostgreSQL — operacional e comprovado
 
 Workflow:
 
 `.github/workflows/backup-restore-drill.yml`
 
-Issue operacional aberta:
+O fluxo atual:
 
-#110 — `[backup-alert] Monthly restore drill failing`
+1. valida configuração/tooling;
+2. abre `restore_drill` autoritativo;
+3. localiza e baixa o latest archive Production real do R2;
+4. valida sidecars, manifesto e checksums internos;
+5. inicializa Supabase local temporário com Postgres `17.6.1.141`;
+6. pin/preflight do schema gerenciado necessário ao bundle;
+7. restaura o bundle real;
+8. executa smoke tests + FK revalidation;
+9. remove destino/material temporário;
+10. finaliza `succeeded` ou `failed` sanitizado;
+11. mantém/resolve incidente GitHub-native conforme o resultado.
 
-### Por que o primeiro run falhou
+### Guards obrigatórios
 
-O run `33000481649`, em `2026-08-26T18:35:37Z`, falhou na etapa de download porque ainda não existia archive Production no storage off-site.
+`scripts/restore-production-backup.sh`:
 
-O primeiro archive real só foi produzido depois, em `2026-08-26T19:40:47Z`.
+- exige `BACKUP_RESTORE_ISOLATED=true`;
+- target deve ser loopback (`127.0.0.1`, `localhost`, `::1`);
+- valida `SHA256SUMS` e metadata;
+- aplica transação única + `ON_ERROR_STOP`;
+- sequência: roles → schema → replica-mode → data;
+- revalida FKs após o import;
+- nunca recebe Production como target.
 
-Portanto, a causa daquele run não prova defeito de credencial nem de restore.
+Não enfraquecer esses guards para obter run verde.
 
-### Limitação arquitetural do workflow atual
+### Roles gerenciadas Supabase
 
-O workflow hoje:
+O primeiro restore real `33014974208` falhou porque o bundle histórico continha operação sobre `supabase_admin`, reservada no target local.
 
-1. localiza e baixa o bundle Production real;
-2. valida archive/manifesto/checksums;
-3. extrai o bundle real;
-4. **separadamente**, aplica migrations + seed em um banco sintético;
-5. chama `scripts/verify-backup-restore.sh`;
-6. esse helper faz `pg_dump` do banco sintético e restaura esse novo dump em outro banco local.
+PR #117 introduziu preparação fail-closed do SQL de restore:
 
-Isso comprova integridade/download do bundle real e uma regressão sintética de dump/restore, mas **não restaura roles/schema/data do bundle Production baixado**.
+- checksum é validado antes da preparação;
+- somente operações classificadas sobre roles gerenciadas são neutralizadas/normalizadas;
+- roles customizadas permanecem preservadas;
+- erro inesperado continua abortando o restore.
 
-Não declarar restaurabilidade Production end-to-end enquanto esse gap existir.
+### Compatibilidade do schema Storage no target PostgreSQL
 
-### Próxima evolução do drill
+O segundo run real `33018829402` passou roles/schema e falhou em `data.sql` porque o target local tinha `storage.buckets` antigo, sem `versioning_status`.
 
-A próxima slice deve:
+Production estava em `storage.migrations=64`.
 
-1. opcionalmente executar uma única nova prova do workflow atual, porque agora existe archive, para confirmar download/checksums e reconciliar a causa histórica da #110;
-2. não encerrar a slice apenas porque esse run ficar verde;
-3. restaurar o bundle Production real em PostgreSQL 17/destino isolado;
-4. aplicar sequência apropriada de roles/schema/data;
-5. tratar extensões/ownership/roles incompatíveis explicitamente;
-6. tratar os warnings de constraints circulares em `stock_movements` e `payments`;
-7. executar smoke tests no banco restaurado;
-8. persistir `restore_drill` na fonte autoritativa;
-9. nunca tocar Production;
-10. manter/fechar #110 apenas conforme resultado real.
+PR #119:
 
-## Warning conhecido de FK/ciclos
+- pinou `storage-api:v1.70.7` no target isolado;
+- exige `storage.migrations >= 64` antes do import;
+- exige `storage.buckets.versioning_status`;
+- corrigiu o exclude obsoleto `inbucket` para `mailpit`;
+- adicionou CI `isolated-storage-schema`, sem Production/R2 secrets, para provar o target antes do merge.
 
-O primeiro dump real reportou constraints circulares em:
+### Prova real verde
 
-- `stock_movements`;
-- `payments`.
+Run `33069706382` — **success**.
 
-A restauração real deve validar essas tabelas explicitamente e não silenciar perda/erro de FK ou trigger.
+Comprovou:
+
+- archive Production real baixado/verificado;
+- roles/schema/data restaurados;
+- smoke tests concluídos;
+- RLS/grants preservados;
+- todas as FKs públicas revalidadas após replica-mode;
+- ciclos conhecidos de `stock_movements` e `payments` tratados sem perda silenciosa;
+- cleanup concluído;
+- `restore_drill` finalizado `succeeded`;
+- #110 auto-fechada.
+
+Evidência autoritativa:
+
+- `coverage=postgres`;
+- `integrity_verified=true`;
+- `valid_copy_at=2026-08-26T19:40:47Z`;
+- `size_bytes=53185`;
+- 1 Organization mapeada;
+- `error_summary=null`.
+
+CI pós-merge `33069706327` e Restore Compatibility CI `33069706452` também ficaram verdes.
 
 ## Cobertura
 
 ### PostgreSQL
 
-**Comprovado:** backup lógico Production, off-site, re-hash pós-upload, persistência autoritativa para runs automáticos e UI read-only.
+**Comprovado end-to-end:** backup lógico Production, transporte off-site, re-hash pós-upload, persistência autoritativa, UI e restore real isolado.
 
-**Ainda não comprovado:** restauração end-to-end do bundle Production real.
+### Auth/configuração externa
 
-### Auth
-
-O dump SQL não representa automaticamente todas as configurações externas do projeto Supabase. Providers, API keys e outros elementos podem exigir reconfiguração.
+O dump SQL não representa automaticamente todas as configurações externas do projeto Supabase. Providers, API keys e outros elementos podem exigir reconfiguração em disaster recovery real.
 
 ### Supabase Storage/anexos
 
@@ -281,12 +283,20 @@ O dump SQL não representa automaticamente todas as configurações externas do 
 Antes de declarar cobertura completa:
 
 1. inventariar buckets usados;
-2. copiar objetos off-site via APIs apropriadas;
-3. preservar keys/checksums/inventário;
-4. testar recuperação isolada;
-5. refletir cobertura real na UI.
+2. localizar metadata de negócio que referencia bucket/key/path;
+3. medir quantidade/volume sem ler conteúdo;
+4. definir inventário versionado e integridade por objeto;
+5. copiar objetos off-site via APIs apropriadas;
+6. aplicar retenção/lock coerentes;
+7. testar recuperação isolada de objetos;
+8. reconciliar metadata ↔ objeto;
+9. detectar ausência/corrupção;
+10. persistir `automatic_storage` somente após prova suficiente;
+11. refletir cobertura real na UI.
 
-Não manipular `storage.*` diretamente por SQL para copiar arquivos.
+**Não manipular `storage.objects` diretamente por SQL para copiar arquivos.**
+
+O hard cap de archive PostgreSQL não é automaticamente política correta para Storage; definir guardrails após inventário real.
 
 ## Exportação manual complementar
 
@@ -302,21 +312,23 @@ Se implementada:
 - sem secrets;
 - sem cross-Organization.
 
-## Runbook de restauração real em incidente
+## Runbook de restauração PostgreSQL em incidente real
 
 1. identificar o backup válido mais recente;
 2. validar sidecars/manifesto/checksums;
 3. extrair em diretório protegido;
 4. provisionar destino PostgreSQL/Supabase novo e isolado compatível;
-5. restaurar roles/schema/data conforme orientação vigente;
-6. tratar extensões, ownership, triggers e FKs;
-7. validar `stock_movements` e `payments` explicitamente;
-8. reconfigurar componentes externos necessários;
-9. restaurar/reconciliar Storage separadamente quando essa trilha existir;
+5. garantir versão/schema gerenciado compatível com o bundle;
+6. preparar operações de roles gerenciadas de forma fail-closed;
+7. restaurar roles/schema/data com `ON_ERROR_STOP`;
+8. tratar extensões, ownership, triggers e FKs;
+9. revalidar `stock_movements`, `payments` e todas as FKs públicas;
 10. validar migrations, funções, triggers, índices, RLS e grants;
 11. executar smoke tests não destrutivos;
-12. decidir cutover somente após aceite;
-13. preservar Production original sempre que possível.
+12. reconfigurar componentes externos necessários;
+13. restaurar/reconciliar Storage separadamente quando essa trilha existir;
+14. decidir cutover somente após aceite;
+15. preservar Production original sempre que possível.
 
 RTO até 4h é objetivo operacional, não garantia de provedor.
 
@@ -325,12 +337,12 @@ RTO até 4h é objetivo operacional, não garantia de provedor.
 1. arquitetura — concluída;
 2. transporte S3-compatible — concluído;
 3. R2/lifecycle/lock — concluídos;
-4. hard cap — concluído;
+4. hard cap PostgreSQL — concluído;
 5. primeiro backup PostgreSQL real — concluído;
 6. persistência autoritativa — concluída;
-7. UI `Proteção dos dados` — implementada/PR #115;
-8. restore real isolado + `restore_drill` autoritativo — **próxima slice**;
-9. backup de Supabase Storage/anexos;
+7. UI `Proteção dos dados` — concluída;
+8. restore PostgreSQL real isolado + `restore_drill` — **concluído**;
+9. backup + restore/reconciliação de Supabase Storage/anexos — **próxima frente**;
 10. exportação manual complementar, se mantida;
 11. fechar #75 somente com evidência suficiente e cobertura correta.
 
@@ -345,5 +357,7 @@ RTO até 4h é objetivo operacional, não garantia de provedor.
 - não mutar `protection_runs` pelo cliente;
 - não usar cron como fonte de verdade da UI;
 - não voltar a Drive/rclone/Gmail;
-- não remover o hard cap sem nova decisão;
-- não tornar o repositório private automaticamente.
+- não remover o hard cap PostgreSQL sem nova decisão;
+- não tornar o repositório private automaticamente;
+- não copiar objetos Storage por DML em `storage.*`;
+- não fazer deploy Vercel para validar esta frente operacional sem necessidade concreta.
