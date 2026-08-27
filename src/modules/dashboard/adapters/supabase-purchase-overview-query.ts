@@ -27,7 +27,6 @@ export interface SupplierPriceChange {
   readonly supplierItemId: EntityId;
   readonly supplierName: string;
   readonly stockItemName: string;
-  readonly stockUnit: string;
   readonly previousPrice: Money;
   readonly currentPrice: Money;
   readonly delta: Money;
@@ -46,20 +45,20 @@ export interface PurchaseOverviewSnapshot {
 }
 
 interface LocationRow { readonly id: string }
-interface SupplierRow { readonly id: string; readonly trade_name: string }
-interface SupplierItemRow {
+export interface SupplierRow { readonly id: string; readonly trade_name: string }
+export interface SupplierItemRow {
   readonly id: string;
   readonly supplier_id: string;
   readonly stock_item_id: string;
 }
-interface StockItemRow { readonly id: string; readonly name: string; readonly unit: string }
-interface PurchaseOrderRow {
+export interface StockItemRow { readonly id: string; readonly name: string }
+export interface PurchaseOrderRow {
   readonly id: string;
   readonly supplier_id: string;
   readonly stock_location_id: string;
   readonly ordered_at: string;
 }
-interface PurchaseReceiptRow {
+export interface PurchaseReceiptRow {
   readonly id: string;
   readonly purchase_order_id: string;
   readonly received_at: string;
@@ -110,19 +109,20 @@ function laterTimestamp(current: string | null, candidate: string): string {
 }
 
 export function summarizeSupplierPurchases(
-  orders: readonly PurchaseOrderRow[],
+  issuedOrders: readonly PurchaseOrderRow[],
   receipts: readonly PurchaseReceiptRow[],
+  orderLookup: readonly PurchaseOrderRow[],
   suppliers: readonly SupplierRow[],
 ): readonly SupplierPurchaseHistory[] {
   const supplierNames = new Map(suppliers.map((supplier) => [supplier.id, supplier.trade_name]));
-  const supplierByOrder = new Map(orders.map((order) => [order.id, order.supplier_id]));
+  const supplierByOrder = new Map(orderLookup.map((order) => [order.id, order.supplier_id]));
   const summaries = new Map<string, {
     issuedOrderCount: number;
     receiptCount: number;
     lastActivityAt: string | null;
   }>();
 
-  for (const order of orders) {
+  for (const order of issuedOrders) {
     const current = summaries.get(order.supplier_id) ?? {
       issuedOrderCount: 0,
       receiptCount: 0,
@@ -209,7 +209,6 @@ export function buildSupplierPriceChanges(
       supplierItemId: supplierItemId as EntityId,
       supplierName: supplierNameById.get(supplierItem.supplier_id) ?? "Fornecedor sem nome disponível",
       stockItemName: stockItem.name,
-      stockUnit: stockItem.unit,
       previousPrice,
       currentPrice,
       delta: currentPrice.subtract(previousPrice),
@@ -291,7 +290,7 @@ export class SupabasePurchaseOverviewQuery {
       collectPages<StockItemRow>(async (from, to) => {
         const result = await this.client
           .from("stock_items")
-          .select("id, name, unit")
+          .select("id, name")
           .eq("organization_id", organizationId)
           .range(from, to);
         return { data: (result.data ?? []) as StockItemRow[], error: result.error };
@@ -314,10 +313,10 @@ export class SupabasePurchaseOverviewQuery {
       }, "o histórico de preços"),
     ]);
 
-    const scopedOrders = allOrders.filter((order) => inUtcPeriod(order.ordered_at, bounds));
+    const issuedOrders = allOrders.filter((order) => inUtcPeriod(order.ordered_at, bounds));
     const scopedOrderIds = new Set(allOrders.map((order) => order.id));
 
-    const receipts = hasExplicitScope && scopedOrderIds.size === 0
+    const allReceipts = hasExplicitScope && scopedOrderIds.size === 0
       ? []
       : await collectPages<PurchaseReceiptRow>(async (from, to) => {
           let query = this.client
@@ -330,18 +329,17 @@ export class SupabasePurchaseOverviewQuery {
               .lt("received_at", bounds.endExclusive);
           }
           const result = await query.order("received_at", { ascending: false }).range(from, to);
-          const rows = (result.data ?? []) as PurchaseReceiptRow[];
-          return {
-            data: hasExplicitScope ? rows.filter((row) => scopedOrderIds.has(row.purchase_order_id)) : rows,
-            error: result.error,
-          };
+          return { data: (result.data ?? []) as PurchaseReceiptRow[], error: result.error };
         }, "o histórico de recebimentos");
+    const receipts = hasExplicitScope
+      ? allReceipts.filter((row) => scopedOrderIds.has(row.purchase_order_id))
+      : allReceipts;
 
-    const supplierHistory = summarizeSupplierPurchases(scopedOrders, receipts, suppliers);
+    const supplierHistory = summarizeSupplierPurchases(issuedOrders, receipts, allOrders, suppliers);
     const priceChanges = buildSupplierPriceChanges(priceRows, supplierItems, suppliers, stockItems);
 
     return Object.freeze({
-      issuedOrderCount: scopedOrders.length,
+      issuedOrderCount: issuedOrders.length,
       receiptCount: receipts.length,
       suppliersWithOrdersCount: supplierHistory.filter((row) => row.issuedOrderCount > 0).length,
       supplierHistory,
