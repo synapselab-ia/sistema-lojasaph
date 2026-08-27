@@ -213,23 +213,30 @@ begin
 end;
 $$;
 
--- Viewer can read visible configuration but cannot mutate it.
+-- Viewer can read visible configuration but cannot mutate it. RLS may make an
+-- unauthorized UPDATE affect zero rows instead of raising an exception, so
+-- assert the affected row count and the persisted value explicitly.
 set role authenticated;
 select set_config('request.jwt.claim.sub', '62000000-0000-4000-8000-000000000002', false);
 select set_config('request.jwt.claim.role', 'authenticated', false);
 
 do $$
+declare
+  affected integer;
 begin
   if (select count(*) from public.stock_minimum_policies) <> 1 then
     raise exception 'organization viewer should read the visible stock minimum policy';
   end if;
 
-  begin
-    update public.stock_minimum_policies set minimum_quantity = 9;
-    raise exception 'viewer unexpectedly updated stock minimum policy';
-  exception
-    when insufficient_privilege then null;
-  end;
+  update public.stock_minimum_policies set minimum_quantity = 9;
+  get diagnostics affected = row_count;
+  if affected <> 0 then
+    raise exception 'viewer unexpectedly updated % stock minimum policy rows', affected;
+  end if;
+
+  if (select minimum_quantity from public.stock_minimum_policies limit 1) <> 5 then
+    raise exception 'viewer changed the persisted stock minimum value';
+  end if;
 end;
 $$;
 reset role;
