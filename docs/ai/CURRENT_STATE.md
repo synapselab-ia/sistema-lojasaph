@@ -8,22 +8,30 @@
 
 A trilha PostgreSQL de disaster recovery está comprovada end-to-end e não deve ser refeita sem regressão concreta.
 
-A frente Storage permanece na **Issue #121 — backup e recuperação off-site do Supabase Storage**. A primeira slice técnica foi integrada pelo PR #126; a etapa atual é operacional e Production continua deliberadamente desarmada.
+A frente Storage permanece na **Issue #121 — backup e recuperação off-site do Supabase Storage**. O tooling técnico foi integrado no PR #126 e os guardrails Production foram integrados no PR #128. A próxima etapa é exclusivamente operacional/external-gate; Production continua deliberadamente desarmada.
 
 ## GitHub / baseline viva
 
-- `main`: `c534a99b7b88b054f57b6556d303cdf5a1e7e92a` — `docs(storage): reconcile post-merge handoff (#127)`;
-- baseline funcional Storage: `e071b6f2ede444b2fc97c29836be098fda8dc7f4` (#126);
-- branch ativa: `agent/storage-production-guardrails`;
+- referência funcional integrada: PR #128, squash `27b0b3914a246fb370c9dd5f8ea06f64baa86044`;
+- PR #128: **merged**;
 - Issue #75: aberta;
 - Issue #121: aberta;
 - Issue #110: fechada após o restore PostgreSQL verde;
 - repositório temporariamente `public` por decisão operacional; não alterar automaticamente.
 
-### CI da baseline
+`main` é sempre a fonte viva. Um SHA posterior exclusivamente documental não representa nova frente funcional e **não deve gerar outro PR apenas para atualizar o SHA registrado por este próprio handoff**.
 
-- CI `33083475690` em `main=c534a99b...`: `database` + `validate` success;
-- Storage Protection CI pós-merge #126 `33082831347`: `storage-contract` + `isolated-storage-binary-restore` success.
+### Validação do PR #128
+
+Head final do PR #128:
+
+- CI `33086942613`: `database` + `validate` success;
+- Storage Protection CI `33086943585`: `storage-contract` + `isolated-storage-binary-restore` success.
+
+Pós-merge em `27b0b391...`:
+
+- CI `33087254390`: `database` + `validate` success;
+- Storage Protection CI `33087254427`: `storage-contract` + `isolated-storage-binary-restore` success.
 
 Não há motivo para rerun manual desses gates sem mudança de código/regressão.
 
@@ -59,9 +67,9 @@ Projeto `fhbvwyttikrbeaanatlr`:
 
 O estado vazio é legítimo: o bucket `finance-attachments` nasce somente no primeiro upload autorizado. Não criar bucket/objeto sintético em Production para fabricar prova.
 
-## Storage — tooling integrado
+## Storage — tooling integrado no PR #126
 
-O PR #126 adicionou:
+O código possui:
 
 - manifesto versionado `lojasaph-storage-backup-v1`;
 - reconciliação 1:1 `public.finance_attachments` ↔ bucket/key físico;
@@ -73,18 +81,18 @@ O PR #126 adicionou:
 - persistência `automatic_storage` / `coverage=storage` reutilizando o boundary existente;
 - CI end-to-end com Supabase Storage local e fixtures sintéticas pequenas.
 
-## Guardrails Production — decisão versionada nesta branch
+## Guardrails Production — integrados no PR #128
 
-Os limites Storage iniciais passam a ser configuração não secreta versionada no próprio workflow, em vez de repository variables ocultas:
+A política inicial não secreta está versionada no próprio workflow:
 
 - bucket allowlist: `finance-attachments`;
 - máximo de objetos por snapshot: **1000**;
 - máximo total por snapshot: **1073741824 bytes (1 GiB)**;
 - máximo por objeto: **10485760 bytes (10 MiB)**, igual ao limite funcional de anexos.
 
-Esses valores são independentes do hard cap PostgreSQL de 300 MB. O Storage Protection CI exige os valores versionados e falha se o workflow voltar a `vars.STORAGE_BACKUP_MAX_*` ou reutilizar `300000000`.
+Esses valores são independentes do hard cap PostgreSQL de 300 MB. O Storage Protection CI exige os valores versionados, rejeita retorno a `vars.STORAGE_BACKUP_MAX_*` e rejeita reutilização de `300000000` no workflow Storage.
 
-Com snapshot completo diário e retenção de 30 dias, o cap total limita a ordem de grandeza do namespace Storage a cerca de 30 GiB simultâneos antes da expiração, sem contar outros namespaces/buckets. Alterar esse limite futuramente exige mudança versionada e revisão, não ajuste invisível de variável.
+Com snapshot completo diário e retenção de 30 dias, o cap total limita a ordem de grandeza do namespace Storage a cerca de 30 GiB simultâneos antes da expiração, sem contar outros namespaces/buckets. Alterar esse limite exige mudança versionada + CI/review, não ajuste invisível de variável.
 
 ## Gates operacionais ainda não comprovados
 
@@ -128,4 +136,5 @@ Snapshot vazio não comprova recuperação binária.
 - não declarar Storage coberto por snapshot vazio;
 - não voltar a Drive/rclone/Gmail;
 - não tornar o repositório private automaticamente;
-- não fazer deploy Vercel para validar esta trilha backend/operacional.
+- não fazer deploy Vercel para validar esta trilha backend/operacional;
+- não abrir PR apenas para atualizar o SHA gerado pelo próprio handoff documental.
