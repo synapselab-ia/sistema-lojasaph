@@ -1,120 +1,110 @@
 # Handoff — Sistema Lojasaph
 
-## Frente ativa
+## Fase concluída nesta frente
 
-**Issue #132 — Fase 47: estoque mínimo por local e alertas de reposição (`REQ-STK-011`).**
+**Fase 47 / Issue #132 — estoque mínimo por local e alertas de reposição (`REQ-STK-011`) está implementada, testada e homologada em Production.**
 
-Branch ativa: `agent/stock-minimum-alerts`.
+PR de integração: #133.
 
-Fase 46 já está integrada. Não refazer fases anteriores sem regressão concreta.
+Não refazer a Fase 47 sem bug/regressão concreta.
 
-## ON HOLD
+## O que foi entregue
 
-### Issue #121 — Supabase Storage backup/recovery
+Persistência:
 
-A #121 está **ON HOLD** e não deve ser tratada como frente ativa.
-
-Não mexer até existir evidência nova. Gatilhos válidos:
-
-1. primeira execução agendada do `Production Storage Backup` depois do armamento — próxima janela esperada: 2026-08-28 06:47 UTC / 03:47 America/Sao_Paulo;
-2. primeiro anexo Production legítimo criado pelo fluxo normal, para prova binária completa;
-3. falha/incidente/regressão real do pipeline Storage.
-
-Sem um desses gatilhos:
-
-- não usar `workflow_dispatch` só para antecipar a prova;
-- não criar bucket/anexo sintético em Production;
-- não revalidar a mesma ausência de run repetidamente;
-- não refazer tooling, S3, R2, guardrails ou PostgreSQL;
-- não alterar UI de cobertura Storage.
-
-Storage já está armada e os gates externos foram confirmados pelo operador. Preservar `STORAGE_BACKUP_AUTOMATION_ENABLED=true`.
-
-A Issue #75 continua aberta como umbrella de proteção de dados, mas não é a frente principal enquanto #121 aguarda seu gatilho.
-
-## Regra nova de continuidade
-
-`docs/ai/WORKFLOW.md` foi atualizado para formalizar:
-
-- Issue ON HOLD não bloqueia roadmap;
-- ON HOLD não conta como frente ativa;
-- nenhuma atividade artificial para desbloquear espera externa;
-- próxima Issue independente deve ser promovida;
-- retomar ON HOLD somente quando o gatilho registrado aparecer ou houver regressão/incidente.
-
-Essa regra deve ser aplicada a qualquer frente futura, não apenas backup.
-
-## Estado GitHub
-
-Na promoção da Fase 47:
-
-- `main=1da51fdcb4b5730b63f5f30491a2e54390943a7e` (#131);
-- CI pós-merge `33103269753`: success;
-- #121 aberta / ON HOLD;
-- #132 aberta / ativa;
-- branch ativa `agent/stock-minimum-alerts`;
-- nenhum PR aberto antes do início da Fase 47.
-
-## Evidência do gap da Fase 47
-
-Production foi inspecionada read-only em 2026-08-27:
-
-- `inventory_balances` possui saldo por `stock_item_id + stock_location_id`;
-- `stock_items` não possui coluna de mínimo;
-- `stock_locations` não possui coluna de mínimo;
-- `inventory_balances` não possui threshold de reposição;
-- não existe tabela equivalente de política de estoque mínimo.
-
-Policies atuais relevantes:
-
-- leitura de `inventory_balances` usa `private.can_read_stock_location(...)`;
-- leitura de `stock_locations` usa o mesmo boundary por local;
-- configurações de estoque já possuem helpers escopados; a nova slice deve reutilizá-los, não criar bypass.
-
-## Decisão da Fase 47
-
-Configurar estoque mínimo por **item + local de estoque**.
-
-Regras iniciais:
-
-- `minimum_quantity >= 0` com tipo decimal exato;
+- `public.stock_minimum_policies` por Organization + item + local;
+- `minimum_quantity numeric(18,3)` não negativo;
 - uma política por item/local;
-- ausência de política = não configurado;
-- alerta quando `quantity_on_hand < minimum_quantity`;
-- igualdade não gera alerta;
-- nunca gerar compra automaticamente;
-- não inventar mínimo para dados existentes.
+- ativação/inativação sem DELETE no fluxo normal;
+- `inventory_balances` permanece a projeção autoritativa de saldo.
 
-## Ordem depois da #132
+Autorização/auditoria:
 
-Se não houver bug/regressão/nova prioridade:
+- RLS por visibilidade real de `stock_location`;
+- leitura por `private.can_read_stock_location(...)`;
+- manutenção por `private.has_stock_location_role(...)` para `owner/admin/manager/inventory`;
+- `anon` sem acesso;
+- `authenticated` sem DELETE;
+- trigger privada registra create/update em `audit_logs`.
 
-1. `REQ-DASH-004` — evolução de Dashboard/relatórios de estoque;
-2. `REQ-DASH-005` — evolução de compras/fornecedores e variação histórica;
-3. `REQ-ITEM-003` — EAN/código de barras e dados fiscais já modelados no schema.
+Aplicação:
 
-Frente ON HOLD pode ser retomada quando o gatilho aparecer, mas isso não cancela a frente ativa nem exige parar o projeto.
+- manutenção do mínimo em `/workspace/estoque` via client Supabase autenticado + RLS;
+- domínio usa `Quantity`, sem float como fonte de verdade;
+- `below_minimum` é estritamente `quantity_on_hand < minimum_quantity`;
+- igualdade não alerta;
+- ausência de policy não alerta;
+- saldo ausente não é inferido como zero;
+- Dashboard mostra pendência acionável respeitando escopo Unit/Sector/local;
+- nenhuma compra automática ou previsão foi criada.
 
-## Próxima ação exata
+## Evidência CI
 
-Executar #132 na branch `agent/stock-minimum-alerts`:
+Head validado: `ae6dcafab306cb99ed3a57ab1279bff8574d2dbd`.
 
-1. revisar migrations/modelo/adapters/UI atuais de estoque e Dashboard;
-2. desenhar persistência mínima por item/local, com FK composta/constraints/RLS coerentes;
-3. criar migration versionada e testes PostgreSQL;
-4. implementar leitura/manutenção sob sessão autenticada + RLS;
-5. adicionar alerta acionável no Dashboard preservando Unit/Sector;
-6. rodar CI completo;
-7. aplicar/homologar Production somente após CI verde e sem criar thresholds reais por inferência;
-8. atualizar docs/handoff e abrir PR.
+- CI `33110315259`: success;
+- Inventory Count Integration `33110315235`: success;
+- Business Transactions Integration `33110315213`: success.
 
-## Restrições
+O primeiro CI da implementação falhou apenas por uma asserção incorreta no teste de RLS: UPDATE filtrado pela policy retornava zero rows em vez de exception. O teste foi corrigido para provar `ROW_COUNT = 0`; não houve relaxamento de autorização.
+
+## Supabase Production
+
+Projeto `fhbvwyttikrbeaanatlr`.
+
+Migrations registradas no histórico remoto:
+
+- `20260827194813_stock_minimum_policies`;
+- `20260827195802_stock_minimum_policy_fk_indexes`.
+
+Pós-DDL confirmado:
+
+- 0 linhas em `stock_minimum_policies`;
+- nenhum threshold real inventado;
+- RLS/grants/audit trigger corretos;
+- índices de cobertura de FK de item/local presentes;
+- os dois `unindexed_foreign_keys` introduzidos inicialmente pela nova tabela desapareceram do Performance Advisor.
+
+`unused_index` nos índices da tabela nova é esperado enquanto Production permanecer sem políticas configuradas.
+
+## ON HOLD — Issue #121
+
+A #121 continua parada por evidência externa. Não é frente ativa e não bloqueia o roadmap.
+
+Gatilhos válidos:
+
+1. primeira execução agendada do `Production Storage Backup` após armamento — próxima janela esperada em 2026-08-28 06:47 UTC / 03:47 America/Sao_Paulo;
+2. anexo Production legítimo criado pelo fluxo normal;
+3. falha/incidente/regressão do pipeline Storage.
+
+Até lá:
+
+- não usar `workflow_dispatch` para fabricar prova;
+- não criar fixture/bucket/anexo em Production;
+- não refazer S3/R2/tooling/guardrails/PostgreSQL;
+- não declarar recuperação binária completa sem anexo legítimo + backup + restore drill.
+
+A Issue #75 continua umbrella de proteção de dados.
+
+## Próxima frente
+
+Salvo regressão/prioridade explícita, promover **`REQ-DASH-004` — Dashboard/relatórios de estoque** como próxima fase independente.
+
+Antes de criar código:
+
+1. confirmar `main`, Issues/PRs/CI reais;
+2. confirmar que #133 está mergeado e #132 encerrada;
+3. verificar se o cron da #121 já gerou evidência nova; se não, mantê-la ON HOLD sem rechecagens inúteis;
+4. abrir uma Issue própria para a próxima fase;
+5. inventariar o que `REQ-DASH-004` ainda não cobre sobre saldos, movimentos, perdas, inventários e validades, reutilizando o threshold da Fase 47.
+
+Depois seguem `REQ-DASH-005` e `REQ-ITEM-003`.
+
+## Restrições preservadas
 
 - não tocar #121 sem gatilho;
 - não usar service/admin key no browser;
-- não criar compra automática;
-- não antecipar previsão de demanda/IA;
-- não alterar Q-001..Q-025 por inferência;
-- não colocar secrets no GitHub/docs/chat;
+- não inventar dados Production;
+- não promover requisitos PENDING por inferência;
 - não fazer deploy Vercel rotineiro;
-- não tornar o repositório private automaticamente.
+- não registrar secrets.

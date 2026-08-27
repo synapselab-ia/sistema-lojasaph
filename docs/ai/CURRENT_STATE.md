@@ -4,127 +4,94 @@
 
 ## Estado atual
 
-**Fase 46 está integrada. Frente ativa: Issue #132 — Fase 47, estoque mínimo por local e alertas de reposição (`REQ-STK-011`).**
+**Fase 47 / Issue #132 (`REQ-STK-011`) implementada, testada e homologada em Production.**
 
-Branch ativa: `agent/stock-minimum-alerts`.
+O PR #133 contém a integração da Fase 47. Após o merge, não refazer esta slice sem regressão concreta.
 
-A antiga frente Storage permanece aberta na Issue #121, porém está **ON HOLD**. Ela não é a frente ativa e não deve receber trabalho até existir o gatilho objetivo de retomada.
+A Issue #121 — backup/recovery do Supabase Storage — permanece **ON HOLD** aguardando gatilho externo e não bloqueia o roadmap.
 
-## Regra operacional de continuidade
+## Fase 47 — estoque mínimo por local
 
-`docs/ai/WORKFLOW.md` agora define explicitamente:
+A implementação fechou o gap de estoque mínimo com estas regras:
 
-- Issue ON HOLD não bloqueia o roadmap;
-- não fabricar evidência, fixture, dispatch ou mudança para desbloquear espera externa;
-- não revalidar repetidamente uma frente parada sem evidência nova;
-- promover a próxima frente independente e viável;
-- retomar ON HOLD somente quando o gatilho registrado existir ou houver regressão/incidente relacionado.
+- política autoritativa em `public.stock_minimum_policies` por `organization_id + stock_item_id + stock_location_id`;
+- `minimum_quantity numeric(18,3)` e `minimum_quantity >= 0`;
+- ausência de política significa `não configurado`;
+- saldo crítico somente quando `inventory_balances.quantity_on_hand < minimum_quantity`;
+- igualdade ao mínimo não gera alerta;
+- `inventory_balances` continua projeção e não recebe configuração;
+- nenhuma compra automática, previsão de demanda ou sugestão de quantidade foi criada.
 
-## GitHub / baseline viva
+Segurança e autorização:
 
-- `main`: `1da51fdcb4b5730b63f5f30491a2e54390943a7e` (#131);
-- Issue #75: aberta como umbrella de proteção de dados, não é a frente ativa;
-- Issue #121: aberta e ON HOLD;
-- Issue #132: aberta e ativa;
-- branch ativa: `agent/stock-minimum-alerts`;
-- nenhum PR aberto na promoção da Fase 47;
-- repositório temporariamente `public` por decisão operacional; não alterar automaticamente.
+- RLS ativa;
+- leitura reutiliza `private.can_read_stock_location(...)`;
+- INSERT/UPDATE reutilizam `private.has_stock_location_role(...)` para `owner/admin/manager/inventory`;
+- `authenticated` possui SELECT/INSERT/UPDATE e não possui DELETE;
+- `anon` não possui acesso;
+- alterações de configuração são registradas em `audit_logs` por trigger privada sem EXECUTE público.
 
-CI pós-merge do head atual de `main`:
+Aplicação:
 
-- CI `33103269753`: success.
+- `/workspace/estoque` permite consultar e manter o mínimo sob sessão autenticada + RLS;
+- o domínio usa `Quantity`, preservando decimal exato;
+- o Dashboard deriva e exibe pendência acionável de estoque abaixo do mínimo;
+- filtros/visibilidade continuam respeitando Organization + Unit + Sector e o local explícito;
+- saldo ausente não é fabricado como zero.
 
-Não rerodar CI de `main` sem mudança/regressão.
+## CI da Fase 47
+
+Head técnico validado: `ae6dcafab306cb99ed3a57ab1279bff8574d2dbd`.
+
+- CI `33110315259`: success;
+- Inventory Count Integration `33110315235`: success;
+- Business Transactions Integration `33110315213`: success.
+
+O CI cobre migrations, RLS/grants, auditoria, isolamento de Organization/escopo, mínimo zero, negativo rejeitado, abaixo/igual/acima do mínimo, política ausente, unit tests, lint, typecheck e production build.
+
+## Supabase Production
+
+Projeto: `fhbvwyttikrbeaanatlr`.
+
+Migrations homologadas:
+
+- `20260827194813_stock_minimum_policies`;
+- `20260827195802_stock_minimum_policy_fk_indexes`.
+
+Validação pós-DDL:
+
+- `stock_minimum_policies`: 0 linhas — nenhum threshold foi inventado para dados existentes;
+- RLS e grants confirmados;
+- trigger de auditoria confirmado;
+- índices compostos de cobertura dos FKs de item e local confirmados;
+- Performance Advisor não reporta mais `unindexed_foreign_keys` para `stock_minimum_policies`;
+- `unused_index` nos índices recém-criados é esperado enquanto a tabela Production estiver vazia.
+
+Nenhum deploy Vercel foi necessário.
 
 ## Issue #121 — ON HOLD
 
-Storage Production já possui tooling, guardrails e infraestrutura integrados/armados. Não refazer:
+Não tocar #121 até existir um destes gatilhos:
 
-- manifesto `lojasaph-storage-backup-v1`;
-- reconciliação metadata↔objeto e SHA-256;
-- transporte Supabase S3 → Cloudflare R2;
-- restore isolado pela Storage API/S3;
-- persistência `automatic_storage` / `coverage=storage`;
-- CI end-to-end local;
-- allowlist `finance-attachments`;
-- caps de 1000 objetos / 1 GiB total / 10 MiB por objeto;
-- S3 Production dedicado e R2 lifecycle/lock 30d já confirmados;
-- `STORAGE_BACKUP_AUTOMATION_ENABLED=true`.
+1. primeira execução **agendada** do `Production Storage Backup` após o armamento — próxima janela esperada: 2026-08-28 06:47 UTC / 03:47 America/Sao_Paulo;
+2. primeiro anexo Production legítimo, permitindo prova binária real;
+3. falha/incidente/regressão real do pipeline Storage.
 
-Última revalidação read-only de Production em 2026-08-27:
+Enquanto não houver gatilho:
 
-- 1 Organization;
-- 0 buckets Storage;
-- 0 objetos;
-- 0 `finance_attachments`;
-- 0 bytes declarados;
-- 0 runs `automatic_storage`.
+- não usar `workflow_dispatch` só para antecipar prova;
+- não criar bucket/anexo sintético em Production;
+- não revalidar repetidamente ausência de run;
+- não refazer tooling, S3, R2, guardrails ou PostgreSQL.
 
-### Gatilhos objetivos de retomada da #121
+## Próxima frente prevista
 
-Retomar a #121 somente quando ocorrer um destes eventos:
+Salvo bug/regressão ou prioridade explícita, a próxima frente independente é **`REQ-DASH-004` — evolução de Dashboard/relatórios de estoque**.
 
-1. existir a primeira execução **agendada** do `Production Storage Backup` após o armamento — próxima janela esperada em 2026-08-28 06:47 UTC / 03:47 America/Sao_Paulo; inspecionar uma vez e registrar o resultado sanitizado;
-2. surgir um anexo Production legítimo pelo fluxo normal do produto; então validar backup automático do objeto e restore isolado do mesmo snapshot;
-3. ocorrer falha/incidente/regressão real do pipeline Storage.
+Ordem planejada depois da Fase 47:
 
-Enquanto nenhum desses eventos existir: **não mexer na #121**.
+1. `REQ-DASH-004` — estoque;
+2. `REQ-DASH-005` — compras/fornecedores e histórico/variação;
+3. `REQ-ITEM-003` — EAN/código de barras e dados fiscais.
 
-Um run vazio futuro pode provar apenas operação sobre inventário vazio; recuperação binária completa continua exigindo anexo Production legítimo + `automatic_storage=succeeded` + `restore_drill coverage=storage=succeeded`.
-
-## Fase 47 — Issue #132
-
-`REQ-STK-011` exige permitir estoque mínimo e alertas de reposição.
-
-Gap confirmado:
-
-- `inventory_balances` já é por `stock_item_id + stock_location_id`;
-- não existe threshold de estoque mínimo em `stock_items`, `stock_locations` ou `inventory_balances`;
-- não existe policy/tabela equivalente para política de reposição;
-- o Dashboard não pode gerar alerta autoritativo de estoque crítico sem essa configuração.
-
-Decisão inicial da slice:
-
-- estoque mínimo é por **item + local de estoque**;
-- ausência de política significa `não configurado`, não zero;
-- `minimum_quantity` deve ser decimal exato e não negativo;
-- saldo crítico é derivado por `quantity_on_hand < minimum_quantity`;
-- saldo igual ao mínimo não é crítico;
-- não criar compra automática, previsão de demanda ou sugestão de quantidade nesta fase.
-
-## Ordem de trabalho
-
-Salvo bug/regressão ou nova prioridade explícita:
-
-1. **Fase 47 / #132 — estoque mínimo por local + alertas**;
-2. evolução de Dashboard de estoque (`REQ-DASH-004`) usando thresholds, ledger, inventários e validades reais;
-3. evolução de fornecedores/compras (`REQ-DASH-005`) sobre histórico já persistido;
-4. refinamento de cadastro com EAN/dados fiscais (`REQ-ITEM-003`), sem promover itens PENDING/POS por inferência.
-
-A #121 pode ser retomada quando seu gatilho aparecer, mas esperar cron/dado externo não pausa essa ordem.
-
-## Próximo trabalho exato
-
-Na branch `agent/stock-minimum-alerts`, executar a Issue #132 sem tocar #121:
-
-1. inspecionar modelo/fixtures/adapters atuais de `stock_items`, `stock_locations`, `inventory_balances` e Dashboard;
-2. definir a persistência mínima de política por item/local com constraints e RLS escopada;
-3. versionar migration seguindo o histórico Supabase atual;
-4. adicionar regressões PostgreSQL antes de aplicar remotamente;
-5. implementar adapter/UI de configuração e alerta do Dashboard;
-6. rodar lint, typecheck, testes, build e workflows aplicáveis;
-7. somente com CI verde aplicar/homologar a migration em Production sem inventar thresholds para dados existentes;
-8. atualizar handoff e abrir PR.
-
-## Não fazer
-
-- não mexer na #121 enquanto estiver ON HOLD sem gatilho real;
-- não disparar `workflow_dispatch` Storage apenas para antecipar prova;
-- não criar fixture Storage em Production;
-- não restaurar Production;
-- não inventar valores de estoque mínimo para registros existentes;
-- não criar compra automática/previsão de demanda na Fase 47;
-- não alterar papéis/escopos sem necessidade comprovada;
-- não registrar secrets;
-- não tornar o repositório private automaticamente;
-- não fazer deploy Vercel rotineiro.
+Ver `docs/ai/NEXT_ACTION.md` antes de promover a próxima Issue.

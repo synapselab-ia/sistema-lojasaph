@@ -1,131 +1,64 @@
 # Next Action — Sistema Lojasaph
 
-## Frente ativa
+## Estado de saída da Fase 47
 
-**Issue #132 — Fase 47: estoque mínimo por local e alertas de reposição (`REQ-STK-011`).**
+A **Fase 47 / Issue #132 (`REQ-STK-011`)** está implementada, validada em CI e homologada em Supabase Production pelo PR #133.
 
-Branch: `agent/stock-minimum-alerts`.
+Não reabrir essa slice sem regressão concreta.
 
 ## Frente ON HOLD
 
 **Issue #121 — Backup e recuperação off-site do Supabase Storage.**
 
-Não tocar #121 até existir um gatilho real:
+Retomar somente se existir um gatilho objetivo:
 
 - primeira execução agendada do `Production Storage Backup` após o armamento;
-- primeiro anexo Production legítimo para a prova binária completa;
-- falha/incidente/regressão real do pipeline.
+- primeiro anexo Production legítimo para prova binária;
+- falha/incidente/regressão real.
 
-Enquanto isso, não fazer `workflow_dispatch` artificial, não criar fixture Production, não revalidar repetidamente ausência de run e não refazer S3/R2/guardrails/PostgreSQL.
+Próxima janela normal esperada do cron: **2026-08-28 06:47 UTC / 03:47 America/Sao_Paulo**.
 
-A próxima janela normal esperada do cron é 2026-08-28 06:47 UTC / 03:47 America/Sao_Paulo.
+Sem gatilho: não usar `workflow_dispatch`, não criar fixture Production e não repetir validações da mesma ausência de evidência.
 
-## Contexto da #132
+## NEXT_ACTION
 
-`REQ-STK-011` exige estoque mínimo e alertas de reposição.
+### Promover a próxima fase independente: `REQ-DASH-004 — Dashboard/relatórios de estoque`
 
-Gap confirmado em Production e no schema atual:
+Executar nesta ordem:
 
-- saldo autoritativo existe por `stock_item_id + stock_location_id` em `inventory_balances`;
-- não há threshold de mínimo em `stock_items`, `stock_locations` ou `inventory_balances`;
-- não existe tabela equivalente de política de reposição;
-- Dashboard não possui fonte autoritativa para dizer que um saldo está abaixo do mínimo.
+1. conferir estado real de `main`, Issues, PRs, branches e CI;
+2. confirmar que o PR #133 está mergeado e a Issue #132 encerrada;
+3. verificar **uma vez** se surgiu gatilho novo da #121; se não surgiu, manter ON HOLD e seguir;
+4. reler `docs/product/requirements.md`, `docs/modules/dashboard.md` e `docs/modules/inventory.md`;
+5. inventariar o gap real de `REQ-DASH-004` sobre:
+   - saldos;
+   - movimentações;
+   - perdas;
+   - inventários;
+   - validades;
+   - estoque abaixo do mínimo já entregue pela Fase 47;
+6. não duplicar KPIs/alertas já existentes e não fabricar granularidade histórica onde o modelo não possui evento canônico;
+7. abrir uma Issue própria para a nova fase com critérios de aceite verificáveis e fora de escopo explícito;
+8. criar branch a partir de `main` somente depois da Issue;
+9. implementar a menor slice coerente, com testes e CI, seguindo o workflow normal Issue → branch → PR → merge;
+10. atualizar `CURRENT_STATE`, `HANDOFF` e `NEXT_ACTION` ao final.
 
-Decisão da slice:
+## Restrições para `REQ-DASH-004`
 
-- configurar mínimo por **item + local de estoque**;
-- `minimum_quantity` decimal exato e não negativo;
-- ausência de política = não configurado;
-- `below_minimum := quantity_on_hand < minimum_quantity`;
-- igualdade ao mínimo não alerta;
-- sem compra automática, previsão de demanda ou sugestão de quantidade.
-
-## NEXT_ACTION imediata
-
-### 1. Inventário técnico
-
-Antes de editar:
-
-1. localizar migrations que definem `stock_items`, `stock_locations`, `inventory_balances` e grants/RLS relacionados;
-2. revisar adapters/gateways de estoque e o contrato atual do Workspace;
-3. revisar query/modelo do Dashboard e seus filtros Unit/Sector;
-4. revisar padrão atual de auditoria para mudanças de configuração de estoque;
-5. confirmar o padrão de migration versionada e testes PostgreSQL do head atual.
-
-### 2. Persistência mínima
-
-Implementar uma fonte autoritativa de política de estoque mínimo por item/local, preferindo estrutura própria em vez de acoplar configuração à projeção `inventory_balances`.
-
-O desenho deve garantir:
-
-- FK/Organization consistentes entre item e local;
-- uma política por item/local;
-- `minimum_quantity >= 0`;
-- RLS de leitura conforme visibilidade do local;
-- manutenção somente por papéis/escopos de estoque já autorizados;
-- nenhum DELETE físico necessário para o fluxo normal se ativação/inativação for suficiente;
-- nenhuma permissão para `anon`;
-- nenhuma chave privilegiada no browser.
-
-### 3. Estado derivado e Dashboard
-
-Adicionar leitura que compare a política com `inventory_balances` sem duplicar saldo como fonte de verdade.
-
-No Dashboard:
-
-- exibir itens abaixo do mínimo como pendência acionável;
-- respeitar Organization + Unit + Sector já existentes;
-- não inferir Sector quando o local não possuir vínculo;
-- item/local sem política não gera alerta;
-- não gerar pedido de compra automaticamente.
-
-### 4. Testes
-
-Cobrir pelo menos:
-
-- criação/edição válida do mínimo;
-- mínimo zero;
-- valor negativo rejeitado;
-- saldo abaixo, igual e acima do mínimo;
-- política ausente;
-- item/local cross-Organization rejeitado;
-- usuário fora do escopo sem leitura/escrita indevida;
-- `anon` sem acesso;
-- regressão de filtros Unit/Sector do Dashboard;
-- auditoria/configuração conforme padrão atual.
-
-### 5. Validação e integração
-
-1. rodar suites PostgreSQL aplicáveis;
-2. rodar lint;
-3. rodar typecheck;
-4. rodar Vitest;
-5. rodar production build;
-6. validar workflows relevantes;
-7. somente após CI verde aplicar/homologar migration em Production;
-8. não preencher thresholds de dados existentes por inferência;
-9. revalidar RLS/advisors após DDL;
-10. atualizar `CURRENT_STATE`, `HANDOFF`, `NEXT_ACTION` e documentação do módulo;
-11. abrir PR da #132.
+- Dashboard continua read-only;
+- reutilizar fontes autoritativas existentes, sem criar segunda fonte de saldo;
+- respeitar Organization + Unit + Sector e RLS;
+- não transformar snapshots atuais em histórico por conveniência;
+- não criar previsão de demanda/IA;
+- não criar pedido de compra automático;
+- não misturar `REQ-DASH-005` ou `REQ-ITEM-003` na mesma slice sem necessidade comprovada;
+- não resolver requisitos PENDING por inferência;
+- não fazer deploy Vercel rotineiro.
 
 ## Ordem posterior
 
-Se #132 concluir e não houver nova prioridade/regressão:
-
-1. `REQ-DASH-004` — Dashboard/relatórios de estoque;
+1. `REQ-DASH-004` — estoque;
 2. `REQ-DASH-005` — compras/fornecedores e histórico/variação;
 3. `REQ-ITEM-003` — EAN/código de barras e dados fiscais.
 
-Uma frente ON HOLD só volta à frente quando seu gatilho existir; simples espera nunca pausa essa sequência.
-
-## Fora de escopo
-
-- tocar #121 sem gatilho;
-- compra automática;
-- previsão de demanda/IA;
-- estoque máximo/target;
-- lead time/sugestão de compra;
-- notificação externa;
-- resolver itens PENDING por inferência;
-- deploy Vercel rotineiro;
-- tornar repo private automaticamente.
+Uma frente ON HOLD pode interromper essa ordem somente quando seu gatilho real existir; simples espera não pausa o desenvolvimento.
