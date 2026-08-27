@@ -4,173 +4,107 @@
 
 A frente ativa permanece na Issue #75 / `REQ-PLAT-005 — Proteção, backup e recuperação de dados`.
 
-A NEXT_ACTION anterior — inventariar/desenhar Supabase Storage — foi concluída em 2026-08-27 e gerou a **Issue #121 — `REQ-PLAT-005 — Backup e recuperação off-site do Supabase Storage`**.
+A Issue #121 cobre Supabase Storage. A primeira slice técnica foi implementada no PR #126:
 
-Não refazer as slices concluídas:
+- tooling de inventário/manifesto;
+- guardrails fail-closed;
+- transporte Supabase S3 → R2;
+- workflow Production inicialmente desarmado;
+- persistência `automatic_storage` reutilizando o boundary existente;
+- restore isolado pela Storage API;
+- CI end-to-end com fixtures sintéticas pequenas.
 
-1. ADR-009;
-2. Cloudflare R2/lifecycle/lock;
-3. backup PostgreSQL Production + hard cap 300 MB;
-4. primeira prova PostgreSQL off-site `33006253661`;
-5. persistência autoritativa/RLS;
-6. UI read-only `Proteção dos dados`;
-7. restore do bundle PostgreSQL Production real;
-8. `restore_drill coverage=postgres` real `33069706382`;
-9. auto-reconciliação da #110;
-10. inventário/desenho Storage registrado na #121.
+Não refazer essa implementação salvo regressão concreta.
 
-## Inventário Storage já confirmado
+## Estado confirmado
 
-Production `fhbvwyttikrbeaanatlr` em 2026-08-27:
+Production `fhbvwyttikrbeaanatlr` em 2026-08-27 continua com:
 
 - 1 Organization;
 - 0 buckets Storage;
 - 0 objetos ativos;
 - 0 rows em `public.finance_attachments`;
 - 0 bytes declarados;
-- 0 policies customizadas em `storage.objects`/`storage.buckets`.
+- 0 policies customizadas em `storage.objects`/`storage.buckets`;
+- 0 runs `automatic_storage`.
 
-Código:
+A ausência de objetos é legítima. O bucket `finance-attachments` é criado lazy pelo fluxo funcional.
 
-- bucket previsto `finance-attachments`, privado e criado lazy pela Storage API;
-- arquivo máximo 10 MiB;
-- key `<organization_uuid>/<payable_document_uuid>/<attachment_uuid>`;
-- SHA-256 do conteúdo persistido em `finance_attachments.checksum_sha256`;
-- upload/download físico é server-only/admin após autorização/RLS de negócio;
-- não existe delete funcional de anexos;
-- browser não recebe secret, signed URL ou public URL permanente.
+No PR #126, o head técnico `01681b6b47bbf7a5304fa4bb8ef0787043b7ea9b` passou:
 
-Não repetir esse inventário salvo regressão ou novo uso de Storage no código.
+- CI `33081199162` — success;
+- Storage Protection CI `33081198933` — success;
+- `storage-contract` — success;
+- `isolated-storage-binary-restore` — success.
 
 ## NEXT_ACTION imediata
 
-**Implementar a primeira slice técnica da Issue #121, sem armar Production antes dos gates operacionais.**
+**Concluir/mergear o PR #126 com CI final verde e, em seguida, executar somente os gates operacionais necessários para armar Production.**
 
-### 1. Branch / escopo
+### 1. Merge da slice técnica
 
-Criar branch própria a partir de `main`, por exemplo:
+Antes do merge:
 
-`agent/storage-protection-backup`
+- conferir o head final do PR #126;
+- confirmar que não há arquivo temporário/lixo no diff;
+- exigir CI geral verde;
+- a prova Storage específica do código deve permanecer verde no último head que altera tooling/workflows;
+- fazer squash merge com `expected_head_sha` para evitar corrida;
+- validar CI pós-merge em `main`.
 
-Escopo da primeira PR:
+Não disparar workflow Production Storage por inércia.
 
-- tooling de inventário/manifesto Storage;
-- testes unitários;
-- CI com Storage local e arquivos sintéticos pequenos;
-- workflow automático Storage estruturado, mas fail-closed/desarmado para Production até os gates abaixo;
-- persistência `automatic_storage` reutilizando `record-protection-run.sh`;
-- incidente GitHub-native reutilizando o padrão já existente;
-- documentação afetada.
+### 2. Gates operacionais antes de `STORAGE_BACKUP_AUTOMATION_ENABLED=true`
 
-Não atualizar a UI para declarar Storage coberto nesta primeira PR.
+Confirmar explicitamente, sem expor secrets:
 
-### 2. Contrato a implementar
+1. endpoint S3 da fonte Production é o endpoint direto do projeto;
+2. credencial S3 dedicada ao Supabase Storage está provisionada server-only em GitHub Secrets fora do chat;
+3. lifecycle + Bucket Lock de 30 dias do R2 existente abrangem `production/storage`;
+4. namespace permanece `production/storage/runs/<backup-id>`;
+5. allowlist Production é exatamente `finance-attachments` nesta primeira fase;
+6. caps Storage Production de objetos/bytes total/bytes por objeto estão configurados explicitamente;
+7. `STORAGE_BACKUP_AUTOMATION_ENABLED` permanece falso até todos os itens acima passarem.
 
-Seguir a #121:
+Não reprovisionar provider ou secrets por inércia.
 
-- destino R2 existente em namespace separado `production/storage/...`;
-- allowlist inicial: `finance-attachments`;
-- bucket Files inesperado deve falhar fechado até ser classificado;
-- snapshot completo diário inicialmente;
-- prefixo imutável por run;
-- formato `lojasaph-storage-backup-v1`;
-- manifesto com bucket/key/tamanho/SHA-256, timestamps mínimos e UUIDs necessários à reconciliação;
-- não incluir `original_filename` desnecessariamente no manifesto;
-- hash do objeto de origem por stream;
-- para `finance-attachments`, exigir igualdade com `checksum_sha256` e `size_bytes` do banco;
-- upload R2 + verificação remota + re-download/re-hash antes de integridade positiva;
-- nunca usar ETag sozinho como prova de conteúdo;
-- cleanup mesmo em falha.
+### 3. Estado vazio não é prova binária
 
-### 3. Guardrails
+Se Production continuar em zero objetos após os gates:
 
-Criar configuração Storage própria e fail-closed para:
+- não criar bucket ou anexo sintético;
+- não executar workflow só para fabricar `automatic_storage=succeeded`;
+- não alterar a UI para declarar Storage coberto;
+- registrar apenas que o tooling está pronto e o gate de prova real aguarda uso legítimo do produto.
 
-- máximo de objetos por run;
-- máximo de bytes totais por run;
-- limite individual incompatível;
-- bucket não classificado;
-- objeto sem metadata de negócio quando o bucket exigir vínculo.
+### 4. Primeira prova completa quando existir anexo real
 
-**Não reutilizar automaticamente `300000000` bytes do archive PostgreSQL.**
+Quando surgir ao menos um anexo Production criado pelo fluxo normal:
 
-Os caps de Production precisam ser explicitamente configurados/aprovados antes de armar a automação; CI usa valores sintéticos pequenos.
+1. revalidar metadata e inventário sem expor conteúdo em logs;
+2. executar uma única prova controlada do workflow Production Storage;
+3. exigir source SHA-256 = `finance_attachments.checksum_sha256` e tamanho compatível;
+4. exigir upload R2 + existência remota + re-download/re-hash;
+5. exigir `automatic_storage=succeeded` / `coverage=storage` com integridade positiva;
+6. restaurar o mesmo snapshot em Supabase Storage isolado via API/S3;
+7. reconciliar missing/extra/corrupt e re-hashear objetos restaurados;
+8. persistir `restore_drill coverage=storage=succeeded` somente após essa prova;
+9. nunca usar Production como restore target;
+10. só então considerar atualização da UI para cobertura Storage comprovada.
 
-### 4. Fonte Supabase Storage
+## Critério de conclusão desta próxima slice
 
-Preferência de desenho registrada na #121:
+A slice operacional termina quando os gates de Production estiverem documentados e confirmados sem exposição de segredo. Se não houver objeto Production legítimo, a automação pode continuar desarmada e a prova binária real permanece corretamente pendente.
 
-- endpoint S3 do Supabase Storage;
-- credencial S3 dedicada ao workflow;
-- server-only;
-- separada de `SUPABASE_SECRET_KEY` da aplicação;
-- nunca exposta em logs/Issues/PRs.
+## Fora de escopo
 
-A credencial S3 bypassa RLS e possui acesso amplo ao Storage; limitar seu uso ao workflow e à allowlist de buckets. Não gerar/pedir secret no chat.
-
-### 5. CI obrigatório
-
-Sem Production/R2 secrets reais, provar no CI:
-
-1. bucket privado sintético;
-2. objeto pequeno com SHA conhecido;
-3. inventário determinístico;
-4. manifesto válido e versionado;
-5. missing metadata detectado;
-6. objeto extra detectado;
-7. hash/tamanho divergente detectados;
-8. bucket inesperado detectado;
-9. upload off-site simulado/local quando possível sem reduzir a semântica do contrato;
-10. restore em Storage isolado via API/S3;
-11. re-hash pós-restore;
-12. cleanup;
-13. `automatic_storage` start/success/failure/idempotência usando o boundary autoritativo existente.
-
-Não usar INSERT/UPDATE/DELETE em `storage.objects` para simular restore binário.
-
-### 6. Gates antes de Production
-
-Não definir `STORAGE_BACKUP_AUTOMATION_ENABLED=true` até confirmar:
-
-- endpoint S3 da fonte habilitado;
-- source credentials provisionadas em GitHub Secrets fora do chat;
-- lifecycle + Bucket Lock 30d cobrindo `production/storage`;
-- namespace correto;
-- caps Storage próprios configurados;
-- allowlist correta;
-- PR/CI verdes.
-
-### 7. Estado vazio de Production
-
-Production possui zero objetos. Isso não bloqueia a implementação/CI.
-
-Um run Production vazio pode provar inventário/automação, mas **não deve ser tratado como prova suficiente de recuperação de binários reais nem liberar a UI como Storage coberto**.
-
-A primeira prova completa exige ao menos um anexo Production real criado pelo fluxo normal do produto. Não criar fixture sintética em Production para satisfazer esse gate.
-
-Quando existir objeto real, uma prova controlada deve exigir:
-
-- source hash = checksum de negócio;
-- cópia R2 + re-download/re-hash;
-- `automatic_storage=succeeded`;
-- restore isolado do snapshot;
-- `restore_drill coverage=storage=succeeded`;
-- nenhuma mutação/restore em Production.
-
-## Fora do escopo desta primeira PR
-
-- declarar UI Storage saudável/coberto;
-- criar arquivo sintético em Production;
-- alterar fluxo funcional de anexos;
-- implementar delete/lifecycle de anexos;
-- exportação manual por Organization;
+- refazer PostgreSQL;
+- backfillar run histórico;
+- criar fixture em Production;
+- manipular `storage.objects` por DML para restore;
 - trocar provider;
-- alterar RPO/retenção;
-- deploy Vercel;
-- tornar repo private automaticamente.
-
-## Critério de conclusão da próxima slice
-
-A primeira PR da #121 termina quando o tooling/workflow/CI Storage estiverem tecnicamente prontos e fail-closed, com gates operacionais de Production explícitos e documentação consistente.
-
-Se Production continuar vazia, deixar a prova binária real pendente sem falso sucesso de cobertura.
+- mudar RPO/retenção;
+- implementar delete funcional de anexos;
+- exportação manual por Organization;
+- tornar repo private automaticamente;
+- deploy Vercel para esta trilha operacional.
