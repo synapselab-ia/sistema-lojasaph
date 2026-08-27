@@ -1,66 +1,53 @@
 # Next Action — Sistema Lojasaph
 
-## Estado atual
+## Estado de transição
 
-A **Fase 49 / Issue #136 (`REQ-DASH-005`)** está em andamento na branch:
+A **Fase 49 / Issue #136 (`REQ-DASH-005`)** foi implementada e validada no PR #137 (`agent/dashboard-purchases-supplier-history`).
 
-`agent/dashboard-purchases-supplier-history`
+Head de implementação validado: `f050bf5450958a2200e2571f4bc2c98202c22418`.
 
-Baseline confirmada antes da implementação:
+Validação desse head:
 
-- `main=e3583b14280e6919834e53e958d00cf8d3946434`;
-- PR #135 merged;
-- Issue #134 fechada;
-- CI pós-merge `33113803812`: success.
+- CI #496 / `33116796708`: success — database, lint, typecheck, Vitest e production build;
+- Inventory Count Integration #239 / `33116796712`: success;
+- Business Transactions Integration #223 / `33116796785`: success.
 
-Não refazer a Fase 48.
-
-## Slice implementada
-
-A #136 foi delimitada a partir do schema/RLS/dados reais de Production, sem inventar regra de desempenho.
-
-Recorte atual:
-
-- pedidos emitidos por `purchase_orders.ordered_at IS NOT NULL`;
-- recebimentos por `purchase_receipts.received_at`;
-- histórico factual por fornecedor: pedidos, recebimentos e última atividade;
-- Unit/Setor para compras somente por `purchase_orders.stock_location_id`;
-- período local da Organization convertido para limites UTC;
-- histórico de `supplier_prices` por `observed_at`;
-- comparação somente entre as duas observações mais recentes do mesmo `supplier_item_id`;
-- somente `unit_price`, usando `Money`;
-- preço permanece Organization-wide quando Unit/Setor está ativo porque não existe vínculo local explícito no schema;
-- nenhuma soma de quantidades heterogêneas;
-- nenhum score/ranking/SLA/forecast.
-
-Arquivos principais da implementação:
-
-- `src/modules/dashboard/adapters/supabase-purchase-overview-query.ts`;
-- `src/modules/dashboard/adapters/supabase-purchase-overview-query.test.ts`;
-- `src/modules/dashboard/ui/purchase-overview-section.tsx`;
-- `src/app/workspace/(operacao)/page.tsx`;
-- `docs/modules/dashboard.md`.
-
-Nenhuma migration, view, RPC, DDL ou DML Production é necessária.
+O commit documental final posterior não altera runtime. Ainda assim, antes de qualquer nova frente, confirmar os checks do **head final** do PR e o estado real de merge.
 
 ## Próxima ação imediata
 
-1. reconciliar a Issue #136 e a branch `agent/dashboard-purchases-supplier-history` com o estado real do GitHub;
-2. se **não existir PR** para essa branch, abrir um único PR contra `main`; se já existir, usar o existente e não duplicar;
-3. revisar o diff real do PR e confirmar que ele contém apenas a Fase 49;
-4. verificar os checks reais do head:
-   - database/CI aplicável;
-   - lint;
-   - typecheck;
-   - Vitest;
-   - production build;
-   - workflows de integração aplicáveis;
-5. se algum check falhar, corrigir **somente a falha concreta**, sem ampliar a slice;
-6. com CI verde, reconciliar documentação/evidência do PR e seguir o fluxo normal de review/merge da #136;
-7. após merge, confirmar `main`, fechamento da Issue e CI pós-merge;
-8. então promover **`REQ-ITEM-003 — EAN/código de barras/dados fiscais`**, salvo bug, regressão ou nova prioridade explícita.
+1. conferir PR #137, Issue #136, branch `agent/dashboard-purchases-supplier-history` e `main`;
+2. se #137 ainda estiver aberto:
+   - confirmar que os checks do head final estão verdes;
+   - corrigir somente falha real, se houver;
+   - não ampliar a Fase 49;
+   - seguir o fluxo normal de merge com `Closes #136`;
+3. se #137 já estiver mergeado:
+   - não refazer a Fase 49;
+   - confirmar #136 fechada;
+   - confirmar o novo SHA de `main`;
+   - confirmar CI pós-merge da `main`;
+4. com a transição íntegra, promover **`REQ-ITEM-003 — EAN/código de barras/dados fiscais`** como próxima frente independente, salvo bug/regressão/nova prioridade explícita.
 
-## Estado esperado em Production para esta fase
+## Semântica que não deve ser reaberta sem evidência nova
+
+Fase 49:
+
+- pedido histórico por `ordered_at IS NOT NULL`;
+- período de pedidos por `ordered_at`;
+- recebimentos por `received_at`, independentes da data de emissão do pedido;
+- Unit/Setor de compras somente por `purchase_orders.stock_location_id`;
+- `horizonDays` não recorta histórico;
+- histórico factual por fornecedor, sem score/ranking/SLA;
+- preço por `supplier_prices.observed_at`;
+- comparação somente das duas observações mais recentes do mesmo `supplier_item_id`;
+- somente `unit_price` + `Money`;
+- Unit/Setor não são inferidos para `supplier_prices`;
+- ausência de duas observações comparáveis = histórico insuficiente, não falsa variação zero;
+- nenhuma soma de UOMs heterogêneas;
+- nenhuma migration/view/RPC/fixture Production nesta fase.
+
+## Production — estado observado
 
 Inventário read-only de 2026-08-27:
 
@@ -69,15 +56,21 @@ Inventário read-only de 2026-08-27:
 - 2 supplier_prices;
 - 0 purchase_orders;
 - 0 purchase_receipts;
-- 0 pares de `supplier_item_id` com duas observações de preço comparáveis.
-
-Portanto, enquanto esses dados não mudarem pelo fluxo normal do produto, o comportamento correto do Dashboard é:
-
-- compras/recebimentos históricos vazios;
-- observações de preço existentes;
-- estado explícito de **histórico insuficiente para calcular variação**.
+- 0 pares com duas observações comparáveis.
 
 Não criar pedido, recebimento, preço ou fixture em Production para fabricar evidência visual.
+
+## Se `REQ-ITEM-003` for promovido
+
+Antes de implementar:
+
+1. ler novamente `AGENTS.md`, `00-START-HERE.md`, `CURRENT_STATE.md`, `HANDOFF.md`, este arquivo e `WORKFLOW.md`;
+2. reconciliar Issues/PRs/branches/CI reais;
+3. localizar o estado atual de EAN/código de barras/dados fiscais em schema, domínio, UI, importação e documentação;
+4. revisar requisitos e questões abertas relacionadas;
+5. consultar Production somente read-only quando isso ajudar a provar o gap;
+6. definir a menor slice coerente a partir de campos/regras existentes;
+7. não inventar NCM/CEST/regra fiscal, validação comercial ou integração externa sem requisito canônico.
 
 ## #121 — continua ON HOLD
 
@@ -101,17 +94,14 @@ Sem isso, não fazer dispatch manual, fixture Production ou revalidação repeti
 
 Salvo regressão/nova prioridade:
 
-1. concluir `REQ-DASH-005` / #136;
+1. concluir a transição do PR #137 / #136;
 2. `REQ-ITEM-003` — EAN/código de barras/dados fiscais;
 3. requisitos PENDING somente após validação de negócio.
 
 ## Fora de escopo imediato
 
-- reabrir #132/#134 sem regressão;
-- score/ranking/“melhor fornecedor”;
-- SLA, lead time ou atraso médio sem semântica canônica;
-- economia estimada sem baseline comprovado;
-- conversão/comparação automática de embalagem;
+- reabrir #132/#134/#136 sem regressão ou requisito novo;
+- score/ranking/SLA/forecast de fornecedor;
 - valuation/CMV/forecast genérico;
 - POS/vendas ou outras questões PENDING;
 - deploy Vercel rotineiro;
