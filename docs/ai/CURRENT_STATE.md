@@ -4,94 +4,88 @@
 
 ## Estado atual
 
-**Fase 47 / Issue #132 (`REQ-STK-011`) implementada, testada e homologada em Production.**
+**Fase 48 / Issue #134 — `REQ-DASH-004` implementada e validada no PR #135 (`agent/dashboard-stock-overview`).**
 
-O PR #133 contém a integração da Fase 47. Após o merge, não refazer esta slice sem regressão concreta.
+A slice completa a cobertura mínima coerente de Estoque no Dashboard sem criar nova fonte de verdade, migration, view ou RPC.
 
-A Issue #121 — backup/recovery do Supabase Storage — permanece **ON HOLD** aguardando gatilho externo e não bloqueia o roadmap.
+Baseline integrada antes do PR #135:
 
-## Fase 47 — estoque mínimo por local
+- `main=afe1848353beff8b2d09e9b6a3f044b56d28502c` — Fase 47 / PR #133;
+- Issue #132 encerrada;
+- CI pós-merge da Fase 47 `33111519670`: success.
 
-A implementação fechou o gap de estoque mínimo com estas regras:
+## Fase 48 — #134 / PR #135
 
-- política autoritativa em `public.stock_minimum_policies` por `organization_id + stock_item_id + stock_location_id`;
-- `minimum_quantity numeric(18,3)` e `minimum_quantity >= 0`;
-- ausência de política significa `não configurado`;
-- saldo crítico somente quando `inventory_balances.quantity_on_hand < minimum_quantity`;
-- igualdade ao mínimo não gera alerta;
-- `inventory_balances` continua projeção e não recebe configuração;
-- nenhuma compra automática, previsão de demanda ou sugestão de quantidade foi criada.
+Gap confirmado de `REQ-DASH-004`:
 
-Segurança e autorização:
+- transferências em trânsito, inventários em andamento, validades e estoque abaixo do mínimo já estavam cobertos;
+- faltavam saldos atuais, atividade do ledger e perdas como KPIs gerenciais explícitos.
 
-- RLS ativa;
-- leitura reutiliza `private.can_read_stock_location(...)`;
-- INSERT/UPDATE reutilizam `private.has_stock_location_role(...)` para `owner/admin/manager/inventory`;
-- `authenticated` possui SELECT/INSERT/UPDATE e não possui DELETE;
-- `anon` não possui acesso;
-- alterações de configuração são registradas em `audit_logs` por trigger privada sem EXECUTE público.
+Entregue:
 
-Aplicação:
+- `Posições com saldo`: contagem item + local com `quantity_on_hand != 0`, sem somar UOMs heterogêneas;
+- movimentos confirmados do ledger `stock_movements`;
+- perdas/vencimentos confirmados (`loss` / `expiration`);
+- período de movimentos/perdas por `occurred_at`, usando timezone da Organization e limites UTC corretos;
+- sem período: histórico visível completo;
+- horizonte 7/15/30 não recorta movimentos/perdas;
+- Unit/Setor somente por `source_location_id`, `destination_location_id` e `sector_id` explícitos;
+- sessão autenticada + RLS, sem service/admin key;
+- seção específica de Estoque no Dashboard, sem duplicação na seção Operação.
 
-- `/workspace/estoque` permite consultar e manter o mínimo sob sessão autenticada + RLS;
-- o domínio usa `Quantity`, preservando decimal exato;
-- o Dashboard deriva e exibe pendência acionável de estoque abaixo do mínimo;
-- filtros/visibilidade continuam respeitando Organization + Unit + Sector e o local explícito;
-- saldo ausente não é fabricado como zero.
+Validação do head corrigido da implementação:
 
-## CI da Fase 47
+- CI #492 / `33113200782`: database + lint + typecheck + Vitest + production build verdes;
+- Inventory Count Integration #236 / `33113200850`: success;
+- Business Transactions Integration #220 / `33113200888`: success.
 
-Head técnico validado: `ae6dcafab306cb99ed3a57ab1279bff8574d2dbd`.
+Production foi validada apenas read-only, sem fixtures:
 
-- CI `33110315259`: success;
-- Inventory Count Integration `33110315235`: success;
-- Business Transactions Integration `33110315213`: success.
+- 4 posições com saldo;
+- 6 movimentos confirmados;
+- 1 perda/vencimento confirmado;
+- datas de negócio observadas: 2026-08-01 e 2026-08-20.
 
-O CI cobre migrations, RLS/grants, auditoria, isolamento de Organization/escopo, mínimo zero, negativo rejeitado, abaixo/igual/acima do mínimo, política ausente, unit tests, lint, typecheck e production build.
-
-## Supabase Production
-
-Projeto: `fhbvwyttikrbeaanatlr`.
-
-Migrations homologadas:
-
-- `20260827194813_stock_minimum_policies`;
-- `20260827195802_stock_minimum_policy_fk_indexes`.
-
-Validação pós-DDL:
-
-- `stock_minimum_policies`: 0 linhas — nenhum threshold foi inventado para dados existentes;
-- RLS e grants confirmados;
-- trigger de auditoria confirmado;
-- índices compostos de cobertura dos FKs de item e local confirmados;
-- Performance Advisor não reporta mais `unindexed_foreign_keys` para `stock_minimum_policies`;
-- `unused_index` nos índices recém-criados é esperado enquanto a tabela Production estiver vazia.
-
-Nenhum deploy Vercel foi necessário.
+Nenhuma migration Production é necessária nesta fase.
 
 ## Issue #121 — ON HOLD
 
-Não tocar #121 até existir um destes gatilhos:
+`REQ-PLAT-005 — Backup e recuperação off-site do Supabase Storage` continua aberta, mas **não é frente ativa**.
+
+A checagem única exigida pela `NEXT_ACTION` em 2026-08-27 confirmou que ainda não há gatilho:
+
+- 0 buckets Storage;
+- 0 anexos financeiros;
+- 0 runs `automatic_storage`.
+
+Retomar somente quando ocorrer um destes eventos:
 
 1. primeira execução **agendada** do `Production Storage Backup` após o armamento — próxima janela esperada: 2026-08-28 06:47 UTC / 03:47 America/Sao_Paulo;
-2. primeiro anexo Production legítimo, permitindo prova binária real;
+2. primeiro anexo Production legítimo criado pelo fluxo normal;
 3. falha/incidente/regressão real do pipeline Storage.
 
-Enquanto não houver gatilho:
+Até lá: não fazer `workflow_dispatch` artificial, não criar fixture Production e não repetir a mesma validação sem evidência nova.
 
-- não usar `workflow_dispatch` só para antecipar prova;
-- não criar bucket/anexo sintético em Production;
-- não revalidar repetidamente ausência de run;
-- não refazer tooling, S3, R2, guardrails ou PostgreSQL.
+A Issue #75 permanece umbrella de proteção de dados e não é frente ativa.
 
-## Próxima frente prevista
+## Ordem de trabalho
 
-Salvo bug/regressão ou prioridade explícita, a próxima frente independente é **`REQ-DASH-004` — evolução de Dashboard/relatórios de estoque**.
+Após integração do PR #135 / encerramento da #134, salvo bug, regressão ou nova prioridade explícita:
 
-Ordem planejada depois da Fase 47:
+1. `REQ-DASH-005` — fornecedores/compras, usando histórico e relações já persistidos;
+2. `REQ-ITEM-003` — EAN/código de barras/dados fiscais;
+3. requisitos PENDING somente após decisão de negócio real.
 
-1. `REQ-DASH-004` — estoque;
-2. `REQ-DASH-005` — compras/fornecedores e histórico/variação;
-3. `REQ-ITEM-003` — EAN/código de barras e dados fiscais.
+A #121 pode ser retomada quando seu gatilho existir, mas simples espera não bloqueia essa ordem.
 
-Ver `docs/ai/NEXT_ACTION.md` antes de promover a próxima Issue.
+## Não fazer
+
+- não reabrir Fase 47/#132 sem regressão concreta;
+- não tocar #121 sem gatilho real;
+- não criar dados Production para fabricar evidência;
+- não somar quantidades de UOMs diferentes em um saldo total;
+- não criar histórico artificial a partir de snapshots atuais;
+- não antecipar previsão de demanda/IA ou compra automática;
+- não misturar `REQ-DASH-005` / `REQ-ITEM-003` nesta slice concluída;
+- não fazer deploy Vercel rotineiro;
+- não tornar o repositório private automaticamente.
