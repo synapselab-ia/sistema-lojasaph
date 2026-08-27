@@ -88,6 +88,7 @@ validate_destination_config() {
     STORAGE_DEST_S3_SECRET_ACCESS_KEY; do
     require_env "${name}"
   done
+
   validate_dest_endpoint
   if [[ "${BACKUP_S3_BUCKET}" == */* || "${BACKUP_S3_BUCKET}" =~ [[:space:]] ]]; then
     echo "::error::BACKUP_S3_BUCKET must be a bucket name, not a path." >&2
@@ -220,15 +221,27 @@ download_source_object() {
   local bucket="$2"
   local key="$3"
   local target="${material_root}/${bucket}/${key}"
-  install -d -m 700 "$(dirname "${target}")"
+  local staging="${target}.container-download"
   local mount_root
+
+  install -d -m 700 "$(dirname "${target}")"
+  rm -f "${target}" "${staging}"
   mount_root="$(cd "${material_root}" && pwd -P)"
 
+  # The AWS CLI container writes mounted files as root. Download to a staging
+  # path, then materialize a runner-owned 0600 copy inside the already-private
+  # runtime tree. This keeps Production and CI behavior identical.
   aws_source_mount_rw "${mount_root}" \
-    s3 cp "s3://${bucket}/${key}" "/data/${bucket}/${key}" \
+    s3 cp "s3://${bucket}/${key}" "/data/${bucket}/${key}.container-download" \
     --endpoint-url "${STORAGE_SOURCE_S3_ENDPOINT}" \
     --only-show-errors
-  chmod 600 "${target}"
+
+  if [[ ! -f "${staging}" ]]; then
+    echo "::error::Supabase Storage download did not materialize the expected object." >&2
+    exit 1
+  fi
+  install -m 600 "${staging}" "${target}"
+  rm -f "${staging}"
 }
 
 upload_dest_verified() {
@@ -259,7 +272,8 @@ upload_dest_verified() {
     | sha256sum \
     | awk '{print $1}'
   )"
-  if [[ "${local_hash}" != "${remote_hash}" ]]; then
+
+  if [[ "${remote_hash}" != "${local_hash}" ]]; then
     echo "::error::Off-site Storage object re-hash failed." >&2
     exit 1
   fi
