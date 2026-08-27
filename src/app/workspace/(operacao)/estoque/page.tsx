@@ -2,20 +2,38 @@
 
 import { FormEvent, useMemo, useState } from "react";
 import { EntityId } from "@/domain/common/entity-id";
+import { isBelowStockMinimum } from "@/modules/inventory/domain/stock-minimum";
 import { useRuntimeWorkspace } from "@/modules/master-data/ui/runtime-workspace-provider";
 
 export default function RuntimeStockPage() {
   const workspace = useRuntimeWorkspace();
   const [entry, setEntry] = useState({ stockItemId: "", stockLocationId: "", quantity: "", unitCost: "", batchCode: "", expirationDate: "", notes: "" });
   const [withdrawal, setWithdrawal] = useState({ stockItemId: "", stockLocationId: "", sectorId: "", quantity: "", preferredBatchId: "", notes: "" });
+  const [minimum, setMinimum] = useState({ stockItemId: "", stockLocationId: "", quantity: "" });
   const [message, setMessage] = useState<string | null>(null);
-  const [savingOperation, setSavingOperation] = useState<"entry" | "withdrawal" | null>(null);
+  const [savingOperation, setSavingOperation] = useState<"entry" | "withdrawal" | "minimum" | null>(null);
 
   const itemNames = useMemo(() => new Map(workspace.stockItems.map((item) => [item.id, item.name])), [workspace.stockItems]);
   const itemUnits = useMemo(() => new Map(workspace.stockItems.map((item) => [item.id, item.baseUnitCode])), [workspace.stockItems]);
   const locationNames = useMemo(() => new Map(workspace.stockLocations.map((location) => [location.id, `${location.unitName} — ${location.name}`])), [workspace.stockLocations]);
+  const activeMinimumByKey = useMemo(() => new Map(
+    workspace.stockMinimumPolicies
+      .filter((policy) => policy.active)
+      .map((policy) => [`${policy.stockLocationId}:${policy.stockItemId}`, policy]),
+  ), [workspace.stockMinimumPolicies]);
+  const selectedMinimumPolicy = activeMinimumByKey.get(`${minimum.stockLocationId}:${minimum.stockItemId}`);
   const selectedWithdrawalItem = workspace.stockItems.find((item) => item.id === withdrawal.stockItemId);
   const withdrawalBatches = workspace.batches.filter((batch) => batch.stockItemId === withdrawal.stockItemId && batch.stockLocationId === withdrawal.stockLocationId);
+
+  function selectMinimumItem(stockItemId: string) {
+    const policy = activeMinimumByKey.get(`${minimum.stockLocationId}:${stockItemId}`);
+    setMinimum({ ...minimum, stockItemId, quantity: policy?.minimumQuantity.toDecimal() ?? "" });
+  }
+
+  function selectMinimumLocation(stockLocationId: string) {
+    const policy = activeMinimumByKey.get(`${stockLocationId}:${minimum.stockItemId}`);
+    setMinimum({ ...minimum, stockLocationId, quantity: policy?.minimumQuantity.toDecimal() ?? "" });
+  }
 
   async function submitEntry(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -62,21 +80,73 @@ export default function RuntimeStockPage() {
     }
   }
 
+  async function submitMinimum(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSavingOperation("minimum");
+    setMessage(null);
+    try {
+      await workspace.saveStockMinimum({
+        stockItemId: minimum.stockItemId as EntityId,
+        stockLocationId: minimum.stockLocationId as EntityId,
+        minimumQuantity: minimum.quantity,
+      });
+      setMessage("Estoque mínimo salvo para o produto e local selecionados.");
+    } catch (error) {
+      setMessage(workspace.errorMessage(error));
+    } finally {
+      setSavingOperation(null);
+    }
+  }
+
+  async function deactivateMinimum() {
+    if (!selectedMinimumPolicy) return;
+    setSavingOperation("minimum");
+    setMessage(null);
+    try {
+      await workspace.deactivateStockMinimum({
+        stockItemId: selectedMinimumPolicy.stockItemId,
+        stockLocationId: selectedMinimumPolicy.stockLocationId,
+      });
+      setMinimum({ ...minimum, quantity: "" });
+      setMessage("Estoque mínimo desativado. A combinação deixa de gerar alerta até nova configuração.");
+    } catch (error) {
+      setMessage(workspace.errorMessage(error));
+    } finally {
+      setSavingOperation(null);
+    }
+  }
+
   return (
     <div className="mx-auto max-w-7xl space-y-8">
       <header>
         <p className="text-sm font-medium text-emerald-700">Ledger persistente</p>
         <h1 className="mt-1 text-3xl font-semibold tracking-tight">Estoque</h1>
-        <p className="mt-3 max-w-3xl text-sm leading-6 text-neutral-600">O saldo é somente leitura. Entradas e retiradas usam RPCs PostgreSQL transacionais e idempotentes; não há edição direta das tabelas do ledger.</p>
+        <p className="mt-3 max-w-3xl text-sm leading-6 text-neutral-600">O saldo é somente leitura. Entradas e retiradas usam RPCs PostgreSQL transacionais e idempotentes; o estoque mínimo é configuração separada por produto e local.</p>
       </header>
       {message && <p className="rounded-xl border border-neutral-200 bg-white px-4 py-3 text-sm shadow-sm">{message}</p>}
 
       <section>
-        <div className="mb-3 flex items-end justify-between"><div><h2 className="text-xl font-semibold">Saldos atuais</h2><p className="text-sm text-neutral-500">Custo médio por produto e local.</p></div><span className="text-xs text-neutral-500">{workspace.balances.length} combinações</span></div>
+        <div className="mb-3 flex items-end justify-between"><div><h2 className="text-xl font-semibold">Saldos atuais</h2><p className="text-sm text-neutral-500">Custo médio e política de mínimo por produto e local.</p></div><span className="text-xs text-neutral-500">{workspace.balances.length} combinações</span></div>
         <div className="overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm">
-          <div className="overflow-x-auto"><table className="w-full min-w-[720px] text-left text-sm"><thead className="bg-neutral-50 text-neutral-600"><tr><th className="px-4 py-3 font-medium">Produto</th><th className="px-4 py-3 font-medium">Local</th><th className="px-4 py-3 font-medium">Saldo</th><th className="px-4 py-3 font-medium">Custo médio</th></tr></thead><tbody className="divide-y divide-neutral-100">{workspace.balances.map((balance) => <tr key={`${balance.stockLocationId}:${balance.stockItemId}`}><td className="px-4 py-3 font-medium">{itemNames.get(balance.stockItemId) ?? "Item desconhecido"}</td><td className="px-4 py-3 text-neutral-600">{locationNames.get(balance.stockLocationId) ?? "Local indisponível"}</td><td className="px-4 py-3 font-semibold">{balance.quantity.toDecimal()} {itemUnits.get(balance.stockItemId) ?? ""}</td><td className="px-4 py-3">R$ {balance.averageCost.toDecimal().replace(".", ",")}</td></tr>)}{workspace.balances.length === 0 && <tr><td colSpan={4} className="px-4 py-8 text-center text-neutral-500">Ainda não há saldos nesta organização.</td></tr>}</tbody></table></div>
+          <div className="overflow-x-auto"><table className="w-full min-w-[920px] text-left text-sm"><thead className="bg-neutral-50 text-neutral-600"><tr><th className="px-4 py-3 font-medium">Produto</th><th className="px-4 py-3 font-medium">Local</th><th className="px-4 py-3 font-medium">Saldo</th><th className="px-4 py-3 font-medium">Estoque mínimo</th><th className="px-4 py-3 font-medium">Situação</th><th className="px-4 py-3 font-medium">Custo médio</th></tr></thead><tbody className="divide-y divide-neutral-100">{workspace.balances.map((balance) => {
+            const policy = activeMinimumByKey.get(`${balance.stockLocationId}:${balance.stockItemId}`);
+            const belowMinimum = isBelowStockMinimum(balance.quantity, policy);
+            return <tr key={`${balance.stockLocationId}:${balance.stockItemId}`}><td className="px-4 py-3 font-medium">{itemNames.get(balance.stockItemId) ?? "Item desconhecido"}</td><td className="px-4 py-3 text-neutral-600">{locationNames.get(balance.stockLocationId) ?? "Local indisponível"}</td><td className="px-4 py-3 font-semibold">{balance.quantity.toDecimal()} {itemUnits.get(balance.stockItemId) ?? ""}</td><td className="px-4 py-3">{policy ? `${policy.minimumQuantity.toDecimal()} ${itemUnits.get(balance.stockItemId) ?? ""}` : <span className="text-neutral-400">Não configurado</span>}</td><td className="px-4 py-3">{belowMinimum ? <span className="rounded-full bg-red-100 px-2.5 py-1 text-xs font-semibold text-red-800">Abaixo do mínimo</span> : policy ? <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-800">Dentro do mínimo</span> : <span className="text-neutral-400">—</span>}</td><td className="px-4 py-3">R$ {balance.averageCost.toDecimal().replace(".", ",")}</td></tr>;
+          })}{workspace.balances.length === 0 && <tr><td colSpan={6} className="px-4 py-8 text-center text-neutral-500">Ainda não há saldos nesta organização.</td></tr>}</tbody></table></div>
         </div>
       </section>
+
+      {workspace.permissions.manageStockMinimum ? (
+        <section>
+          <form onSubmit={submitMinimum} className="grid gap-4 rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm lg:grid-cols-[1fr_1fr_0.7fr_auto] lg:items-end">
+            <div className="lg:col-span-4"><h2 className="text-lg font-semibold">Estoque mínimo por local</h2><p className="mt-1 text-xs text-neutral-500">Ausência de configuração não gera alerta. Igualdade ao mínimo também não gera alerta; somente saldo estritamente menor.</p></div>
+            <label className="block text-sm font-medium">Produto<select required value={minimum.stockItemId} onChange={(event) => selectMinimumItem(event.target.value)} className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 font-normal"><option value="">Selecione</option>{workspace.stockItems.filter((item) => item.active).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+            <label className="block text-sm font-medium">Local<select required value={minimum.stockLocationId} onChange={(event) => selectMinimumLocation(event.target.value)} className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 font-normal"><option value="">Selecione</option>{workspace.stockLocations.map((location) => <option key={location.id} value={location.id}>{location.unitName} — {location.name}</option>)}</select></label>
+            <label className="block text-sm font-medium">Quantidade mínima<input required inputMode="decimal" value={minimum.quantity} onChange={(event) => setMinimum({ ...minimum, quantity: event.target.value })} className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 font-normal" /></label>
+            <div className="flex gap-2"><button disabled={savingOperation !== null || !minimum.stockItemId || !minimum.stockLocationId || minimum.quantity === ""} type="submit" className="rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{savingOperation === "minimum" ? "Salvando..." : selectedMinimumPolicy ? "Atualizar mínimo" : "Definir mínimo"}</button>{selectedMinimumPolicy && <button disabled={savingOperation !== null} type="button" onClick={() => void deactivateMinimum()} className="rounded-lg border border-neutral-300 px-4 py-2.5 text-sm font-semibold text-neutral-700 disabled:opacity-50">Desativar</button>}</div>
+          </form>
+        </section>
+      ) : <aside className="rounded-2xl border border-neutral-200 bg-white p-5 text-sm leading-6 text-neutral-600 shadow-sm"><h2 className="font-semibold text-neutral-900">Estoque mínimo somente leitura</h2><p className="mt-1">Seu perfil pode consultar os mínimos visíveis, mas o banco exige papel e escopo de estoque autorizado para alterar a configuração.</p></aside>}
 
       <section className="grid gap-6 xl:grid-cols-2">
         {workspace.permissions.recordStockEntry ? (
@@ -106,11 +176,6 @@ export default function RuntimeStockPage() {
           </form>
         ) : <aside className="rounded-2xl border border-neutral-200 bg-white p-5 text-sm leading-6 text-neutral-600 shadow-sm"><h2 className="font-semibold text-neutral-900">Retirada não autorizada</h2><p className="mt-1">Seu perfil pode consultar o estoque, mas não possui papel permitido pelo RPC de retirada.</p></aside>}
       </section>
-
-      <aside className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm leading-6 text-amber-950">
-        <h2 className="font-semibold">Próximos movimentos</h2>
-        <p className="mt-1">Transferência, recebimento e inventário continuam fora do workspace real até receberem comandos PostgreSQL transacionais próprios. A demonstração in-memory continua disponível para esses fluxos.</p>
-      </aside>
     </div>
   );
 }

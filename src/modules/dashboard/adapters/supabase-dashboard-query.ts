@@ -1,6 +1,7 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import { EntityId } from "@/domain/common/entity-id";
 import { Money } from "@/domain/common/money";
+import { Quantity } from "@/domain/common/quantity";
 import {
   DashboardCashRow,
   DashboardExpiryRow,
@@ -8,6 +9,7 @@ import {
   DashboardInventoryCountRow,
   DashboardPurchaseRow,
   DashboardRawData,
+  DashboardStockMinimumRow,
   DashboardTransferRow,
   localIsoDate,
   validateDashboardPeriod,
@@ -83,6 +85,17 @@ interface ExpiryRow {
   id: string;
   stock_location_id: string;
   expiration_date: string;
+}
+interface StockMinimumPolicyRow {
+  id: string;
+  stock_item_id: string;
+  stock_location_id: string;
+  minimum_quantity: number | string;
+}
+interface InventoryBalanceRow {
+  stock_item_id: string;
+  stock_location_id: string;
+  quantity_on_hand: number | string;
 }
 
 function queryError(scope: string, message: string): Error {
@@ -195,9 +208,6 @@ export class SupabaseDashboardQuery {
       financeQuery = financeQuery.gte("due_date", input.dateFrom).lte("due_date", input.dateTo);
     }
 
-    // Cash intentionally ignores sectorId. Open sessions are current-state and
-    // loaded independently; closed sessions use business_date so an explicit
-    // period can extend beyond the normal horizon without losing rows.
     const cashOpenPromise = registerIds.length === 0
       ? Promise.resolve({ data: [] as unknown[], error: null })
       : this.client
@@ -220,9 +230,6 @@ export class SupabaseDashboardQuery {
           .lte("business_date", cashWindowEnd)
           .order("business_date", { ascending: false });
 
-    // Purchase orders stay unbounded by period here because pendingCount is a
-    // current-state KPI. The pure summary applies expected_delivery_date only to
-    // the delivery metrics.
     const purchasesPromise = scopedLocationIds.length === 0
       ? Promise.resolve({ data: [] as unknown[], error: null })
       : this.client
@@ -233,8 +240,6 @@ export class SupabaseDashboardQuery {
           .in("status", ["ordered", "partially_received"])
           .order("expected_delivery_date", { ascending: true, nullsFirst: false });
 
-    // Transfers and inventory counts are current-state snapshots, so they are
-    // intentionally not date-filtered.
     const transfersPromise = (input.unitId || input.sectorId) && scopedLocationIds.length === 0
       ? Promise.resolve({ data: [] as unknown[], error: null })
       : this.client
@@ -265,6 +270,23 @@ export class SupabaseDashboardQuery {
           .lte("expiration_date", expiryUpperBound)
           .order("expiration_date");
 
+    const stockMinimumPoliciesPromise = scopedLocationIds.length === 0
+      ? Promise.resolve({ data: [] as unknown[], error: null })
+      : this.client
+          .from("stock_minimum_policies")
+          .select("id, stock_item_id, stock_location_id, minimum_quantity")
+          .eq("organization_id", organizationId)
+          .in("stock_location_id", scopedLocationIds)
+          .eq("active", true);
+
+    const inventoryBalancesPromise = scopedLocationIds.length === 0
+      ? Promise.resolve({ data: [] as unknown[], error: null })
+      : this.client
+          .from("inventory_balances")
+          .select("stock_item_id, stock_location_id, quantity_on_hand")
+          .eq("organization_id", organizationId)
+          .in("stock_location_id", scopedLocationIds);
+
     const [
       financeResult,
       cashOpenResult,
@@ -273,6 +295,8 @@ export class SupabaseDashboardQuery {
       transfersResult,
       countsResult,
       expiriesResult,
+      stockMinimumPoliciesResult,
+      inventoryBalancesResult,
     ] = await Promise.all([
       financeQuery,
       cashOpenPromise,
@@ -281,6 +305,8 @@ export class SupabaseDashboardQuery {
       transfersPromise,
       countsPromise,
       expiriesPromise,
+      stockMinimumPoliciesPromise,
+      inventoryBalancesPromise,
     ]);
 
     if (financeResult.error) throw queryError("o financeiro", financeResult.error.message);
@@ -290,6 +316,8 @@ export class SupabaseDashboardQuery {
     if (transfersResult.error) throw queryError("as transferências", transfersResult.error.message);
     if (countsResult.error) throw queryError("os inventários", countsResult.error.message);
     if (expiriesResult.error) throw queryError("as validades", expiriesResult.error.message);
+    if (stockMinimumPoliciesResult.error) throw queryError("os estoques mínimos", stockMinimumPoliciesResult.error.message);
+    if (inventoryBalancesResult.error) throw queryError("os saldos para estoque mínimo", inventoryBalancesResult.error.message);
 
     const finance: DashboardFinanceRow[] = ((financeResult.data ?? []) as FinanceRow[]).map((row) => Object.freeze({
       id: row.installment_id as EntityId,
@@ -373,6 +401,25 @@ export class SupabaseDashboardQuery {
       })];
     });
 
+    const balanceByKey = new Map(
+      ((inventoryBalancesResult.data ?? []) as InventoryBalanceRow[]).map((row) => [
+        `${row.stock_location_id}:${row.stock_item_id}`,
+        row,
+      ]),
+    );
+    const stockMinimums: DashboardStockMinimumRow[] = ((stockMinimumPoliciesResult.data ?? []) as StockMinimumPolicyRow[]).flatMap((row) => {
+      const location = locationById.get(row.stock_location_id);
+      const balance = balanceByKey.get(`${row.stock_location_id}:${row.stock_item_id}`);
+      if (!location || !balance) return [];
+      return [Object.freeze({
+        id: row.id as EntityId,
+        unitId: location.unit_id as EntityId,
+        sectorId: location.sector_id ? location.sector_id as EntityId : undefined,
+        quantityOnHand: Quantity.fromDecimal(String(balance.quantity_on_hand)),
+        minimumQuantity: Quantity.fromDecimal(String(row.minimum_quantity)),
+      })];
+    });
+
     return Object.freeze({
       timeZone: organization.timezone,
       today,
@@ -385,6 +432,7 @@ export class SupabaseDashboardQuery {
         transfers: Object.freeze(transfers),
         inventoryCounts: Object.freeze(inventoryCounts),
         expiries: Object.freeze(expiries),
+        stockMinimums: Object.freeze(stockMinimums),
       }),
     });
   }

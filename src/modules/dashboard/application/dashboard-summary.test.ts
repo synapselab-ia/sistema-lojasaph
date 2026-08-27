@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Money } from "@/domain/common/money";
+import { Quantity } from "@/domain/common/quantity";
 import { EntityId } from "@/domain/common/entity-id";
 import {
   buildDashboardSummary,
@@ -50,6 +51,11 @@ function demoData(): DashboardRawData {
       { id: id(51), unitId: unitA, expirationDate: "2026-08-21" },
       { id: id(52), unitId: unitB, sectorId: sectorB, expirationDate: "2026-08-17" },
     ],
+    stockMinimums: [
+      { id: id(60), unitId: unitA, sectorId: sectorA, quantityOnHand: Quantity.fromDecimal("4"), minimumQuantity: Quantity.fromDecimal("5") },
+      { id: id(61), unitId: unitA, sectorId: sectorA2, quantityOnHand: Quantity.fromDecimal("5"), minimumQuantity: Quantity.fromDecimal("5") },
+      { id: id(62), unitId: unitB, sectorId: sectorB, quantityOnHand: Quantity.fromDecimal("1"), minimumQuantity: Quantity.fromDecimal("3") },
+    ],
   };
 }
 
@@ -69,10 +75,11 @@ describe("dashboard summary", () => {
     expect(summary.finance.dueSoonCount).toBe(1);
     expect(summary.cash).toEqual({ openCount: 1, discrepancyCount: 1, recentClosedCount: 2 });
     expect(summary.purchases).toEqual({ pendingCount: 3, lateDeliveryCount: 1, deliverySoonCount: 1 });
-    expect(summary.stock).toEqual({ transfersInTransitCount: 1, openInventoryCount: 1, expiredBatchCount: 1, expiringSoonCount: 1 });
+    expect(summary.stock).toEqual({ transfersInTransitCount: 1, openInventoryCount: 1, expiredBatchCount: 1, expiringSoonCount: 1, belowMinimumCount: 1 });
     expect(summary.attention.map((item) => item.key)).toContain("finance-overdue");
     expect(summary.attention.map((item) => item.key)).toContain("cash-discrepancy");
     expect(summary.attention.map((item) => item.key)).toContain("expiry-expired");
+    expect(summary.attention.map((item) => item.key)).toContain("stock-below-minimum");
   });
 
   it("filters only records explicitly related to the selected Sector", () => {
@@ -90,11 +97,12 @@ describe("dashboard summary", () => {
     expect(summary.finance.dueTodayCount).toBe(0);
     expect(summary.finance.dueSoonCount).toBe(0);
     expect(summary.purchases).toEqual({ pendingCount: 2, lateDeliveryCount: 1, deliverySoonCount: 0 });
-    expect(summary.stock).toEqual({ transfersInTransitCount: 1, openInventoryCount: 1, expiredBatchCount: 1, expiringSoonCount: 0 });
+    expect(summary.stock).toEqual({ transfersInTransitCount: 1, openInventoryCount: 1, expiredBatchCount: 1, expiringSoonCount: 0, belowMinimumCount: 1 });
 
     expect(summary.attention.map((item) => item.key)).not.toContain("finance-soon");
     expect(summary.attention.map((item) => item.key)).not.toContain("purchase-soon");
     expect(summary.attention.map((item) => item.key)).not.toContain("expiry-soon");
+    expect(summary.attention.map((item) => item.key)).toContain("stock-below-minimum");
   });
 
   it("keeps Cash at Unit scope when a Sector filter is active", () => {
@@ -143,7 +151,27 @@ describe("dashboard summary", () => {
     expect(summary.finance.dueTodayCount).toBe(0);
     expect(summary.cash).toEqual({ openCount: 1, discrepancyCount: 1, recentClosedCount: 1 });
     expect(summary.purchases).toEqual({ pendingCount: 3, lateDeliveryCount: 1, deliverySoonCount: 0 });
-    expect(summary.stock).toEqual({ transfersInTransitCount: 1, openInventoryCount: 1, expiredBatchCount: 1, expiringSoonCount: 0 });
+    expect(summary.stock).toEqual({ transfersInTransitCount: 1, openInventoryCount: 1, expiredBatchCount: 1, expiringSoonCount: 0, belowMinimumCount: 1 });
+  });
+
+  it("keeps stock minimum as current state, independent from period and horizon", () => {
+    const one = buildDashboardSummary(demoData(), {
+      today: "2026-08-18",
+      horizonDays: 1,
+      unitId: unitA,
+      dateFrom: "2020-01-01",
+      dateTo: "2020-01-01",
+    });
+    const thirty = buildDashboardSummary(demoData(), {
+      today: "2026-08-18",
+      horizonDays: 30,
+      unitId: unitA,
+      dateFrom: "2030-01-01",
+      dateTo: "2030-01-01",
+    });
+
+    expect(one.stock.belowMinimumCount).toBe(1);
+    expect(thirty.stock.belowMinimumCount).toBe(1);
   });
 
   it("does not manufacture a delivery date for pending purchases without one", () => {

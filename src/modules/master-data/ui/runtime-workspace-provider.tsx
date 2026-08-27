@@ -22,9 +22,11 @@ import {
   RuntimeStockLossReason,
   SupabaseStockLossGateway,
 } from "@/modules/inventory/adapters/supabase-stock-loss-gateway";
+import { SupabaseStockMinimumPolicyGateway } from "@/modules/inventory/adapters/supabase-stock-minimum-policy-gateway";
 import { SupabaseStockTransferGateway } from "@/modules/inventory/adapters/supabase-stock-transfer-gateway";
 import { SupabaseStockWithdrawalGateway } from "@/modules/inventory/adapters/supabase-stock-withdrawal-gateway";
 import { InventoryBalance, InventoryBatch } from "@/modules/inventory/domain/inventory";
+import { StockMinimumPolicy } from "@/modules/inventory/domain/stock-minimum";
 import { SupabaseSupplierRepository } from "@/modules/suppliers/adapters/supabase-supplier-repository";
 import {
   Supplier,
@@ -76,6 +78,7 @@ export interface RuntimeWorkspaceInitialData extends WorkspaceReferenceData {
   readonly employees: readonly Employee[];
   readonly stockLossReasons: readonly RuntimeStockLossReason[];
   readonly stockLosses: readonly RuntimeStockLoss[];
+  readonly stockMinimumPolicies: readonly StockMinimumPolicy[];
 }
 
 interface RuntimePermissions {
@@ -87,6 +90,7 @@ interface RuntimePermissions {
   readonly recordStockWithdrawal: boolean;
   readonly recordStockLoss: boolean;
   readonly manageStockTransfers: boolean;
+  readonly manageStockMinimum: boolean;
   readonly managePurchases: boolean;
   readonly receivePurchases: boolean;
   readonly manageFinance: boolean;
@@ -111,6 +115,7 @@ interface RuntimeWorkspaceValue {
   readonly transfers: readonly RuntimeStockTransfer[];
   readonly stockLossReasons: readonly RuntimeStockLossReason[];
   readonly stockLosses: readonly RuntimeStockLoss[];
+  readonly stockMinimumPolicies: readonly StockMinimumPolicy[];
   readonly permissions: RuntimePermissions;
   createStockItem(input: StockItemDraft): Promise<void>;
   updateStockItem(id: EntityId, input: StockItemDraft): Promise<void>;
@@ -155,6 +160,15 @@ interface RuntimeWorkspaceValue {
     transferId: EntityId;
     quantity?: string;
   }): Promise<void>;
+  saveStockMinimum(input: {
+    stockItemId: EntityId;
+    stockLocationId: EntityId;
+    minimumQuantity: string;
+  }): Promise<void>;
+  deactivateStockMinimum(input: {
+    stockItemId: EntityId;
+    stockLocationId: EntityId;
+  }): Promise<void>;
   errorMessage(error: unknown): string;
 }
 
@@ -191,12 +205,14 @@ export function RuntimeWorkspaceProvider({
   const stockWithdrawalGateway = useMemo(() => new SupabaseStockWithdrawalGateway(client), [client]);
   const stockLossGateway = useMemo(() => new SupabaseStockLossGateway(client), [client]);
   const stockTransferGateway = useMemo(() => new SupabaseStockTransferGateway(client), [client]);
+  const stockMinimumGateway = useMemo(() => new SupabaseStockMinimumPolicyGateway(client), [client]);
 
   const [stockItems, setStockItems] = useState<readonly StockItem[]>(initialData.stockItems);
   const [suppliers, setSuppliers] = useState<readonly Supplier[]>(initialData.suppliers);
   const [employees, setEmployees] = useState<readonly Employee[]>(initialData.employees);
   const [stockLossReasons, setStockLossReasons] = useState<readonly RuntimeStockLossReason[]>(initialData.stockLossReasons);
   const [stockLosses, setStockLosses] = useState<readonly RuntimeStockLoss[]>(initialData.stockLosses);
+  const [stockMinimumPolicies, setStockMinimumPolicies] = useState<readonly StockMinimumPolicy[]>(initialData.stockMinimumPolicies);
   const [referenceData, setReferenceData] = useState<WorkspaceReferenceData>(initialData);
 
   const permissions: RuntimePermissions = {
@@ -208,6 +224,7 @@ export function RuntimeWorkspaceProvider({
     recordStockWithdrawal: can(roles, ["owner", "admin", "manager", "inventory"]),
     recordStockLoss: can(roles, ["owner", "admin", "manager", "inventory"]),
     manageStockTransfers: can(roles, ["owner", "admin", "manager", "inventory"]),
+    manageStockMinimum: can(roles, ["owner", "admin", "manager", "inventory"]),
     managePurchases: can(roles, ["owner", "admin", "manager", "purchases"]),
     receivePurchases: can(roles, ["owner", "admin", "manager", "purchases", "inventory"]),
     manageFinance: can(roles, ["owner", "admin", "manager", "finance"]),
@@ -217,13 +234,14 @@ export function RuntimeWorkspaceProvider({
   };
 
   async function refresh() {
-    const [nextItems, nextSuppliers, nextEmployees, nextReferences, nextLossReasons, nextLosses] = await Promise.all([
+    const [nextItems, nextSuppliers, nextEmployees, nextReferences, nextLossReasons, nextLosses, nextStockMinimumPolicies] = await Promise.all([
       stockItemsRepository.listByOrganization(organizationId),
       suppliersRepository.listByOrganization(organizationId),
       employeeService.listByOrganization(organizationId),
       loadWorkspaceReferenceData(client, organizationId),
       stockLossGateway.listReasons(organizationId),
       stockLossGateway.listRecent(organizationId),
+      stockMinimumGateway.listByOrganization(organizationId),
     ]);
     setStockItems(nextItems);
     setSuppliers(nextSuppliers);
@@ -231,6 +249,7 @@ export function RuntimeWorkspaceProvider({
     setReferenceData(nextReferences);
     setStockLossReasons(nextLossReasons);
     setStockLosses(nextLosses);
+    setStockMinimumPolicies(nextStockMinimumPolicies);
   }
 
   async function createItem(input: StockItemDraft) {
@@ -364,6 +383,25 @@ export function RuntimeWorkspaceProvider({
     await refresh();
   }
 
+  async function saveStockMinimum(input: {
+    stockItemId: EntityId;
+    stockLocationId: EntityId;
+    minimumQuantity: string;
+  }) {
+    if (!permissions.manageStockMinimum) throw new DomainError("INSUFFICIENT_ROLE", "Seu perfil não pode configurar estoque mínimo.");
+    await stockMinimumGateway.save({ organizationId, ...input });
+    await refresh();
+  }
+
+  async function deactivateStockMinimum(input: {
+    stockItemId: EntityId;
+    stockLocationId: EntityId;
+  }) {
+    if (!permissions.manageStockMinimum) throw new DomainError("INSUFFICIENT_ROLE", "Seu perfil não pode configurar estoque mínimo.");
+    await stockMinimumGateway.deactivate({ organizationId, ...input });
+    await refresh();
+  }
+
   const value: RuntimeWorkspaceValue = {
     organizationId,
     organizationName,
@@ -380,6 +418,7 @@ export function RuntimeWorkspaceProvider({
     transfers: referenceData.transfers,
     stockLossReasons,
     stockLosses,
+    stockMinimumPolicies,
     permissions,
     createStockItem: createItem,
     updateStockItem: editItem,
@@ -392,6 +431,8 @@ export function RuntimeWorkspaceProvider({
     recordStockLoss,
     dispatchTransfer,
     receiveTransfer,
+    saveStockMinimum,
+    deactivateStockMinimum,
     errorMessage(error: unknown) {
       return toPublicError(error).message;
     },
