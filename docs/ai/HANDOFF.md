@@ -7,46 +7,32 @@
 Não refazer sem regressão concreta:
 
 - ADR-009;
-- R2/lifecycle/lock do PostgreSQL;
-- backup PostgreSQL Production + hard cap 300 MB;
-- persistência autoritativa/RLS;
-- UI read-only `Proteção dos dados`;
-- restore do bundle PostgreSQL Production real;
-- `restore_drill coverage=postgres`;
+- backup/restore PostgreSQL Production já comprovado;
+- persistência autoritativa/RLS e UI read-only `Proteção dos dados`;
 - tooling/manifesto/restore Storage integrado no PR #126;
-- guardrails Production Storage integrados no PR #128.
+- guardrails Production Storage integrados no PR #128;
+- baseline S3 Production versionada no PR #130.
 
 ## Baseline viva
 
-- referência funcional integrada antes desta mudança: PR #128, squash `27b0b3914a246fb370c9dd5f8ea06f64baa86044`;
-- handoff #129 integrado; `main=c64253571e896c26c787fe5c42c4a88b9597d760` no início desta execução;
+Antes desta atualização operacional:
+
+- `main=96ffbf6553dfd7cb3889531387995f35035a8d15` (#130);
 - #75 aberta;
 - #121 aberta;
+- nenhum PR aberto;
 - repo temporariamente `public`; não alterar automaticamente.
 
-Sempre consultar a `main` real. SHA posterior exclusivamente documental não significa nova frente e não justifica outro PR só para sincronizar o SHA registrado pelo próprio handoff.
+CI pós-merge #130:
 
-### Evidência de CI da baseline
-
-PR #128, head final:
-
-- CI `33086942613`: `database` + `validate` success;
-- Storage Protection CI `33086943585`: `storage-contract` + `isolated-storage-binary-restore` success.
-
-Pós-merge #128:
-
-- CI `33087254390`: `database` + `validate` success;
-- Storage Protection CI `33087254427`: `storage-contract` + `isolated-storage-binary-restore` success.
-
-Pós-merge #129:
-
-- CI `33087974482`: `database` + `validate` success.
+- CI `33089679869`: `database` + `validate` success;
+- Storage Protection CI `33089679857`: `storage-contract` + `isolated-storage-binary-restore` success.
 
 ## Production read-only revalidada — 2026-08-27
 
 Projeto `fhbvwyttikrbeaanatlr`:
 
-- status `ACTIVE_HEALTHY`;
+- `ACTIVE_HEALTHY`;
 - região `sa-east-1`;
 - 1 Organization;
 - 0 buckets;
@@ -55,70 +41,81 @@ Projeto `fhbvwyttikrbeaanatlr`:
 - 0 bytes declarados;
 - 0 runs `automatic_storage`.
 
-Nenhum bucket/objeto foi criado durante a investigação.
+Nenhum bucket/objeto foi criado nesta atualização.
 
-## Guardrails Storage Production — concluído
+## Storage Production — estado técnico
 
-A política inicial não secreta está versionada no workflow:
+Tooling já implementado:
 
-- allowlist: `finance-attachments`;
-- `max_objects=1000`;
-- `max_total_bytes=1073741824` (1 GiB);
-- `max_object_bytes=10485760` (10 MiB).
+- snapshot completo diário;
+- manifesto `lojasaph-storage-backup-v1`;
+- reconciliação metadata↔objeto;
+- source SHA-256 contra checksum de negócio;
+- cópia Supabase S3 → R2;
+- verificação remota por re-download/re-hash;
+- persistência `automatic_storage`;
+- restore isolado pela Storage API/S3;
+- CI local com fixtures sintéticas;
+- guardrails `1000 objetos / 1 GiB total / 10 MiB por objeto`;
+- allowlist `finance-attachments`.
 
-O limite individual é exatamente o limite funcional de anexos. O cap total é próprio de Storage e não herda os 300 MB do PostgreSQL.
-
-## Baseline da fonte S3 — versionada nesta mudança
-
-A identidade não secreta da origem Production deixa de depender de repository variables:
+Identidade não secreta Production versionada:
 
 - project ref `fhbvwyttikrbeaanatlr`;
-- endpoint direto `https://fhbvwyttikrbeaanatlr.storage.supabase.co/storage/v1/s3`;
+- endpoint `https://fhbvwyttikrbeaanatlr.storage.supabase.co/storage/v1/s3`;
 - region `sa-east-1`.
 
-A região foi revalidada no projeto Supabase e o endpoint segue o hostname direto recomendado pela documentação atual. O workflow valida endpoint e região antes de qualquer operação.
+## Gates privados externos — concluídos em 2026-08-27
 
-Isso elimina `STORAGE_SOURCE_S3_ENDPOINT` e `STORAGE_SOURCE_S3_REGION` como gates privados, mas **não** comprova que o S3 protocol esteja habilitado nem que a credencial dedicada exista.
+O operador confirmou diretamente, sem expor valores secretos:
 
-## Gate operacional restante
+### Supabase / GitHub Secrets
 
-Ainda não existe evidência acessível/versionada para concluir:
+- S3 protocol do Supabase Storage Production habilitado;
+- access key S3 dedicada server-only criada;
+- `STORAGE_SOURCE_S3_ACCESS_KEY_ID` provisionado em GitHub Actions Secrets;
+- `STORAGE_SOURCE_S3_SECRET_ACCESS_KEY` provisionado em GitHub Actions Secrets.
 
-1. Supabase Storage S3 Production efetivamente habilitado com credencial dedicada server-only em GitHub Secrets;
-2. lifecycle 30 dias cobrindo o prefixo `production/storage` no R2 existente;
-3. Bucket Lock/WORM 30 dias cobrindo o mesmo prefixo;
-4. ausência de public access/CORS de navegador no bucket.
+### Cloudflare R2
 
-A documentação histórica do PostgreSQL comprova que o R2 existente tem lifecycle/lock 30d, mas não documenta o escopo da regra com precisão suficiente para estender essa prova a `production/storage`. Não inferir.
+No bucket privado `lojasaph-production-backups`:
 
-`STORAGE_BACKUP_R2_RETENTION_VERIFIED=true` só pode ser usado após confirmação direta do R2.
+- lifecycle 30d cobre `production/storage`;
+- Bucket Lock/WORM 30d cobre `production/storage`;
+- public access ausente;
+- CORS de navegador ausente;
+- `STORAGE_BACKUP_R2_RETENTION_VERIFIED=true` configurado no GitHub Actions.
 
-`STORAGE_BACKUP_AUTOMATION_ENABLED` deve continuar falso/ausente até todos os gates externos estarem comprovados.
+### Armamento
 
-## Limitação das integrações desta sessão
+O operador confirmou `STORAGE_BACKUP_AUTOMATION_ENABLED=true`.
 
-- o conector Supabase disponível permite projeto/SQL/docs, mas não expõe o toggle S3 nem a lista de access keys geradas;
-- o conector GitHub não expõe Actions Secrets/Variables;
-- não há conector Cloudflare/R2 instalado nesta sessão.
+Esse estado agora é correto porque os gates privados estão concluídos. Não voltar a desarmar por inércia. O job continua fail-closed se qualquer credencial/configuração obrigatória estiver ausente ou divergente.
 
-Não pedir valores secretos em chat para contornar essas limitações.
+## Limitações das integrações
+
+O conector GitHub desta sessão não expõe Actions Secrets/Variables e não existe conector Cloudflare/R2. Portanto a conclusão dos gates privados acima é registrada como **confirmação explícita do operador**, sem valores de credenciais.
 
 ## Gate de UI / prova real
 
-A UI deve continuar dizendo que Storage/anexos não estão cobertos até existirem ambos:
+Storage/anexos ainda não deve ser declarado como recuperação binária comprovada.
 
-- `automatic_storage` Production real íntegro; e
-- `restore_drill coverage=storage` real sobre pelo menos um anexo Production criado pelo fluxo normal do produto.
+A execução agendada pode ocorrer normalmente mesmo com inventário vazio. Nesse caso ela prova operação do pipeline sobre estado vazio, mas não prova recuperação de binário real.
 
-Snapshot vazio não comprova recuperação binária. Não criar fixture sintética em Production.
+Cobertura Storage completa exige, quando existir anexo legítimo:
+
+- `automatic_storage Production=succeeded` com integridade positiva e objeto real;
+- restore isolado do mesmo snapshot;
+- `restore_drill coverage=storage=succeeded`.
 
 ## Próxima ação
 
-1. confirmar/provisionar no Supabase Dashboard o S3 protocol + access key dedicada e provisionar os dois Secrets do workflow sem expor valores;
-2. confirmar diretamente no R2 lifecycle + Bucket Lock 30d para `production/storage` e nenhum public access/CORS;
-3. apenas depois marcar o gate sanitizado de retenção e considerar armamento;
-4. se Production continuar vazia, não disparar workflow apenas para gerar `succeeded`;
-5. quando existir anexo legítimo, executar uma única prova controlada: source hash = checksum de negócio → R2 + re-hash → `automatic_storage=succeeded` → restore isolado → `restore_drill coverage=storage=succeeded`.
+1. não usar `workflow_dispatch` apenas para adiantar a prova;
+2. após a próxima execução agendada, inspecionar o run e a evidência autoritativa;
+3. se o inventário continuar vazio, manter automação armada e não alterar a UI para “recuperação comprovada”;
+4. quando surgir primeiro anexo legítimo, validar o primeiro run que o inclua e executar restore isolado do mesmo snapshot;
+5. persistir `restore_drill coverage=storage=succeeded` somente após reconciliação/hashes verdes;
+6. então avaliar fechamento da #121 e atualização da cobertura na UI.
 
 ## Restrições
 
@@ -127,8 +124,9 @@ Snapshot vazio não comprova recuperação binária. Não criar fixture sintéti
 - não armazenar objeto real em Git/GitHub Artifact;
 - não pedir/registrar secrets;
 - não reprovisionar R2 sem necessidade concreta;
-- não reabrir a trilha PostgreSQL;
+- não reabrir PostgreSQL;
+- não criar fixture Production;
 - não voltar a Drive/rclone/Gmail;
 - não tornar repo private automaticamente;
 - não fazer deploy Vercel para esta slice operacional;
-- não abrir novo PR apenas para atualizar o SHA produzido por este handoff.
+- não abrir PR apenas para perseguir SHA documental.
