@@ -1,6 +1,6 @@
 \set ON_ERROR_STOP on
 
--- Security regression suite for Issue #54.
+-- Security regression suite for Issue #54 and Issue #123.
 -- This suite validates both RLS policy shape and the independent object-grant layer.
 
 do $$
@@ -192,6 +192,66 @@ begin
      or has_function_privilege('authenticated', 'public.set_updated_at()', 'EXECUTE')
      or has_function_privilege('service_role', 'public.set_updated_at()', 'EXECUTE') then
     raise exception 'set_updated_at remains directly executable by an API role';
+  end if;
+end;
+$$;
+
+-- Private authorization helpers must not depend on PostgreSQL's historical
+-- PUBLIC function EXECUTE default. Inspect direct ACLs because anon lacks
+-- private-schema USAGE and an effective-privilege check alone would hide this gap.
+do $$
+declare
+  offenders text;
+  helper regprocedure;
+begin
+  select string_agg(p.oid::regprocedure::text, ', ' order by p.oid::regprocedure::text)
+    into offenders
+  from pg_proc p
+  join pg_namespace n on n.oid = p.pronamespace
+  cross join lateral aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) acl
+  where n.nspname = 'private'
+    and acl.grantee = 0
+    and acl.privilege_type = 'EXECUTE';
+
+  if offenders is not null then
+    raise exception 'private functions retain PUBLIC EXECUTE ACLs: %', offenders;
+  end if;
+
+  if has_schema_privilege('anon', 'private', 'USAGE') then
+    raise exception 'anon unexpectedly has USAGE on private schema';
+  end if;
+
+  if not has_schema_privilege('authenticated', 'private', 'USAGE') then
+    raise exception 'authenticated lost private schema USAGE required by RLS helpers';
+  end if;
+
+  foreach helper in array array[
+    'private.can_read_business(uuid,uuid)'::regprocedure,
+    'private.can_read_cash_session(uuid,uuid)'::regprocedure,
+    'private.can_read_inventory_count(uuid,uuid)'::regprocedure,
+    'private.can_read_payable_document(uuid,uuid)'::regprocedure,
+    'private.can_read_purchase_order(uuid,uuid)'::regprocedure,
+    'private.can_read_sector(uuid,uuid)'::regprocedure,
+    'private.can_read_stock_location(uuid,uuid)'::regprocedure,
+    'private.can_read_stock_movement(uuid,uuid)'::regprocedure,
+    'private.can_read_transfer(uuid,uuid)'::regprocedure,
+    'private.can_read_unit(uuid,uuid)'::regprocedure,
+    'private.has_business_role(uuid,uuid,text[])'::regprocedure,
+    'private.has_cash_register_role(uuid,uuid,text[])'::regprocedure,
+    'private.has_org_wide_role(uuid,text[])'::regprocedure,
+    'private.has_sector_role(uuid,uuid,text[])'::regprocedure,
+    'private.has_stock_location_role(uuid,uuid,text[])'::regprocedure,
+    'private.has_target_scope_role(uuid,uuid,uuid,text[])'::regprocedure,
+    'private.has_unit_role(uuid,uuid,text[])'::regprocedure
+  ]
+  loop
+    if not has_function_privilege('authenticated', helper, 'EXECUTE') then
+      raise exception 'authenticated lost EXECUTE on RLS helper %', helper;
+    end if;
+  end loop;
+
+  if has_function_privilege('authenticated', 'private.validate_membership_scope_hierarchy()', 'EXECUTE') then
+    raise exception 'trigger-only private.validate_membership_scope_hierarchy remains API-executable';
   end if;
 end;
 $$;
