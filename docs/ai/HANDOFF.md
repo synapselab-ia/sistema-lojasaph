@@ -13,21 +13,30 @@ Não refazer sem regressão concreta:
 - UI read-only `Proteção dos dados`;
 - restore do bundle PostgreSQL Production real;
 - `restore_drill coverage=postgres`;
-- tooling/manifesto/restore Storage integrado no PR #126.
+- tooling/manifesto/restore Storage integrado no PR #126;
+- guardrails Production Storage integrados no PR #128.
 
 ## Baseline viva
 
-- `main`: `c534a99b7b88b054f57b6556d303cdf5a1e7e92a` (#127 docs-only);
-- baseline funcional Storage: `e071b6f2ede444b2fc97c29836be098fda8dc7f4` (#126);
-- branch ativa: `agent/storage-production-guardrails`;
+- referência funcional integrada: PR #128, squash `27b0b3914a246fb370c9dd5f8ea06f64baa86044`;
+- #128 merged;
 - #75 aberta;
 - #121 aberta;
 - repo temporariamente `public`; não alterar automaticamente.
 
-CI da baseline:
+Sempre consultar a `main` real. SHA posterior exclusivamente documental não significa nova frente e não justifica outro PR só para sincronizar o SHA registrado pelo próprio handoff.
 
-- CI `33083475690`: `database` + `validate` success;
-- Storage Protection CI `33082831347`: `storage-contract` + `isolated-storage-binary-restore` success.
+### Evidência de CI
+
+PR #128, head final:
+
+- CI `33086942613`: `database` + `validate` success;
+- Storage Protection CI `33086943585`: `storage-contract` + `isolated-storage-binary-restore` success.
+
+Pós-merge em `27b0b391...`:
+
+- CI `33087254390`: `database` + `validate` success;
+- Storage Protection CI `33087254427`: `storage-contract` + `isolated-storage-binary-restore` success.
 
 ## Production read-only revalidada — 2026-08-27
 
@@ -43,18 +52,18 @@ Projeto `fhbvwyttikrbeaanatlr`:
 
 Nenhum bucket/objeto foi criado durante a investigação.
 
-## Guardrails Storage Production
+## Guardrails Storage Production — concluído
 
-A branch ativa transforma os caps Storage em política versionada no workflow, eliminando dependência de `vars.STORAGE_BACKUP_MAX_*`:
+A política inicial não secreta está versionada no workflow:
 
 - allowlist: `finance-attachments`;
 - `max_objects=1000`;
 - `max_total_bytes=1073741824` (1 GiB);
 - `max_object_bytes=10485760` (10 MiB).
 
-O limite individual é exatamente o limite funcional de anexos. O cap total é próprio de Storage e não herda os 300 MB do PostgreSQL. O CI passa a falhar se esses valores forem escondidos novamente em repository variables ou se o cap PostgreSQL aparecer no workflow Storage.
+O limite individual é exatamente o limite funcional de anexos. O cap total é próprio de Storage e não herda os 300 MB do PostgreSQL. O CI falha se esses valores voltarem para repository variables ocultas ou se o cap PostgreSQL aparecer no workflow Storage.
 
-Esses valores são reversíveis somente por mudança versionada + CI/review.
+Esses valores só devem mudar por alteração versionada + CI/review.
 
 ## Gate operacional restante
 
@@ -96,4 +105,5 @@ Snapshot vazio não comprova recuperação binária. Não criar fixture sintéti
 - não reabrir a trilha PostgreSQL;
 - não voltar a Drive/rclone/Gmail;
 - não tornar repo private automaticamente;
-- não fazer deploy Vercel para esta slice operacional.
+- não fazer deploy Vercel para esta slice operacional;
+- não abrir novo PR apenas para atualizar o SHA produzido por este handoff docs-only.
