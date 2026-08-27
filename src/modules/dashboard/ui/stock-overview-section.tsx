@@ -35,15 +35,13 @@ export function StockOverviewSection(props: StockOverviewSectionProps) {
   const query = useMemo(() => new SupabaseStockOverviewQuery(createBrowserSupabaseClient()), []);
   const requestSequence = useRef(0);
   const [overview, setOverview] = useState<StockOverviewSnapshot | null>(null);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const hasPeriod = Boolean(props.dateFrom && props.dateTo);
+  const loading = overview === null && error === null;
 
   useEffect(() => {
     let active = true;
     const requestId = ++requestSequence.current;
-    setLoading(true);
-    setError(null);
 
     void query.load(props.organizationId, {
       unitId: props.unitId,
@@ -55,13 +53,11 @@ export function StockOverviewSection(props: StockOverviewSectionProps) {
       .then((next) => {
         if (!active || requestId !== requestSequence.current) return;
         setOverview(next);
+        setError(null);
       })
       .catch((reason) => {
         if (!active || requestId !== requestSequence.current) return;
         setError(reason instanceof Error ? reason.message : "Não foi possível carregar o resumo de estoque.");
-      })
-      .finally(() => {
-        if (active && requestId === requestSequence.current) setLoading(false);
       });
 
     return () => { active = false; };
