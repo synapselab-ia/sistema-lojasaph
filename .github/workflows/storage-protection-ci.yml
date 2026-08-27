@@ -50,11 +50,16 @@ jobs:
           set -euo pipefail
           WORKFLOW=.github/workflows/production-storage-backup.yml
           grep -Fq "vars.STORAGE_BACKUP_AUTOMATION_ENABLED == 'true'" "${WORKFLOW}"
-          grep -Fq 'STORAGE_BACKUP_MAX_OBJECTS: ${{ vars.STORAGE_BACKUP_MAX_OBJECTS }}' "${WORKFLOW}"
-          grep -Fq 'STORAGE_BACKUP_MAX_TOTAL_BYTES: ${{ vars.STORAGE_BACKUP_MAX_TOTAL_BYTES }}' "${WORKFLOW}"
-          grep -Fq 'STORAGE_BACKUP_MAX_OBJECT_BYTES: ${{ vars.STORAGE_BACKUP_MAX_OBJECT_BYTES }}' "${WORKFLOW}"
+          grep -Fq 'STORAGE_BACKUP_ALLOW_BUCKETS: finance-attachments' "${WORKFLOW}"
+          grep -Fq 'STORAGE_BACKUP_MAX_OBJECTS: "1000"' "${WORKFLOW}"
+          grep -Fq 'STORAGE_BACKUP_MAX_TOTAL_BYTES: "1073741824"' "${WORKFLOW}"
+          grep -Fq 'STORAGE_BACKUP_MAX_OBJECT_BYTES: "10485760"' "${WORKFLOW}"
           grep -Fq 'STORAGE_BACKUP_R2_RETENTION_VERIFIED' "${WORKFLOW}"
           grep -Fq 'production/storage' "${WORKFLOW}"
+          if grep -Fq 'vars.STORAGE_BACKUP_MAX_' "${WORKFLOW}"; then
+            echo "::error::Production Storage guardrails must remain versioned, not hidden in repository variables."
+            exit 1
+          fi
           if grep -Fq '300000000' "${WORKFLOW}"; then
             echo "::error::Storage workflow must not inherit the PostgreSQL 300 MB archive cap."
             exit 1
