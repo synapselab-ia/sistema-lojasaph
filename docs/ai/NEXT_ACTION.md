@@ -1,64 +1,106 @@
 # Next Action — Sistema Lojasaph
 
-## Estado de saída da Fase 47
+## Estado de transição
 
-A **Fase 47 / Issue #132 (`REQ-STK-011`)** está implementada, validada em CI e homologada em Supabase Production pelo PR #133.
+A **Fase 48 / Issue #134 (`REQ-DASH-004`)** foi implementada e validada no PR #135 (`agent/dashboard-stock-overview`).
 
-Não reabrir essa slice sem regressão concreta.
+Antes de iniciar nova implementação, o próximo chat deve confirmar o estado real do PR #135 / #134 / `main`. Se #135 já estiver mergeado e #134 fechada, **não refazer a Fase 48**.
 
-## Frente ON HOLD
+## Próxima frente independente
 
-**Issue #121 — Backup e recuperação off-site do Supabase Storage.**
+**`REQ-DASH-005 — Fornecedores/compras`**.
 
-Retomar somente se existir um gatilho objetivo:
+O requisito pede exibir compras, variação de preço e desempenho/histórico por fornecedor **quando houver dados**. A próxima slice deve ser definida a partir do schema e dos dados realmente persistidos, sem inventar score de fornecedor, SLA ou regra comercial.
 
-- primeira execução agendada do `Production Storage Backup` após o armamento;
-- primeiro anexo Production legítimo para prova binária;
-- falha/incidente/regressão real.
+### 1. Inventário técnico primeiro
 
-Próxima janela normal esperada do cron: **2026-08-28 06:47 UTC / 03:47 America/Sao_Paulo**.
+Na `main` integrada:
 
-Sem gatilho: não usar `workflow_dispatch`, não criar fixture Production e não repetir validações da mesma ausência de evidência.
+1. localizar schema, policies/RLS e adapters de:
+   - `suppliers`;
+   - `supplier_contacts`;
+   - `supplier_terms`;
+   - `supplier_items`;
+   - `supplier_prices`;
+   - `purchase_orders` / `purchase_order_items`;
+   - `purchase_receipts` / itens de recebimento;
+2. revisar `docs/modules/purchases.md`, master-data e requisitos/questões abertas relacionadas;
+3. revisar o Dashboard atual após a Fase 48 e reaproveitar Unit/Setor/período já existentes;
+4. consultar Production somente read-only para saber quais relações/históricos possuem dados reais;
+5. identificar quais métricas são determinísticas com os campos existentes.
 
-## NEXT_ACTION
+### 2. Delimitar a menor slice coerente
 
-### Promover a próxima fase independente: `REQ-DASH-004 — Dashboard/relatórios de estoque`
+Priorizar analytics que possam ser derivados sem nova decisão de negócio, por exemplo apenas quando o modelo suportar de forma inequívoca:
 
-Executar nesta ordem:
+- volume/quantidade de pedidos por fornecedor;
+- histórico de preço persistido;
+- variação de preço entre observações comparáveis;
+- pedidos/recebimentos associados ao fornecedor.
 
-1. conferir estado real de `main`, Issues, PRs, branches e CI;
-2. confirmar que o PR #133 está mergeado e a Issue #132 encerrada;
-3. verificar **uma vez** se surgiu gatilho novo da #121; se não surgiu, manter ON HOLD e seguir;
-4. reler `docs/product/requirements.md`, `docs/modules/dashboard.md` e `docs/modules/inventory.md`;
-5. inventariar o gap real de `REQ-DASH-004` sobre:
-   - saldos;
-   - movimentações;
-   - perdas;
-   - inventários;
-   - validades;
-   - estoque abaixo do mínimo já entregue pela Fase 47;
-6. não duplicar KPIs/alertas já existentes e não fabricar granularidade histórica onde o modelo não possui evento canônico;
-7. abrir uma Issue própria para a nova fase com critérios de aceite verificáveis e fora de escopo explícito;
-8. criar branch a partir de `main` somente depois da Issue;
-9. implementar a menor slice coerente, com testes e CI, seguindo o workflow normal Issue → branch → PR → merge;
-10. atualizar `CURRENT_STATE`, `HANDOFF` e `NEXT_ACTION` ao final.
+Não criar por inferência:
 
-## Restrições para `REQ-DASH-004`
+- nota/score de fornecedor;
+- “melhor fornecedor”;
+- prazo médio/atraso se a semântica dos timestamps não for canônica;
+- economia estimada sem baseline comprovado;
+- comparação de embalagens/UOM incompatíveis;
+- forecast/IA;
+- decisão automática de compra.
 
-- Dashboard continua read-only;
-- reutilizar fontes autoritativas existentes, sem criar segunda fonte de saldo;
-- respeitar Organization + Unit + Sector e RLS;
-- não transformar snapshots atuais em histórico por conveniência;
-- não criar previsão de demanda/IA;
-- não criar pedido de compra automático;
-- não misturar `REQ-DASH-005` ou `REQ-ITEM-003` na mesma slice sem necessidade comprovada;
-- não resolver requisitos PENDING por inferência;
-- não fazer deploy Vercel rotineiro.
+### 3. Issue e branch
+
+Se o gap for real e os dados/campos suportarem uma slice objetiva:
+
+1. abrir a Issue da próxima fase registrando decisões e critérios;
+2. criar branch a partir da `main` atual;
+3. implementar somente o recorte aprovado pela evidência do repositório/schema;
+4. manter leitura sob sessão autenticada + RLS;
+5. usar `Money`/tipos exatos onde aplicável;
+6. preservar filtros organizacionais/temporais sem heurísticas.
+
+### 4. Validação
+
+- testes unitários para agregação/comparação;
+- regressão de Unit/Setor/período;
+- lint;
+- typecheck;
+- Vitest;
+- production build;
+- workflows aplicáveis;
+- Production apenas read-only se nenhuma DDL for necessária;
+- se DDL realmente for necessária, CI verde antes de qualquer migration Production.
+
+## #121 — continua ON HOLD
+
+Não tocar #121 sem gatilho novo.
+
+Última checagem única em 2026-08-27:
+
+- 0 buckets Storage;
+- 0 anexos financeiros;
+- 0 runs `automatic_storage`.
+
+Gatilhos válidos:
+
+- primeira execução **agendada** do Storage backup; próxima janela esperada: 2026-08-28 03:47 America/Sao_Paulo;
+- anexo Production legítimo;
+- incidente/regressão real.
+
+Sem isso, não fazer dispatch manual, fixture Production ou revalidação repetitiva.
 
 ## Ordem posterior
 
-1. `REQ-DASH-004` — estoque;
-2. `REQ-DASH-005` — compras/fornecedores e histórico/variação;
-3. `REQ-ITEM-003` — EAN/código de barras e dados fiscais.
+Salvo regressão/nova prioridade:
 
-Uma frente ON HOLD pode interromper essa ordem somente quando seu gatilho real existir; simples espera não pausa o desenvolvimento.
+1. `REQ-DASH-005` — fornecedores/compras;
+2. `REQ-ITEM-003` — EAN/código de barras/dados fiscais;
+3. requisitos PENDING somente após validação de negócio.
+
+## Fora de escopo imediato
+
+- reabrir #132/#134 sem regressão;
+- valuation/CMV/forecast genérico;
+- POS/vendas ou outras questões PENDING;
+- deploy Vercel rotineiro;
+- tornar o repositório private automaticamente.
