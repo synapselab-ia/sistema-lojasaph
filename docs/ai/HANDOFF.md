@@ -2,120 +2,116 @@
 
 ## Estado
 
-**Fase 46 continua integrada.** A frente ativa segue sendo a Issue #75 / `REQ-PLAT-005 — Proteção, backup e recuperação de dados`.
+**Fase 46 continua integrada.** A frente ativa é a Issue #75 / `REQ-PLAT-005`, agora com implementação técnica de Storage separada na **Issue #121 — Backup e recuperação off-site do Supabase Storage**.
 
-A trilha PostgreSQL foi concluída até restore real isolado. Não refazer:
+Não refazer sem regressão concreta:
 
 - ADR-009;
-- Cloudflare R2/lifecycle/lock/secrets;
+- R2/lifecycle/lock do PostgreSQL;
 - backup PostgreSQL Production + hard cap 300 MB;
 - persistência autoritativa/RLS;
 - UI read-only `Proteção dos dados`;
 - restore do bundle PostgreSQL Production real;
-- compatibilidade de roles gerenciadas no restore;
-- pin/preflight do schema Storage necessário ao destino isolado;
-- persistência de `restore_drill` e reconciliação da #110.
+- compatibilidade de roles/schema do restore;
+- `restore_drill coverage=postgres` e reconciliação da #110.
 
-A próxima slice é **Supabase Storage/anexos**.
+## Baseline de entrada
 
-## Baseline viva
+- `main`: `9794210a9d1b4dbd8fca01dd8ef0e6318a9e278e` (#120) antes desta slice de design;
+- CI `33070390747`: verde;
+- nenhum PR aberto na entrada;
+- #75 aberta;
+- #121 criada após inventário real;
+- repo temporariamente `public`; não alterar automaticamente.
 
-- `main`: `25f3cac1cff1dedee2baf0a4712f99a15d6653e7` (#119);
-- CI pós-merge `33069706327`: verde (`database`, `validate`);
-- Restore Compatibility CI `33069706452`: verde (`restore-sql-compat`, `isolated-storage-schema`);
-- Backup Restore Drill `33069706382`: **success**;
-- Issue #110: **closed automaticamente** pelo workflow;
-- Issue #75: aberta;
-- repositório temporariamente `public`; não alterar automaticamente.
+## Inventário Storage concluído
 
-## Prova real de restore concluída
+### Código
 
-O run `33069706382` restaurou o archive Production real criado em `2026-08-26T19:40:47Z` (`53185` bytes) em Supabase/PostgreSQL 17 local isolado.
+Só existe uso físico de Storage para anexos financeiros.
 
-A prova passou:
+- bucket: `finance-attachments`;
+- privado;
+- criado/configurado pela Storage API no primeiro upload autorizado;
+- limite 10 MiB;
+- MIME PDF/XML/JPEG/PNG/WebP;
+- key `Organization/payable_document/attachment` por UUID;
+- SHA-256 do conteúdo já é persistido em `public.finance_attachments`;
+- upload físico ocorre via admin client server-only após preflight autenticado;
+- metadata é registrada depois do objeto e falha tenta compensação física;
+- download primeiro exige metadata visível sob RLS e só então usa admin Storage;
+- browser não acessa o objeto diretamente e não recebe secret/signed URL;
+- não existe delete funcional de anexo hoje.
 
-1. download R2;
-2. checksums/manifesto;
-3. preflight do target;
-4. roles gerenciadas normalizadas de forma fail-closed;
-5. `roles.sql`;
-6. `schema.sql`;
-7. replica-mode + `data.sql`;
-8. smoke tests;
-9. RLS/grants;
-10. revalidação de todas as FKs públicas;
-11. cleanup;
-12. persistência autoritativa de sucesso;
-13. resolução automática da #110.
+### Production read-only — 2026-08-27
 
-Production nunca foi target.
+Projeto `fhbvwyttikrbeaanatlr`:
 
-## Histórico útil das duas falhas anteriores
+- 1 Organization;
+- 0 buckets;
+- 0 objetos Storage ativos;
+- 0 `finance_attachments`;
+- 0 bytes declarados;
+- 0 policies customizadas em `storage.objects`/`storage.buckets`.
 
-Não repetir esses diagnósticos:
+Isso é esperado porque o bucket é lazy. Nenhum bucket/objeto foi criado nesta investigação.
 
-- `33014974208`: `roles.sql` tentou modificar `supabase_admin`, role reservada do Supabase local;
-- PR #117 introduziu preparação segura do SQL de roles gerenciadas;
-- `33018829402`: roles/schema passaram, mas `data.sql` exigia `storage.buckets.versioning_status` ausente no Storage local antigo;
-- Production estava em `storage.migrations=64`;
-- PR #119 pinou `storage-api:v1.70.7` e adicionou preflight de migration >=64 + `versioning_status`;
-- o gate `isolated-storage-schema` provou esse target sem usar secrets de Production/R2 antes do merge.
+## Decisão registrada na #121
 
-## Supabase Production / evidência autoritativa
+Implementação alvo:
 
-Projeto `fhbvwyttikrbeaanatlr`, `ACTIVE_HEALTHY`, PostgreSQL 17 / `sa-east-1`.
+1. reutilizar Cloudflare R2, namespace `production/storage/...` separado de `production/postgres`;
+2. source access por credencial S3 dedicada do Supabase Storage, server-only e separada do secret admin da aplicação;
+3. allowlist inicial `finance-attachments`, fail-closed para bucket Files não classificado;
+4. snapshot completo diário inicialmente, em prefixo imutável por run;
+5. manifesto `lojasaph-storage-backup-v1`;
+6. stream SHA-256 da origem e comparação com checksum/tamanho autoritativos de `finance_attachments`;
+7. upload R2 + re-download/re-hash antes de integridade positiva;
+8. guardrails Storage próprios/configuráveis, nunca herdar automaticamente o cap PostgreSQL de 300 MB;
+9. persistir `automatic_storage` / `coverage=storage` pelo boundary existente;
+10. restore em Supabase Storage isolado via API/S3, nunca DML em `storage.*`;
+11. reconciliar manifesto ↔ metadata de negócio ↔ objetos restaurados e detectar missing/extra/corrupt;
+12. registrar `restore_drill coverage=storage` só depois da prova suficiente.
 
-Latest `restore_drill` real:
+## Gate de UI / prova real
 
-- `status=succeeded`;
-- `coverage=postgres`;
-- `integrity_verified=true`;
-- `valid_copy_at=2026-08-26T19:40:47Z`;
-- `size_bytes=53185`;
-- provider/destination lógicos sanitizados;
-- `error_summary=null`;
-- 1 Organization mapeada.
+Production está vazia. Um snapshot vazio pode provar a execução do inventário, mas não comprova recuperação de binários reais.
 
-As duas tentativas anteriores permanecem como `failed`; preservar histórico.
+A UI deve continuar dizendo que Storage/anexos não estão cobertos até existirem ambos:
 
-O backup histórico `33006253661` antecede a persistência de `automatic_database`; não backfillar.
+- `automatic_storage` Production real íntegro; e
+- `restore_drill coverage=storage` real sobre pelo menos um anexo Production criado pelo fluxo normal do produto.
+
+Não criar fixture sintética em Production para satisfazer esse gate.
 
 ## Próxima ação
 
-**Inventariar a cobertura real de Supabase Storage/anexos e desenhar a primeira slice de backup off-site + restore/reconciliação isolada dos binários.**
+Implementar a primeira slice da #121 em branch própria:
 
-A investigação deve começar pelo estado real do código e do projeto Supabase:
+- tooling de inventário/manifesto;
+- testes unitários;
+- CI usando Supabase Storage local e arquivos sintéticos pequenos;
+- workflow Storage inicialmente fail-closed/desarmado para Production;
+- integração com `record-protection-run.sh` sem duplicar schema.
 
-1. identificar buckets usados e finalidade;
-2. localizar todos os caminhos de upload/download e metadata relacionada no banco;
-3. distinguir bucket privado/público e regras/RLS relevantes;
-4. confirmar volume/quantidade atual sem expor conteúdo;
-5. definir inventário versionado de objetos com bucket/key/tamanho/checksum ou fingerprint apropriado;
-6. definir transporte off-site reaproveitando o contrato/provider existente quando seguro;
-7. definir restore em destino isolado usando APIs de Storage, não DML em `storage.objects`;
-8. definir reconciliação metadata↔objeto e teste de ausência/corrupção;
-9. definir como `automatic_storage` alimentará `protection_runs` e a UI sem declarar sucesso antes da prova real;
-10. só então implementar em Issue/branch/PR apropriados.
+Antes de armar Production, confirmar explicitamente:
 
-Não contratar serviço/add-on novo nem alterar R2/secrets por inércia.
+- endpoint S3 do Supabase Storage habilitado;
+- credencial S3 de origem provisionada em GitHub Secrets fora do chat;
+- lifecycle + Bucket Lock de 30 dias abrangendo `production/storage`;
+- caps Storage próprios de quantidade/bytes configurados;
+- source bucket allowlist correta.
 
-## Cobertura que continua faltando
-
-- binários Supabase Storage/anexos;
-- recuperação/reconciliação desses binários;
-- configurações externas ao dump que precisem de DR próprio;
-- exportação manual complementar por Organization, se mantida;
-- fechamento final da #75.
+Se Production continuar com zero objetos ao fim da implementação, não inventar conteúdo. Deixar o gate de prova binária real pendente até existir um anexo legítimo.
 
 ## Restrições
 
-- nunca restaurar Production para teste;
-- não manipular objetos binários via SQL em `storage.*`;
-- não armazenar backup real em Git/GitHub Artifact;
-- não pedir/registrar secrets no chat;
-- não reprovisionar R2/secrets sem evidência concreta;
-- não remover guards do restore PostgreSQL já comprovado;
+- nunca restaurar Production;
+- não manipular binários via SQL em `storage.*`;
+- não armazenar objeto real em Git/GitHub Artifact;
+- não pedir/registrar secrets;
+- não reprovisionar R2 sem necessidade concreta;
+- não reabrir a trilha PostgreSQL;
 - não voltar a Drive/rclone/Gmail;
-- não remover hard cap 300 MB sem nova decisão;
 - não tornar repo private automaticamente;
-- não fazer deploy Vercel para slice operacional sem necessidade concreta.
+- não fazer deploy Vercel para esta slice operacional.
