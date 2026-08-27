@@ -7,6 +7,7 @@ import { Money } from "@/domain/common/money";
 import { createBrowserSupabaseClient } from "@/lib/supabase/browser";
 import { SupabaseDashboardQuery, DashboardSnapshot } from "@/modules/dashboard/adapters/supabase-dashboard-query";
 import { buildDashboardSummary, DashboardAttentionItem } from "@/modules/dashboard/application/dashboard-summary";
+import { StockOverviewSection } from "@/modules/dashboard/ui/stock-overview-section";
 import { useRuntimeWorkspace } from "@/modules/master-data/ui/runtime-workspace-provider";
 
 function formatMoney(value: Money): string {
@@ -129,9 +130,6 @@ export default function WorkspacePage() {
     { label: "Caixas abertos", value: String(summary.cash.openCount), href: "/workspace/caixa", unitOnly: true, currentState: true },
     { label: hasAppliedPeriod ? "Divergências no período" : "Divergências no horizonte", value: String(summary.cash.discrepancyCount), href: "/workspace/caixa", unitOnly: true, currentState: false },
     { label: "Pedidos pendentes", value: String(summary.purchases.pendingCount), href: "/workspace/compras", unitOnly: false, currentState: true },
-    { label: "Transferências em trânsito", value: String(summary.stock.transfersInTransitCount), href: "/workspace/transferencias", unitOnly: false, currentState: true },
-    { label: "Inventários em andamento", value: String(summary.stock.openInventoryCount), href: "/workspace/inventarios", unitOnly: false, currentState: true },
-    { label: hasAppliedPeriod ? "Lotes vencidos no período" : "Lotes vencidos", value: String(summary.stock.expiredBatchCount), href: "/workspace/estoque", unitOnly: false, currentState: false },
   ] : [];
 
   return (
@@ -261,15 +259,31 @@ export default function WorkspacePage() {
             </div>
           </section>
 
+          {snapshot && (
+            <StockOverviewSection
+              organizationId={organizationId}
+              unitId={unitId ? unitId as EntityId : undefined}
+              sectorId={sectorId ? sectorId as EntityId : undefined}
+              dateFrom={appliedDateFrom || undefined}
+              dateTo={appliedDateTo || undefined}
+              timeZone={snapshot.timeZone}
+              horizonDays={horizonDays}
+              transfersInTransitCount={summary.stock.transfersInTransitCount}
+              openInventoryCount={summary.stock.openInventoryCount}
+              expiredBatchCount={summary.stock.expiredBatchCount}
+              expiringSoonCount={summary.stock.expiringSoonCount}
+              belowMinimumCount={summary.stock.belowMinimumCount}
+            />
+          )}
+
           <section className="space-y-4">
-            <div><h2 className="text-xl font-semibold">Operação</h2><p className="mt-1 text-sm text-neutral-500">Contagens apontam diretamente para os módulos responsáveis pela correção. Indicadores marcados como estado atual não são artificialmente recortados pelo período.</p></div>
+            <div><h2 className="text-xl font-semibold">Operação</h2><p className="mt-1 text-sm text-neutral-500">Caixa e Compras mantêm seus próprios sinais operacionais; os indicadores de Estoque ficam consolidados na seção específica acima.</p></div>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {operationalCards.map((card) => <Link key={card.label} href={card.href} className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm hover:border-neutral-300"><p className="text-sm text-neutral-500">{card.label}</p><p className="mt-2 text-2xl font-semibold">{card.value}</p>{hasAppliedPeriod && card.currentState && <p className="mt-2 text-xs text-neutral-500">Escopo temporal: estado atual</p>}{sectorId && card.unitOnly && <p className="mt-2 text-xs text-neutral-500">Escopo organizacional: Unidade</p>}</Link>)}
             </div>
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2">
               <Link href="/workspace/compras" className="rounded-xl border border-neutral-200 bg-white p-4 text-sm"><span className="text-neutral-500">Entregas atrasadas{hasAppliedPeriod ? " no período" : ""}</span><strong className="mt-1 block text-xl">{summary.purchases.lateDeliveryCount}</strong></Link>
               <Link href="/workspace/compras" className="rounded-xl border border-neutral-200 bg-white p-4 text-sm"><span className="text-neutral-500">Entregas em até {horizonDays} dias{hasAppliedPeriod ? " · dentro do período" : ""}</span><strong className="mt-1 block text-xl">{summary.purchases.deliverySoonCount}</strong></Link>
-              <Link href="/workspace/estoque" className="rounded-xl border border-neutral-200 bg-white p-4 text-sm"><span className="text-neutral-500">Lotes vencendo em até {horizonDays} dias{hasAppliedPeriod ? " · dentro do período" : ""}</span><strong className="mt-1 block text-xl">{summary.stock.expiringSoonCount}</strong></Link>
             </div>
           </section>
         </>
