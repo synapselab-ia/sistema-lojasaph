@@ -2,57 +2,143 @@
 
 ## Frente atual
 
-**Fase 48 / Issue #134 — Dashboard de Estoque (`REQ-DASH-004`) implementada e validada no PR #135.**
+**Fase 49 / Issue #136 — Dashboard de Fornecedores/Compras (`REQ-DASH-005`).**
 
-Branch: `agent/dashboard-stock-overview`.
+Branch: `agent/dashboard-purchases-supplier-history`.
 
-Não refazer a Fase 47 / #132: estoque mínimo por item + local já está integrado em `main` por #133.
+Baseline da frente:
 
-## Entrega da Fase 48
+- `main=e3583b14280e6919834e53e958d00cf8d3946434`;
+- PR #135 merged;
+- Issue #134 fechada;
+- CI pós-merge `33113803812`: success.
 
-O Dashboard já possuía transferências em trânsito, inventários em andamento, lotes vencidos/vencendo e alerta de estoque mínimo. A #134 fecha o gap restante de `REQ-DASH-004`:
+Não refazer a Fase 48 / #134.
 
-- posições atuais com saldo como contagem item + local (`quantity_on_hand != 0`);
-- movimentos confirmados do ledger;
-- perdas/vencimentos confirmados (`loss` / `expiration`);
-- período por `stock_movements.occurred_at` no timezone da Organization;
+## O que foi inventariado
+
+A #136 foi aberta somente após reconciliar schema, RLS, docs e Production.
+
+Relações consideradas:
+
+- `suppliers`;
+- `supplier_contacts`;
+- `supplier_terms`;
+- `supplier_items`;
+- `supplier_prices`;
+- `purchase_orders` / `purchase_order_items`;
+- `purchase_receipts` / `purchase_receipt_items`;
+- `stock_locations` para o escopo explícito de compras.
+
+Production `fhbvwyttikrbeaanatlr`, read-only em 2026-08-27:
+
+- 2 suppliers;
+- 1 supplier_contact;
+- 0 supplier_terms;
+- 2 supplier_items;
+- 2 supplier_prices;
+- 0 purchase_orders;
+- 0 purchase_order_items;
+- 0 purchase_receipts;
+- 0 purchase_receipt_items.
+
+As duas observações de preço são `demo_seed`, na mesma data, para vínculos distintos. Portanto não existe variação comparável real em Production hoje.
+
+## Decisões da Fase 49
+
+### Compras
+
+- histórico de pedido usa `ordered_at IS NOT NULL`;
+- período de pedidos usa `ordered_at`;
+- período de recebimentos usa `received_at`;
+- recebimento no período não depende de o pedido ter sido emitido no mesmo período;
+- Unit/Setor somente por `purchase_orders.stock_location_id`;
 - sem período = histórico visível completo;
-- horizonte não interfere em movimento/perda;
-- Unit/Setor apenas por relações explícitas de local e `sector_id`;
-- nenhuma soma de quantidades heterogêneas;
-- nenhuma migration/view/RPC;
-- browser session + RLS, sem bypass.
+- `horizonDays` não recorta o histórico.
+
+### Fornecedores
+
+O Dashboard mostra apenas fatos:
+
+- quantidade de pedidos emitidos;
+- quantidade de recebimentos;
+- última atividade disponível.
+
+Não existe nesta fase:
+
+- score;
+- ranking;
+- “melhor fornecedor”;
+- SLA;
+- lead time/atraso médio;
+- qualidade inferida.
+
+### Preços
+
+- fonte: `supplier_prices`;
+- período: `observed_at`;
+- comparação: duas observações mais recentes do mesmo `supplier_item_id`;
+- valor: `unit_price` via `Money`;
+- `package_price`/conversão de embalagem ficam fora;
+- uma observação isolada não vira “variação 0”;
+- Unit/Setor não recortam preço porque `supplier_prices` não possui vínculo local explícito; a UI informa que esse bloco permanece Organization-wide.
+
+## Implementação na branch
 
 Arquivos principais:
 
-- `src/modules/dashboard/adapters/supabase-stock-overview-query.ts`;
-- `src/modules/dashboard/adapters/supabase-stock-overview-query.test.ts`;
-- `src/modules/dashboard/ui/stock-overview-section.tsx`;
+- `src/modules/dashboard/adapters/supabase-purchase-overview-query.ts`;
+- `src/modules/dashboard/adapters/supabase-purchase-overview-query.test.ts`;
+- `src/modules/dashboard/ui/purchase-overview-section.tsx`;
 - `src/app/workspace/(operacao)/page.tsx`;
 - `docs/modules/dashboard.md`.
 
-## Validação
+O adapter:
 
-A primeira tentativa de CI (#491) falhou somente no lint novo `react-hooks/set-state-in-effect` do componente. Foi corrigido sem alterar domínio/query.
+- usa client Supabase browser-safe + RLS;
+- pagina leituras para não depender silenciosamente do limite padrão do PostgREST;
+- mantém pedidos/recebimentos separados temporalmente;
+- agrupa atividade por fornecedor sem somar quantidades/UOMs;
+- calcula somente comparação de preço determinística;
+- não cria RPC/view/migration nem bypass de segurança.
 
-Head corrigido:
+A UI adiciona a seção **Compras e fornecedores** ao Dashboard com:
 
-- CI #492 / `33113200782`: database, lint, typecheck, Vitest e production build verdes;
-- Inventory Count Integration #236 / `33113200850`: success;
-- Business Transactions Integration #220 / `33113200888`: success.
+- pedidos emitidos;
+- recebimentos;
+- fornecedores com pedidos;
+- histórico por fornecedor;
+- observações/comparabilidade de preço;
+- alterações de preço com valor anterior, atual e delta exato;
+- empty states explícitos quando não existe histórico suficiente.
 
-Production foi consultada read-only, sem criar dados:
+## Testes adicionados
 
-- 4 posições item/local com saldo não zero;
-- 6 movimentos confirmados;
-- 1 movimento `loss/expiration`;
-- datas de negócio: 2026-08-01 (3 movimentos) e 2026-08-20 (3 movimentos, incluindo a perda).
+`supabase-purchase-overview-query.test.ts` cobre:
+
+- timezone/período local → UTC;
+- recebimento no período de pedido antigo;
+- agrupamento factual por fornecedor;
+- vínculos de preço distintos não comparáveis;
+- comparação das duas observações mais recentes do mesmo vínculo;
+- preços iguais com histórico comparável sem falsa alteração.
+
+A validação final deve ser lida no PR real da branch. Se o PR ainda não existir, abri-lo; se já existir, não abrir duplicata.
+
+Exigir antes do merge:
+
+- lint verde;
+- typecheck verde;
+- Vitest verde;
+- production build verde;
+- workflows aplicáveis verdes;
+- nenhuma migration Production necessária para esta slice.
 
 ## ON HOLD — #121
 
 Issue #121 continua **ON HOLD** e não é a frente ativa.
 
-A checagem única feita nesta retomada encontrou:
+Última checagem válida em 2026-08-27:
 
 - 0 buckets Storage;
 - 0 anexos financeiros;
@@ -66,26 +152,19 @@ Gatilhos válidos para retomar:
 
 Sem gatilho:
 
-- não usar dispatch manual para antecipar prova;
+- não usar dispatch manual;
 - não criar fixture Production;
 - não repetir introspecção vazia;
 - não refazer tooling/S3/R2/guardrails.
 
-## Próxima frente
+## Próxima ação
 
-Depois de integrar #135 e confirmar #134 fechada, promover **`REQ-DASH-005 — Fornecedores/compras`**.
-
-Inventariar primeiro o que já existe em:
-
-- `suppliers` / contatos / condições;
-- `supplier_items`;
-- `supplier_prices` e histórico de preços/custos;
-- `purchase_orders`, itens e recebimentos;
-- filtros Unit/Setor/período já existentes no Dashboard.
-
-Objetivo da próxima slice deve sair do gap real, não de uma lista genérica. Não antecipar avaliação/ranking de fornecedor sem dados canônicos suficientes e não inventar critérios de “desempenho”.
-
-Após `REQ-DASH-005`, a ordem registrada segue para `REQ-ITEM-003` salvo nova prioridade/regressão.
+1. reconciliar Issue #136 + branch `agent/dashboard-purchases-supplier-history` + PR associado;
+2. se não houver PR, abrir um único PR contra `main`;
+3. se houver PR, verificar checks reais e corrigir somente falhas/regressões;
+4. com CI verde, fazer review/merge conforme o fluxo normal e fechar #136;
+5. confirmar CI pós-merge da `main`;
+6. então promover **`REQ-ITEM-003 — EAN/código de barras/dados fiscais`**, salvo bug/regressão/nova prioridade explícita.
 
 ## Restrições permanentes relevantes
 
@@ -94,5 +173,6 @@ Após `REQ-DASH-005`, a ordem registrada segue para `REQ-ITEM-003` salvo nova pr
 - RLS é boundary de acesso;
 - nenhum secret no browser/GitHub/docs;
 - não resolver requisitos PENDING por inferência;
+- não criar dados Production para provar Dashboard;
 - sem deploy Vercel rotineiro;
 - repo temporariamente public por decisão operacional; não alterar automaticamente.
