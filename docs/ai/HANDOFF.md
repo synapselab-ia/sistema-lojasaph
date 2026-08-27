@@ -4,158 +4,118 @@
 
 **Fase 46 continua integrada.** A frente ativa segue sendo a Issue #75 / `REQ-PLAT-005 — Proteção, backup e recuperação de dados`.
 
-Não refazer:
+A trilha PostgreSQL foi concluída até restore real isolado. Não refazer:
 
 - ADR-009;
 - Cloudflare R2/lifecycle/lock/secrets;
-- backup PostgreSQL Production e hard cap 300 MB;
+- backup PostgreSQL Production + hard cap 300 MB;
 - persistência autoritativa/RLS;
-- UI read-only `Proteção dos dados` do PR #115.
+- UI read-only `Proteção dos dados`;
+- restore do bundle PostgreSQL Production real;
+- compatibilidade de roles gerenciadas no restore;
+- pin/preflight do schema Storage necessário ao destino isolado;
+- persistência de `restore_drill` e reconciliação da #110.
 
-A slice ativa é **PR #116 / `agent/production-bundle-restore-drill`**, que substitui a prova sintética do restore mensal por restore do bundle Production real em Supabase local isolado.
+A próxima slice é **Supabase Storage/anexos**.
 
 ## Baseline viva
 
-- `main` de entrada: `ac050793b827a5cdec2a2261f03af25ea0091fbf` (#115);
-- CI pós-merge #436 / run `33011958809`: verde;
-- PR #116 aberto: `feat(backup): restore real Production bundle in drill`;
-- primeiro head funcional totalmente verde: `229113e3b55a1faab8dd2561346ef0cb952d583e`;
-- checks desse head: `database`, `validate`, `inventory-database`, `business-database` verdes;
-- Issues #75 e #110 permanecem abertas até existir evidência real suficiente;
+- `main`: `25f3cac1cff1dedee2baf0a4712f99a15d6653e7` (#119);
+- CI pós-merge `33069706327`: verde (`database`, `validate`);
+- Restore Compatibility CI `33069706452`: verde (`restore-sql-compat`, `isolated-storage-schema`);
+- Backup Restore Drill `33069706382`: **success**;
+- Issue #110: **closed automaticamente** pelo workflow;
+- Issue #75: aberta;
 - repositório temporariamente `public`; não alterar automaticamente.
 
-## Supabase Production
+## Prova real de restore concluída
 
-Projeto `fhbvwyttikrbeaanatlr`:
+O run `33069706382` restaurou o archive Production real criado em `2026-08-26T19:40:47Z` (`53185` bytes) em Supabase/PostgreSQL 17 local isolado.
 
-- `ACTIVE_HEALTHY`;
-- PostgreSQL 17 / `sa-east-1`;
-- platform Postgres `17.6.1.141`;
-- migration `20260826201252 / protection_run_persistence`;
-- `protection_runs = 0` na entrada desta slice.
+A prova passou:
 
-Não backfillar `33006253661`.
+1. download R2;
+2. checksums/manifesto;
+3. preflight do target;
+4. roles gerenciadas normalizadas de forma fail-closed;
+5. `roles.sql`;
+6. `schema.sql`;
+7. replica-mode + `data.sql`;
+8. smoke tests;
+9. RLS/grants;
+10. revalidação de todas as FKs públicas;
+11. cleanup;
+12. persistência autoritativa de sucesso;
+13. resolução automática da #110.
 
-## Por que #110 não era prova de bug de restore
+Production nunca foi target.
 
-O run antigo `33000481649` falhou antes de existir qualquer archive Production no R2. O primeiro backup real só apareceu depois, no run `33006253661` (`2026-08-26T19:40:47Z`, `53185` bytes).
+## Histórico útil das duas falhas anteriores
 
-Também foi identificado que o workflow anterior tinha um falso limite de evidência:
+Não repetir esses diagnósticos:
 
-1. baixava/verificava o bundle real;
-2. construía migrations + seed localmente;
-3. gerava um novo dump sintético;
-4. restaurava esse dump sintético.
+- `33014974208`: `roles.sql` tentou modificar `supabase_admin`, role reservada do Supabase local;
+- PR #117 introduziu preparação segura do SQL de roles gerenciadas;
+- `33018829402`: roles/schema passaram, mas `data.sql` exigia `storage.buckets.versioning_status` ausente no Storage local antigo;
+- Production estava em `storage.migrations=64`;
+- PR #119 pinou `storage-api:v1.70.7` e adicionou preflight de migration >=64 + `versioning_status`;
+- o gate `isolated-storage-schema` provou esse target sem usar secrets de Production/R2 antes do merge.
 
-Portanto um verde desse fluxo não provava `roles.sql`/`schema.sql`/`data.sql` do bundle Production.
+## Supabase Production / evidência autoritativa
 
-## O que o PR #116 implementa
+Projeto `fhbvwyttikrbeaanatlr`, `ACTIVE_HEALTHY`, PostgreSQL 17 / `sa-east-1`.
 
-### Restore helper
+Latest `restore_drill` real:
 
-`scripts/restore-production-backup.sh`:
+- `status=succeeded`;
+- `coverage=postgres`;
+- `integrity_verified=true`;
+- `valid_copy_at=2026-08-26T19:40:47Z`;
+- `size_bytes=53185`;
+- provider/destination lógicos sanitizados;
+- `error_summary=null`;
+- 1 Organization mapeada.
 
-- exige `BACKUP_RESTORE_ISOLATED=true`;
-- recusa destino que não seja loopback (`127.0.0.1`, `localhost`, `::1`);
-- valida `SHA256SUMS` e metadata do bundle;
-- exige source `project_ref` esperado, `coverage=postgres` e formato suportado;
-- aplica sequência Supabase: roles → schema → `session_replication_role=replica` → data;
-- usa transação única + `ON_ERROR_STOP`;
-- chama smoke test pós-restore.
+As duas tentativas anteriores permanecem como `failed`; preservar histórico.
 
-### Smoke test real
+O backup histórico `33006253661` antecede a persistência de `automatic_database`; não backfillar.
 
-`supabase/tests/production_bundle_restore.sql`:
+## Próxima ação
 
-- exige PostgreSQL 17+;
-- exige relações críticas do Lojasaph;
-- detecta restore vazio de dados operacionais centrais;
-- confirma RLS/grants/função crítica;
-- confirma as FKs autorreferentes conhecidas de `stock_movements` e `payments`;
-- revalida **todos os dados de child tables públicas contra suas FKs**, porque o import usa replica-mode para atravessar os ciclos.
+**Inventariar a cobertura real de Supabase Storage/anexos e desenhar a primeira slice de backup off-site + restore/reconciliação isolada dos binários.**
 
-O teste é point-in-time/data-agnostic: não exige quantidade positiva em tabelas cujo zero pode ser um estado de negócio legítimo.
+A investigação deve começar pelo estado real do código e do projeto Supabase:
 
-### Workflow real
+1. identificar buckets usados e finalidade;
+2. localizar todos os caminhos de upload/download e metadata relacionada no banco;
+3. distinguir bucket privado/público e regras/RLS relevantes;
+4. confirmar volume/quantidade atual sem expor conteúdo;
+5. definir inventário versionado de objetos com bucket/key/tamanho/checksum ou fingerprint apropriado;
+6. definir transporte off-site reaproveitando o contrato/provider existente quando seguro;
+7. definir restore em destino isolado usando APIs de Storage, não DML em `storage.objects`;
+8. definir reconciliação metadata↔objeto e teste de ausência/corrupção;
+9. definir como `automatic_storage` alimentará `protection_runs` e a UI sem declarar sucesso antes da prova real;
+10. só então implementar em Issue/branch/PR apropriados.
 
-`.github/workflows/backup-restore-drill.yml` agora:
+Não contratar serviço/add-on novo nem alterar R2/secrets por inércia.
 
-1. abre `restore_drill` autoritativo;
-2. baixa e verifica o latest bundle R2 real;
-3. inicializa Supabase local temporário no runner com Postgres `17.6.1.141`;
-4. restaura o bundle real nesse destino local;
-5. executa smoke/FK validation;
-6. remove a instância e material local;
-7. persiste `succeeded` somente depois da prova; ou `failed` sanitizado;
-8. mantém #110 idempotente e só a resolve após sucesso completo.
+## Cobertura que continua faltando
 
-A connection string Production só entra nos steps de persistência autoritativa. Ela não é passada ao helper de restore.
-
-### Persistência `restore_drill`
-
-`scripts/record-protection-run.sh` foi generalizado por env mantendo `automatic_database` como default.
-
-`supabase/tests/restore_drill_protection.sql` provou em CI:
-
-- start/success/failure;
-- idempotência;
-- Organization coverage;
-- leitura sob RLS;
-- boundary privada negada ao `authenticated`.
-
-## O que o CI já provou
-
-Depois de dois ajustes exclusivamente no fixture/smoke sintético, o head funcional `229113e3...` ficou verde.
-
-O job `database`:
-
-- reproduziu os warnings reais de FK circular em `stock_movements` e `payments`;
-- restaurou um bundle separado `roles/schema/data` pelo novo helper;
-- revalidou FKs e smoke test;
-- passou todas as suítes existentes;
-- passou a nova suíte `restore_drill`.
-
-`validate` passou lint, typecheck, unit tests e production build.
-
-Nenhuma dessas tentativas tocou Production ou o archive real.
-
-## Gate imediato
-
-**Não declarar restore Production comprovado antes do workflow real pós-merge.**
-
-O workflow recebeu `push` em `main` restrito aos arquivos dessa trilha. Portanto, quando o PR #116 for integrado, o merge deverá disparar uma única prova com o bundle R2 real.
-
-Após o merge:
-
-1. observar o `Backup Restore Drill` disparado pelo push;
-2. se verde:
-   - confirmar #110 fechada automaticamente;
-   - consultar `protection_runs` em Production e confirmar um `restore_drill` real `succeeded`, `integrity_verified=true`, cobertura `postgres` e Organization mapping;
-   - registrar o run/documentação;
-   - avançar `NEXT_ACTION` para Supabase Storage/anexos;
-3. se falhar:
-   - ler o step/log concreto;
-   - confirmar `restore_drill=failed` se a persistência tiver iniciado;
-   - manter #110 aberta;
-   - corrigir a causa sem repetir runs por tentativa cega.
-
-## Depois do restore PostgreSQL verde
-
-A próxima grande lacuna da #75 é **Supabase Storage/anexos**. O dump PostgreSQL não contém os binários usados pelos anexos financeiros.
-
-Só depois de inventário + cópia off-site + checksums + recuperação isolada dos objetos será correto ampliar a cobertura declarada.
+- binários Supabase Storage/anexos;
+- recuperação/reconciliação desses binários;
+- configurações externas ao dump que precisem de DR próprio;
+- exportação manual complementar por Organization, se mantida;
+- fechamento final da #75.
 
 ## Restrições
 
-- nunca restaurar Production;
-- não criar branch/projeto Supabase hospedado só para o drill;
+- nunca restaurar Production para teste;
+- não manipular objetos binários via SQL em `storage.*`;
+- não armazenar backup real em Git/GitHub Artifact;
 - não pedir/registrar secrets no chat;
-- não armazenar dump em Git/GitHub Artifact;
-- não reprovisionar R2/secrets sem regressão;
-- não refazer persistência/UI;
-- não declarar Storage coberto;
-- não manipular binários via `storage.*` SQL;
+- não reprovisionar R2/secrets sem evidência concreta;
+- não remover guards do restore PostgreSQL já comprovado;
 - não voltar a Drive/rclone/Gmail;
-- não remover hard cap 300 MB;
-- não retornar repo para private automaticamente;
-- não fazer deploy Vercel para esta slice operacional.
+- não remover hard cap 300 MB sem nova decisão;
+- não tornar repo private automaticamente;
+- não fazer deploy Vercel para slice operacional sem necessidade concreta.
