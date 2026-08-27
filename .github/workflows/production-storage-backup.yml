@@ -18,10 +18,11 @@ env:
   BACKUP_S3_ENDPOINT: ${{ vars.BACKUP_S3_ENDPOINT }}
   BACKUP_S3_BUCKET: ${{ vars.BACKUP_S3_BUCKET }}
   BACKUP_S3_REGION: ${{ vars.BACKUP_S3_REGION || 'auto' }}
-  STORAGE_BACKUP_ALLOW_BUCKETS: ${{ vars.STORAGE_BACKUP_ALLOW_BUCKETS || 'finance-attachments' }}
-  STORAGE_BACKUP_MAX_OBJECTS: ${{ vars.STORAGE_BACKUP_MAX_OBJECTS }}
-  STORAGE_BACKUP_MAX_TOTAL_BYTES: ${{ vars.STORAGE_BACKUP_MAX_TOTAL_BYTES }}
-  STORAGE_BACKUP_MAX_OBJECT_BYTES: ${{ vars.STORAGE_BACKUP_MAX_OBJECT_BYTES }}
+  # Non-secret Production Storage policy is versioned here to avoid hidden drift.
+  STORAGE_BACKUP_ALLOW_BUCKETS: finance-attachments
+  STORAGE_BACKUP_MAX_OBJECTS: "1000"
+  STORAGE_BACKUP_MAX_TOTAL_BYTES: "1073741824"
+  STORAGE_BACKUP_MAX_OBJECT_BYTES: "10485760"
   STORAGE_BACKUP_DEST_PREFIX: production/storage
   STORAGE_SOURCE_PROJECT_REF: fhbvwyttikrbeaanatlr
   STORAGE_SOURCE_S3_ENDPOINT: ${{ vars.STORAGE_SOURCE_S3_ENDPOINT }}
@@ -98,6 +99,13 @@ jobs:
 
           if [[ "${STORAGE_BACKUP_ALLOW_BUCKETS}" != "finance-attachments" ]]; then
             echo "::error::Initial Storage protection allowlist must be exactly finance-attachments."
+            exit 1
+          fi
+
+          if [[ "${STORAGE_BACKUP_MAX_OBJECTS}" != "1000" || \
+                "${STORAGE_BACKUP_MAX_TOTAL_BYTES}" != "1073741824" || \
+                "${STORAGE_BACKUP_MAX_OBJECT_BYTES}" != "10485760" ]]; then
+            echo "::error::Production Storage guardrails differ from the versioned initial policy."
             exit 1
           fi
 
