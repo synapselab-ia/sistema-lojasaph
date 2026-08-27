@@ -96,16 +96,28 @@ async function collectPages<T>(
   }
 }
 
-function inUtcPeriod(
+function timestampMillis(value: string): number {
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) {
+    throw new Error(`DASHBOARD_INVALID_TIMESTAMP:${value}`);
+  }
+  return timestamp;
+}
+
+export function isTimestampInUtcPeriod(
   value: string,
   bounds: Readonly<{ startInclusive: string; endExclusive: string }> | undefined,
 ): boolean {
   if (!bounds) return true;
-  return value >= bounds.startInclusive && value < bounds.endExclusive;
+  const timestamp = timestampMillis(value);
+  return timestamp >= timestampMillis(bounds.startInclusive)
+    && timestamp < timestampMillis(bounds.endExclusive);
 }
 
 function laterTimestamp(current: string | null, candidate: string): string {
-  return current === null || candidate > current ? candidate : current;
+  return current === null || timestampMillis(candidate) > timestampMillis(current)
+    ? candidate
+    : current;
 }
 
 export function summarizeSupplierPurchases(
@@ -156,7 +168,9 @@ export function summarizeSupplierPurchases(
     }))
     .sort((left, right) => {
       if (left.lastActivityAt !== right.lastActivityAt) {
-        return (right.lastActivityAt ?? "").localeCompare(left.lastActivityAt ?? "");
+        const leftTimestamp = left.lastActivityAt ? timestampMillis(left.lastActivityAt) : Number.NEGATIVE_INFINITY;
+        const rightTimestamp = right.lastActivityAt ? timestampMillis(right.lastActivityAt) : Number.NEGATIVE_INFINITY;
+        if (leftTimestamp !== rightTimestamp) return rightTimestamp - leftTimestamp;
       }
       return left.supplierName.localeCompare(right.supplierName, "pt-BR");
     });
@@ -191,7 +205,7 @@ export function buildSupplierPriceChanges(
     comparablePriceItemCount += 1;
 
     const ordered = [...rows].sort((left, right) => {
-      const byObservedAt = left.observed_at.localeCompare(right.observed_at);
+      const byObservedAt = timestampMillis(left.observed_at) - timestampMillis(right.observed_at);
       return byObservedAt !== 0 ? byObservedAt : left.id.localeCompare(right.id);
     });
     const previous = ordered[ordered.length - 2];
@@ -217,7 +231,7 @@ export function buildSupplierPriceChanges(
   }
 
   changes.sort((left, right) => {
-    const byObservedAt = right.observedAt.localeCompare(left.observedAt);
+    const byObservedAt = timestampMillis(right.observedAt) - timestampMillis(left.observedAt);
     if (byObservedAt !== 0) return byObservedAt;
     const bySupplier = left.supplierName.localeCompare(right.supplierName, "pt-BR");
     return bySupplier !== 0 ? bySupplier : left.stockItemName.localeCompare(right.stockItemName, "pt-BR");
@@ -252,7 +266,7 @@ export class SupabasePurchaseOverviewQuery {
           .eq("organization_id", organizationId);
         if (input.unitId) query = query.eq("unit_id", input.unitId);
         if (input.sectorId) query = query.eq("sector_id", input.sectorId);
-        const result = await query.range(from, to);
+        const result = await query.order("id", { ascending: true }).range(from, to);
         return { data: (result.data ?? []) as LocationRow[], error: result.error };
       }, "os locais das compras");
       scopedLocationIds = locations.map((row) => row.id);
@@ -268,7 +282,10 @@ export class SupabasePurchaseOverviewQuery {
               .eq("organization_id", organizationId)
               .not("ordered_at", "is", null);
             if (scopedLocationIds) query = query.in("stock_location_id", scopedLocationIds);
-            const result = await query.order("ordered_at", { ascending: false }).range(from, to);
+            const result = await query
+              .order("ordered_at", { ascending: false })
+              .order("id", { ascending: true })
+              .range(from, to);
             return { data: (result.data ?? []) as PurchaseOrderRow[], error: result.error };
           }, "o histórico de pedidos"),
       collectPages<SupplierRow>(async (from, to) => {
@@ -276,6 +293,7 @@ export class SupabasePurchaseOverviewQuery {
           .from("suppliers")
           .select("id, trade_name")
           .eq("organization_id", organizationId)
+          .order("id", { ascending: true })
           .range(from, to);
         return { data: (result.data ?? []) as SupplierRow[], error: result.error };
       }, "os fornecedores do Dashboard"),
@@ -284,6 +302,7 @@ export class SupabasePurchaseOverviewQuery {
           .from("supplier_items")
           .select("id, supplier_id, stock_item_id")
           .eq("organization_id", organizationId)
+          .order("id", { ascending: true })
           .range(from, to);
         return { data: (result.data ?? []) as SupplierItemRow[], error: result.error };
       }, "os vínculos de fornecedor"),
@@ -292,6 +311,7 @@ export class SupabasePurchaseOverviewQuery {
           .from("stock_items")
           .select("id, name")
           .eq("organization_id", organizationId)
+          .order("id", { ascending: true })
           .range(from, to);
         return { data: (result.data ?? []) as StockItemRow[], error: result.error };
       }, "os itens do histórico de preço"),
@@ -313,7 +333,7 @@ export class SupabasePurchaseOverviewQuery {
       }, "o histórico de preços"),
     ]);
 
-    const issuedOrders = allOrders.filter((order) => inUtcPeriod(order.ordered_at, bounds));
+    const issuedOrders = allOrders.filter((order) => isTimestampInUtcPeriod(order.ordered_at, bounds));
     const scopedOrderIds = new Set(allOrders.map((order) => order.id));
 
     const allReceipts = hasExplicitScope && scopedOrderIds.size === 0
@@ -328,7 +348,10 @@ export class SupabasePurchaseOverviewQuery {
               .gte("received_at", bounds.startInclusive)
               .lt("received_at", bounds.endExclusive);
           }
-          const result = await query.order("received_at", { ascending: false }).range(from, to);
+          const result = await query
+            .order("received_at", { ascending: false })
+            .order("id", { ascending: true })
+            .range(from, to);
           return { data: (result.data ?? []) as PurchaseReceiptRow[], error: result.error };
         }, "o histórico de recebimentos");
     const receipts = hasExplicitScope
