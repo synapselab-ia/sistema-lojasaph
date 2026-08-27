@@ -2,7 +2,7 @@
 
 ## Estado
 
-**Fase 46 continua integrada.** A frente ativa é a Issue #75 / `REQ-PLAT-005`, agora com implementação técnica de Storage separada na **Issue #121 — Backup e recuperação off-site do Supabase Storage**.
+**Fase 46 continua integrada.** A frente ativa é a Issue #75 / `REQ-PLAT-005`, com Storage separado na **Issue #121 — Backup e recuperação off-site do Supabase Storage**.
 
 Não refazer sem regressão concreta:
 
@@ -15,35 +15,47 @@ Não refazer sem regressão concreta:
 - compatibilidade de roles/schema do restore;
 - `restore_drill coverage=postgres` e reconciliação da #110.
 
-## Baseline de entrada
+## Baseline viva
 
-- `main`: `9794210a9d1b4dbd8fca01dd8ef0e6318a9e278e` (#120) antes desta slice de design;
-- CI `33070390747`: verde;
-- nenhum PR aberto na entrada;
+- `main`: `0452d1330d6a849c4e3c8737faf89912bab9d89d` (#125);
+- PR #126 aberto na branch `agent/storage-protection-backup`;
 - #75 aberta;
-- #121 criada após inventário real;
+- #121 aberta;
+- Production Storage continua vazia;
 - repo temporariamente `public`; não alterar automaticamente.
 
-## Inventário Storage concluído
+## Primeira slice técnica Storage — implementada
 
-### Código
+PR #126 entrega:
 
-Só existe uso físico de Storage para anexos financeiros.
+1. manifesto `lojasaph-storage-backup-v1`;
+2. inventário/reconciliação `finance_attachments` ↔ objeto físico;
+3. fail-closed para bucket inesperado, missing, extra, tamanho/hash divergente e guardrails;
+4. snapshot Supabase Storage via S3;
+5. upload R2 em `production/storage/runs/<backup-id>` com re-download/re-hash;
+6. workflow Production desarmado por gate explícito;
+7. persistência `automatic_storage` / `coverage=storage` reutilizando `record-protection-run.sh`;
+8. incidente GitHub-native existente;
+9. restore isolado pela Storage API, nunca por DML em `storage.*`;
+10. CI local end-to-end com objeto sintético e re-hash pós-restore.
 
-- bucket: `finance-attachments`;
-- privado;
-- criado/configurado pela Storage API no primeiro upload autorizado;
-- limite 10 MiB;
-- MIME PDF/XML/JPEG/PNG/WebP;
-- key `Organization/payable_document/attachment` por UUID;
-- SHA-256 do conteúdo já é persistido em `public.finance_attachments`;
-- upload físico ocorre via admin client server-only após preflight autenticado;
-- metadata é registrada depois do objeto e falha tenta compensação física;
-- download primeiro exige metadata visível sob RLS e só então usa admin Storage;
-- browser não acessa o objeto diretamente e não recebe secret/signed URL;
-- não existe delete funcional de anexo hoje.
+Durante o gate do PR duas falhas concretas foram corrigidas:
 
-### Production read-only — 2026-08-27
+- autenticação S3 local passou a usar o contrato documentado do Supabase local com session token, sem alterar o modelo Production de access key dedicada;
+- downloads do container AWS passaram a ser materializados como arquivos runner-owned `0600` antes da verificação.
+
+Head técnico comprovado: `01681b6b47bbf7a5304fa4bb8ef0787043b7ea9b`.
+
+Runs verdes:
+
+- CI `33081199162`;
+- Storage Protection CI `33081198933`;
+- `storage-contract`: success;
+- `isolated-storage-binary-restore`: success.
+
+Depois disso foi removido um arquivo temporário acidental `NEXT_ACTION.next.tmp`; não preservar/recriar esse artefato.
+
+## Production read-only revalidada — 2026-08-27
 
 Projeto `fhbvwyttikrbeaanatlr`:
 
@@ -52,57 +64,30 @@ Projeto `fhbvwyttikrbeaanatlr`:
 - 0 objetos Storage ativos;
 - 0 `finance_attachments`;
 - 0 bytes declarados;
-- 0 policies customizadas em `storage.objects`/`storage.buckets`.
+- 0 policies customizadas em `storage.objects`/`storage.buckets`;
+- 0 runs `automatic_storage`.
 
-Isso é esperado porque o bucket é lazy. Nenhum bucket/objeto foi criado nesta investigação.
-
-## Decisão registrada na #121
-
-Implementação alvo:
-
-1. reutilizar Cloudflare R2, namespace `production/storage/...` separado de `production/postgres`;
-2. source access por credencial S3 dedicada do Supabase Storage, server-only e separada do secret admin da aplicação;
-3. allowlist inicial `finance-attachments`, fail-closed para bucket Files não classificado;
-4. snapshot completo diário inicialmente, em prefixo imutável por run;
-5. manifesto `lojasaph-storage-backup-v1`;
-6. stream SHA-256 da origem e comparação com checksum/tamanho autoritativos de `finance_attachments`;
-7. upload R2 + re-download/re-hash antes de integridade positiva;
-8. guardrails Storage próprios/configuráveis, nunca herdar automaticamente o cap PostgreSQL de 300 MB;
-9. persistir `automatic_storage` / `coverage=storage` pelo boundary existente;
-10. restore em Supabase Storage isolado via API/S3, nunca DML em `storage.*`;
-11. reconciliar manifesto ↔ metadata de negócio ↔ objetos restaurados e detectar missing/extra/corrupt;
-12. registrar `restore_drill coverage=storage` só depois da prova suficiente.
+Nenhum bucket/objeto foi criado durante a implementação ou investigação.
 
 ## Gate de UI / prova real
-
-Production está vazia. Um snapshot vazio pode provar a execução do inventário, mas não comprova recuperação de binários reais.
 
 A UI deve continuar dizendo que Storage/anexos não estão cobertos até existirem ambos:
 
 - `automatic_storage` Production real íntegro; e
 - `restore_drill coverage=storage` real sobre pelo menos um anexo Production criado pelo fluxo normal do produto.
 
-Não criar fixture sintética em Production para satisfazer esse gate.
+Snapshot vazio não comprova recuperação binária. Não criar fixture sintética em Production.
 
 ## Próxima ação
 
-Implementar a primeira slice da #121 em branch própria:
+Depois do merge do PR #126, a próxima slice é operacional, não uma reescrita do tooling:
 
-- tooling de inventário/manifesto;
-- testes unitários;
-- CI usando Supabase Storage local e arquivos sintéticos pequenos;
-- workflow Storage inicialmente fail-closed/desarmado para Production;
-- integração com `record-protection-run.sh` sem duplicar schema.
-
-Antes de armar Production, confirmar explicitamente:
-
-- endpoint S3 do Supabase Storage habilitado;
-- credencial S3 de origem provisionada em GitHub Secrets fora do chat;
-- lifecycle + Bucket Lock de 30 dias abrangendo `production/storage`;
-- caps Storage próprios de quantidade/bytes configurados;
-- source bucket allowlist correta.
-
-Se Production continuar com zero objetos ao fim da implementação, não inventar conteúdo. Deixar o gate de prova binária real pendente até existir um anexo legítimo.
+1. confirmar o endpoint S3 Production correto e que a credencial dedicada da origem está provisionada em GitHub Secrets fora do chat;
+2. confirmar lifecycle + Bucket Lock de 30 dias abrangendo `production/storage` no R2 existente;
+3. configurar caps Storage Production explícitos e allowlist `finance-attachments`;
+4. manter `STORAGE_BACKUP_AUTOMATION_ENABLED` falso até todos os gates estarem confirmados;
+5. se Production ainda estiver vazia, não executar prova artificial apenas para gerar `succeeded`;
+6. quando existir um anexo legítimo, executar uma única prova controlada: source hash = checksum de negócio → R2 + re-hash → `automatic_storage=succeeded` → restore isolado → `restore_drill coverage=storage=succeeded`.
 
 ## Restrições
 
