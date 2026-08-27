@@ -18,15 +18,15 @@ env:
   BACKUP_S3_ENDPOINT: ${{ vars.BACKUP_S3_ENDPOINT }}
   BACKUP_S3_BUCKET: ${{ vars.BACKUP_S3_BUCKET }}
   BACKUP_S3_REGION: ${{ vars.BACKUP_S3_REGION || 'auto' }}
-  # Non-secret Production Storage policy is versioned here to avoid hidden drift.
+  # Non-secret Production Storage policy and source identity are versioned here to avoid hidden drift.
   STORAGE_BACKUP_ALLOW_BUCKETS: finance-attachments
   STORAGE_BACKUP_MAX_OBJECTS: "1000"
   STORAGE_BACKUP_MAX_TOTAL_BYTES: "1073741824"
   STORAGE_BACKUP_MAX_OBJECT_BYTES: "10485760"
   STORAGE_BACKUP_DEST_PREFIX: production/storage
   STORAGE_SOURCE_PROJECT_REF: fhbvwyttikrbeaanatlr
-  STORAGE_SOURCE_S3_ENDPOINT: ${{ vars.STORAGE_SOURCE_S3_ENDPOINT }}
-  STORAGE_SOURCE_S3_REGION: ${{ vars.STORAGE_SOURCE_S3_REGION }}
+  STORAGE_SOURCE_S3_ENDPOINT: https://fhbvwyttikrbeaanatlr.storage.supabase.co/storage/v1/s3
+  STORAGE_SOURCE_S3_REGION: sa-east-1
 
 jobs:
   backup:
@@ -94,6 +94,11 @@ jobs:
 
           if [[ "${STORAGE_SOURCE_S3_ENDPOINT}" != "https://${STORAGE_SOURCE_PROJECT_REF}.storage.supabase.co/storage/v1/s3" ]]; then
             echo "::error::Storage source endpoint does not match the Production project S3 endpoint."
+            exit 1
+          fi
+
+          if [[ "${STORAGE_SOURCE_S3_REGION}" != "sa-east-1" ]]; then
+            echo "::error::Storage source region does not match the Production Supabase project region."
             exit 1
           fi
 
