@@ -4,7 +4,7 @@
 
 A frente ativa permanece na Issue #75 / `REQ-PLAT-005 — Proteção, backup e recuperação de dados`.
 
-A Issue #121 cobre Supabase Storage. O tooling técnico foi integrado no PR #126. A branch `agent/storage-production-guardrails` versiona os guardrails iniciais de Production sem armar a automação.
+A Issue #121 cobre Supabase Storage. O tooling técnico foi integrado no PR #126 e os guardrails Production foram integrados no PR #128. Não existe nova slice técnica a iniciar por atividade artificial.
 
 Não refazer sem regressão:
 
@@ -13,11 +13,19 @@ Não refazer sem regressão:
 - transporte Supabase S3 → R2;
 - restore isolado pela Storage API;
 - persistência `automatic_storage` pelo boundary existente;
-- CI end-to-end de Storage.
+- CI end-to-end de Storage;
+- guardrails Production versionados.
 
 ## Estado confirmado
 
-`main`: `c534a99b7b88b054f57b6556d303cdf5a1e7e92a`.
+Referência funcional integrada: PR #128 / `27b0b3914a246fb370c9dd5f8ea06f64baa86044`.
+
+Sempre consultar `main` real antes de trabalhar. SHA posterior exclusivamente documental não exige novo PR de sincronização.
+
+Pós-merge #128:
+
+- CI `33087254390`: `database` + `validate` success;
+- Storage Protection CI `33087254427`: `storage-contract` + `isolated-storage-binary-restore` success.
 
 Production `fhbvwyttikrbeaanatlr` em 2026-08-27:
 
@@ -31,16 +39,16 @@ Production `fhbvwyttikrbeaanatlr` em 2026-08-27:
 
 O bucket `finance-attachments` é criado lazy pelo fluxo funcional. Não fabricar dados para provar backup.
 
-## Guardrails já decididos/versionados
+## Guardrails já concluídos
 
-A política inicial de Storage Production é:
+A política inicial de Storage Production está versionada no workflow:
 
 - `STORAGE_BACKUP_ALLOW_BUCKETS=finance-attachments`;
 - `STORAGE_BACKUP_MAX_OBJECTS=1000`;
 - `STORAGE_BACKUP_MAX_TOTAL_BYTES=1073741824` (1 GiB);
 - `STORAGE_BACKUP_MAX_OBJECT_BYTES=10485760` (10 MiB).
 
-Esses valores ficam no workflow versionado, não em repository variables ocultas. O CI deve impedir retorno a `vars.STORAGE_BACKUP_MAX_*` e impedir reutilização do cap PostgreSQL `300000000`.
+O CI impede retorno a `vars.STORAGE_BACKUP_MAX_*` e impede reutilização do cap PostgreSQL `300000000`.
 
 ## NEXT_ACTION imediata
 
@@ -102,6 +110,8 @@ Quando surgir ao menos um anexo Production criado pelo fluxo normal:
 
 A slice operacional termina quando a credencial S3 dedicada e os controles R2 específicos de `production/storage` estiverem confirmados e documentados sem exposição de segredo. Se não houver objeto Production legítimo, a automação pode continuar desarmada e a prova binária real permanece corretamente pendente.
 
+Se nenhum gate externo estiver desbloqueado e não houver regressão/nova prioridade, **preservar a baseline; não criar nova feature/Issue/PR apenas para produzir atividade**.
+
 ## Fora de escopo
 
 - refazer PostgreSQL;
@@ -113,4 +123,5 @@ A slice operacional termina quando a credencial S3 dedicada e os controles R2 es
 - implementar delete funcional de anexos;
 - exportação manual por Organization;
 - tornar repo private automaticamente;
-- deploy Vercel para esta trilha operacional.
+- deploy Vercel para esta trilha operacional;
+- novo PR só para atualizar SHA documental.
