@@ -4,55 +4,136 @@
 
 ## Estado atual
 
-**Fase 48 / Issue #134 — `REQ-DASH-004` implementada e validada no PR #135 (`agent/dashboard-stock-overview`).**
+**Fase 49 / Issue #136 — `REQ-DASH-005` em andamento na branch `agent/dashboard-purchases-supplier-history`.**
 
-A slice completa a cobertura mínima coerente de Estoque no Dashboard sem criar nova fonte de verdade, migration, view ou RPC.
+Baseline integrada e reconciliada antes da nova frente:
 
-Baseline integrada antes do PR #135:
+- `main=e3583b14280e6919834e53e958d00cf8d3946434` — merge da Fase 48 / PR #135;
+- Issue #134 encerrada;
+- PR #135 merged;
+- CI pós-merge da `main`: run `33113803812`, success;
+- nenhum PR aberto no início da Fase 49;
+- únicas Issues abertas naquele ponto: #75 e #121, ambas de proteção de dados e fora da frente ativa.
 
-- `main=afe1848353beff8b2d09e9b6a3f044b56d28502c` — Fase 47 / PR #133;
-- Issue #132 encerrada;
-- CI pós-merge da Fase 47 `33111519670`: success.
+Não refazer Fase 48/#134.
 
-## Fase 48 — #134 / PR #135
+## Fase 49 — #136 / `REQ-DASH-005`
 
-Gap confirmado de `REQ-DASH-004`:
+### Inventário técnico concluído
 
-- transferências em trânsito, inventários em andamento, validades e estoque abaixo do mínimo já estavam cobertos;
-- faltavam saldos atuais, atividade do ledger e perdas como KPIs gerenciais explícitos.
+Revisados:
 
-Entregue:
+- `AGENTS.md`, `00-START-HERE.md`, `CURRENT_STATE.md`, `HANDOFF.md`, `NEXT_ACTION.md` e `WORKFLOW.md`;
+- `docs/product/requirements.md`;
+- `docs/product/open-questions.md`;
+- `docs/modules/purchases.md`;
+- `docs/modules/master-data.md`;
+- Dashboard integrado após a Fase 48;
+- schema/RLS real de suppliers, vínculos, preços, pedidos e recebimentos;
+- Production somente read-only.
 
-- `Posições com saldo`: contagem item + local com `quantity_on_hand != 0`, sem somar UOMs heterogêneas;
-- movimentos confirmados do ledger `stock_movements`;
-- perdas/vencimentos confirmados (`loss` / `expiration`);
-- período de movimentos/perdas por `occurred_at`, usando timezone da Organization e limites UTC corretos;
-- sem período: histórico visível completo;
-- horizonte 7/15/30 não recorta movimentos/perdas;
-- Unit/Setor somente por `source_location_id`, `destination_location_id` e `sector_id` explícitos;
-- sessão autenticada + RLS, sem service/admin key;
-- seção específica de Estoque no Dashboard, sem duplicação na seção Operação.
+RLS confirmado em Production:
 
-Validação do head corrigido da implementação:
+- `suppliers`, `supplier_contacts`, `supplier_terms`, `supplier_items`, `supplier_prices`: RLS ativo; leitura para `authenticated` por membership da Organization;
+- `purchase_orders`, `purchase_order_items`, `purchase_receipts`, `purchase_receipt_items`: RLS ativo; leitura passa por `private.can_read_purchase_order(...)` ou relação equivalente;
+- não existe necessidade de service/admin key para o read model do Dashboard.
 
-- CI #492 / `33113200782`: database + lint + typecheck + Vitest + production build verdes;
-- Inventory Count Integration #236 / `33113200850`: success;
-- Business Transactions Integration #220 / `33113200888`: success.
+### Dados reais encontrados em Production
 
-Production foi validada apenas read-only, sem fixtures:
+Projeto: `fhbvwyttikrbeaanatlr`.
 
-- 4 posições com saldo;
-- 6 movimentos confirmados;
-- 1 perda/vencimento confirmado;
-- datas de negócio observadas: 2026-08-01 e 2026-08-20.
+Contagens em 2026-08-27:
 
-Nenhuma migration Production é necessária nesta fase.
+- `suppliers`: 2;
+- `supplier_contacts`: 1;
+- `supplier_terms`: 0;
+- `supplier_items`: 2;
+- `supplier_prices`: 2;
+- `purchase_orders`: 0;
+- `purchase_order_items`: 0;
+- `purchase_receipts`: 0;
+- `purchase_receipt_items`: 0.
+
+As 2 observações de preço atuais:
+
+- têm `source='demo_seed'`;
+- têm `observed_at=2026-08-01 12:00:00+00`;
+- pertencem a vínculos fornecedor/item distintos;
+- não formam nenhum par com duas observações comparáveis.
+
+Consequência: Production hoje deve mostrar compras/recebimentos vazios e histórico de preço **sem variação calculável**. Não criar fixtures/pedidos/preços em Production para fabricar evidência.
+
+### Slice aprovada na #136
+
+A Fase 49 implementa apenas fatos determinísticos:
+
+- pedidos emitidos por `purchase_orders.ordered_at IS NOT NULL`;
+- recebimentos por `purchase_receipts.received_at`;
+- histórico por fornecedor com contagem de pedidos emitidos, recebimentos e última atividade;
+- Unit/Setor para compras exclusivamente por `purchase_orders.stock_location_id`;
+- período inclusivo no calendário local convertido para UTC como `[start, end)`;
+- histórico de preços por `supplier_prices.observed_at`;
+- variação somente entre as duas observações mais recentes do mesmo `supplier_item_id`;
+- comparação somente de `unit_price`, usando `Money`/centavos exatos;
+- preço permanece Organization-wide quando Unit/Setor está ativo, pois `supplier_prices` não possui vínculo local explícito;
+- ausência de duas observações comparáveis aparece como falta de histórico suficiente, não como “0 variação” comprovada.
+
+Explicitamente fora da slice:
+
+- score/ranking/“melhor fornecedor”;
+- SLA/lead time/atraso médio sem semântica canônica;
+- soma de quantidades heterogêneas;
+- comparação/conversão de `package_price`/embalagem;
+- forecast, IA, sugestão ou compra automática;
+- economia estimada sem baseline comprovado.
+
+### Código da branch
+
+Arquivos novos:
+
+- `src/modules/dashboard/adapters/supabase-purchase-overview-query.ts`;
+- `src/modules/dashboard/adapters/supabase-purchase-overview-query.test.ts`;
+- `src/modules/dashboard/ui/purchase-overview-section.tsx`.
+
+Arquivo integrado:
+
+- `src/app/workspace/(operacao)/page.tsx` — adiciona a seção “Compras e fornecedores”.
+
+Documentação afetada:
+
+- `docs/modules/dashboard.md`;
+- `docs/ai/CURRENT_STATE.md`;
+- `docs/ai/HANDOFF.md`;
+- `docs/ai/NEXT_ACTION.md`.
+
+Nenhuma migration, view, RPC, DDL ou DML Production foi criada.
+
+### Validação
+
+Testes unitários da nova slice cobrem:
+
+- limites UTC do período local;
+- recebimento no período com pedido emitido antes do período;
+- agrupamento factual por fornecedor;
+- ausência de comparação entre vínculos distintos;
+- comparação das duas observações mais recentes do mesmo `supplier_item`;
+- histórico comparável sem alteração de preço.
+
+A validação completa deve ser reconciliada no PR da branch:
+
+- lint;
+- typecheck;
+- Vitest;
+- production build;
+- workflows aplicáveis.
+
+Não fazer deploy Vercel rotineiro para provar esta entrega.
 
 ## Issue #121 — ON HOLD
 
 `REQ-PLAT-005 — Backup e recuperação off-site do Supabase Storage` continua aberta, mas **não é frente ativa**.
 
-A checagem única exigida pela `NEXT_ACTION` em 2026-08-27 confirmou que ainda não há gatilho:
+A checagem única exigida em 2026-08-27 confirmou:
 
 - 0 buckets Storage;
 - 0 anexos financeiros;
@@ -70,22 +151,20 @@ A Issue #75 permanece umbrella de proteção de dados e não é frente ativa.
 
 ## Ordem de trabalho
 
-Após integração do PR #135 / encerramento da #134, salvo bug, regressão ou nova prioridade explícita:
-
-1. `REQ-DASH-005` — fornecedores/compras, usando histórico e relações já persistidos;
-2. `REQ-ITEM-003` — EAN/código de barras/dados fiscais;
+1. concluir #136 / Fase 49: reconciliar PR da branch, corrigir apenas falhas reais de CI/review e integrar;
+2. após merge, confirmar `main` + Issue/PR + CI pós-merge e promover `REQ-ITEM-003` — EAN/código de barras/dados fiscais;
 3. requisitos PENDING somente após decisão de negócio real.
 
 A #121 pode ser retomada quando seu gatilho existir, mas simples espera não bloqueia essa ordem.
 
 ## Não fazer
 
-- não reabrir Fase 47/#132 sem regressão concreta;
+- não reabrir Fase 48/#134 sem regressão concreta;
+- não ampliar #136 com score/SLA/forecast;
 - não tocar #121 sem gatilho real;
 - não criar dados Production para fabricar evidência;
-- não somar quantidades de UOMs diferentes em um saldo total;
-- não criar histórico artificial a partir de snapshots atuais;
-- não antecipar previsão de demanda/IA ou compra automática;
-- não misturar `REQ-DASH-005` / `REQ-ITEM-003` nesta slice concluída;
+- não somar quantidades de UOMs diferentes;
+- não inferir Unit/Setor para `supplier_prices`;
+- não antecipar `REQ-ITEM-003` dentro da Fase 49;
 - não fazer deploy Vercel rotineiro;
 - não tornar o repositório private automaticamente.
