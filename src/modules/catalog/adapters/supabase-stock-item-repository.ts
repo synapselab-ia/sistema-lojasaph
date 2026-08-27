@@ -11,6 +11,9 @@ interface StockItemRow {
   base_unit_id: string;
   name: string;
   item_type: StockItemType;
+  ean: string | null;
+  ncm: string | null;
+  cest: string | null;
   active: boolean;
   track_expiration: boolean;
   track_batch: boolean;
@@ -26,13 +29,18 @@ function persistenceError(message: string, cause?: string): DomainError {
   return new DomainError("SUPABASE_PERSISTENCE_ERROR", cause ? `${message}: ${cause}` : message);
 }
 
+function optionalText(value: string | null): string | undefined {
+  const normalized = value?.trim();
+  return normalized || undefined;
+}
+
 export class SupabaseStockItemRepository implements StockItemRepository {
   constructor(private readonly client: SupabaseClient) {}
 
   async findById(id: EntityId): Promise<StockItem | null> {
     const { data, error } = await this.client
       .from("stock_items")
-      .select("id, organization_id, category_id, base_unit_id, name, item_type, active, track_expiration, track_batch, is_returnable")
+      .select("id, organization_id, category_id, base_unit_id, name, item_type, ean, ncm, cest, active, track_expiration, track_batch, is_returnable")
       .eq("id", id)
       .maybeSingle();
 
@@ -47,7 +55,7 @@ export class SupabaseStockItemRepository implements StockItemRepository {
   async listByOrganization(organizationId: EntityId): Promise<readonly StockItem[]> {
     const { data, error } = await this.client
       .from("stock_items")
-      .select("id, organization_id, category_id, base_unit_id, name, item_type, active, track_expiration, track_batch, is_returnable")
+      .select("id, organization_id, category_id, base_unit_id, name, item_type, ean, ncm, cest, active, track_expiration, track_batch, is_returnable")
       .eq("organization_id", organizationId)
       .order("name", { ascending: true });
 
@@ -72,6 +80,9 @@ export class SupabaseStockItemRepository implements StockItemRepository {
       base_unit_id: baseUnitId,
       name: item.name,
       item_type: item.type,
+      ean: item.ean ?? null,
+      ncm: item.ncm ?? null,
+      cest: item.cest ?? null,
       active: item.active,
       track_expiration: item.trackExpiration,
       track_batch: item.trackBatch,
@@ -93,6 +104,9 @@ export class SupabaseStockItemRepository implements StockItemRepository {
       name: row.name,
       baseUnitCode,
       type: row.item_type,
+      ean: optionalText(row.ean),
+      ncm: optionalText(row.ncm),
+      cest: optionalText(row.cest),
       active: row.active,
       trackExpiration: row.track_expiration,
       trackBatch: row.track_batch,
