@@ -128,6 +128,7 @@ jobs:
             unset status_env
             test -n "${API_URL:-}"
             test -n "${DB_URL:-}"
+            test -n "${ANON_KEY:-}"
             test -n "${SERVICE_ROLE_KEY:-}"
           }
 
@@ -196,33 +197,17 @@ jobs:
             ('${ATTACHMENT_TWO}', '${ORG}', '${DOC}', 'finance-attachments', '${KEY_TWO}', 'application/xml', ${SIZE_TWO}, '${SHA_TWO}', now());
           SQL
 
-          STORAGE_CONTAINER="$(
-            docker ps --filter 'name=supabase_storage_' --format '{{.ID}}' | head -n 1
-          )"
-          test -n "${STORAGE_CONTAINER}"
-          STORAGE_ENV="$(
-            docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "${STORAGE_CONTAINER}"
-          )"
-          SOURCE_S3_ACCESS_KEY_ID="$(
-            printf '%s\n' "${STORAGE_ENV}" | sed -n 's/^S3_PROTOCOL_ACCESS_KEY_ID=//p' | head -n 1
-          )"
-          SOURCE_S3_SECRET_ACCESS_KEY="$(
-            printf '%s\n' "${STORAGE_ENV}" | sed -n 's/^S3_PROTOCOL_ACCESS_KEY_SECRET=//p' | head -n 1
-          )"
-          SOURCE_S3_REGION="$(
-            printf '%s\n' "${STORAGE_ENV}" | sed -n 's/^REGION=//p' | head -n 1
-          )"
-          unset STORAGE_ENV
-          test -n "${SOURCE_S3_ACCESS_KEY_ID}"
-          test -n "${SOURCE_S3_SECRET_ACCESS_KEY}"
-          test -n "${SOURCE_S3_REGION}"
-
+          # Supabase documents a dedicated S3 session-token contract for local
+          # development. Do not depend on internal container environment variables:
+          # local uses region=local, accessKeyId=stub, ANON_KEY as the secret, and
+          # a valid JWT as the session token. Production keeps dedicated S3 access keys.
           export SUPABASE_DB_URL="${SOURCE_DB_URL}"
           export STORAGE_SOURCE_PROJECT_REF="isolated-ci-source"
           export STORAGE_SOURCE_S3_ENDPOINT="http://127.0.0.1:54321/storage/v1/s3"
-          export STORAGE_SOURCE_S3_REGION="${SOURCE_S3_REGION}"
-          export STORAGE_SOURCE_S3_ACCESS_KEY_ID="${SOURCE_S3_ACCESS_KEY_ID}"
-          export STORAGE_SOURCE_S3_SECRET_ACCESS_KEY="${SOURCE_S3_SECRET_ACCESS_KEY}"
+          export STORAGE_SOURCE_S3_REGION="local"
+          export STORAGE_SOURCE_S3_ACCESS_KEY_ID="stub"
+          export STORAGE_SOURCE_S3_SECRET_ACCESS_KEY="${ANON_KEY}"
+          export STORAGE_SOURCE_S3_SESSION_TOKEN="${SERVICE_ROLE_KEY}"
           export STORAGE_SOURCE_ALLOW_LOOPBACK_HTTP=true
           export STORAGE_BACKUP_ALLOW_BUCKETS=finance-attachments
           export STORAGE_BACKUP_MAX_OBJECTS=10
@@ -243,7 +228,9 @@ jobs:
             cd "${SOURCE_DIR}"
             supabase stop --no-backup >/dev/null
           )
-          unset API_URL DB_URL SERVICE_ROLE_KEY
+          unset API_URL DB_URL ANON_KEY SERVICE_ROLE_KEY
+          unset STORAGE_SOURCE_S3_ACCESS_KEY_ID STORAGE_SOURCE_S3_SECRET_ACCESS_KEY
+          unset STORAGE_SOURCE_S3_SESSION_TOKEN STORAGE_SOURCE_S3_REGION
 
           init_local_supabase "${TARGET_DIR}"
           load_status "${TARGET_DIR}"
