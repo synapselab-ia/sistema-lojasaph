@@ -1,0 +1,283 @@
+name: Storage Protection CI
+
+on:
+  pull_request:
+    paths:
+      - "scripts/storage-backup-bundle.py"
+      - "scripts/test-storage-backup-bundle.py"
+      - "scripts/storage-protection-s3.sh"
+      - "scripts/restore-storage-backup.sh"
+      - ".github/workflows/production-storage-backup.yml"
+      - ".github/workflows/storage-protection-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "scripts/storage-backup-bundle.py"
+      - "scripts/test-storage-backup-bundle.py"
+      - "scripts/storage-protection-s3.sh"
+      - "scripts/restore-storage-backup.sh"
+      - ".github/workflows/production-storage-backup.yml"
+      - ".github/workflows/storage-protection-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  storage-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Validate Storage protection tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            scripts/storage-backup-bundle.py \
+            scripts/test-storage-backup-bundle.py
+          bash -n scripts/storage-protection-s3.sh
+          bash -n scripts/restore-storage-backup.sh
+          python scripts/test-storage-backup-bundle.py
+
+      - name: Verify Production workflow stays fail-closed
+        shell: bash
+        run: |
+          set -euo pipefail
+          WORKFLOW=.github/workflows/production-storage-backup.yml
+          grep -Fq "vars.STORAGE_BACKUP_AUTOMATION_ENABLED == 'true'" "${WORKFLOW}"
+          grep -Fq 'STORAGE_BACKUP_MAX_OBJECTS: ${{ vars.STORAGE_BACKUP_MAX_OBJECTS }}' "${WORKFLOW}"
+          grep -Fq 'STORAGE_BACKUP_MAX_TOTAL_BYTES: ${{ vars.STORAGE_BACKUP_MAX_TOTAL_BYTES }}' "${WORKFLOW}"
+          grep -Fq 'STORAGE_BACKUP_MAX_OBJECT_BYTES: ${{ vars.STORAGE_BACKUP_MAX_OBJECT_BYTES }}' "${WORKFLOW}"
+          grep -Fq 'STORAGE_BACKUP_R2_RETENTION_VERIFIED' "${WORKFLOW}"
+          grep -Fq 'production/storage' "${WORKFLOW}"
+          if grep -Fq '300000000' "${WORKFLOW}"; then
+            echo "::error::Storage workflow must not inherit the PostgreSQL 300 MB archive cap."
+            exit 1
+          fi
+
+  isolated-storage-binary-restore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SUPABASE_CLI_VERSION: "2.111.0"
+      SUPABASE_POSTGRES_VERSION: "17.6.1.141"
+      SUPABASE_STORAGE_VERSION: "v1.70.7"
+      BACKUP_AWS_CLI_IMAGE: amazon/aws-cli:2.36.30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@3c2f5e2ae34c34e428e8e206e2c4d21fa2d20fbf # v2.1.1
+        with:
+          version: ${{ env.SUPABASE_CLI_VERSION }}
+
+      - name: Prove local Storage snapshot and isolated binary restore
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ROOT="${RUNNER_TEMP}/lojasaph-storage-protection-ci"
+          SOURCE_DIR="${ROOT}/source"
+          TARGET_DIR="${ROOT}/target"
+          SNAPSHOT_DIR="${ROOT}/snapshot"
+          FIXTURE_DIR="${ROOT}/fixtures"
+          RESTORE_RUNTIME="${ROOT}/restore-runtime"
+          rm -rf "${ROOT}"
+          install -d -m 700 "${SOURCE_DIR}" "${TARGET_DIR}" "${FIXTURE_DIR}"
+
+          cleanup() {
+            for dir in "${TARGET_DIR}" "${SOURCE_DIR}"; do
+              if [[ -f "${dir}/supabase/config.toml" ]]; then
+                (
+                  cd "${dir}"
+                  supabase stop --no-backup >/dev/null 2>&1 || true
+                )
+              fi
+            done
+            rm -rf "${ROOT}"
+          }
+          trap cleanup EXIT
+
+          init_local_supabase() {
+            local dir="$1"
+            cd "${dir}"
+            supabase init >/dev/null
+            install -d -m 700 supabase/.temp
+            printf '%s\n' "${SUPABASE_POSTGRES_VERSION}" >supabase/.temp/postgres-version
+            printf '%s\n' "${SUPABASE_STORAGE_VERSION}" >supabase/.temp/storage-version
+            supabase start \
+              --exclude postgres-meta,realtime,imgproxy,mailpit,studio,edge-runtime,logflare,vector,supavisor \
+              >/dev/null
+          }
+
+          load_status() {
+            local dir="$1"
+            local status_env
+            cd "${dir}"
+            status_env="$(supabase status -o env 2>/dev/null)"
+            eval "${status_env}"
+            unset status_env
+            test -n "${API_URL:-}"
+            test -n "${DB_URL:-}"
+            test -n "${SERVICE_ROLE_KEY:-}"
+          }
+
+          storage_api() {
+            local method="$1"
+            local url="$2"
+            shift 2
+            curl --fail-with-body --silent --show-error \
+              --request "${method}" \
+              --header "Authorization: Bearer ${SERVICE_ROLE_KEY}" \
+              --header "apikey: ${SERVICE_ROLE_KEY}" \
+              "$@" \
+              "${url}"
+          }
+
+          ORG="11111111-1111-4111-8111-111111111111"
+          DOC="22222222-2222-4222-8222-222222222222"
+          ATTACHMENT_ONE="33333333-3333-4333-8333-333333333333"
+          ATTACHMENT_TWO="44444444-4444-4444-8444-444444444444"
+          KEY_ONE="${ORG}/${DOC}/${ATTACHMENT_ONE}"
+          KEY_TWO="${ORG}/${DOC}/${ATTACHMENT_TWO}"
+          printf 'synthetic invoice pdf bytes\n' >"${FIXTURE_DIR}/one.bin"
+          printf '<invoice>synthetic xml bytes</invoice>\n' >"${FIXTURE_DIR}/two.bin"
+          SHA_ONE="$(sha256sum "${FIXTURE_DIR}/one.bin" | awk '{print $1}')"
+          SHA_TWO="$(sha256sum "${FIXTURE_DIR}/two.bin" | awk '{print $1}')"
+          SIZE_ONE="$(stat -c '%s' "${FIXTURE_DIR}/one.bin")"
+          SIZE_TWO="$(stat -c '%s' "${FIXTURE_DIR}/two.bin")"
+
+          init_local_supabase "${SOURCE_DIR}"
+          load_status "${SOURCE_DIR}"
+          SOURCE_API_URL="${API_URL}"
+          SOURCE_DB_URL="${DB_URL}"
+
+          storage_api POST \
+            "${SOURCE_API_URL}/storage/v1/bucket" \
+            --header "Content-Type: application/json" \
+            --data-binary '{"id":"finance-attachments","name":"finance-attachments","public":false}' \
+            >/dev/null
+          storage_api POST \
+            "${SOURCE_API_URL}/storage/v1/object/finance-attachments/${KEY_ONE}" \
+            --header "Content-Type: application/pdf" \
+            --header "x-upsert: false" \
+            --data-binary "@${FIXTURE_DIR}/one.bin" \
+            >/dev/null
+          storage_api POST \
+            "${SOURCE_API_URL}/storage/v1/object/finance-attachments/${KEY_TWO}" \
+            --header "Content-Type: application/xml" \
+            --header "x-upsert: false" \
+            --data-binary "@${FIXTURE_DIR}/two.bin" \
+            >/dev/null
+
+          psql "${SOURCE_DB_URL}" -X -v ON_ERROR_STOP=1 <<SQL
+          create table public.finance_attachments (
+            id uuid primary key,
+            organization_id uuid not null,
+            payable_document_id uuid not null,
+            storage_bucket text not null,
+            storage_key text not null unique,
+            mime_type text not null,
+            size_bytes bigint not null,
+            checksum_sha256 text not null,
+            created_at timestamptz not null
+          );
+          insert into public.finance_attachments values
+            ('${ATTACHMENT_ONE}', '${ORG}', '${DOC}', 'finance-attachments', '${KEY_ONE}', 'application/pdf', ${SIZE_ONE}, '${SHA_ONE}', now()),
+            ('${ATTACHMENT_TWO}', '${ORG}', '${DOC}', 'finance-attachments', '${KEY_TWO}', 'application/xml', ${SIZE_TWO}, '${SHA_TWO}', now());
+          SQL
+
+          STORAGE_CONTAINER="$(
+            docker ps --filter 'name=supabase_storage_' --format '{{.ID}}' | head -n 1
+          )"
+          test -n "${STORAGE_CONTAINER}"
+          STORAGE_ENV="$(
+            docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "${STORAGE_CONTAINER}"
+          )"
+          SOURCE_S3_ACCESS_KEY_ID="$(
+            printf '%s\n' "${STORAGE_ENV}" | sed -n 's/^S3_PROTOCOL_ACCESS_KEY_ID=//p' | head -n 1
+          )"
+          SOURCE_S3_SECRET_ACCESS_KEY="$(
+            printf '%s\n' "${STORAGE_ENV}" | sed -n 's/^S3_PROTOCOL_ACCESS_KEY_SECRET=//p' | head -n 1
+          )"
+          SOURCE_S3_REGION="$(
+            printf '%s\n' "${STORAGE_ENV}" | sed -n 's/^REGION=//p' | head -n 1
+          )"
+          unset STORAGE_ENV
+          test -n "${SOURCE_S3_ACCESS_KEY_ID}"
+          test -n "${SOURCE_S3_SECRET_ACCESS_KEY}"
+          test -n "${SOURCE_S3_REGION}"
+
+          export SUPABASE_DB_URL="${SOURCE_DB_URL}"
+          export STORAGE_SOURCE_PROJECT_REF="isolated-ci-source"
+          export STORAGE_SOURCE_S3_ENDPOINT="http://127.0.0.1:54321/storage/v1/s3"
+          export STORAGE_SOURCE_S3_REGION="${SOURCE_S3_REGION}"
+          export STORAGE_SOURCE_S3_ACCESS_KEY_ID="${SOURCE_S3_ACCESS_KEY_ID}"
+          export STORAGE_SOURCE_S3_SECRET_ACCESS_KEY="${SOURCE_S3_SECRET_ACCESS_KEY}"
+          export STORAGE_SOURCE_ALLOW_LOOPBACK_HTTP=true
+          export STORAGE_BACKUP_ALLOW_BUCKETS=finance-attachments
+          export STORAGE_BACKUP_MAX_OBJECTS=10
+          export STORAGE_BACKUP_MAX_TOTAL_BYTES=1048576
+          export STORAGE_BACKUP_MAX_OBJECT_BYTES=10485760
+          export STORAGE_BACKUP_DEST_PREFIX=production/storage
+          STAMP="$(date -u +'%Y%m%dT%H%M%SZ')"
+          export STORAGE_BACKUP_ID="storage-${STAMP}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+
+          MANIFEST="$(
+            cd "${GITHUB_WORKSPACE}"
+            bash scripts/storage-protection-s3.sh snapshot "${SNAPSHOT_DIR}"
+          )"
+          test -s "${MANIFEST}"
+          test -s "${SNAPSHOT_DIR}/manifest.json.sha256"
+
+          (
+            cd "${SOURCE_DIR}"
+            supabase stop --no-backup >/dev/null
+          )
+          unset API_URL DB_URL SERVICE_ROLE_KEY
+
+          init_local_supabase "${TARGET_DIR}"
+          load_status "${TARGET_DIR}"
+          export STORAGE_RESTORE_ISOLATED=true
+          export STORAGE_RESTORE_API_URL="${API_URL}"
+          export STORAGE_RESTORE_SERVICE_ROLE_KEY="${SERVICE_ROLE_KEY}"
+          export STORAGE_RESTORE_DB_URL="${DB_URL}"
+
+          (
+            cd "${GITHUB_WORKSPACE}"
+            bash scripts/restore-storage-backup.sh \
+              "${MANIFEST}" \
+              "${SNAPSHOT_DIR}/source-material" \
+              "${RESTORE_RUNTIME}"
+          )
+
+          EXTRA="55555555-5555-4555-8555-555555555555"
+          storage_api POST \
+            "${API_URL}/storage/v1/object/finance-attachments/${ORG}/${DOC}/${EXTRA}" \
+            --header "Content-Type: application/pdf" \
+            --header "x-upsert: false" \
+            --data-binary "@${FIXTURE_DIR}/one.bin" \
+            >/dev/null
+
+          psql "${DB_URL}" -X -v ON_ERROR_STOP=1 -qAt \
+            -c "select coalesce(json_agg(json_build_object('bucket', bucket_id, 'key', name) order by bucket_id, name), '[]'::json)::text from storage.objects where bucket_id = 'finance-attachments';" \
+            >"${ROOT}/extra-inventory.json"
+
+          if (
+            cd "${GITHUB_WORKSPACE}"
+            python scripts/storage-backup-bundle.py verify-object-set \
+              --manifest "${MANIFEST}" \
+              --inventory "${ROOT}/extra-inventory.json"
+          ); then
+            echo "::error::Restore reconciliation accepted an unexpected object."
+            exit 1
+          fi

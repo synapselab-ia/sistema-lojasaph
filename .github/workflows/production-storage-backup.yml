@@ -1,0 +1,202 @@
+name: Production Storage Backup
+
+on:
+  schedule:
+    - cron: "47 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: production-storage-backup
+  cancel-in-progress: false
+
+env:
+  BACKUP_AWS_CLI_IMAGE: amazon/aws-cli:2.36.30
+  BACKUP_S3_ENDPOINT: ${{ vars.BACKUP_S3_ENDPOINT }}
+  BACKUP_S3_BUCKET: ${{ vars.BACKUP_S3_BUCKET }}
+  BACKUP_S3_REGION: ${{ vars.BACKUP_S3_REGION || 'auto' }}
+  STORAGE_BACKUP_ALLOW_BUCKETS: ${{ vars.STORAGE_BACKUP_ALLOW_BUCKETS || 'finance-attachments' }}
+  STORAGE_BACKUP_MAX_OBJECTS: ${{ vars.STORAGE_BACKUP_MAX_OBJECTS }}
+  STORAGE_BACKUP_MAX_TOTAL_BYTES: ${{ vars.STORAGE_BACKUP_MAX_TOTAL_BYTES }}
+  STORAGE_BACKUP_MAX_OBJECT_BYTES: ${{ vars.STORAGE_BACKUP_MAX_OBJECT_BYTES }}
+  STORAGE_BACKUP_DEST_PREFIX: production/storage
+  STORAGE_SOURCE_PROJECT_REF: fhbvwyttikrbeaanatlr
+  STORAGE_SOURCE_S3_ENDPOINT: ${{ vars.STORAGE_SOURCE_S3_ENDPOINT }}
+  STORAGE_SOURCE_S3_REGION: ${{ vars.STORAGE_SOURCE_S3_REGION }}
+
+jobs:
+  backup:
+    # Deliberately disarmed until the #121 operational gates are satisfied.
+    if: ${{ vars.STORAGE_BACKUP_AUTOMATION_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      SUPABASE_DB_URL: ${{ secrets.PRODUCTION_SUPABASE_DB_URL }}
+      STORAGE_SOURCE_S3_ACCESS_KEY_ID: ${{ secrets.STORAGE_SOURCE_S3_ACCESS_KEY_ID }}
+      STORAGE_SOURCE_S3_SECRET_ACCESS_KEY: ${{ secrets.STORAGE_SOURCE_S3_SECRET_ACCESS_KEY }}
+      STORAGE_SOURCE_S3_SESSION_TOKEN: ${{ secrets.STORAGE_SOURCE_S3_SESSION_TOKEN }}
+      STORAGE_DEST_S3_ACCESS_KEY_ID: ${{ secrets.BACKUP_S3_ACCESS_KEY_ID }}
+      STORAGE_DEST_S3_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_S3_SECRET_ACCESS_KEY }}
+      STORAGE_DEST_S3_SESSION_TOKEN: ${{ secrets.BACKUP_S3_SESSION_TOKEN }}
+      STORAGE_RETENTION_LOCK_VERIFIED: ${{ vars.STORAGE_BACKUP_R2_RETENTION_VERIFIED }}
+      PROTECTION_EXECUTION_REFERENCE: github-actions:${{ github.run_id }}:${{ github.run_attempt }}
+      PROTECTION_TYPE: automatic_storage
+      PROTECTION_COVERAGE: storage
+      PROTECTION_PROVIDER: cloudflare_r2
+      PROTECTION_DESTINATION: production_storage_offsite
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Validate Storage protection gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=0
+          for name in \
+            SUPABASE_DB_URL \
+            STORAGE_SOURCE_S3_ENDPOINT \
+            STORAGE_SOURCE_S3_REGION \
+            STORAGE_SOURCE_S3_ACCESS_KEY_ID \
+            STORAGE_SOURCE_S3_SECRET_ACCESS_KEY \
+            BACKUP_S3_ENDPOINT \
+            BACKUP_S3_BUCKET \
+            STORAGE_DEST_S3_ACCESS_KEY_ID \
+            STORAGE_DEST_S3_SECRET_ACCESS_KEY \
+            STORAGE_BACKUP_MAX_OBJECTS \
+            STORAGE_BACKUP_MAX_TOTAL_BYTES \
+            STORAGE_BACKUP_MAX_OBJECT_BYTES; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::Required Storage protection configuration for ${name} is not configured."
+              missing=1
+            fi
+          done
+          if (( missing != 0 )); then
+            exit 1
+          fi
+
+          if [[ "${STORAGE_RETENTION_LOCK_VERIFIED:-}" != "true" ]]; then
+            echo "::error::R2 lifecycle + lock coverage for production/storage has not been explicitly verified."
+            exit 1
+          fi
+
+          if [[ "${SUPABASE_DB_URL}" != *".pooler.supabase.com:5432/"* ]]; then
+            echo "::error::PRODUCTION_SUPABASE_DB_URL must use the Supabase Session pooler on port 5432."
+            exit 1
+          fi
+
+          if [[ "${STORAGE_SOURCE_S3_ENDPOINT}" != "https://${STORAGE_SOURCE_PROJECT_REF}.storage.supabase.co/storage/v1/s3" ]]; then
+            echo "::error::Storage source endpoint does not match the Production project S3 endpoint."
+            exit 1
+          fi
+
+          if [[ "${STORAGE_BACKUP_ALLOW_BUCKETS}" != "finance-attachments" ]]; then
+            echo "::error::Initial Storage protection allowlist must be exactly finance-attachments."
+            exit 1
+          fi
+
+      - name: Verify Storage protection tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            scripts/storage-backup-bundle.py \
+            scripts/test-storage-backup-bundle.py \
+            scripts/sync-backup-incident.py
+          bash scripts/storage-protection-s3.sh check-tooling
+          bash -n scripts/restore-storage-backup.sh
+          bash -n scripts/record-protection-run.sh
+
+      - name: Begin authoritative Storage protection run
+        shell: bash
+        run: bash scripts/record-protection-run.sh start
+
+      - name: Inventory, copy, and verify Storage off-site
+        id: storage
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUNTIME_DIR="${RUNNER_TEMP}/lojasaph-production-storage-backup"
+          STAMP="$(date -u +'%Y%m%dT%H%M%SZ')"
+          export STORAGE_BACKUP_ID="storage-${STAMP}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+
+          MANIFEST="$(
+            bash scripts/storage-protection-s3.sh run "${RUNTIME_DIR}"
+          )"
+          SUMMARY="$(python scripts/storage-backup-bundle.py summary --manifest "${MANIFEST}")"
+          IFS=$'\t' read -r VALID_COPY_AT TOTAL_BYTES OBJECT_COUNT BACKUP_ID <<<"${SUMMARY}"
+
+          {
+            echo "valid_copy_at=${VALID_COPY_AT}"
+            echo "total_bytes=${TOTAL_BYTES}"
+            echo "object_count=${OBJECT_COUNT}"
+            echo "backup_id=${BACKUP_ID}"
+          } >>"${GITHUB_OUTPUT}"
+
+      - name: Record Storage backup summary
+        shell: bash
+        run: |
+          {
+            echo "## Production Supabase Storage backup"
+            echo
+            echo "- Backup ID: \`${{ steps.storage.outputs.backup_id }}\`"
+            echo "- Coverage: \`storage\`"
+            echo "- Bucket allowlist: \`finance-attachments\`"
+            echo "- Object count: \`${{ steps.storage.outputs.object_count }}\`"
+            echo "- Total protected bytes: \`${{ steps.storage.outputs.total_bytes }}\`"
+            echo "- Destination namespace: \`production/storage/runs/<backup-id>\`"
+            echo "- Integrity: source SHA-256 checked against business metadata; R2 objects re-downloaded and re-hashed"
+            echo "- Note: a zero-object snapshot validates the empty inventory but does not prove binary recovery."
+          } >>"${GITHUB_STEP_SUMMARY}"
+
+      - name: Remove local Storage backup material
+        if: ${{ always() }}
+        shell: bash
+        run: rm -rf "${RUNNER_TEMP}/lojasaph-production-storage-backup"
+
+      - name: Finalize successful Storage protection run
+        if: ${{ success() }}
+        shell: bash
+        run: |
+          bash scripts/record-protection-run.sh success \
+            "${{ steps.storage.outputs.valid_copy_at }}" \
+            "${{ steps.storage.outputs.total_bytes }}"
+
+      - name: Finalize failed Storage protection run
+        if: ${{ failure() }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          bash scripts/record-protection-run.sh failure \
+            "Automatic Supabase Storage backup failed before verified off-site completion."
+
+      - name: Report persistent Storage backup incident
+        if: ${{ failure() }}
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          BACKUP_INCIDENT_STATUS: failure
+          BACKUP_INCIDENT_KEY: production-storage-backup
+          BACKUP_INCIDENT_TITLE: "[backup-alert] Production Storage backup failing"
+          BACKUP_INCIDENT_WORKFLOW: Production Storage Backup
+          BACKUP_INCIDENT_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          BACKUP_INCIDENT_DETAILS: "Automatic Supabase Storage backup failed before verified off-site completion."
+        run: python scripts/sync-backup-incident.py
+
+      - name: Resolve persistent Storage backup incident after recovery
+        if: ${{ success() }}
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          BACKUP_INCIDENT_STATUS: success
+          BACKUP_INCIDENT_KEY: production-storage-backup
+          BACKUP_INCIDENT_TITLE: "[backup-alert] Production Storage backup failing"
+          BACKUP_INCIDENT_WORKFLOW: Production Storage Backup
+          BACKUP_INCIDENT_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: python scripts/sync-backup-incident.py
