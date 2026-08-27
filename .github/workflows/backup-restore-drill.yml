@@ -29,6 +29,8 @@ env:
   SUPABASE_CLI_VERSION: "2.111.0"
   SUPABASE_PROJECT_REF: fhbvwyttikrbeaanatlr
   SUPABASE_POSTGRES_VERSION: "17.6.1.141"
+  SUPABASE_STORAGE_VERSION: "v1.70.7"
+  SUPABASE_STORAGE_REQUIRED_MIGRATION: "64"
   PROTECTION_EXECUTION_REFERENCE: github-actions:backup-restore-drill:${{ github.run_id }}:${{ github.run_attempt }}
   PROTECTION_TYPE: restore_drill
   PROTECTION_COVERAGE: postgres
@@ -167,12 +169,15 @@ jobs:
           supabase init >/dev/null
           install -d -m 700 supabase/.temp
           printf '%s\n' "${SUPABASE_POSTGRES_VERSION}" > supabase/.temp/postgres-version
+          printf '%s\n' "${SUPABASE_STORAGE_VERSION}" > supabase/.temp/storage-version
 
           # Keep the database, Auth and Storage migrations required by a real
           # Supabase logical restore while skipping unrelated UI/observability
-          # services to reduce CI resource use.
+          # services to reduce CI resource use. Storage is pinned explicitly:
+          # Production has migration 64, while the CLI's older default image
+          # does not contain the versioning_status schema restored by data.sql.
           supabase start \
-            --exclude postgres-meta,realtime,imgproxy,inbucket,studio,edge-runtime,logflare,vector,supavisor \
+            --exclude postgres-meta,realtime,imgproxy,mailpit,studio,edge-runtime,logflare,vector,supavisor \
             >/dev/null
 
           STATUS_ENV="$(supabase status -o env 2>/dev/null)"
@@ -187,6 +192,36 @@ jobs:
 
           if [[ -z "${BACKUP_RESTORE_DB_URL}" ]]; then
             echo "::error::Isolated Supabase database URL was not available." >&2
+            exit 1
+          fi
+
+          STORAGE_MIGRATION="$(
+            psql \
+              --no-psqlrc \
+              --quiet \
+              --tuples-only \
+              --no-align \
+              --variable ON_ERROR_STOP=1 \
+              --dbname "${BACKUP_RESTORE_DB_URL}" \
+              --command 'select coalesce(max(id), 0) from storage.migrations'
+          )"
+          if (( STORAGE_MIGRATION < SUPABASE_STORAGE_REQUIRED_MIGRATION )); then
+            echo "::error::Isolated Storage schema is migration ${STORAGE_MIGRATION}; Production restore requires at least ${SUPABASE_STORAGE_REQUIRED_MIGRATION}." >&2
+            exit 1
+          fi
+
+          HAS_VERSIONING_STATUS="$(
+            psql \
+              --no-psqlrc \
+              --quiet \
+              --tuples-only \
+              --no-align \
+              --variable ON_ERROR_STOP=1 \
+              --dbname "${BACKUP_RESTORE_DB_URL}" \
+              --command "select exists (select 1 from information_schema.columns where table_schema = 'storage' and table_name = 'buckets' and column_name = 'versioning_status')"
+          )"
+          if [[ "${HAS_VERSIONING_STATUS}" != "t" ]]; then
+            echo "::error::Isolated Storage schema is missing storage.buckets.versioning_status." >&2
             exit 1
           fi
 

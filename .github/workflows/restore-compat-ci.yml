@@ -6,6 +6,7 @@ on:
       - "scripts/prepare-supabase-restore-sql.py"
       - "scripts/test-prepare-supabase-restore-sql.py"
       - "scripts/restore-production-backup.sh"
+      - ".github/workflows/backup-restore-drill.yml"
       - ".github/workflows/restore-compat-ci.yml"
   push:
     branches: [main]
@@ -13,6 +14,7 @@ on:
       - "scripts/prepare-supabase-restore-sql.py"
       - "scripts/test-prepare-supabase-restore-sql.py"
       - "scripts/restore-production-backup.sh"
+      - ".github/workflows/backup-restore-drill.yml"
       - ".github/workflows/restore-compat-ci.yml"
 
 permissions:
@@ -36,3 +38,96 @@ jobs:
 
       - name: Test managed-role normalization
         run: python scripts/test-prepare-supabase-restore-sql.py
+
+      - name: Verify isolated Storage compatibility pin
+        shell: bash
+        run: |
+          set -euo pipefail
+          WORKFLOW=.github/workflows/backup-restore-drill.yml
+          grep -Fq 'SUPABASE_STORAGE_VERSION: "v1.70.7"' "${WORKFLOW}"
+          grep -Fq 'SUPABASE_STORAGE_REQUIRED_MIGRATION: "64"' "${WORKFLOW}"
+          grep -Fq '> supabase/.temp/storage-version' "${WORKFLOW}"
+          grep -Fq -- '--exclude postgres-meta,realtime,imgproxy,mailpit,studio,edge-runtime,logflare,vector,supavisor' "${WORKFLOW}"
+          if grep -Fq -- '--exclude postgres-meta,realtime,imgproxy,inbucket' "${WORKFLOW}"; then
+            echo "::error::Backup restore drill still uses the obsolete inbucket exclude key."
+            exit 1
+          fi
+
+  # Mirrors the exact managed-schema pins used by the real drill, but without
+  # Production/R2 credentials. This proves the Storage image actually migrates
+  # the isolated target through the schema version currently present in Production.
+  isolated-storage-schema:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SUPABASE_CLI_VERSION: "2.111.0"
+      SUPABASE_POSTGRES_VERSION: "17.6.1.141"
+      SUPABASE_STORAGE_VERSION: "v1.70.7"
+      SUPABASE_STORAGE_REQUIRED_MIGRATION: "64"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@3c2f5e2ae34c34e428e8e206e2c4d21fa2d20fbf # v2.1.1
+        with:
+          version: ${{ env.SUPABASE_CLI_VERSION }}
+
+      - name: Start pinned isolated Storage schema
+        shell: bash
+        run: |
+          set -euo pipefail
+          TEST_DIR="${RUNNER_TEMP}/lojasaph-storage-schema-test"
+          rm -rf "${TEST_DIR}"
+          install -d -m 700 "${TEST_DIR}"
+          cd "${TEST_DIR}"
+
+          supabase init >/dev/null
+          install -d -m 700 supabase/.temp
+          printf '%s\n' "${SUPABASE_POSTGRES_VERSION}" > supabase/.temp/postgres-version
+          printf '%s\n' "${SUPABASE_STORAGE_VERSION}" > supabase/.temp/storage-version
+
+          supabase start \
+            --exclude postgres-meta,realtime,imgproxy,mailpit,studio,edge-runtime,logflare,vector,supavisor \
+            >/dev/null
+
+          STATUS_ENV="$(supabase status -o env 2>/dev/null)"
+          DB_URL="$(
+            printf '%s\n' "${STATUS_ENV}" \
+              | sed -n 's/^DB_URL=//p' \
+              | head -n 1 \
+              | sed -E 's/^"//; s/"$//'
+          )"
+          unset STATUS_ENV
+          test -n "${DB_URL}"
+
+          STORAGE_MIGRATION="$(
+            psql --no-psqlrc --quiet --tuples-only --no-align \
+              --variable ON_ERROR_STOP=1 \
+              --dbname "${DB_URL}" \
+              --command 'select coalesce(max(id), 0) from storage.migrations'
+          )"
+          if (( STORAGE_MIGRATION < SUPABASE_STORAGE_REQUIRED_MIGRATION )); then
+            echo "::error::Pinned Storage schema stopped at migration ${STORAGE_MIGRATION}; expected at least ${SUPABASE_STORAGE_REQUIRED_MIGRATION}."
+            exit 1
+          fi
+
+          psql --no-psqlrc --quiet --variable ON_ERROR_STOP=1 \
+            --dbname "${DB_URL}" \
+            --command "select versioning_status from storage.buckets limit 0"
+
+      - name: Stop pinned isolated Storage schema
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          TEST_DIR="${RUNNER_TEMP}/lojasaph-storage-schema-test"
+          if [[ -f "${TEST_DIR}/supabase/config.toml" ]]; then
+            (
+              cd "${TEST_DIR}"
+              supabase stop --no-backup >/dev/null 2>&1 || true
+            )
+          fi
+          rm -rf "${TEST_DIR}"
