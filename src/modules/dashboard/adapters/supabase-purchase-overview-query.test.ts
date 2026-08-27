@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildSupplierPriceChanges,
+  isTimestampInUtcPeriod,
   PurchaseOrderRow,
   PurchaseReceiptRow,
   StockItemRow,
@@ -59,6 +60,17 @@ describe("purchase dashboard overview helpers", () => {
       startInclusive: "2026-08-01T03:00:00.000Z",
       endExclusive: "2026-09-01T03:00:00.000Z",
     });
+  });
+
+  it("compares timestamp instants instead of ISO string formatting at period boundaries", () => {
+    const bounds = {
+      startInclusive: "2026-08-01T03:00:00.000Z",
+      endExclusive: "2026-08-02T03:00:00.000Z",
+    };
+
+    expect(isTimestampInUtcPeriod("2026-08-01T03:00:00+00:00", bounds)).toBe(true);
+    expect(isTimestampInUtcPeriod("2026-08-02T02:59:59.999+00:00", bounds)).toBe(true);
+    expect(isTimestampInUtcPeriod("2026-08-02T03:00:00+00:00", bounds)).toBe(false);
   });
 
   it("keeps a receipt in the period even when its order was issued before the period", () => {
