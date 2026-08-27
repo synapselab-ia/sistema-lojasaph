@@ -18,31 +18,36 @@ Não refazer sem regressão concreta:
 
 ## Baseline viva
 
-- referência funcional integrada: PR #128, squash `27b0b3914a246fb370c9dd5f8ea06f64baa86044`;
-- #128 merged;
+- referência funcional integrada antes desta mudança: PR #128, squash `27b0b3914a246fb370c9dd5f8ea06f64baa86044`;
+- handoff #129 integrado; `main=c64253571e896c26c787fe5c42c4a88b9597d760` no início desta execução;
 - #75 aberta;
 - #121 aberta;
 - repo temporariamente `public`; não alterar automaticamente.
 
 Sempre consultar a `main` real. SHA posterior exclusivamente documental não significa nova frente e não justifica outro PR só para sincronizar o SHA registrado pelo próprio handoff.
 
-### Evidência de CI
+### Evidência de CI da baseline
 
 PR #128, head final:
 
 - CI `33086942613`: `database` + `validate` success;
 - Storage Protection CI `33086943585`: `storage-contract` + `isolated-storage-binary-restore` success.
 
-Pós-merge em `27b0b391...`:
+Pós-merge #128:
 
 - CI `33087254390`: `database` + `validate` success;
 - Storage Protection CI `33087254427`: `storage-contract` + `isolated-storage-binary-restore` success.
+
+Pós-merge #129:
+
+- CI `33087974482`: `database` + `validate` success.
 
 ## Production read-only revalidada — 2026-08-27
 
 Projeto `fhbvwyttikrbeaanatlr`:
 
 - status `ACTIVE_HEALTHY`;
+- região `sa-east-1`;
 - 1 Organization;
 - 0 buckets;
 - 0 objetos Storage ativos;
@@ -61,22 +66,42 @@ A política inicial não secreta está versionada no workflow:
 - `max_total_bytes=1073741824` (1 GiB);
 - `max_object_bytes=10485760` (10 MiB).
 
-O limite individual é exatamente o limite funcional de anexos. O cap total é próprio de Storage e não herda os 300 MB do PostgreSQL. O CI falha se esses valores voltarem para repository variables ocultas ou se o cap PostgreSQL aparecer no workflow Storage.
+O limite individual é exatamente o limite funcional de anexos. O cap total é próprio de Storage e não herda os 300 MB do PostgreSQL.
 
-Esses valores só devem mudar por alteração versionada + CI/review.
+## Baseline da fonte S3 — versionada nesta mudança
+
+A identidade não secreta da origem Production deixa de depender de repository variables:
+
+- project ref `fhbvwyttikrbeaanatlr`;
+- endpoint direto `https://fhbvwyttikrbeaanatlr.storage.supabase.co/storage/v1/s3`;
+- region `sa-east-1`.
+
+A região foi revalidada no projeto Supabase e o endpoint segue o hostname direto recomendado pela documentação atual. O workflow valida endpoint e região antes de qualquer operação.
+
+Isso elimina `STORAGE_SOURCE_S3_ENDPOINT` e `STORAGE_SOURCE_S3_REGION` como gates privados, mas **não** comprova que o S3 protocol esteja habilitado nem que a credencial dedicada exista.
 
 ## Gate operacional restante
 
 Ainda não existe evidência acessível/versionada para concluir:
 
-1. Supabase Storage S3 Production habilitado com credencial dedicada server-only em GitHub Secrets;
+1. Supabase Storage S3 Production efetivamente habilitado com credencial dedicada server-only em GitHub Secrets;
 2. lifecycle 30 dias cobrindo o prefixo `production/storage` no R2 existente;
 3. Bucket Lock/WORM 30 dias cobrindo o mesmo prefixo;
 4. ausência de public access/CORS de navegador no bucket.
 
-Não inferir esses gates a partir da configuração PostgreSQL. `STORAGE_BACKUP_R2_RETENTION_VERIFIED=true` só pode ser usado após confirmação direta do R2.
+A documentação histórica do PostgreSQL comprova que o R2 existente tem lifecycle/lock 30d, mas não documenta o escopo da regra com precisão suficiente para estender essa prova a `production/storage`. Não inferir.
+
+`STORAGE_BACKUP_R2_RETENTION_VERIFIED=true` só pode ser usado após confirmação direta do R2.
 
 `STORAGE_BACKUP_AUTOMATION_ENABLED` deve continuar falso/ausente até todos os gates externos estarem comprovados.
+
+## Limitação das integrações desta sessão
+
+- o conector Supabase disponível permite projeto/SQL/docs, mas não expõe o toggle S3 nem a lista de access keys geradas;
+- o conector GitHub não expõe Actions Secrets/Variables;
+- não há conector Cloudflare/R2 instalado nesta sessão.
+
+Não pedir valores secretos em chat para contornar essas limitações.
 
 ## Gate de UI / prova real
 
@@ -89,7 +114,7 @@ Snapshot vazio não comprova recuperação binária. Não criar fixture sintéti
 
 ## Próxima ação
 
-1. confirmar/provisionar a credencial S3 dedicada do Supabase Storage fora do chat; registrar somente que existe;
+1. confirmar/provisionar no Supabase Dashboard o S3 protocol + access key dedicada e provisionar os dois Secrets do workflow sem expor valores;
 2. confirmar diretamente no R2 lifecycle + Bucket Lock 30d para `production/storage` e nenhum public access/CORS;
 3. apenas depois marcar o gate sanitizado de retenção e considerar armamento;
 4. se Production continuar vazia, não disparar workflow apenas para gerar `succeeded`;
@@ -106,4 +131,4 @@ Snapshot vazio não comprova recuperação binária. Não criar fixture sintéti
 - não voltar a Drive/rclone/Gmail;
 - não tornar repo private automaticamente;
 - não fazer deploy Vercel para esta slice operacional;
-- não abrir novo PR apenas para atualizar o SHA produzido por este handoff docs-only.
+- não abrir novo PR apenas para atualizar o SHA produzido por este handoff.
