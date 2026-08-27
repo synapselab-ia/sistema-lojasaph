@@ -4,108 +4,115 @@
 
 ## Estado atual
 
-**Fase 50 / Issue #138 — `REQ-ITEM-003` em implementação na branch `agent/item-fiscal-identifiers`.**
+**Fase 50 / Issue #138 — `REQ-ITEM-003` concluída e integrada pelo PR #139.**
 
-Baseline reconciliada antes da Fase 50:
+Estado integrado confirmado:
 
-- Fase 49 / PR #137 integrada;
-- Issue #136 encerrada;
-- `main=749894ad6ea013a32ede044d4d70662cd6abcd98`;
-- CI pós-merge #498 / run `33117294551`: success;
-- nenhum PR aberto no início da Fase 50;
-- Issues #75 e #121 permanecem abertas, mas ON HOLD e fora da frente ativa.
+- PR #139 `feat: expose EAN and fiscal identifiers on stock items`: merged;
+- Issue #138: closed / completed;
+- `main=f30137355fe1b8958cbfe36cf1cd6e515c647558`;
+- CI pós-merge #500 / run `33118720928`: `success`;
+- nenhum PR aberto após a integração;
+- únicas Issues abertas: #75 e #121, ambas da trilha `REQ-PLAT-005` e atualmente ON HOLD.
 
-Não refazer Fase 49/#136/#137.
+Não refazer Fase 50/#138/#139.
 
-## Fase 50 — #138 / REQ-ITEM-003
+## Fase 50 — entrega
 
-### Gap confirmado
+`public.stock_items` já possuía `ean`, `ncm` e `cest` desde a migration foundation. A Fase 50 fechou somente o gap de aplicação, sem DDL:
 
-O requisito pede permitir EAN/código de barras e atributos fiscais quando aplicáveis.
+- `StockItem` expõe EAN, NCM e CEST opcionais;
+- criação/edição aplica apenas `trim` conservador;
+- valor em branco vira ausência no domínio e `NULL` na persistência;
+- update que não toca o campo preserva o valor existente; branco explícito permite limpar;
+- `SupabaseStockItemRepository` lê e persiste os três campos;
+- `/workspace/produtos` permite consultar, criar e editar EAN/NCM/CEST;
+- a UI declara que não realiza validação fiscal, máscara ou dígito verificador;
+- a unicidade de EAN por Organization continua sendo a constraint já existente no banco;
+- browser continua sob sessão autenticada + RLS e permissões normais de catálogo;
+- nenhuma migration, view, RPC, chave privilegiada no browser ou fixture Production foi criada.
 
-O schema já possui desde a foundation em `public.stock_items`:
+Validação do head funcional `f638abebe844473013d043e6c1bc213878124bd2`:
 
-- `ean text null`;
-- `ncm text null`;
-- `cest text null`;
-- unicidade de EAN por Organization.
+- CI #499 / `33118596139`: database, lint, typecheck, Vitest e production build verdes;
+- Business Transactions Integration #225 / `33118596143`: success;
+- Inventory Count Integration #241 / `33118596171`: success.
 
-Porém o domínio `StockItem`, o adapter `SupabaseStockItemRepository` e `/workspace/produtos` não usavam esses campos.
-
-### Production — inventário read-only
-
-Projeto `fhbvwyttikrbeaanatlr`, em 2026-08-27:
+Production `fhbvwyttikrbeaanatlr` foi consultada somente read-only:
 
 - 3 `stock_items`;
-- 0 com EAN preenchido;
-- 0 com NCM preenchido;
-- 0 com CEST preenchido;
+- 0 com EAN;
+- 0 com NCM;
+- 0 com CEST;
 - 3 com `internal_code` já existente.
 
-Nenhum dado foi criado/alterado para fabricar evidência.
+Nenhum dado Production foi alterado para demonstração.
 
-### Decisões da slice
+## Q-006 continua aberta
 
-A menor entrega coerente é somente cadastro/leitura/edição dos campos já persistidos:
+A existência de EAN/NCM/CEST em `stock_items` não resolve a dúvida sobre o `Gabarito` representar produto de venda/POS separado de item de estoque.
 
-- `StockItem.ean`, `ncm` e `cest` opcionais;
-- normalização apenas por `trim`;
-- branco vira ausência no domínio e `null` na persistência;
-- EAN continua usando a unicidade já garantida pelo banco;
-- sem validação de dígito verificador, comprimento, máscara ou consulta externa;
-- sem validação tributária/obrigatoriedade de NCM/CEST;
-- sem cálculo fiscal;
-- sem migration/view/RPC;
-- browser continua com sessão autenticada + RLS e permissões atuais de catálogo.
+Portanto continuam proibidos sem validação de negócio:
 
-### Q-006 continua aberta
+- criar automaticamente produto de venda/POS;
+- importar ou associar automaticamente EAN/NCM/CEST do `Gabarito` a `stock_items`;
+- redefinir `internal_code`;
+- promover `REQ-ITEM-004` por inferência.
 
-O `Gabarito` histórico contém código, EAN, NCM e CEST, mas a documentação ainda não confirma se ele representa produto de venda/POS separado do item de estoque.
+## Reconciliação de requisitos após a Fase 50
 
-A Fase 50 **não**:
+A revisão de `docs/product/requirements.md`, Issues e código não encontrou um novo MUST/SHOULD funcional independente que justifique uma Fase 51.
 
-- resolve Q-006;
-- cria conceito de produto de venda;
-- associa/importa automaticamente linhas do `Gabarito` para `stock_items`;
-- redefine `internal_code`.
+A Fase 41 já havia concluído que não existia MUST funcional do núcleo sem cobertura. Depois dela foram fechadas as frentes independentes restantes, entre outras:
+
+- `REQ-FIN-008` — anexos financeiros;
+- `REQ-EXPOR-001` — exportação CSV financeira;
+- `REQ-SUP-003` — condições comerciais;
+- `REQ-SUP-004` — produtos por fornecedor;
+- `REQ-STK-011` — estoque mínimo/alertas;
+- `REQ-DASH-004` — estoque no Dashboard;
+- `REQ-DASH-005` — compras/fornecedores no Dashboard;
+- `REQ-ITEM-003` — EAN/dados fiscais.
+
+Os demais SHOULDs do núcleo já possuem implementação anterior, incluindo histórico de preços, pedidos/recebimentos, alertas de vencimento e validades.
+
+### Bloqueios reais restantes
+
+1. **`REQ-PLAT-005`** — #75/#121: PostgreSQL já foi comprovado end-to-end; cobertura operacional completa de Supabase Storage/anexos permanece condicionada a evidência real.
+2. **Cutover/importação real** — a fundação atende `REQ-IMP-001..004`, mas a escrita operacional real continua bloqueada até existirem fontes congeladas, transformações aprovadas, resolução das questões de negócio aplicáveis, reconciliação e validação do cliente.
+3. **Requisitos PENDING** — não podem ser promovidos sem decisão real de negócio, incluindo `REQ-ITEM-004`, `REQ-ITEM-005`, `REQ-STK-007`, `REQ-STK-010`, `REQ-EXP-004`, `REQ-FIN-004`, `REQ-CASH-007` e `REQ-CASH-008`.
+
+Não abrir nova Issue apenas para produzir atividade.
 
 ## #121 — ON HOLD
 
-`REQ-PLAT-005 — Backup e recuperação off-site do Supabase Storage` continua fora da frente ativa.
+`REQ-PLAT-005 — Backup e recuperação off-site do Supabase Storage` não é frente ativa enquanto não existir gatilho objetivo.
 
-Última checagem válida em 2026-08-27 encontrou:
+Última evidência válida em 2026-08-27:
 
 - 0 buckets Storage;
 - 0 anexos financeiros;
 - 0 runs `automatic_storage`.
 
-Retomar somente com gatilho real:
+Gatilhos válidos:
 
-1. primeira execução **agendada** do `Production Storage Backup` — janela esperada em 2026-08-28 03:47 America/Sao_Paulo;
-2. primeiro anexo Production legítimo pelo fluxo normal;
+1. primeira execução **agendada** do `Production Storage Backup` após o armamento — janela esperada em **2026-08-28 03:47 America/Sao_Paulo**;
+2. primeiro anexo Production legítimo criado pelo fluxo normal;
 3. incidente/regressão real do pipeline Storage.
 
-Sem gatilho: não fazer `workflow_dispatch` artificial, fixture Production ou repetição da mesma introspecção vazia.
+Até um desses eventos ocorrer:
 
-A Issue #75 permanece umbrella de proteção de dados e não é frente ativa.
+- não fazer `workflow_dispatch` artificial;
+- não criar fixture/objeto Production;
+- não repetir a mesma introspecção vazia;
+- não alterar tooling/guardrails já comprovados por inércia.
 
-## Próxima transição
+Um snapshot agendado vazio pode provar execução da automação sobre estado vazio, mas não comprova recuperação de binários reais e não autoriza declarar Storage completamente coberto.
 
-Antes de abrir outra frente, reconciliar #138, eventual PR da branch e `main`.
+## Estado de desenvolvimento
 
-Se a Fase 50 estiver integrada e a CI pós-merge estiver verde:
+Não há frente funcional ativa após a Fase 50.
 
-1. não refazer `REQ-ITEM-003`;
-2. verificar se o gatilho real da #121 já ocorreu — apenas uma vez e somente se a data/evento justificar;
-3. reconciliar `docs/product/requirements.md` contra o código para identificar eventual MUST/SHOULD ainda não entregue;
-4. não iniciar requisitos `PENDING` sem validação de negócio.
+A próxima ação é **condicional**, não uma nova feature: observar um gatilho real da #121 ou receber nova prioridade/decisão de negócio/fonte de migração/regressão.
 
-## Não fazer
-
-- não reabrir Fase 49/#136 sem regressão concreta;
-- não ampliar #138 com POS, tributação ou importação do Gabarito;
-- não tocar #121 sem gatilho real;
-- não criar dados Production para demonstração;
-- não inventar regras de NCM/CEST/EAN;
-- não fazer deploy Vercel rotineiro;
-- não tornar o repositório private automaticamente.
+Nenhum deploy Vercel manual/rotineiro foi feito para a Fase 50 ou para esta reconciliação.
