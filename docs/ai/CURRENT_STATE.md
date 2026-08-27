@@ -6,19 +6,31 @@
 
 **Fase 46 continua integrada; frente ativa: Issue #75 / `REQ-PLAT-005 — Proteção, backup e recuperação de dados`.**
 
-A trilha PostgreSQL de disaster recovery permanece comprovada end-to-end e não deve ser refeita sem regressão concreta.
+A trilha PostgreSQL de disaster recovery está comprovada end-to-end e não deve ser refeita sem regressão concreta.
 
-A frente Storage está na **Issue #121 — backup e recuperação off-site do Supabase Storage**. A primeira slice técnica foi implementada no PR #126 e está pronta para merge após reconciliação documental/final do CI. A automação Production continua deliberadamente desarmada.
+A frente Storage permanece na **Issue #121 — backup e recuperação off-site do Supabase Storage**. A primeira slice técnica foi integrada pelo PR #126; a próxima etapa é operacional e Production continua deliberadamente desarmada.
 
 ## GitHub / baseline viva
 
-- `main`: `0452d1330d6a849c4e3c8737faf89912bab9d89d` — `chore(security): reconcile Production migration version (#125)`;
-- PR aberto: **#126 `feat(storage): implement fail-closed off-site protection`**;
-- branch: `agent/storage-protection-backup`;
-- #75 aberta;
-- #121 aberta;
-- #110 permanece fechada após restore PostgreSQL verde;
+- `main`: `e071b6f2ede444b2fc97c29836be098fda8dc7f4` — `feat(storage): implement fail-closed off-site protection (#126)`;
+- PR #126: **merged** por squash;
+- Issue #75: aberta;
+- Issue #121: aberta;
+- Issue #110: fechada após o restore PostgreSQL verde;
 - repositório temporariamente `public` por decisão operacional; não alterar automaticamente.
+
+### CI pós-merge #126
+
+Todos os checks do commit `e071b6f2...` ficaram verdes:
+
+- CI `33082831368`:
+  - `database`: success;
+  - `validate`: success;
+- Storage Protection CI `33082831347`:
+  - `storage-contract`: success;
+  - `isolated-storage-binary-restore`: success.
+
+Não há motivo para rerun manual desses gates sem mudança de código/regressão.
 
 ## PostgreSQL — concluído
 
@@ -36,10 +48,13 @@ A evidência autoritativa permanece:
 
 As tentativas anteriores falhas permanecem preservadas como audit trail. Não backfillar o backup histórico `33006253661`.
 
-## Supabase Storage — inventário Production atual
+## Supabase Production — estado atual revalidado
 
-Projeto `fhbvwyttikrbeaanatlr`, introspecção read-only revalidada em 2026-08-27:
+Projeto `fhbvwyttikrbeaanatlr`:
 
+- status: `ACTIVE_HEALTHY`;
+- região: `sa-east-1`;
+- PostgreSQL: `17.6.1.141` / engine 17;
 - Organizations: **1**;
 - `storage.buckets`: **0**;
 - objetos Storage ativos: **0**;
@@ -50,57 +65,47 @@ Projeto `fhbvwyttikrbeaanatlr`, introspecção read-only revalidada em 2026-08-2
 
 O estado vazio é legítimo: o bucket `finance-attachments` nasce somente no primeiro upload autorizado. Não criar bucket/objeto sintético em Production para fabricar prova.
 
-## PR #126 — primeira slice técnica Storage
+## Storage — primeira slice técnica integrada
 
-Implementado:
+O PR #126 adicionou:
 
-- `scripts/storage-backup-bundle.py` com manifesto versionado `lojasaph-storage-backup-v1`;
+- manifesto versionado `lojasaph-storage-backup-v1`;
 - reconciliação 1:1 `public.finance_attachments` ↔ bucket/key físico;
 - validação de key canônica Organization/document/attachment, tamanho e SHA-256 de negócio;
 - fail-closed para bucket inesperado, missing, extra, divergência de tamanho, corrupção e limites excedidos;
 - guardrails Storage próprios: máximo de objetos, total de bytes e bytes por objeto;
-- `scripts/storage-protection-s3.sh` para inventário/download Supabase S3 e upload R2 em `production/storage/runs/<backup-id>`;
+- snapshot Supabase S3 e upload R2 em `production/storage/runs/<backup-id>`;
 - verificação off-site por existência + re-download/re-hash, sem depender de ETag;
-- `scripts/restore-storage-backup.sh` com target obrigatório isolado/loopback e restore binário pela Storage API;
-- reconciliação read-only de `storage.objects` após restore;
-- workflow `Production Storage Backup` estruturado, mas bloqueado por `STORAGE_BACKUP_AUTOMATION_ENABLED`;
-- persistência reutilizando `automatic_storage` / `coverage=storage` e o boundary existente;
-- incidente GitHub-native reutilizado;
-- `Storage Protection CI` com Supabase Storage local real e fixtures sintéticas pequenas.
+- restore obrigatório em target isolado/loopback pela Storage API;
+- reconciliação read-only de `storage.objects` pós-restore;
+- workflow `Production Storage Backup` bloqueado por `STORAGE_BACKUP_AUTOMATION_ENABLED`;
+- persistência `automatic_storage` / `coverage=storage` reutilizando o boundary existente;
+- incidente GitHub-native existente;
+- CI end-to-end com Supabase Storage local e fixtures sintéticas pequenas.
 
-Durante a validação do PR foram corrigidas duas falhas reais antes do merge:
-
-1. o CI assumia credenciais S3 internas do container local; foi alinhado ao contrato oficial local Supabase com session token, sem alterar a credencial dedicada exigida em Production;
-2. o AWS CLI container materializava downloads como `root`; o helper passou a criar a cópia final runner-owned `0600`, mantendo CI e Production com o mesmo comportamento.
-
-Gates comprovados no head técnico `01681b6b47bbf7a5304fa4bb8ef0787043b7ea9b`:
-
-- CI `33081199162`: **success**;
-- Storage Protection CI `33081198933`: **success**;
-- job `storage-contract`: success;
-- job `isolated-storage-binary-restore`: success.
-
-A prova isolada cria objetos via Storage API, captura snapshot pela interface S3, derruba a origem, sobe outro Supabase, restaura via Storage API, rebaixa/re-hasheia e rejeita objeto extra. Nenhum objeto Production foi usado.
+Durante o gate do PR foram corrigidas duas falhas reais: autenticação S3 local passou a usar o contrato documentado de session token do Supabase local; e downloads do AWS CLI container passaram a ser materializados como arquivos runner-owned `0600` antes da verificação.
 
 ## Cobertura e UI
 
-Storage/anexos **continua não declarado como coberto**. O PR #126 entrega tooling/workflow/CI, não a prova Production completa.
+Storage/anexos **continua não declarado como coberto**. Tooling/CI pronto não equivale a prova Production completa.
 
-Um snapshot vazio pode validar inventário e automação, mas não comprova recuperação de binários reais. Para liberar cobertura Storage na UI ainda são necessários ambos:
+Para liberar cobertura Storage na UI ainda são necessários ambos:
 
 1. `automatic_storage` Production real `succeeded` com integridade verificada;
 2. `restore_drill coverage=storage` real sobre pelo menos um anexo Production legítimo.
 
+Snapshot vazio não comprova recuperação binária.
+
 ## Próximo trabalho
 
-Após merge do PR #126, executar os gates operacionais da #121 sem fabricar dados:
+Executar somente os gates operacionais da #121:
 
-1. confirmar endpoint S3 Production e configuração segura da credencial dedicada fora do chat;
+1. confirmar endpoint S3 Production e credencial dedicada da origem provisionada fora do chat;
 2. confirmar lifecycle + Bucket Lock de 30 dias cobrindo `production/storage` no R2 existente;
-3. definir/configurar caps Storage Production explícitos e allowlist `finance-attachments`;
-4. somente então armar `STORAGE_BACKUP_AUTOMATION_ENABLED=true`;
-5. se Production continuar vazia, não rodar prova artificial nem declarar cobertura completa;
-6. quando surgir ao menos um anexo real pelo fluxo normal do produto, executar uma única prova controlada de backup + restore isolado e persistir evidência autoritativa.
+3. configurar caps Storage Production explícitos e allowlist `finance-attachments`;
+4. manter `STORAGE_BACKUP_AUTOMATION_ENABLED` falso até todos os gates passarem;
+5. se Production continuar vazia, não executar prova artificial nem declarar cobertura completa;
+6. quando surgir ao menos um anexo real pelo fluxo normal, executar uma única prova controlada de backup + restore isolado e persistir evidência autoritativa.
 
 ## Não fazer
 

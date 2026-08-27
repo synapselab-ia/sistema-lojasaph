@@ -13,20 +13,25 @@ Não refazer sem regressão concreta:
 - UI read-only `Proteção dos dados`;
 - restore do bundle PostgreSQL Production real;
 - compatibilidade de roles/schema do restore;
-- `restore_drill coverage=postgres` e reconciliação da #110.
+- `restore_drill coverage=postgres` e reconciliação da #110;
+- primeira slice técnica Storage integrada no PR #126.
 
 ## Baseline viva
 
-- `main`: `0452d1330d6a849c4e3c8737faf89912bab9d89d` (#125);
-- PR #126 aberto na branch `agent/storage-protection-backup`;
+- `main`: `e071b6f2ede444b2fc97c29836be098fda8dc7f4` (#126);
+- #126 merged por squash;
 - #75 aberta;
 - #121 aberta;
-- Production Storage continua vazia;
 - repo temporariamente `public`; não alterar automaticamente.
 
-## Primeira slice técnica Storage — implementada
+Pós-merge #126:
 
-PR #126 entrega:
+- CI `33082831368`: `database` + `validate` success;
+- Storage Protection CI `33082831347`: `storage-contract` + `isolated-storage-binary-restore` success.
+
+## Storage técnico — concluído nesta slice
+
+O código agora possui:
 
 1. manifesto `lojasaph-storage-backup-v1`;
 2. inventário/reconciliação `finance_attachments` ↔ objeto físico;
@@ -37,28 +42,20 @@ PR #126 entrega:
 7. persistência `automatic_storage` / `coverage=storage` reutilizando `record-protection-run.sh`;
 8. incidente GitHub-native existente;
 9. restore isolado pela Storage API, nunca por DML em `storage.*`;
-10. CI local end-to-end com objeto sintético e re-hash pós-restore.
+10. CI end-to-end com objeto sintético e re-hash pós-restore.
 
-Durante o gate do PR duas falhas concretas foram corrigidas:
+Duas regressões foram encontradas e corrigidas antes do merge:
 
-- autenticação S3 local passou a usar o contrato documentado do Supabase local com session token, sem alterar o modelo Production de access key dedicada;
-- downloads do container AWS passaram a ser materializados como arquivos runner-owned `0600` antes da verificação.
+- autenticação S3 local alinhada ao session-token contract documentado do Supabase local;
+- materialização runner-owned `0600` para downloads feitos pelo container AWS CLI.
 
-Head técnico comprovado: `01681b6b47bbf7a5304fa4bb8ef0787043b7ea9b`.
-
-Runs verdes:
-
-- CI `33081199162`;
-- Storage Protection CI `33081198933`;
-- `storage-contract`: success;
-- `isolated-storage-binary-restore`: success.
-
-Depois disso foi removido um arquivo temporário acidental `NEXT_ACTION.next.tmp`; não preservar/recriar esse artefato.
+Não reabrir esses pontos sem erro concreto.
 
 ## Production read-only revalidada — 2026-08-27
 
 Projeto `fhbvwyttikrbeaanatlr`:
 
+- status `ACTIVE_HEALTHY`;
 - 1 Organization;
 - 0 buckets;
 - 0 objetos Storage ativos;
@@ -80,14 +77,16 @@ Snapshot vazio não comprova recuperação binária. Não criar fixture sintéti
 
 ## Próxima ação
 
-Depois do merge do PR #126, a próxima slice é operacional, não uma reescrita do tooling:
+A próxima slice é operacional, não uma reescrita do tooling:
 
-1. confirmar o endpoint S3 Production correto e que a credencial dedicada da origem está provisionada em GitHub Secrets fora do chat;
+1. confirmar o endpoint S3 Production correto e a credencial dedicada da origem em GitHub Secrets fora do chat;
 2. confirmar lifecycle + Bucket Lock de 30 dias abrangendo `production/storage` no R2 existente;
 3. configurar caps Storage Production explícitos e allowlist `finance-attachments`;
-4. manter `STORAGE_BACKUP_AUTOMATION_ENABLED` falso até todos os gates estarem confirmados;
-5. se Production ainda estiver vazia, não executar prova artificial apenas para gerar `succeeded`;
+4. manter `STORAGE_BACKUP_AUTOMATION_ENABLED=false` até todos os gates estarem confirmados;
+5. se Production continuar vazia, não executar prova artificial apenas para gerar `succeeded`;
 6. quando existir um anexo legítimo, executar uma única prova controlada: source hash = checksum de negócio → R2 + re-hash → `automatic_storage=succeeded` → restore isolado → `restore_drill coverage=storage=succeeded`.
+
+Não há evidência versionada ainda de que os gates Storage-specific de credencial/R2/caps estejam todos confirmados; portanto não armar a automação por inferência.
 
 ## Restrições
 
