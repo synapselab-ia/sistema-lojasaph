@@ -7,6 +7,7 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { SupabaseStockItemRepository } from "@/modules/catalog/adapters/supabase-stock-item-repository";
 import { SupabaseEmployeeRepository } from "@/modules/employees/adapters/supabase-employee-repository";
 import { SupabaseStockLossGateway } from "@/modules/inventory/adapters/supabase-stock-loss-gateway";
+import { SupabaseStockMinimumPolicyGateway } from "@/modules/inventory/adapters/supabase-stock-minimum-policy-gateway";
 import { loadWorkspaceReferenceData } from "@/modules/master-data/adapters/supabase-workspace-query";
 import { RuntimeWorkspaceBootstrap } from "@/modules/master-data/ui/runtime-workspace-bootstrap";
 import { serializeRuntimeWorkspaceInitialData } from "@/modules/master-data/ui/runtime-workspace-wire";
@@ -28,14 +29,16 @@ export default async function PersistentWorkspaceLayout({ children }: Readonly<{
   const suppliersRepository = new SupabaseSupplierRepository(supabase);
   const employeesRepository = new SupabaseEmployeeRepository(supabase);
   const stockLossGateway = new SupabaseStockLossGateway(supabase);
+  const stockMinimumGateway = new SupabaseStockMinimumPolicyGateway(supabase);
 
-  const [stockItems, suppliers, employees, referenceData, stockLossReasons, stockLosses] = await Promise.all([
+  const [stockItems, suppliers, employees, referenceData, stockLossReasons, stockLosses, stockMinimumPolicies] = await Promise.all([
     stockItemsRepository.listByOrganization(organizationId),
     suppliersRepository.listByOrganization(organizationId),
     employeesRepository.listByOrganization(organizationId),
     loadWorkspaceReferenceData(supabase, organizationId),
     stockLossGateway.listReasons(organizationId),
     stockLossGateway.listRecent(organizationId),
+    stockMinimumGateway.listByOrganization(organizationId),
   ]);
 
   const initialData = serializeRuntimeWorkspaceInitialData({
@@ -45,6 +48,7 @@ export default async function PersistentWorkspaceLayout({ children }: Readonly<{
     employees,
     stockLossReasons,
     stockLosses,
+    stockMinimumPolicies,
   });
 
   return (

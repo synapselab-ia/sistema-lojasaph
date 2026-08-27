@@ -14,6 +14,7 @@ const destinationId = "00000000-0000-0000-0000-000000000003" as EntityId;
 const batchId = "00000000-0000-0000-0000-000000000004" as EntityId;
 const transferId = "00000000-0000-0000-0000-000000000005" as EntityId;
 const lossId = "00000000-0000-0000-0000-000000000006" as EntityId;
+const minimumId = "00000000-0000-0000-0000-000000000007" as EntityId;
 
 function fixture(): RuntimeWorkspaceInitialData {
   return {
@@ -63,6 +64,13 @@ function fixture(): RuntimeWorkspaceInitialData {
       reasonCode: "damage",
       occurredAt: "2026-08-20T10:00:00.000Z",
     }],
+    stockMinimumPolicies: [{
+      id: minimumId,
+      stockItemId: itemId,
+      stockLocationId: locationId,
+      minimumQuantity: Quantity.fromMilliunits(1500),
+      active: true,
+    }],
   };
 }
 
@@ -75,6 +83,7 @@ describe("runtime workspace wire boundary", () => {
     expect(Object.getPrototypeOf(wire.batches[0].remainingQuantity)).toBe(Object.prototype);
     expect(Object.getPrototypeOf(wire.transfers[0].unitCostSnapshot)).toBe(Object.prototype);
     expect(Object.getPrototypeOf(wire.stockLosses[0].quantity)).toBe(Object.prototype);
+    expect(Object.getPrototypeOf(wire.stockMinimumPolicies[0].minimumQuantity)).toBe(Object.prototype);
   });
 
   it("hydrates the domain value objects again on the client side", () => {
@@ -87,5 +96,6 @@ describe("runtime workspace wire boundary", () => {
     expect(hydrated.batches[0].remainingQuantity.toDecimal()).toBe("1.25");
     expect(hydrated.transfers[0].dispatchedQuantity.toDecimal()).toBe("0.5");
     expect(hydrated.stockLosses[0].unitCostSnapshot.toDecimal()).toBe("4.50");
+    expect(hydrated.stockMinimumPolicies[0].minimumQuantity.toDecimal()).toBe("1.5");
   });
 });

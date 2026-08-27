@@ -6,6 +6,7 @@ type Balance = RuntimeWorkspaceInitialData["balances"][number];
 type Batch = RuntimeWorkspaceInitialData["batches"][number];
 type Transfer = RuntimeWorkspaceInitialData["transfers"][number];
 type StockLoss = RuntimeWorkspaceInitialData["stockLosses"][number];
+type StockMinimumPolicy = RuntimeWorkspaceInitialData["stockMinimumPolicies"][number];
 
 type QuantityWire = { readonly milliunits: number };
 type MoneyWire = { readonly cents: number };
@@ -32,14 +33,19 @@ type StockLossWire = Omit<StockLoss, "quantity" | "unitCostSnapshot"> & {
   readonly unitCostSnapshot: MoneyWire;
 };
 
+type StockMinimumPolicyWire = Omit<StockMinimumPolicy, "minimumQuantity"> & {
+  readonly minimumQuantity: QuantityWire;
+};
+
 export type RuntimeWorkspaceInitialDataWire = Omit<
   RuntimeWorkspaceInitialData,
-  "balances" | "batches" | "transfers" | "stockLosses"
+  "balances" | "batches" | "transfers" | "stockLosses" | "stockMinimumPolicies"
 > & {
   readonly balances: readonly BalanceWire[];
   readonly batches: readonly BatchWire[];
   readonly transfers: readonly TransferWire[];
   readonly stockLosses: readonly StockLossWire[];
+  readonly stockMinimumPolicies: readonly StockMinimumPolicyWire[];
 };
 
 export function serializeRuntimeWorkspaceInitialData(
@@ -68,6 +74,10 @@ export function serializeRuntimeWorkspaceInitialData(
       ...loss,
       quantity: { milliunits: loss.quantity.milliunits },
       unitCostSnapshot: { cents: loss.unitCostSnapshot.cents },
+    })),
+    stockMinimumPolicies: input.stockMinimumPolicies.map((policy) => ({
+      ...policy,
+      minimumQuantity: { milliunits: policy.minimumQuantity.milliunits },
     })),
   };
 }
@@ -98,6 +108,10 @@ export function hydrateRuntimeWorkspaceInitialData(
       ...loss,
       quantity: Quantity.fromMilliunits(loss.quantity.milliunits),
       unitCostSnapshot: Money.fromCents(loss.unitCostSnapshot.cents),
+    })),
+    stockMinimumPolicies: input.stockMinimumPolicies.map((policy) => ({
+      ...policy,
+      minimumQuantity: Quantity.fromMilliunits(policy.minimumQuantity.milliunits),
     })),
   };
 }

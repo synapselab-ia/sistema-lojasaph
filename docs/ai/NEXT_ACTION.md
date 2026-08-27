@@ -1,141 +1,64 @@
 # Next Action — Sistema Lojasaph
 
-## Contexto
+## Estado de saída da Fase 47
 
-A frente ativa permanece na Issue #75 / `REQ-PLAT-005 — Proteção, backup e recuperação de dados`.
+A **Fase 47 / Issue #132 (`REQ-STK-011`)** está implementada, validada em CI e homologada em Supabase Production pelo PR #133.
 
-A Issue #121 cobre Supabase Storage. Tooling técnico, restore isolado, persistência, guardrails Production e baseline S3 já estão integrados. Os gates privados externos foram concluídos pelo operador em 2026-08-27.
+Não reabrir essa slice sem regressão concreta.
 
-Não refazer sem regressão:
+## Frente ON HOLD
 
-- tooling de inventário/manifesto;
-- reconciliação metadata↔objeto e hashes;
-- transporte Supabase S3 → R2;
-- restore isolado pela Storage API/S3;
-- persistência `automatic_storage`;
-- CI end-to-end de Storage;
-- guardrails Production;
-- configuração S3 dedicada e controles R2 já confirmados.
+**Issue #121 — Backup e recuperação off-site do Supabase Storage.**
 
-## Estado confirmado
+Retomar somente se existir um gatilho objetivo:
 
-`main` antes desta atualização operacional: `96ffbf6553dfd7cb3889531387995f35035a8d15` (#130).
+- primeira execução agendada do `Production Storage Backup` após o armamento;
+- primeiro anexo Production legítimo para prova binária;
+- falha/incidente/regressão real.
 
-CI pós-merge #130:
+Próxima janela normal esperada do cron: **2026-08-28 06:47 UTC / 03:47 America/Sao_Paulo**.
 
-- CI `33089679869`: `database` + `validate` success;
-- Storage Protection CI `33089679857`: `storage-contract` + `isolated-storage-binary-restore` success.
+Sem gatilho: não usar `workflow_dispatch`, não criar fixture Production e não repetir validações da mesma ausência de evidência.
 
-Production `fhbvwyttikrbeaanatlr` revalidada em 2026-08-27:
+## NEXT_ACTION
 
-- `ACTIVE_HEALTHY`;
-- região `sa-east-1`;
-- 1 Organization;
-- 0 buckets Storage;
-- 0 objetos ativos;
-- 0 `finance_attachments`;
-- 0 bytes declarados;
-- 0 runs `automatic_storage`.
+### Promover a próxima fase independente: `REQ-DASH-004 — Dashboard/relatórios de estoque`
 
-O bucket `finance-attachments` é criado lazy pelo fluxo funcional. Não fabricar dados para provar backup.
+Executar nesta ordem:
 
-## Configuração Production concluída
+1. conferir estado real de `main`, Issues, PRs, branches e CI;
+2. confirmar que o PR #133 está mergeado e a Issue #132 encerrada;
+3. verificar **uma vez** se surgiu gatilho novo da #121; se não surgiu, manter ON HOLD e seguir;
+4. reler `docs/product/requirements.md`, `docs/modules/dashboard.md` e `docs/modules/inventory.md`;
+5. inventariar o gap real de `REQ-DASH-004` sobre:
+   - saldos;
+   - movimentações;
+   - perdas;
+   - inventários;
+   - validades;
+   - estoque abaixo do mínimo já entregue pela Fase 47;
+6. não duplicar KPIs/alertas já existentes e não fabricar granularidade histórica onde o modelo não possui evento canônico;
+7. abrir uma Issue própria para a nova fase com critérios de aceite verificáveis e fora de escopo explícito;
+8. criar branch a partir de `main` somente depois da Issue;
+9. implementar a menor slice coerente, com testes e CI, seguindo o workflow normal Issue → branch → PR → merge;
+10. atualizar `CURRENT_STATE`, `HANDOFF` e `NEXT_ACTION` ao final.
 
-### Fonte Supabase Storage
+## Restrições para `REQ-DASH-004`
 
-Versionado no workflow:
+- Dashboard continua read-only;
+- reutilizar fontes autoritativas existentes, sem criar segunda fonte de saldo;
+- respeitar Organization + Unit + Sector e RLS;
+- não transformar snapshots atuais em histórico por conveniência;
+- não criar previsão de demanda/IA;
+- não criar pedido de compra automático;
+- não misturar `REQ-DASH-005` ou `REQ-ITEM-003` na mesma slice sem necessidade comprovada;
+- não resolver requisitos PENDING por inferência;
+- não fazer deploy Vercel rotineiro.
 
-- `STORAGE_SOURCE_PROJECT_REF=fhbvwyttikrbeaanatlr`;
-- `STORAGE_SOURCE_S3_ENDPOINT=https://fhbvwyttikrbeaanatlr.storage.supabase.co/storage/v1/s3`;
-- `STORAGE_SOURCE_S3_REGION=sa-east-1`.
+## Ordem posterior
 
-Confirmado pelo operador, sem expor valores:
+1. `REQ-DASH-004` — estoque;
+2. `REQ-DASH-005` — compras/fornecedores e histórico/variação;
+3. `REQ-ITEM-003` — EAN/código de barras e dados fiscais.
 
-- S3 protocol habilitado;
-- credencial S3 dedicada server-only criada;
-- `STORAGE_SOURCE_S3_ACCESS_KEY_ID` provisionado em GitHub Actions Secrets;
-- `STORAGE_SOURCE_S3_SECRET_ACCESS_KEY` provisionado em GitHub Actions Secrets.
-
-### Destino Cloudflare R2
-
-Confirmado diretamente pelo operador no bucket `lojasaph-production-backups`:
-
-- lifecycle 30 dias cobre `production/storage`;
-- Bucket Lock/WORM 30 dias cobre `production/storage`;
-- nenhum public access;
-- nenhum CORS de navegador;
-- `STORAGE_BACKUP_R2_RETENTION_VERIFIED=true`.
-
-### Armamento
-
-O operador confirmou:
-
-- `STORAGE_BACKUP_AUTOMATION_ENABLED=true`.
-
-Com todos os gates externos concluídos, a automação deve permanecer armada. Não desarmar por inércia.
-
-## NEXT_ACTION imediata
-
-**Deixar a automação executar pela agenda normal e validar a primeira execução agendada após o armamento, sem `workflow_dispatch` desnecessário.**
-
-### 1. Primeira execução agendada
-
-Após o próximo run normal do workflow `Production Storage Backup`:
-
-1. conferir status/conclusão do workflow;
-2. conferir que o gate fail-closed não acusou configuração ausente;
-3. conferir a persistência autoritativa `automatic_storage`;
-4. registrar somente evidência sanitizada em #121;
-5. não expor endpoint com credencial, access key, secret ou conteúdo de objeto.
-
-### 2. Se Production continuar vazia
-
-É aceitável que um run agendado processe inventário vazio, porque isso é execução normal da automação armada, não um dispatch artificial.
-
-Nesse caso:
-
-- aceitar o run apenas como prova operacional do pipeline sobre estado vazio;
-- não criar bucket/anexo sintético;
-- não declarar recuperação binária real comprovada;
-- não atualizar a UI para dizer que anexos têm restore comprovado;
-- manter a automação armada para runs diários seguintes.
-
-### 3. Primeira prova binária quando existir anexo real
-
-Quando surgir ao menos um anexo Production pelo fluxo normal:
-
-1. revalidar metadata/inventário sem expor conteúdo;
-2. validar o primeiro run automático que inclua esse objeto, ou executar uma única prova controlada somente se necessário operacionalmente;
-3. exigir source SHA-256 = `finance_attachments.checksum_sha256` e tamanho compatível;
-4. exigir R2 upload + existência remota + re-download/re-hash;
-5. exigir `automatic_storage=succeeded` / `coverage=storage` com integridade positiva;
-6. restaurar o mesmo snapshot em Supabase Storage isolado via API/S3;
-7. reconciliar missing/extra/corrupt e hashes;
-8. persistir `restore_drill coverage=storage=succeeded` somente após essa prova;
-9. nunca usar Production como restore target;
-10. somente então considerar UI de Storage como recuperação comprovada e fechamento da #121.
-
-## Critério de conclusão da #121
-
-Os gates de infraestrutura já estão concluídos. A Issue #121 só deve ser fechada depois da prova binária real sobre pelo menos um anexo Production legítimo:
-
-- backup automático íntegro off-site;
-- restore isolado do mesmo snapshot;
-- reconciliação/hash verde;
-- evidência autoritativa `automatic_storage` + `restore_drill coverage=storage`.
-
-Enquanto Production estiver vazia, manter a Issue aberta é correto.
-
-## Fora de escopo
-
-- refazer PostgreSQL;
-- backfillar run histórico;
-- criar fixture em Production;
-- manipular `storage.objects` por DML para restore;
-- trocar provider;
-- mudar RPO/retenção;
-- implementar delete funcional de anexos;
-- exportação manual por Organization;
-- tornar repo private automaticamente;
-- deploy Vercel para esta trilha operacional;
-- novo PR apenas para atualizar SHA documental.
+Uma frente ON HOLD pode interromper essa ordem somente quando seu gatilho real existir; simples espera não pausa o desenvolvimento.

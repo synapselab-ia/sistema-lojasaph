@@ -24,6 +24,26 @@ Todo novo chat deve:
 - não criar requisitos silenciosamente;
 - manter o estado do repositório coerente com o que está sendo informado ao usuário.
 
+## Regra de ON HOLD
+
+Uma frente deve ser marcada como **ON HOLD** quando o próximo passo depende de uma condição externa objetiva que ainda não existe, por exemplo cron futuro, dado legítimo ainda inexistente, aprovação operacional, credencial/configuração externa ou janela de produção.
+
+Quando uma frente estiver ON HOLD:
+
+- ela **não é a frente ativa**;
+- não executar trabalho artificial para fabricar a condição de retomada;
+- não disparar manualmente automações apenas para antecipar evidência quando a própria Issue proibir isso;
+- não criar fixtures/dados Production para desbloquear prova operacional;
+- não revalidar repetidamente o mesmo estado sem evidência nova;
+- não alterar código, infraestrutura ou documentação dessa frente por inércia;
+- promover a próxima Issue independente e viável para frente ativa;
+- continuar o roadmap enquanto houver trabalho viável;
+- retomar a frente ON HOLD somente quando seu gatilho objetivo estiver satisfeito ou quando surgir regressão/incidente diretamente relacionado.
+
+Uma frente ON HOLD pode permanecer aberta no GitHub. `open` não significa `ativa`.
+
+Se todas as Issues existentes estiverem concluídas ou ON HOLD, reconciliar `requirements`, roadmap e código real e abrir a próxima Issue somente quando houver um gap ou prioridade real; não criar atividade artificial.
+
 ## Encerramento da sessão
 
 Atualizar `docs/ai/CURRENT_STATE.md` com:
@@ -34,6 +54,7 @@ Atualizar `docs/ai/CURRENT_STATE.md` com:
 - branch;
 - concluído;
 - em andamento;
+- frentes ON HOLD e respectivos gatilhos de retomada;
 - pendências;
 - decisões;
 - validações/testes;
@@ -44,6 +65,8 @@ Usar `docs/ai/HANDOFF.md` quando houver contexto temporário ou operacional que 
 ## Regra de trabalho concorrente
 
 Enquanto o projeto estiver sendo desenvolvido pelo usuário em chats não simultâneos, manter apenas uma frente principal marcada como em andamento.
+
+Frentes ON HOLD não contam como frente principal em andamento e não bloqueiam a promoção de uma nova frente ativa.
 
 ## Git workflow esperado
 
@@ -62,6 +85,8 @@ review
   ↓
 merge
 ```
+
+Quando uma Issue ficar ON HOLD antes da conclusão, registrar o gatilho de retomada e seguir para outra Issue; não é necessário criar commit/PR vazio apenas para representar espera.
 
 ## Commit e Pull Request
 

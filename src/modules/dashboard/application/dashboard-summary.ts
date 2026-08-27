@@ -1,5 +1,6 @@
 import { EntityId } from "@/domain/common/entity-id";
 import { Money } from "@/domain/common/money";
+import { Quantity } from "@/domain/common/quantity";
 
 export type DashboardSeverity = "high" | "medium";
 
@@ -61,6 +62,14 @@ export interface DashboardExpiryRow {
   readonly expirationDate: string;
 }
 
+export interface DashboardStockMinimumRow {
+  readonly id: EntityId;
+  readonly unitId: EntityId;
+  readonly sectorId?: EntityId;
+  readonly quantityOnHand: Quantity;
+  readonly minimumQuantity: Quantity;
+}
+
 export interface DashboardRawData {
   readonly finance: readonly DashboardFinanceRow[];
   readonly cash: readonly DashboardCashRow[];
@@ -68,6 +77,7 @@ export interface DashboardRawData {
   readonly transfers: readonly DashboardTransferRow[];
   readonly inventoryCounts: readonly DashboardInventoryCountRow[];
   readonly expiries: readonly DashboardExpiryRow[];
+  readonly stockMinimums: readonly DashboardStockMinimumRow[];
 }
 
 export interface DashboardFilter {
@@ -103,6 +113,7 @@ export interface DashboardSummary {
     readonly openInventoryCount: number;
     readonly expiredBatchCount: number;
     readonly expiringSoonCount: number;
+    readonly belowMinimumCount: number;
   };
   readonly attention: readonly DashboardAttentionItem[];
 }
@@ -203,8 +214,6 @@ export function buildDashboardSummary(
   const horizonEnd = addIsoDays(filter.today, filter.horizonDays);
   const historyStart = addIsoDays(filter.today, -filter.horizonDays);
 
-  // Finance period semantics are based on installment due_date. netPaidAmount is
-  // still cumulative for each obligation; it is not a payment-event total.
   const finance = data.finance.filter(
     (row) => matchesScopedRow(row.unitId, row.sectorId, filter)
       && matchesPeriod(row.dueDate, filter),
@@ -223,9 +232,6 @@ export function buildDashboardSummary(
     (row) => row.status === "upcoming" && row.dueDate > filter.today && row.dueDate <= horizonEnd,
   ).length;
 
-  // Open cash is current-state. Closed/discrepancy metrics use business_date and
-  // are narrowed by an explicit managerial period when present. Cash has no
-  // explicit Sector relationship, so Sector never narrows it.
   const cash = data.cash.filter((row) => matchesUnit(row.unitId, filter.unitId));
   const openCashCount = cash.filter((row) => row.status === "open").length;
   const closedCashInPeriod = cash.filter(
@@ -238,8 +244,6 @@ export function buildDashboardSummary(
     (row) => row.businessDate >= historyStart && row.businessDate <= filter.today,
   ).length;
 
-  // Pending purchase orders are current-state. Delivery signals use the canonical
-  // expected_delivery_date and exclude unknown dates from a selected period.
   const purchases = data.purchases.filter((row) => matchesScopedRow(row.unitId, row.sectorId, filter));
   const pendingPurchases = purchases.filter(
     (row) => row.status === "ordered" || row.status === "partially_received",
@@ -256,8 +260,6 @@ export function buildDashboardSummary(
       && row.expectedDeliveryDate <= horizonEnd,
   ).length;
 
-  // Transfers in transit and open inventory counts are snapshots of current state;
-  // there is no single event timestamp that truthfully turns them into period KPIs.
   const transfersInTransitCount = data.transfers.filter(
     (row) => matchesTransferScope(row, filter)
       && (row.status === "dispatched" || row.status === "partially_received"),
@@ -267,7 +269,6 @@ export function buildDashboardSummary(
       && (row.status === "counting" || row.status === "review"),
   ).length;
 
-  // Expiry metrics use expiration_date as their canonical business date.
   const expiries = data.expiries.filter(
     (row) => matchesScopedRow(row.unitId, row.sectorId, filter)
       && matchesPeriod(row.expirationDate, filter),
@@ -277,12 +278,20 @@ export function buildDashboardSummary(
     (row) => row.expirationDate >= filter.today && row.expirationDate <= horizonEnd,
   ).length;
 
+  // Stock minimum is a current-state signal. It is scoped by explicit location
+  // Unit/Sector and never narrowed by date period or alert horizon.
+  const belowMinimumCount = data.stockMinimums.filter(
+    (row) => matchesScopedRow(row.unitId, row.sectorId, filter)
+      && row.quantityOnHand.isLessThan(row.minimumQuantity),
+  ).length;
+
   const attention: DashboardAttentionItem[] = [];
   pushAttention(attention, { key: "finance-overdue", label: "Parcelas vencidas", count: overdueCount, href: "/workspace/financeiro", severity: "high" });
   pushAttention(attention, { key: "finance-today", label: "Parcelas vencendo hoje", count: dueTodayCount, href: "/workspace/financeiro", severity: "high" });
   pushAttention(attention, { key: "cash-discrepancy", label: "Fechamentos com divergência", count: discrepancyCount, href: "/workspace/caixa", severity: "high" });
   pushAttention(attention, { key: "purchase-late", label: "Pedidos com entrega prevista atrasada", count: lateDeliveryCount, href: "/workspace/compras", severity: "high" });
   pushAttention(attention, { key: "expiry-expired", label: "Lotes vencidos com saldo", count: expiredBatchCount, href: "/workspace/estoque", severity: "high" });
+  pushAttention(attention, { key: "stock-below-minimum", label: "Itens abaixo do estoque mínimo", count: belowMinimumCount, href: "/workspace/estoque", severity: "high" });
   pushAttention(attention, { key: "finance-soon", label: `Parcelas nos próximos ${filter.horizonDays} dias`, count: dueSoonCount, href: "/workspace/financeiro", severity: "medium" });
   pushAttention(attention, { key: "cash-open", label: "Sessões de caixa abertas", count: openCashCount, href: "/workspace/caixa", severity: "medium" });
   pushAttention(attention, { key: "purchase-soon", label: `Entregas previstas nos próximos ${filter.horizonDays} dias`, count: deliverySoonCount, href: "/workspace/compras", severity: "medium" });
@@ -294,7 +303,7 @@ export function buildDashboardSummary(
     finance: Object.freeze({ nominal, paid, openBalance, overdueCount, dueTodayCount, dueSoonCount }),
     cash: Object.freeze({ openCount: openCashCount, discrepancyCount, recentClosedCount }),
     purchases: Object.freeze({ pendingCount: pendingPurchases.length, lateDeliveryCount, deliverySoonCount }),
-    stock: Object.freeze({ transfersInTransitCount, openInventoryCount, expiredBatchCount, expiringSoonCount }),
+    stock: Object.freeze({ transfersInTransitCount, openInventoryCount, expiredBatchCount, expiringSoonCount, belowMinimumCount }),
     attention: Object.freeze(attention),
   });
 }
