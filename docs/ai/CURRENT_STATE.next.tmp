@@ -1,0 +1,155 @@
+# Current State — Sistema Lojasaph
+
+Última atualização: 2026-08-27
+
+## Estado atual
+
+**Fase 46 continua integrada. Frente ativa: Issue #75 / `REQ-PLAT-005`, com a trilha Supabase Storage acompanhada pela Issue #121.**
+
+A trilha PostgreSQL de disaster recovery está encerrada e comprovada end-to-end. Não refazer sem regressão concreta.
+
+A primeira slice técnica de Storage foi implementada pela PR #126 e, quando integrada, deixa tooling/workflow/CI prontos e **Production deliberadamente desarmada** até os gates operacionais.
+
+## Baseline viva da slice
+
+- `main` de entrada: `0452d1330d6a849c4e3c8737faf89912bab9d89d` — #125;
+- PR #126: `feat(storage): implement fail-closed off-site protection`;
+- branch: `agent/storage-protection-backup`;
+- CI geral final da implementação técnica: `33081199162` — success;
+- Storage Protection CI final: `33081198933` — success;
+- Issue #75 permanece aberta;
+- Issue #121 permanece aberta;
+- repo temporariamente `public` por decisão operacional; não alterar automaticamente.
+
+## PostgreSQL — comprovado e não reabrir
+
+A cadeia comprovada permanece:
+
+1. ADR-009;
+2. R2 privado + lifecycle/lock 30 dias;
+3. backup lógico Production off-site;
+4. hard cap PostgreSQL `300000000` bytes;
+5. primeira cópia real `33006253661` (`53185` bytes, `2026-08-26T19:40:47Z`);
+6. `protection_runs` + Organizations + RLS;
+7. UI read-only `/workspace/backup`;
+8. restore do bundle Production real em Supabase/PostgreSQL 17 isolado;
+9. restore verde `33069706382`;
+10. `restore_drill coverage=postgres` autoritativo e #110 auto-fechada.
+
+As duas tentativas reais anteriores de restore continuam preservadas como `failed`. Não backfillar `33006253661`.
+
+## Supabase Storage — inventário real
+
+O uso físico de Storage continua restrito aos anexos financeiros:
+
+- bucket canônico `finance-attachments`;
+- privado e criado lazy pela Storage API;
+- máximo de 10 MiB por objeto;
+- PDF/XML/JPEG/PNG/WebP;
+- key `<organization_uuid>/<payable_document_uuid>/<attachment_uuid>`;
+- `upsert=false`;
+- SHA-256 e tamanho persistidos em `public.finance_attachments`;
+- objeto físico é manipulado pela Storage API no trusted server após autorização de negócio;
+- browser não recebe secret, signed URL ou URL pública permanente;
+- não existe delete funcional de anexos nesta versão.
+
+### Production read-only revalidada em 2026-08-27
+
+Projeto `fhbvwyttikrbeaanatlr`:
+
+- Organizations: **1**;
+- `storage.buckets`: **0**;
+- `storage.objects`: **0**;
+- `public.finance_attachments`: **0**;
+- bytes declarados: **0**;
+- policies customizadas em `storage.objects`/`storage.buckets`: **0**;
+- runs `automatic_storage`: **0**.
+
+O estado vazio é legítimo. Não criar bucket/objeto sintético em Production para fabricar prova.
+
+## Primeira slice técnica Storage — PR #126
+
+### Tooling
+
+- `scripts/storage-backup-bundle.py` — plano/manifesto versionado `lojasaph-storage-backup-v1`, validação e reconciliação;
+- `scripts/test-storage-backup-bundle.py` — regressões missing/extra/corrupt/size/bucket/guardrails;
+- `scripts/storage-protection-s3.sh` — inventário da fonte S3, download, SHA-256, envio R2 e re-download/re-hash;
+- `scripts/restore-storage-backup.sh` — restore binário somente em target loopback/isolado via Storage API, seguido de inventário read-only e re-hash.
+
+Contrato:
+
+- allowlist inicial exatamente `finance-attachments`;
+- bucket inesperado falha fechado;
+- metadata e objeto físico precisam corresponder 1:1;
+- source SHA-256 e tamanho precisam bater com `finance_attachments`;
+- destino imutável `production/storage/runs/<backup-id>`;
+- manifesto não inclui `original_filename`, conteúdo nem secrets;
+- R2 só é considerado íntegro após existência remota + re-download/re-hash;
+- Storage possui caps próprios `max_objects`, `max_total_bytes`, `max_object_bytes`;
+- o cap PostgreSQL de 300 MB não é reutilizado;
+- nenhum DML em `storage.*` é usado para copiar binários.
+
+### Workflows
+
+- `.github/workflows/storage-protection-ci.yml`;
+- `.github/workflows/production-storage-backup.yml`.
+
+`Production Storage Backup` permanece fail-closed/desarmado por `STORAGE_BACKUP_AUTOMATION_ENABLED`. Antes de executar exige endpoint/region da fonte, credencial S3 dedicada, destino R2, caps explícitos, allowlist e confirmação de lifecycle/lock para `production/storage`.
+
+Persistência reutiliza `record-protection-run.sh` com `PROTECTION_TYPE=automatic_storage` e `PROTECTION_COVERAGE=storage`. Incidentes reutilizam `sync-backup-incident.py`.
+
+### CI isolado comprovado
+
+O gate `33081198933` terminou verde e provou sem Production/R2 secrets reais:
+
+1. Supabase Storage local pinado;
+2. bucket privado sintético;
+3. dois objetos sintéticos criados pela Storage API;
+4. inventário pela interface S3 local documentada;
+5. manifesto + SHA conhecido;
+6. teardown completo da origem;
+7. novo Supabase local isolado;
+8. restore dos bytes pela Storage API;
+9. inventário pós-restore;
+10. re-download/re-hash;
+11. rejeição de objeto extra;
+12. cleanup.
+
+Histórico útil de correções, sem rerun cego:
+
+- `33079491089` revelou suposição incorreta sobre credenciais S3 internas do container local; CI passou a usar o contrato documentado de session token local;
+- `33080636947` revelou ownership `root` no arquivo baixado pelo container AWS; o helper passou a materializar cópia final `0600` pertencente ao runner;
+- `33081198933` comprovou a correção end-to-end.
+
+## Cobertura e UI
+
+A UI continua declarando **PostgreSQL coberto** e **Storage/anexos pendentes**. Isso é proposital.
+
+Um snapshot vazio pode validar inventário/conectividade, mas não prova recuperação de binário real. Cobertura Storage completa exige, no mínimo:
+
+- um anexo Production legítimo criado pelo fluxo normal;
+- source hash = checksum de negócio;
+- cópia R2 + re-download/re-hash;
+- `automatic_storage=succeeded` real;
+- restore isolado do mesmo snapshot;
+- `restore_drill coverage=storage=succeeded` real;
+- nenhuma mutação/restore em Production.
+
+## Próximo trabalho
+
+Ver `docs/ai/NEXT_ACTION.md`: verificar os gates operacionais da automação Storage e deixar Production pronta **sem expor secrets, sem fixture sintética e sem declarar cobertura binária antes da prova real**.
+
+## Não fazer
+
+- não restaurar Production para teste;
+- não refazer PostgreSQL concluído;
+- não backfillar `33006253661`;
+- não reprovisionar R2/secrets por inércia;
+- não pedir/registrar secrets em chat/Issue/PR;
+- não armazenar dump/objeto real em Git/GitHub Artifact;
+- não copiar binários via SQL em `storage.*`;
+- não declarar Storage coberto por snapshot vazio;
+- não reutilizar o hard cap PostgreSQL para Storage;
+- não voltar a Drive/rclone/Gmail;
+- não tornar repo private automaticamente;
+- não fazer deploy Vercel para esta trilha operacional.
