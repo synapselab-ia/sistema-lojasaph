@@ -4,146 +4,127 @@
 
 ## Estado atual
 
-**Fase 46 continua integrada; frente ativa: Issue #75 / `REQ-PLAT-005 — Proteção, backup e recuperação de dados`.**
+**Fase 46 está integrada. Frente ativa: Issue #132 — Fase 47, estoque mínimo por local e alertas de reposição (`REQ-STK-011`).**
 
-A trilha PostgreSQL de disaster recovery está comprovada end-to-end e não deve ser refeita sem regressão concreta.
+Branch ativa: `agent/stock-minimum-alerts`.
 
-A frente Storage permanece na **Issue #121 — backup e recuperação off-site do Supabase Storage**. Tooling, restore isolado, persistência e guardrails Production já estão integrados. Os gates privados externos foram confirmados pelo operador em 2026-08-27 e a automação Storage está armada para a execução normal agendada.
+A antiga frente Storage permanece aberta na Issue #121, porém está **ON HOLD**. Ela não é a frente ativa e não deve receber trabalho até existir o gatilho objetivo de retomada.
+
+## Regra operacional de continuidade
+
+`docs/ai/WORKFLOW.md` agora define explicitamente:
+
+- Issue ON HOLD não bloqueia o roadmap;
+- não fabricar evidência, fixture, dispatch ou mudança para desbloquear espera externa;
+- não revalidar repetidamente uma frente parada sem evidência nova;
+- promover a próxima frente independente e viável;
+- retomar ON HOLD somente quando o gatilho registrado existir ou houver regressão/incidente relacionado.
 
 ## GitHub / baseline viva
 
-- `main` antes desta atualização operacional: `96ffbf6553dfd7cb3889531387995f35035a8d15` (#130);
-- Issue #75: aberta;
-- Issue #121: aberta;
-- não havia PR aberto no início desta atualização;
+- `main`: `1da51fdcb4b5730b63f5f30491a2e54390943a7e` (#131);
+- Issue #75: aberta como umbrella de proteção de dados, não é a frente ativa;
+- Issue #121: aberta e ON HOLD;
+- Issue #132: aberta e ativa;
+- branch ativa: `agent/stock-minimum-alerts`;
+- nenhum PR aberto na promoção da Fase 47;
 - repositório temporariamente `public` por decisão operacional; não alterar automaticamente.
 
-`main` é sempre a fonte viva. Não abrir PR apenas para atualizar SHA produzido pelo próprio handoff.
+CI pós-merge do head atual de `main`:
 
-### CI da baseline antes desta atualização
+- CI `33103269753`: success.
 
-Pós-merge #130:
+Não rerodar CI de `main` sem mudança/regressão.
 
-- CI `33089679869`: `database` + `validate` success;
-- Storage Protection CI `33089679857`: `storage-contract` + `isolated-storage-binary-restore` success.
+## Issue #121 — ON HOLD
 
-Não há motivo para rerun manual desses gates sem mudança de código/regressão.
-
-## PostgreSQL — concluído
-
-O run `Backup Restore Drill / 33069706382` restaurou o archive Production real criado em `2026-08-26T19:40:47Z` (`53185` bytes) em destino local isolado e terminou `success`.
-
-Evidência autoritativa:
-
-- `protection_type=restore_drill`;
-- `status=succeeded`;
-- `coverage=postgres`;
-- `integrity_verified=true`;
-- `valid_copy_at=2026-08-26T19:40:47Z`;
-- `size_bytes=53185`;
-- 1 Organization mapeada.
-
-Não refazer essa trilha sem regressão concreta.
-
-## Supabase Production — revalidação read-only atual
-
-Projeto `fhbvwyttikrbeaanatlr`:
-
-- status: `ACTIVE_HEALTHY`;
-- região: `sa-east-1`;
-- PostgreSQL: `17.6.1.141` / engine 17;
-- Organizations: **1**;
-- `storage.buckets`: **0**;
-- objetos Storage ativos: **0**;
-- `public.finance_attachments`: **0**;
-- bytes declarados em anexos: **0**;
-- runs `automatic_storage`: **0**.
-
-O estado vazio é legítimo: o bucket `finance-attachments` nasce somente no primeiro upload autorizado. Não criar bucket/objeto sintético em Production para fabricar prova.
-
-## Storage — tooling e guardrails concluídos
-
-Já integrado:
+Storage Production já possui tooling, guardrails e infraestrutura integrados/armados. Não refazer:
 
 - manifesto `lojasaph-storage-backup-v1`;
-- reconciliação 1:1 `finance_attachments` ↔ bucket/key físico;
-- validação de key canônica, tamanho e SHA-256 de negócio;
-- fail-closed para bucket inesperado, missing, extra, corrupção e limites;
-- Supabase S3 → Cloudflare R2 em `production/storage/runs/<backup-id>`;
-- verificação remota por existência + re-download/re-hash;
-- restore obrigatório em target isolado pela Storage API/S3;
+- reconciliação metadata↔objeto e SHA-256;
+- transporte Supabase S3 → Cloudflare R2;
+- restore isolado pela Storage API/S3;
 - persistência `automatic_storage` / `coverage=storage`;
-- CI end-to-end com Storage local;
+- CI end-to-end local;
 - allowlist `finance-attachments`;
-- `max_objects=1000`;
-- `max_total_bytes=1073741824` (1 GiB);
-- `max_object_bytes=10485760` (10 MiB).
+- caps de 1000 objetos / 1 GiB total / 10 MiB por objeto;
+- S3 Production dedicado e R2 lifecycle/lock 30d já confirmados;
+- `STORAGE_BACKUP_AUTOMATION_ENABLED=true`.
 
-## Fonte S3 Production — concluída
+Última revalidação read-only de Production em 2026-08-27:
 
-Baseline versionada:
+- 1 Organization;
+- 0 buckets Storage;
+- 0 objetos;
+- 0 `finance_attachments`;
+- 0 bytes declarados;
+- 0 runs `automatic_storage`.
 
-- project ref: `fhbvwyttikrbeaanatlr`;
-- endpoint: `https://fhbvwyttikrbeaanatlr.storage.supabase.co/storage/v1/s3`;
-- region: `sa-east-1`.
+### Gatilhos objetivos de retomada da #121
 
-Em 2026-08-27 o operador confirmou, sem expor valores:
+Retomar a #121 somente quando ocorrer um destes eventos:
 
-- protocolo S3 do Supabase Storage Production habilitado;
-- credencial S3 dedicada server-only criada;
-- GitHub Actions Secrets `STORAGE_SOURCE_S3_ACCESS_KEY_ID` e `STORAGE_SOURCE_S3_SECRET_ACCESS_KEY` provisionados.
+1. existir a primeira execução **agendada** do `Production Storage Backup` após o armamento — próxima janela esperada em 2026-08-28 06:47 UTC / 03:47 America/Sao_Paulo; inspecionar uma vez e registrar o resultado sanitizado;
+2. surgir um anexo Production legítimo pelo fluxo normal do produto; então validar backup automático do objeto e restore isolado do mesmo snapshot;
+3. ocorrer falha/incidente/regressão real do pipeline Storage.
 
-Nenhum valor secreto foi registrado no GitHub, docs, Issue ou chat.
+Enquanto nenhum desses eventos existir: **não mexer na #121**.
 
-## R2 Production — gates externos concluídos
+Um run vazio futuro pode provar apenas operação sobre inventário vazio; recuperação binária completa continua exigindo anexo Production legítimo + `automatic_storage=succeeded` + `restore_drill coverage=storage=succeeded`.
 
-Em 2026-08-27 o operador confirmou diretamente no bucket privado `lojasaph-production-backups`:
+## Fase 47 — Issue #132
 
-- lifecycle de **30 dias** cobrindo `production/storage`;
-- Bucket Lock/WORM de **30 dias** cobrindo `production/storage`;
-- ausência de public access;
-- ausência de CORS de navegador;
-- `STORAGE_BACKUP_R2_RETENTION_VERIFIED=true` configurado no GitHub Actions.
+`REQ-STK-011` exige permitir estoque mínimo e alertas de reposição.
 
-Não reprovisionar provider/token sem necessidade concreta.
+Gap confirmado:
 
-## Armamento Production Storage
+- `inventory_balances` já é por `stock_item_id + stock_location_id`;
+- não existe threshold de estoque mínimo em `stock_items`, `stock_locations` ou `inventory_balances`;
+- não existe policy/tabela equivalente para política de reposição;
+- o Dashboard não pode gerar alerta autoritativo de estoque crítico sem essa configuração.
 
-O operador confirmou que `STORAGE_BACKUP_AUTOMATION_ENABLED=true` está configurado no GitHub Actions.
+Decisão inicial da slice:
 
-Com os gates externos acima concluídos, esse estado é agora coerente e deve ser preservado. O workflow permanece fail-closed para credenciais, endpoint/região, guardrails e retenção.
+- estoque mínimo é por **item + local de estoque**;
+- ausência de política significa `não configurado`, não zero;
+- `minimum_quantity` deve ser decimal exato e não negativo;
+- saldo crítico é derivado por `quantity_on_hand < minimum_quantity`;
+- saldo igual ao mínimo não é crítico;
+- não criar compra automática, previsão de demanda ou sugestão de quantidade nesta fase.
 
-Não usar `workflow_dispatch` apenas para antecipar a execução normal ou fabricar evidência. A execução agendada diária continua sendo o caminho esperado.
+## Ordem de trabalho
 
-## Cobertura e UI
+Salvo bug/regressão ou nova prioridade explícita:
 
-Storage/anexos **ainda não deve ser declarado como recuperação binária comprovada**.
+1. **Fase 47 / #132 — estoque mínimo por local + alertas**;
+2. evolução de Dashboard de estoque (`REQ-DASH-004`) usando thresholds, ledger, inventários e validades reais;
+3. evolução de fornecedores/compras (`REQ-DASH-005`) sobre histórico já persistido;
+4. refinamento de cadastro com EAN/dados fiscais (`REQ-ITEM-003`), sem promover itens PENDING/POS por inferência.
 
-Um run agendado vazio pode provar que a automação operou corretamente sobre inventário vazio, mas não comprova restauração de binário real.
+A #121 pode ser retomada quando seu gatilho aparecer, mas esperar cron/dado externo não pausa essa ordem.
 
-Para liberar cobertura Storage completa na UI ainda são necessários ambos sobre uso real:
+## Próximo trabalho exato
 
-1. `automatic_storage` Production `succeeded` com pelo menos um anexo legítimo e integridade verificada;
-2. `restore_drill coverage=storage` real sobre o mesmo conjunto/snapshot em target isolado.
+Na branch `agent/stock-minimum-alerts`, executar a Issue #132 sem tocar #121:
 
-## Próximo trabalho
-
-1. não disparar manualmente o workflow apenas porque a automação foi armada;
-2. após a próxima execução agendada, conferir resultado e evidência sanitizada;
-3. se Production ainda estiver vazia, manter a automação ativa, aceitar o run vazio apenas como prova operacional e continuar sem declarar recuperação binária comprovada;
-4. quando surgir ao menos um anexo real pelo fluxo normal, executar a prova completa de backup + restore isolado e persistir `restore_drill coverage=storage=succeeded`;
-5. somente então considerar atualizar a UI para declarar Storage coberto.
+1. inspecionar modelo/fixtures/adapters atuais de `stock_items`, `stock_locations`, `inventory_balances` e Dashboard;
+2. definir a persistência mínima de política por item/local com constraints e RLS escopada;
+3. versionar migration seguindo o histórico Supabase atual;
+4. adicionar regressões PostgreSQL antes de aplicar remotamente;
+5. implementar adapter/UI de configuração e alerta do Dashboard;
+6. rodar lint, typecheck, testes, build e workflows aplicáveis;
+7. somente com CI verde aplicar/homologar a migration em Production sem inventar thresholds para dados existentes;
+8. atualizar handoff e abrir PR.
 
 ## Não fazer
 
-- não restaurar Production para teste;
-- não refazer PostgreSQL concluído;
-- não criar fixture Storage sintética em Production;
-- não pedir/registrar secrets;
-- não armazenar dump/objeto real em Git ou GitHub Artifact;
-- não manipular binários via DML em `storage.*`;
-- não declarar recuperação binária comprovada por snapshot vazio;
-- não reprovisionar R2/secrets por inércia;
-- não voltar a Drive/rclone/Gmail;
+- não mexer na #121 enquanto estiver ON HOLD sem gatilho real;
+- não disparar `workflow_dispatch` Storage apenas para antecipar prova;
+- não criar fixture Storage em Production;
+- não restaurar Production;
+- não inventar valores de estoque mínimo para registros existentes;
+- não criar compra automática/previsão de demanda na Fase 47;
+- não alterar papéis/escopos sem necessidade comprovada;
+- não registrar secrets;
 - não tornar o repositório private automaticamente;
-- não fazer deploy Vercel para esta trilha backend/operacional.
+- não fazer deploy Vercel rotineiro.
