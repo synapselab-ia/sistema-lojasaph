@@ -8,14 +8,43 @@ A Fase 50 / Issue #138 (`REQ-ITEM-003`) foi integrada pelo PR #139.
 
 Baseline confirmada:
 
-- `main=f30137355fe1b8958cbfe36cf1cd6e515c647558`;
+- `main=e65d333f2410960b5201669014b062f5e1380542`;
 - PR #139 merged;
 - Issue #138 closed;
-- CI pós-merge #500 / `33118720928`: success;
-- nenhum PR aberto;
+- PR #140 integrou a reconciliação documental pós-Fase 50;
+- CI pós-merge #502 / `33119305469`: success;
+- nenhum PR funcional aberto;
 - únicas Issues abertas: #75 e #121, ambas ON HOLD na trilha `REQ-PLAT-005`.
 
 Não refazer Fase 50 e **não inventar Fase 51**.
+
+## Decisão explícita do operador — 2026-08-28
+
+A trilha completa de proteção de dados `REQ-PLAT-005` (#75 e #121), incluindo investigação de scheduling do GitHub Actions, backup de Supabase Storage, restore binário e evidência automática, fica **TOTALMENTE ON HOLD até o Sistema Lojasaph estar 100% concluído**.
+
+Essa decisão substitui os gatilhos automáticos anteriores de retomada por cron, primeiro anexo ou incidente do pipeline enquanto o sistema ainda estiver em desenvolvimento.
+
+Até o marco de sistema 100% concluído:
+
+- não investigar ausência de execução agendada dos workflows de backup;
+- não fazer `workflow_dispatch` para obter prova;
+- não criar fixture, bucket, objeto ou anexo sintético em Production;
+- não alterar workflows, variables, secrets, S3/R2, retenção, lock/WORM ou guardrails de backup;
+- não repetir introspecções de Storage/protection runs por rotina;
+- não abrir slice técnica de backup/proteção apenas porque um cron, anexo ou alerta apareceu;
+- manter #75 e #121 abertas e ON HOLD;
+- só retomar antes desse marco se o operador der uma nova instrução explícita revogando este hold.
+
+### Evidência preservada antes do hold total
+
+A reconciliação única de 2026-08-28, após a janela esperada dos schedules, encontrou:
+
+- nenhum `automatic_storage` novo no Supabase;
+- nenhum `automatic_database` novo correspondente ao schedule daquele dia;
+- último `automatic_database` autoritativo conhecido: `succeeded` em 2026-08-27, com integridade verificada;
+- ausência de evidência suficiente para declarar que o schedule de 2026-08-28 executou corretamente.
+
+Essa pendência deve ser retomada **somente no fechamento/homologação final do sistema**, não investigada agora.
 
 ## Próxima ação objetiva
 
@@ -25,49 +54,14 @@ Em qualquer retomada:
 
 1. confirmar `main` real;
 2. confirmar PRs/Issues abertos;
-3. verificar se houve bug/regressão ou nova prioridade explícita;
-4. verificar se algum gatilho da #121 ocorreu desde este handoff.
+3. verificar se houve bug/regressão funcional ou nova prioridade explícita do usuário/negócio;
+4. ignorar #75/#121 como frente ativa enquanto o marco de sistema 100% não tiver sido atingido, salvo instrução explícita do operador.
 
-### 2. #121 — somente quando houver gatilho
+### 2. Abrir nova frente somente por trabalho real de produto
 
-Último estado válido em 2026-08-27:
+Enquanto #75/#121 estiverem no hold total, só abrir nova Issue quando houver um destes fatos:
 
-- 0 buckets Storage;
-- 0 anexos financeiros Production;
-- 0 runs `automatic_storage`.
-
-Gatilhos válidos:
-
-1. primeira execução **agendada** do `Production Storage Backup` — janela esperada em **2026-08-28 03:47 America/Sao_Paulo**;
-2. primeiro anexo Production legítimo criado pelo fluxo normal;
-3. incidente/regressão real do pipeline Storage.
-
-Se nenhum gatilho ocorreu, **não tocar #121**.
-
-Não fazer:
-
-- `workflow_dispatch` para antecipar a prova;
-- fixture/objeto sintético em Production;
-- repetição da mesma introspecção vazia;
-- alteração de tooling, R2, guardrails ou secrets por inércia.
-
-### 3. Quando o primeiro horário agendado já tiver passado
-
-Fazer **uma única reconciliação** da evidência real:
-
-1. localizar a execução agendada do workflow `Production Storage Backup`;
-2. verificar status/conclusão e logs sanitizados apenas quando necessário;
-3. verificar a evidência autoritativa de `automatic_storage` correspondente, sem criar DML manual;
-4. se o run falhou, tratar como incidente/regressão da #121 e corrigir somente a causa real;
-5. se o run teve sucesso sobre Storage vazio, registrar que a automação executou corretamente o snapshot vazio, mas **não** declarar recuperação binária comprovada;
-6. se não existir run agendado quando deveria existir, investigar scheduling/armamento/configuração sem substituir a prova por dispatch manual;
-7. manter a Issue #121 aberta até existir a evidência exigida por ela, inclusive restore real de pelo menos um objeto Production legítimo para cobertura completa.
-
-### 4. Outros eventos que podem abrir nova frente
-
-Se #121 continuar ON HOLD, só abrir nova Issue quando houver um destes fatos:
-
-- bug/regressão real;
+- bug/regressão funcional real;
 - prioridade nova explícita do usuário/negócio;
 - fontes de migração finais congeladas + regras aprovadas suficientes para um cutover específico;
 - resposta registrada a uma questão aberta que desbloqueie requisito `PENDING`;
@@ -92,6 +86,17 @@ Não criar importador/cutover genérico sem uma fonte e regra final aprovadas.
 - `REQ-CASH-007` — consumo de funcionários;
 - `REQ-CASH-008` — integração com vendas.
 
+## Retomada futura de REQ-PLAT-005
+
+Somente quando o sistema estiver 100% concluído — ou se o operador revogar explicitamente o hold antes — reconciliar #75/#121 e então:
+
+1. localizar/validar os schedules reais de PostgreSQL e Storage;
+2. investigar a ausência de evidência de 2026-08-28;
+3. comprovar backup automático dentro do RPO;
+4. comprovar Storage com objeto Production legítimo quando existir;
+5. executar restore drill isolado conforme critérios das Issues;
+6. fechar #121/#75 somente com os critérios de aceite efetivamente atendidos.
+
 ## Restrições
 
 - GitHub é a fonte de continuidade;
@@ -100,4 +105,5 @@ Não criar importador/cutover genérico sem uma fonte e regra final aprovadas.
 - não fabricar evidência Production;
 - não fazer deploy Vercel rotineiro;
 - não tornar o repositório private automaticamente;
-- não criar atividade técnica apenas para manter o roadmap andando.
+- não criar atividade técnica apenas para manter o roadmap andando;
+- **não retomar REQ-PLAT-005 antes do sistema 100% sem nova instrução explícita do operador**.
