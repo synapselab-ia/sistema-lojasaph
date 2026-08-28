@@ -6,20 +6,21 @@
 
 Estado real de partida para a próxima execução:
 
-- `main=97a5975ace5f8e011b27a4e8175d13dcee464253` — merge do PR #153;
-- PR #153 — Cadastros: Produtos, Fornecedores e Funcionários — merged;
-- CI pós-merge #539 / run `33197347690`: success;
+- `main=3f0049c98f36f351d88ffe20afc5c77d17f73f70` — merge do PR #155;
+- PR #155 — Estoque consolidado — merged;
+- CI pós-merge #544 / run `33199243676`: success;
 - lint, typecheck, tests, production build e banco/migrations/RLS: success;
+- Inventory Count Integration #258 e Business Transactions Integration #245: success no head final do PR;
 - Issue #142 aberta e ativa;
 - #75/#121 **TOTALMENTE ON HOLD**.
 
-Não refazer Cadastros sem bug ou gap concreto.
+Não refazer Cadastros ou Estoque sem bug/gap concreto.
 
 ## NEXT_ACTION objetiva
 
-### Executar a próxima slice da Issue #142: **Estoque**
+### Executar a próxima slice da Issue #142: **Compras**
 
-O objetivo é consolidar a área operacional de Estoque como uma experiência coerente, sem alterar silenciosamente regras transacionais, escopo, RLS ou requisitos PENDING.
+O objetivo é consolidar a jornada de pedidos e recebimentos como uma experiência coerente, com contexto estável e linguagem operacional, sem alterar silenciosamente regras comerciais, integração com Estoque, escopo, RLS ou requisitos PENDING.
 
 Documentos de autoridade:
 
@@ -28,7 +29,7 @@ Documentos de autoridade:
 - `docs/product/design-system.md`;
 - `docs/qa/definition-of-done.md`;
 - `docs/product/open-questions.md`;
-- ADRs e requisitos de inventory já existentes.
+- ADRs e requisitos de Compras/Estoque já existentes.
 
 ### 1. Reconciliar e inventariar antes de editar
 
@@ -36,84 +37,83 @@ No início da próxima execução:
 
 1. confirmar `main`, Issue #142, PRs, branches e CI reais;
 2. reler os documentos de autoridade;
-3. inventariar rotas, páginas, domínio, repositories, gateways, services, RPCs e queries de Estoque;
-4. localizar transações atômicas já existentes para entrada, retirada, perda, devolução, transferência, inventário e demais movimentos;
-5. mapear permissões/RLS atuais por organização, unidade, local e setor;
-6. identificar telas que funcionam como megapáginas, duplicam informação ou expõem linguagem técnica;
-7. definir o contrato de navegação e responsabilidade das páginas antes do código.
+3. inventariar rotas, páginas, domínio, repositories, gateways, services, RPCs e queries de Compras;
+4. localizar criação/edição de pedido, transições de status, recebimentos e histórico;
+5. localizar a integração autoritativa entre recebimento e entrada de Estoque;
+6. mapear permissões/RLS atuais por Organization/Unit e demais escopos aplicáveis;
+7. identificar megapáginas, `window.prompt()` e linguagem técnica ainda presente;
+8. definir o contrato de navegação e responsabilidade das páginas antes do código.
 
 Não criar schema/RPC novo para resolver layout. Reaproveitar primeiro os boundaries existentes.
 
-### 2. Escopo funcional da consolidação de Estoque
+### 2. Escopo funcional da consolidação de Compras
 
-Inventariar e organizar, conforme o que já existe no produto:
+Organizar conforme o comportamento já suportado:
 
-- posição/saldos de estoque;
-- entradas;
-- retiradas/baixas;
-- perdas;
-- devoluções já suportadas;
-- transferências entre locais;
-- inventários/contagens;
-- lotes;
-- validades;
-- estoque mínimo.
+- lista/visão de pedidos;
+- criação de pedido quando existente;
+- detalhe estável do pedido quando a entidade justificar URL própria;
+- itens e quantidades pedidas;
+- fornecedor e unidade/contexto existentes;
+- recebimentos totais/parciais já suportados;
+- histórico e estado do pedido;
+- feedback e contexto do impacto do recebimento no Estoque.
 
-A área deve favorecer tarefas operacionais reais, reduzindo páginas isoladas e duplicação de contexto.
+Preferir `lista → detalhe → ação` em vez de concentrar criação, edição, recebimento e histórico na mesma página.
 
 ### 3. Preservar invariantes de domínio
 
 Não mover regra crítica para componentes React.
 
-Preservar nos boundaries atuais, entre outras regras já existentes:
+Preservar nos boundaries atuais, entre outras regras comprovadas pelo código/testes:
 
-- transações atômicas de movimentação;
-- escopo correto de organização/unidade/local/setor;
-- restrições de saldo negativo conforme política existente;
-- validações de lote/validade já implementadas;
-- recebimento/transferência/retirada sem dupla contabilização;
-- RLS/grants como fronteira real de autorização.
+- transições de status válidas;
+- quantidade pedida versus quantidade recebida;
+- recebimento parcial se já suportado;
+- vínculo com fornecedor, unidade, produto e condições comerciais existentes;
+- movimentação de estoque gerada pelo recebimento sem dupla contabilização;
+- atomicidade/idempotência já implementadas;
+- RLS/grants/RPCs como fronteira real de autorização.
 
 Se surgir gap, provar com código/teste antes de criar migration/RPC.
 
 ### 4. Arquitetura de informação e UX
 
-Usar linguagem operacional, não nomes de tabela/RPC/RLS.
+Usar linguagem de compra/operação, não nomes de tabela/RPC/RLS.
 
 Preferir:
 
-- visão de posição para descoberta e acompanhamento;
-- detalhe contextual quando uma entidade persistente justificar URL estável;
-- ações dedicadas para movimentos críticos;
-- filtros/pesquisa quando úteis;
-- feedback explícito de sucesso/erro;
-- empty/loading/read-only/not-found seguros;
-- estratégia mobile deliberada, sem depender apenas de tabelas largas.
+- lista pesquisável/filtrável se o volume e os dados existentes justificarem;
+- URL estável para detalhe do pedido;
+- ações contextuais no detalhe;
+- recebimento em fluxo explícito, sem `window.prompt()`;
+- feedback claro sobre sucesso/erro e quantidade recebida/pendente;
+- estados loading/empty/read-only/not-found seguros;
+- estratégia mobile deliberada, sem depender apenas de tabela larga.
 
-Reutilizar `src/components/ui` e os padrões já provados em Cadastros. Não criar DataTable/Tabs/SearchField/paginação genéricos sem uso repetido comprovado.
+Reutilizar `src/components/ui` e os padrões já provados em Cadastros/Estoque. Não criar abstração genérica sem repetição comprovada.
 
-### 5. Relação com Cadastros
+### 5. Relação com Cadastros e Estoque
 
-Produtos já possuem detalhe próprio. Estoque pode apontar para o produto ou usar seu contexto, mas não deve reabrir manutenção de cadastro dentro da área de Estoque.
+Não duplicar manutenção de:
 
-Não duplicar:
+- Produto;
+- Fornecedor;
+- estrutura/unidades;
+- saldos/lotes de Estoque.
 
-- formulário de Produto;
-- dados fiscais;
-- manutenção de Fornecedor;
-- Employee/login.
+Compras pode referenciar esses contextos, mas o recebimento deve continuar usando o boundary autoritativo existente para movimentar Estoque.
 
-### 6. Requisitos que continuam PENDING
+### 6. Requisitos/PENDINGs
 
-Não resolver nesta slice por conveniência:
+Não resolver requisito de negócio por conveniência visual.
 
-- `REQ-STK-007` — empréstimo;
-- `REQ-STK-010` — custeio;
-- `REQ-EXP-004` — FEFO;
-- `REQ-ITEM-004` — produto de venda/POS;
-- `REQ-ITEM-005` — ficha técnica/receita.
+Em especial:
 
-Se uma tela depender de decisão PENDING, apresentar somente o comportamento já suportado e registrar o gap.
+- não decidir custeio (`REQ-STK-010`) dentro da UI de Compras;
+- não homologar FEFO (`REQ-EXP-004`) a partir do recebimento;
+- não inventar novas condições comerciais, aprovação ou política de compra sem evidência existente;
+- demais PENDINGs continuam inalterados.
 
 ### 7. Autorização
 
@@ -128,15 +128,15 @@ Portanto:
 
 ### 8. Testes e validação
 
-Adicionar/ajustar testes nos contratos efetivamente tocados, especialmente para:
+Adicionar/ajustar testes somente nos contratos tocados, especialmente para:
 
-- invariantes transacionais;
-- escopo organization/unit/location/sector;
-- seleção de lote quando aplicável;
-- estado de inventário/contagem;
-- autorização e isolamento;
-- filtros/visões puras quando houver;
-- estados seguros de registro inexistente/inacessível.
+- transições de pedido;
+- recebimento total/parcial;
+- prevenção de recebimento além do permitido;
+- integração pedido → Estoque sem duplicação;
+- autorização/isolamento;
+- estados seguros de pedido inexistente/inacessível;
+- filtros/visões puras quando houver.
 
 Manter verdes:
 
@@ -145,8 +145,8 @@ Manter verdes:
 - `npm run test`;
 - `npm run build`;
 - CI PostgreSQL/RLS aplicável;
-- Inventory Count Integration;
-- Business Transactions Integration quando afetada.
+- Business Transactions Integration;
+- outras integrações apenas quando realmente afetadas.
 
 Se browser real permitido estiver disponível, validar jornadas críticas em desktop e mobile. Se não estiver, registrar a limitação; **não fazer deploy Vercel manual apenas para homologação**.
 
@@ -154,8 +154,8 @@ Se browser real permitido estiver disponível, validar jornadas críticas em des
 
 Não:
 
-- reabrir Cadastros sem evidência concreta;
-- consolidar Compras, Financeiro ou Caixa;
+- reabrir Cadastros ou Estoque sem evidência concreta;
+- consolidar Financeiro ou Caixa;
 - redesenhar Dashboard;
 - mudar Q-022/política de autorização;
 - resolver PENDINGs;
@@ -164,14 +164,16 @@ Não:
 - retomar #75/#121;
 - fazer deploy Vercel manual/rotineiro.
 
-## Critérios de aceite para Estoque
+## Critérios de aceite para Compras
 
 A slice só pode ser encerrada quando:
 
-- as principais tarefas de Estoque formam uma arquitetura coerente e navegável;
-- regras transacionais permanecem fora da UI;
-- saldos/movimentos não são duplicados por novas telas;
-- URLs/ações críticas têm contexto operacional claro;
+- pedidos e recebimentos formam uma jornada coerente e navegável;
+- entidade persistente relevante possui contexto/URL estável quando aplicável;
+- recebimento não depende de prompt técnico do navegador;
+- regras comerciais/transacionais permanecem fora da UI;
+- recebimento atualiza Estoque exatamente uma vez pelo boundary existente;
+- quantidade pedida/recebida/pendente fica compreensível;
 - mobile não depende apenas de overflow horizontal;
 - estados loading/empty/error/read-only/not-found e feedback são tratados;
 - permissões/RLS continuam a fronteira real;
@@ -180,13 +182,13 @@ A slice só pode ser encerrada quando:
 - ausência de browser/homologação visual é registrada honestamente se persistir;
 - `CURRENT_STATE`, `HANDOFF` e `NEXT_ACTION` são reconciliados.
 
-## Depois de Estoque
+## Depois de Compras
 
-Somente após a integração da consolidação de Estoque, promover:
+Somente após a integração da consolidação de Compras, promover:
 
-> **Compras**
+> **Financeiro**
 
-Não saltar diretamente para Financeiro/Caixa/Dashboard.
+Não saltar diretamente para Caixa/Dashboard.
 
 ## Ordem macro
 
@@ -195,8 +197,8 @@ Não saltar diretamente para Financeiro/Caixa/Dashboard.
 3. ~~design system mínimo~~ — PR #149;
 4. ~~Administração~~ — PR #151;
 5. ~~Cadastros~~ — PR #153;
-6. **Estoque** — próxima;
-7. Compras;
+6. ~~Estoque~~ — PR #155;
+7. **Compras** — próxima;
 8. Financeiro;
 9. Caixa;
 10. Dashboard;
