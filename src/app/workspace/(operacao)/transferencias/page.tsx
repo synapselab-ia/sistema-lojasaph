@@ -1,39 +1,28 @@
 "use client";
 
 import { FormEvent, useMemo, useState } from "react";
+import { Button, EmptyState, FeedbackMessage, FormField, Input, PageHeader, Panel, Select, StatusBadge, Textarea } from "@/components/ui";
 import { EntityId } from "@/domain/common/entity-id";
 import { useRuntimeWorkspace } from "@/modules/master-data/ui/runtime-workspace-provider";
 
 export default function RuntimeTransfersPage() {
   const workspace = useRuntimeWorkspace();
-  const [dispatch, setDispatch] = useState({
-    stockItemId: "",
-    sourceLocationId: "",
-    destinationLocationId: "",
-    quantity: "",
-    preferredBatchId: "",
-    notes: "",
-  });
+  const [dispatch, setDispatch] = useState({ stockItemId: "", sourceLocationId: "", destinationLocationId: "", quantity: "", preferredBatchId: "", notes: "" });
   const [receiveQuantities, setReceiveQuantities] = useState<Record<string, string>>({});
-  const [message, setMessage] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<{ tone: "success" | "danger"; text: string } | null>(null);
   const [savingKey, setSavingKey] = useState<string | null>(null);
 
   const itemNames = useMemo(() => new Map(workspace.stockItems.map((item) => [item.id, item.name])), [workspace.stockItems]);
-  const locationNames = useMemo(
-    () => new Map(workspace.stockLocations.map((location) => [location.id, `${location.unitName} — ${location.name}`])),
-    [workspace.stockLocations],
-  );
+  const locationNames = useMemo(() => new Map(workspace.stockLocations.map((location) => [location.id, `${location.unitName} — ${location.name}`])), [workspace.stockLocations]);
   const selectedItem = workspace.stockItems.find((item) => item.id === dispatch.stockItemId);
-  const dispatchBatches = workspace.batches.filter(
-    (batch) => batch.stockItemId === dispatch.stockItemId && batch.stockLocationId === dispatch.sourceLocationId,
-  );
+  const dispatchBatches = workspace.batches.filter((batch) => batch.stockItemId === dispatch.stockItemId && batch.stockLocationId === dispatch.sourceLocationId);
   const openTransfers = workspace.transfers.filter((transfer) => transfer.status !== "received");
   const receivedTransfers = workspace.transfers.filter((transfer) => transfer.status === "received").slice(0, 10);
 
   async function submitDispatch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSavingKey("dispatch");
-    setMessage(null);
+    setFeedback(null);
     try {
       await workspace.dispatchTransfer({
         stockItemId: dispatch.stockItemId as EntityId,
@@ -44,9 +33,9 @@ export default function RuntimeTransfersPage() {
         notes: dispatch.notes || undefined,
       });
       setDispatch({ stockItemId: "", sourceLocationId: "", destinationLocationId: "", quantity: "", preferredBatchId: "", notes: "" });
-      setMessage("Transferência expedida. A origem foi reduzida; o destino só será creditado no recebimento.");
+      setFeedback({ tone: "success", text: "Transferência expedida. O destino será atualizado quando o recebimento for registrado." });
     } catch (error) {
-      setMessage(workspace.errorMessage(error));
+      setFeedback({ tone: "danger", text: workspace.errorMessage(error) });
     } finally {
       setSavingKey(null);
     }
@@ -54,153 +43,114 @@ export default function RuntimeTransfersPage() {
 
   async function receive(transferId: EntityId) {
     setSavingKey(`receive:${transferId}`);
-    setMessage(null);
+    setFeedback(null);
     try {
       const quantity = receiveQuantities[transferId]?.trim() || undefined;
       await workspace.receiveTransfer({ transferId, quantity });
       setReceiveQuantities((current) => ({ ...current, [transferId]: "" }));
-      setMessage(quantity ? "Recebimento parcial registrado." : "Saldo pendente da transferência recebido integralmente.");
+      setFeedback({ tone: "success", text: quantity ? "Recebimento parcial registrado." : "Saldo pendente recebido integralmente." });
     } catch (error) {
-      setMessage(workspace.errorMessage(error));
+      setFeedback({ tone: "danger", text: workspace.errorMessage(error) });
     } finally {
       setSavingKey(null);
     }
   }
 
   return (
-    <div className="mx-auto max-w-7xl space-y-8">
-      <header>
-        <p className="text-sm font-medium text-emerald-700">Transferência persistente</p>
-        <h1 className="mt-1 text-3xl font-semibold tracking-tight">Transferências entre estoques</h1>
-        <p className="mt-3 max-w-3xl text-sm leading-6 text-neutral-600">
-          Expedição e recebimento são transações separadas. O despacho reduz apenas a origem; o destino recebe saldo, custo e lote somente quando a mercadoria é efetivamente recebida.
-        </p>
-      </header>
+    <div className="mx-auto max-w-7xl space-y-6">
+      <PageHeader
+        eyebrow="Estoque · Transferências"
+        title="Transferências entre locais"
+        description="Expedir e receber são etapas separadas. A origem é reduzida na expedição e o destino só recebe a quantidade efetivamente confirmada."
+      />
 
-      {message && <p className="rounded-xl border border-neutral-200 bg-white px-4 py-3 text-sm shadow-sm">{message}</p>}
+      {feedback && <FeedbackMessage tone={feedback.tone}>{feedback.text}</FeedbackMessage>}
 
-      <section className="grid gap-6 xl:grid-cols-[430px_minmax(0,1fr)]">
+      <section className="grid gap-6 xl:grid-cols-[420px_minmax(0,1fr)]">
         {workspace.permissions.manageStockTransfers ? (
-          <form onSubmit={submitDispatch} className="h-fit space-y-4 rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-            <div>
-              <h2 className="text-lg font-semibold">Expedir transferência</h2>
-              <p className="mt-1 text-xs leading-5 text-neutral-500">A origem precisa possuir estoque físico suficiente. Estoque negativo nunca é usado para transferir mercadoria inexistente.</p>
-            </div>
-
-            <label className="block text-sm font-medium">
-              Produto
-              <select required value={dispatch.stockItemId} onChange={(event) => setDispatch({ ...dispatch, stockItemId: event.target.value, preferredBatchId: "" })} className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 font-normal">
-                <option value="">Selecione</option>
-                {workspace.stockItems.filter((item) => item.active).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-              </select>
-            </label>
-
-            <label className="block text-sm font-medium">
-              Origem
-              <select required value={dispatch.sourceLocationId} onChange={(event) => setDispatch({ ...dispatch, sourceLocationId: event.target.value, destinationLocationId: event.target.value === dispatch.destinationLocationId ? "" : dispatch.destinationLocationId, preferredBatchId: "" })} className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 font-normal">
-                <option value="">Selecione</option>
-                {workspace.stockLocations.map((location) => <option key={location.id} value={location.id}>{location.unitName} — {location.name}</option>)}
-              </select>
-            </label>
-
-            <label className="block text-sm font-medium">
-              Destino
-              <select required value={dispatch.destinationLocationId} onChange={(event) => setDispatch({ ...dispatch, destinationLocationId: event.target.value })} className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 font-normal">
-                <option value="">Selecione</option>
-                {workspace.stockLocations.filter((location) => location.id !== dispatch.sourceLocationId).map((location) => <option key={location.id} value={location.id}>{location.unitName} — {location.name}</option>)}
-              </select>
-            </label>
-
-            <label className="block text-sm font-medium">
-              Quantidade
-              <input required inputMode="decimal" value={dispatch.quantity} onChange={(event) => setDispatch({ ...dispatch, quantity: event.target.value })} className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 font-normal" />
-            </label>
-
-            {(selectedItem?.trackBatch || selectedItem?.trackExpiration) && (
-              <label className="block text-sm font-medium">
-                Lote preferido (opcional)
-                <select value={dispatch.preferredBatchId} onChange={(event) => setDispatch({ ...dispatch, preferredBatchId: event.target.value })} className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 font-normal">
-                  <option value="">Automático — FEFO</option>
-                  {dispatchBatches.map((batch) => <option key={batch.id} value={batch.id}>{batch.batchCode || "Lote sem código"} · {batch.expirationDate ? `validade ${batch.expirationDate}` : "validade desconhecida"} · saldo {batch.remainingQuantity.toDecimal()}</option>)}
-                </select>
-              </label>
-            )}
-
-            <label className="block text-sm font-medium">
-              Observação (opcional)
-              <textarea rows={3} value={dispatch.notes} onChange={(event) => setDispatch({ ...dispatch, notes: event.target.value })} className="mt-1 w-full resize-y rounded-lg border border-neutral-300 px-3 py-2 font-normal" />
-            </label>
-
-            <button disabled={savingKey !== null || workspace.stockItems.length === 0 || workspace.stockLocations.length < 2} type="submit" className="w-full rounded-lg bg-neutral-900 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
-              {savingKey === "dispatch" ? "Expedindo..." : "Expedir transferência"}
-            </button>
-          </form>
+          <Panel className="h-fit">
+            <form onSubmit={submitDispatch} className="space-y-4">
+              <div><h2 className="text-lg font-semibold">Expedir transferência</h2><p className="mt-1 text-sm text-neutral-600">Escolha locais diferentes e informe a quantidade a enviar.</p></div>
+              <FormField id="transfer-item" label="Produto" required>
+                {(props) => <Select {...props} required value={dispatch.stockItemId} onChange={(event) => setDispatch({ ...dispatch, stockItemId: event.target.value, preferredBatchId: "" })}><option value="">Selecione</option>{workspace.stockItems.filter((item) => item.active).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select>}
+              </FormField>
+              <FormField id="transfer-source" label="Origem" required>
+                {(props) => <Select {...props} required value={dispatch.sourceLocationId} onChange={(event) => setDispatch({ ...dispatch, sourceLocationId: event.target.value, destinationLocationId: event.target.value === dispatch.destinationLocationId ? "" : dispatch.destinationLocationId, preferredBatchId: "" })}><option value="">Selecione</option>{workspace.stockLocations.map((location) => <option key={location.id} value={location.id}>{location.unitName} — {location.name}</option>)}</Select>}
+              </FormField>
+              <FormField id="transfer-destination" label="Destino" required>
+                {(props) => <Select {...props} required value={dispatch.destinationLocationId} onChange={(event) => setDispatch({ ...dispatch, destinationLocationId: event.target.value })}><option value="">Selecione</option>{workspace.stockLocations.filter((location) => location.id !== dispatch.sourceLocationId).map((location) => <option key={location.id} value={location.id}>{location.unitName} — {location.name}</option>)}</Select>}
+              </FormField>
+              <FormField id="transfer-quantity" label="Quantidade" required>
+                {(props) => <Input {...props} required inputMode="decimal" value={dispatch.quantity} onChange={(event) => setDispatch({ ...dispatch, quantity: event.target.value })} />}
+              </FormField>
+              {(selectedItem?.trackBatch || selectedItem?.trackExpiration) && (
+                <FormField id="transfer-batch" label="Lote preferido" hint="Opcional. Sem escolha, permanece a seleção automática já implementada.">
+                  {(props) => <Select {...props} value={dispatch.preferredBatchId} onChange={(event) => setDispatch({ ...dispatch, preferredBatchId: event.target.value })}><option value="">Seleção automática</option>{dispatchBatches.map((batch) => <option key={batch.id} value={batch.id}>{batch.batchCode || "Lote sem código"} · {batch.expirationDate ? `validade ${batch.expirationDate}` : "sem validade registrada"} · saldo {batch.remainingQuantity.toDecimal()}</option>)}</Select>}
+                </FormField>
+              )}
+              <FormField id="transfer-notes" label="Observação">
+                {(props) => <Textarea {...props} rows={3} value={dispatch.notes} onChange={(event) => setDispatch({ ...dispatch, notes: event.target.value })} />}
+              </FormField>
+              <Button type="submit" block loading={savingKey === "dispatch"} disabled={savingKey !== null || workspace.stockItems.length === 0 || workspace.stockLocations.length < 2}>Expedir transferência</Button>
+            </form>
+          </Panel>
         ) : (
-          <aside className="h-fit rounded-2xl border border-neutral-200 bg-white p-5 text-sm leading-6 text-neutral-600 shadow-sm">
-            <h2 className="font-semibold text-neutral-900">Transferência não autorizada</h2>
-            <p className="mt-1">Seu perfil pode consultar as transferências, mas não possui papel autorizado para expedição/recebimento.</p>
-          </aside>
+          <Panel tone="attention" className="h-fit"><h2 className="font-semibold">Transferência indisponível para este perfil</h2><p className="mt-1 text-sm leading-6">Você pode consultar as transferências visíveis, mas não possui permissão para expedir ou receber.</p></Panel>
         )}
 
-        <div className="space-y-6">
-          <section>
-            <div className="mb-3">
-              <h2 className="text-xl font-semibold">Em trânsito</h2>
-              <p className="text-sm text-neutral-500">Receba tudo que está pendente ou informe uma quantidade para recebimento parcial.</p>
-            </div>
+        <section className="space-y-4">
+          <div><h2 className="text-xl font-semibold">Em trânsito</h2><p className="text-sm text-neutral-600">Receba todo o saldo pendente ou informe uma quantidade para recebimento parcial.</p></div>
+          {openTransfers.length === 0 ? (
+            <EmptyState title="Nenhuma transferência em trânsito" description="Transferências expedidas aparecerão aqui até o recebimento completo." />
+          ) : (
             <div className="space-y-3">
               {openTransfers.map((transfer) => {
                 const pending = transfer.dispatchedQuantity.subtract(transfer.receivedQuantity);
                 return (
-                  <article key={transfer.id} className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+                  <Panel key={transfer.id}>
                     <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <h3 className="font-semibold">{itemNames.get(transfer.stockItemId) ?? "Produto indisponível"}</h3>
-                        <p className="mt-1 text-sm text-neutral-600">{locationNames.get(transfer.sourceLocationId) ?? "Origem"} → {locationNames.get(transfer.destinationLocationId) ?? "Destino"}</p>
-                      </div>
-                      <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800">{transfer.status === "partially_received" ? "Parcial" : "Em trânsito"}</span>
+                      <div><h3 className="font-semibold">{itemNames.get(transfer.stockItemId) ?? "Produto indisponível"}</h3><p className="mt-1 text-sm text-neutral-600">{locationNames.get(transfer.sourceLocationId) ?? "Origem"} → {locationNames.get(transfer.destinationLocationId) ?? "Destino"}</p></div>
+                      <StatusBadge tone="attention">{transfer.status === "partially_received" ? "Recebido parcialmente" : "Em trânsito"}</StatusBadge>
                     </div>
-                    <div className="mt-4 grid grid-cols-3 gap-3 rounded-xl bg-neutral-50 p-3 text-sm">
-                      <div><p className="text-xs text-neutral-500">Expedido</p><p className="mt-1 font-semibold">{transfer.dispatchedQuantity.toDecimal()}</p></div>
-                      <div><p className="text-xs text-neutral-500">Recebido</p><p className="mt-1 font-semibold">{transfer.receivedQuantity.toDecimal()}</p></div>
-                      <div><p className="text-xs text-neutral-500">Pendente</p><p className="mt-1 font-semibold">{pending.toDecimal()}</p></div>
-                    </div>
+                    <dl className="mt-4 grid grid-cols-3 gap-3 rounded-xl bg-neutral-50 p-3 text-sm">
+                      <Summary label="Expedido" value={transfer.dispatchedQuantity.toDecimal()} />
+                      <Summary label="Recebido" value={transfer.receivedQuantity.toDecimal()} />
+                      <Summary label="Pendente" value={pending.toDecimal()} />
+                    </dl>
                     {workspace.permissions.manageStockTransfers && (
                       <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-                        <input aria-label={`Quantidade a receber da transferência ${transfer.id}`} inputMode="decimal" placeholder={`Em branco = ${pending.toDecimal()}`} value={receiveQuantities[transfer.id] ?? ""} onChange={(event) => setReceiveQuantities((current) => ({ ...current, [transfer.id]: event.target.value }))} className="min-w-0 flex-1 rounded-lg border border-neutral-300 px-3 py-2 text-sm" />
-                        <button type="button" disabled={savingKey !== null} onClick={() => receive(transfer.id)} className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
-                          {savingKey === `receive:${transfer.id}` ? "Recebendo..." : "Registrar recebimento"}
-                        </button>
+                        <Input aria-label="Quantidade a receber" inputMode="decimal" placeholder={`Em branco = ${pending.toDecimal()}`} value={receiveQuantities[transfer.id] ?? ""} onChange={(event) => setReceiveQuantities((current) => ({ ...current, [transfer.id]: event.target.value }))} />
+                        <Button type="button" loading={savingKey === `receive:${transfer.id}`} disabled={savingKey !== null} onClick={() => void receive(transfer.id)}>Registrar recebimento</Button>
                       </div>
                     )}
-                    {transfer.notes && <p className="mt-3 text-xs text-neutral-500">Obs.: {transfer.notes}</p>}
-                  </article>
+                    {transfer.notes && <p className="mt-3 text-sm text-neutral-600">{transfer.notes}</p>}
+                  </Panel>
                 );
               })}
-              {openTransfers.length === 0 && <p className="rounded-2xl border border-dashed border-neutral-300 bg-white p-6 text-sm text-neutral-500">Nenhuma transferência em trânsito.</p>}
             </div>
-          </section>
-
-          {receivedTransfers.length > 0 && (
-            <section>
-              <div className="mb-3"><h2 className="text-lg font-semibold">Recebidas recentemente</h2><p className="text-sm text-neutral-500">Histórico operacional recente carregado por RLS.</p></div>
-              <div className="overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm">
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[680px] text-left text-sm">
-                    <thead className="bg-neutral-50 text-neutral-600"><tr><th className="px-4 py-3 font-medium">Produto</th><th className="px-4 py-3 font-medium">Origem</th><th className="px-4 py-3 font-medium">Destino</th><th className="px-4 py-3 font-medium">Quantidade</th></tr></thead>
-                    <tbody className="divide-y divide-neutral-100">{receivedTransfers.map((transfer) => <tr key={transfer.id}><td className="px-4 py-3 font-medium">{itemNames.get(transfer.stockItemId) ?? "Produto indisponível"}</td><td className="px-4 py-3 text-neutral-600">{locationNames.get(transfer.sourceLocationId) ?? "—"}</td><td className="px-4 py-3 text-neutral-600">{locationNames.get(transfer.destinationLocationId) ?? "—"}</td><td className="px-4 py-3">{transfer.receivedQuantity.toDecimal()}</td></tr>)}</tbody>
-                  </table>
-                </div>
-              </div>
-            </section>
           )}
-        </div>
+        </section>
       </section>
 
-      <aside className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-sm leading-6 text-emerald-950">
-        <h2 className="font-semibold">Ledger persistente</h2>
-        <p className="mt-1">Transferências e inventário físico já operam no workspace persistente com commands PostgreSQL transacionais e auditados.</p>
-      </aside>
+      <section className="space-y-3">
+        <div><h2 className="text-xl font-semibold">Recebidas recentemente</h2><p className="text-sm text-neutral-600">Transferências concluídas mais recentes.</p></div>
+        {receivedTransfers.length === 0 ? (
+          <EmptyState title="Nenhuma transferência recebida" description="O histórico aparecerá aqui após o primeiro recebimento completo." />
+        ) : (
+          <>
+            <div className="hidden overflow-hidden rounded-2xl border border-neutral-200 bg-white md:block">
+              <table className="w-full text-left text-sm"><thead className="bg-neutral-50 text-neutral-600"><tr><th className="px-4 py-3 font-medium">Produto</th><th className="px-4 py-3 font-medium">Origem</th><th className="px-4 py-3 font-medium">Destino</th><th className="px-4 py-3 font-medium">Quantidade</th></tr></thead><tbody className="divide-y divide-neutral-100">{receivedTransfers.map((transfer) => <tr key={transfer.id}><td className="px-4 py-3 font-medium">{itemNames.get(transfer.stockItemId) ?? "Produto indisponível"}</td><td className="px-4 py-3 text-neutral-600">{locationNames.get(transfer.sourceLocationId) ?? "—"}</td><td className="px-4 py-3 text-neutral-600">{locationNames.get(transfer.destinationLocationId) ?? "—"}</td><td className="px-4 py-3 font-semibold">{transfer.receivedQuantity.toDecimal()}</td></tr>)}</tbody></table>
+            </div>
+            <div className="grid gap-3 md:hidden">
+              {receivedTransfers.map((transfer) => <Panel key={transfer.id} padding="sm"><div className="flex items-start justify-between gap-3"><div><h3 className="font-semibold">{itemNames.get(transfer.stockItemId) ?? "Produto indisponível"}</h3><p className="mt-1 text-sm text-neutral-600">{locationNames.get(transfer.sourceLocationId) ?? "Origem"} → {locationNames.get(transfer.destinationLocationId) ?? "Destino"}</p></div><span className="font-semibold">{transfer.receivedQuantity.toDecimal()}</span></div></Panel>)}
+            </div>
+          </>
+        )}
+      </section>
     </div>
   );
+}
+
+function Summary({ label, value }: { label: string; value: string }) {
+  return <div><dt className="text-xs text-neutral-500">{label}</dt><dd className="mt-1 font-semibold">{value}</dd></div>;
 }
