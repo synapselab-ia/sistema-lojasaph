@@ -4,18 +4,19 @@
 
 ## Estado atual
 
-**Fase 51 / Issue #142 — consolidação de produto, arquitetura de informação e UX promovida como frente ativa por prioridade explícita do operador.**
+**Fase 51 / Issue #142 — consolidação de produto, arquitetura de informação e UX é a frente ativa por prioridade explícita do operador.**
 
-Baseline reconciliada antes desta frente:
+Estado integrado confirmado:
 
-- `main=37124e86e28f3e07cee0b49afecc8cad29689c78`;
-- PR #141 integrou a decisão de manter `REQ-PLAT-005` em hold total;
-- CI da `main` correspondente está verde;
-- #75 e #121 continuam abertas e TOTALMENTE ON HOLD;
-- Issue #142 aberta em 2026-08-28 como nova prioridade real de produto;
-- branch documental inicial: `agent/product-completion-ux-roadmap`.
+- `main=c015024fb2a05e9cdc8162029a13b4018cb8de91` após o merge documental;
+- PR #143 `docs: establish product completion and UX consolidation roadmap`: merged;
+- CI pós-merge #506 / run `33181212548`: `success`;
+- Issue #142 permanece aberta como frente ativa;
+- #75 e #121 continuam abertas e TOTALMENTE ON HOLD em `REQ-PLAT-005`;
+- nenhuma implementação da primeira slice da Fase 51 foi iniciada ainda;
+- a próxima branch de implementação deve nascer da `main` real no início da próxima sessão.
 
-Não refazer Fase 50/#138/#139.
+Não refazer Fase 50/#138/#139 e não refazer a auditoria que originou a Fase 51.
 
 ## Mudança de diagnóstico pós-Fase 50
 
@@ -98,7 +99,7 @@ Nenhuma nova feature grande independente deve furar esta sequência sem bug crí
 
 ## Primeira slice executável da Fase 51
 
-Após a documentação da auditoria ser integrada:
+Próxima implementação:
 
 1. inspecionar o fluxo real de `/`, `/login`, `/bootstrap`, `/workspace`, `/workspace/selecionar-organizacao` e helpers de auth/redirect;
 2. remover a landing técnica de `/`;
@@ -136,4 +137,4 @@ A decisão de 2026-08-28 permanece válida. Não investigar schedules, não disp
 
 A nova frente ativa é a **Fase 51 / Issue #142**.
 
-Esta branch documenta o plano e os critérios antes de iniciar a primeira alteração de produto. Nenhuma mudança de código, banco, Supabase ou Vercel faz parte desta atualização documental.
+O roadmap e os critérios já estão integrados. Nenhuma mudança de código, banco, Supabase ou Vercel foi feita durante a auditoria/documentação. A próxima sessão deve criar uma branch de implementação a partir da `main` real e executar a primeira slice definida em `NEXT_ACTION.md`.
