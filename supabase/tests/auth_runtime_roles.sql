@@ -133,3 +133,4 @@ reset role;
 select 'auth runtime role tests passed' as result;
 
 \ir stock_minimum_policies.sql
+\ir administration_access.sql
