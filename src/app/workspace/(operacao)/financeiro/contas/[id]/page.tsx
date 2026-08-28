@@ -184,7 +184,9 @@ export default function FinanceDocumentDetailPage() {
         </div>
       </Panel>
 
-      <FinanceAttachmentsPanel organizationId={workspace.organizationId} payableDocumentId={detail.document.id} canUpload={canManage} />
+      <Panel as="section" padding="none" className="overflow-hidden">
+        <FinanceAttachmentsPanel organizationId={workspace.organizationId} payableDocumentId={detail.document.id} canUpload={canManage} />
+      </Panel>
 
       <Panel as="section" className="space-y-4">
         <div><h2 className="text-lg font-semibold">Pagamentos e estornos</h2><p className="mt-1 text-sm text-neutral-600">Eventos financeiros permanecem no histórico; estorno não apaga o pagamento original.</p></div>
@@ -238,8 +240,8 @@ export default function FinanceDocumentDetailPage() {
         description="O cancelamento preserva o histórico e só é permitido quando não houver pagamento líquido pendente de estorno."
         footer={<><Button type="button" variant="secondary" disabled={saving} onClick={() => setCancelOpen(false)}>Voltar</Button><Button type="button" variant="danger" loading={saving} onClick={() => void cancelDocument()}>Confirmar cancelamento</Button></>}
       >
-        <FormField label="Motivo (opcional)" htmlFor="finance-cancel-reason">
-          {({ id, describedBy }) => <Textarea id={id} aria-describedby={describedBy} rows={3} value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} placeholder="Registre um motivo quando for útil para a auditoria." />}
+        <FormField id="finance-cancel-reason" label="Motivo (opcional)">
+          {(field) => <Textarea {...field} rows={3} value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} placeholder="Registre um motivo quando for útil para a auditoria." />}
         </FormField>
       </Dialog>
 
@@ -251,8 +253,8 @@ export default function FinanceDocumentDetailPage() {
         description={reversePayment ? `Será criado um evento de estorno de ${moneyLabel(reversePayment.amount)}. O pagamento original continuará no histórico.` : undefined}
         footer={<><Button type="button" variant="secondary" disabled={saving} onClick={() => { setReversePayment(null); setReverseReason(""); }}>Voltar</Button><Button type="button" variant="danger" loading={saving} onClick={() => void confirmReversal()}>Confirmar estorno</Button></>}
       >
-        <FormField label="Motivo (opcional)" htmlFor="finance-reversal-reason">
-          {({ id, describedBy }) => <Textarea id={id} aria-describedby={describedBy} rows={3} value={reverseReason} onChange={(event) => setReverseReason(event.target.value)} placeholder="Registre o motivo quando for útil para o histórico." />}
+        <FormField id="finance-reversal-reason" label="Motivo (opcional)">
+          {(field) => <Textarea {...field} rows={3} value={reverseReason} onChange={(event) => setReverseReason(event.target.value)} placeholder="Registre o motivo quando for útil para o histórico." />}
         </FormField>
       </Dialog>
     </div>
