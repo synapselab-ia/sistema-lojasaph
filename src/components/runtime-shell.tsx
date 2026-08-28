@@ -15,7 +15,11 @@ function WorkspaceNavigation({ pathname, onNavigate }: { pathname: string; onNav
     <nav className="space-y-1" aria-label="Navegação principal">
       {workspaceNavigation.map((area) => {
         const areaActive = isWorkspaceAreaActive(pathname, area);
-        const areaRouteActive = area.href ? isWorkspaceRouteActive(pathname, area.href) : false;
+        const areaRouteActive = area.href
+          ? area.items?.length
+            ? pathname === area.href
+            : isWorkspaceRouteActive(pathname, area.href)
+          : false;
 
         return (
           <div key={area.id} className="py-1">
