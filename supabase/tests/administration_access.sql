@@ -11,7 +11,18 @@ insert into public.organization_memberships(
   id, organization_id, user_id, role, business_id, unit_id, sector_id, active
 ) values
   ('95000000-0000-4000-8000-000000000010','00000000-0000-4000-8000-000000000001','95000000-0000-4000-8000-000000000001','owner',null,null,null,true),
-  ('95000000-0000-4000-8000-000000000011','00000000-0000-4000-8000-000000000001','95000000-0000-4000-8000-000000000003','viewer',null,'00000000-0000-4000-8000-000000000100',null,true);
+  ('95000000-0000-4000-8000-000000000001','95000000-0000-4000-8000-000000000003','viewer',null,'00000000-0000-4000-8000-000000000100',null,true);
+
+insert into public.employees(
+  id, organization_id, name, code, status, default_unit_id
+) values (
+  '95000000-0000-4000-8000-000000000020',
+  '00000000-0000-4000-8000-000000000001',
+  'Funcionário administrativo CI',
+  'ADMIN-CI',
+  'active',
+  '00000000-0000-4000-8000-000000000100'
+);
 
 -- A location linked to a Sector must use that Sector's Unit.
 do $$
@@ -48,6 +59,9 @@ begin
   if has_function_privilege('anon','public.admin_update_organization_membership(uuid,text,uuid,uuid,uuid,boolean)','EXECUTE') then
     raise exception 'anon can execute admin membership update';
   end if;
+  if has_function_privilege('anon','public.admin_link_employee_identity(uuid,uuid)','EXECUTE') then
+    raise exception 'anon can execute employee identity link';
+  end if;
 end $$;
 
 set role authenticated;
@@ -70,10 +84,11 @@ begin
   end if;
 end $$;
 
--- Create a scoped membership without granting direct table DML to authenticated clients.
+-- Create and maintain scoped access through the narrow RPC boundary.
 do $$
 declare
   created_id uuid;
+  linked_employee_name text;
 begin
   created_id := public.admin_create_organization_membership(
     '00000000-0000-4000-8000-000000000001',
@@ -102,6 +117,27 @@ begin
     raise exception 'admin membership creation was not audited';
   end if;
 
+  perform public.admin_link_employee_identity(
+    created_id,
+    '95000000-0000-4000-8000-000000000020'
+  );
+
+  if not exists (
+    select 1 from public.employees e
+    where e.id = '95000000-0000-4000-8000-000000000020'
+      and e.auth_user_id = '95000000-0000-4000-8000-000000000002'
+  ) then
+    raise exception 'employee identity link did not persist';
+  end if;
+
+  select employee_name into linked_employee_name
+  from public.admin_list_organization_access('00000000-0000-4000-8000-000000000001')
+  where membership_id = created_id;
+
+  if linked_employee_name <> 'Funcionário administrativo CI' then
+    raise exception 'access listing did not expose linked Employee name';
+  end if;
+
   perform public.admin_update_organization_membership(
     created_id,
     'finance',
@@ -128,6 +164,19 @@ begin
     where a.entity_id = created_id and a.action = 'membership.update'
   ) then
     raise exception 'admin membership update was not audited';
+  end if;
+
+  perform public.admin_link_employee_identity(created_id, null);
+  if exists (
+    select 1 from public.employees e
+    where e.id = '95000000-0000-4000-8000-000000000020'
+      and e.auth_user_id is not null
+  ) then
+    raise exception 'employee identity unlink did not clear the link';
+  end if;
+
+  if (select count(*) from public.audit_logs a where a.entity_id = created_id and a.action = 'employee.identity_link') <> 2 then
+    raise exception 'employee identity changes were not audited';
   end if;
 end $$;
 
@@ -174,6 +223,16 @@ begin
       null
     );
     raise exception 'scoped viewer unexpectedly created organization access';
+  exception when insufficient_privilege then
+    if position('ADMIN_ACCESS_REQUIRED' in sqlerrm) = 0 then raise; end if;
+  end;
+
+  begin
+    perform public.admin_link_employee_identity(
+      '95000000-0000-4000-8000-000000000010',
+      '95000000-0000-4000-8000-000000000020'
+    );
+    raise exception 'scoped viewer unexpectedly linked Employee identity';
   exception when insufficient_privilege then
     if position('ADMIN_ACCESS_REQUIRED' in sqlerrm) = 0 then raise; end if;
   end;
