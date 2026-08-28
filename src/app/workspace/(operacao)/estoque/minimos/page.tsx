@@ -105,7 +105,9 @@ export default function StockMinimumsPage() {
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {activePolicies.map((policy) => {
               const balance = balancesByKey.get(`${policy.stockLocationId}:${policy.stockItemId}`);
-              const below = balance ? isBelowStockMinimum(balance.quantity, policy) : isBelowStockMinimum(undefined, policy);
+              const below = balance
+                ? isBelowStockMinimum(balance.quantity, policy)
+                : policy.minimumQuantity.toDecimal() !== "0";
               return (
                 <Panel key={`${policy.stockLocationId}:${policy.stockItemId}`} padding="sm">
                   <div className="flex items-start justify-between gap-3">
