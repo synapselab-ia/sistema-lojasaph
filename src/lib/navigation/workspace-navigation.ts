@@ -21,10 +21,14 @@ export const workspaceNavigation: readonly WorkspaceNavigationArea[] = [
     label: "Estoque",
     href: "/workspace/estoque",
     items: [
-      { href: "/workspace/baixas", label: "Baixas" },
+      { href: "/workspace/estoque/entradas", label: "Entradas" },
+      { href: "/workspace/estoque/retiradas", label: "Retiradas" },
+      { href: "/workspace/baixas", label: "Baixas e perdas" },
       { href: "/workspace/devolucoes", label: "Devoluções" },
       { href: "/workspace/transferencias", label: "Transferências" },
       { href: "/workspace/inventarios", label: "Inventários" },
+      { href: "/workspace/estoque/lotes", label: "Lotes e validades" },
+      { href: "/workspace/estoque/minimos", label: "Estoque mínimo" },
     ],
   },
   {

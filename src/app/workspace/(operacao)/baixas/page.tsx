@@ -1,21 +1,15 @@
 "use client";
 
 import { FormEvent, useMemo, useState } from "react";
+import { Button, EmptyState, FeedbackMessage, FormField, Input, PageHeader, Panel, Select, Textarea } from "@/components/ui";
 import { EntityId } from "@/domain/common/entity-id";
 import { useRuntimeWorkspace } from "@/modules/master-data/ui/runtime-workspace-provider";
 
 export default function StockLossesPage() {
   const workspace = useRuntimeWorkspace();
-  const [form, setForm] = useState({
-    stockItemId: "",
-    stockLocationId: "",
-    quantity: "",
-    reasonCode: "",
-    preferredBatchId: "",
-    notes: "",
-  });
+  const [form, setForm] = useState({ stockItemId: "", stockLocationId: "", quantity: "", reasonCode: "", preferredBatchId: "", notes: "" });
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<{ tone: "success" | "danger"; text: string } | null>(null);
 
   const itemNames = useMemo(() => new Map(workspace.stockItems.map((item) => [item.id, item.name])), [workspace.stockItems]);
   const locationNames = useMemo(() => new Map(workspace.stockLocations.map((location) => [location.id, `${location.unitName} — ${location.name}`])), [workspace.stockLocations]);
@@ -34,7 +28,7 @@ export default function StockLossesPage() {
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSaving(true);
-    setMessage(null);
+    setFeedback(null);
     try {
       await workspace.recordStockLoss({
         stockItemId: form.stockItemId as EntityId,
@@ -45,115 +39,79 @@ export default function StockLossesPage() {
         notes: form.notes || undefined,
       });
       setForm({ stockItemId: "", stockLocationId: "", quantity: "", reasonCode: "", preferredBatchId: "", notes: "" });
-      setMessage("Baixa persistida. Saldo, lote, custo, movimento e auditoria foram processados atomicamente.");
+      setFeedback({ tone: "success", text: "Baixa registrada e a posição de estoque foi atualizada." });
     } catch (error) {
-      setMessage(workspace.errorMessage(error));
+      setFeedback({ tone: "danger", text: workspace.errorMessage(error) });
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <div className="mx-auto max-w-7xl space-y-8">
-      <header>
-        <p className="text-sm font-medium text-amber-700">Ledger de estoque</p>
-        <h1 className="mt-1 text-3xl font-semibold tracking-tight">Perdas, quebras e vencimentos</h1>
-        <p className="mt-3 max-w-3xl text-sm leading-6 text-neutral-600">
-          Toda baixa gera movimento rastreável com motivo estruturado. O saldo não é editado diretamente; custo e lotes seguem as mesmas travas transacionais do fluxo de retirada.
-        </p>
-      </header>
+    <div className="mx-auto max-w-7xl space-y-6">
+      <PageHeader
+        eyebrow="Estoque · Baixas e perdas"
+        title="Baixas e perdas"
+        description="Registre perda, quebra ou vencimento usando um motivo estruturado. O saldo é alterado somente por esta operação, mantendo o histórico da movimentação."
+      />
 
-      {message && <p className="rounded-xl border border-neutral-200 bg-white px-4 py-3 text-sm shadow-sm">{message}</p>}
+      {feedback && <FeedbackMessage tone={feedback.tone}>{feedback.text}</FeedbackMessage>}
 
       {workspace.permissions.recordStockLoss ? (
-        <form onSubmit={submit} className="grid gap-5 rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm lg:grid-cols-2">
-          <div className="lg:col-span-2">
-            <h2 className="text-lg font-semibold">Registrar baixa</h2>
-            <p className="mt-1 text-xs text-neutral-500">O banco deriva `loss` ou `expiration` do motivo configurado. Para vencimento de item rastreado, o lote vencido é obrigatório.</p>
-          </div>
+        <Panel>
+          <form onSubmit={submit} className="grid gap-5 lg:grid-cols-2">
+            <FormField id="loss-reason" label="Motivo" required>
+              {(props) => <Select {...props} required value={form.reasonCode} onChange={(event) => setForm({ ...form, reasonCode: event.target.value, preferredBatchId: "" })}><option value="">Selecione</option>{activeReasons.map((reason) => <option key={reason.code} value={reason.code}>{reason.label}</option>)}</Select>}
+            </FormField>
+            <FormField id="loss-item" label="Produto" required>
+              {(props) => <Select {...props} required value={form.stockItemId} onChange={(event) => setForm({ ...form, stockItemId: event.target.value, preferredBatchId: "" })}><option value="">Selecione</option>{workspace.stockItems.filter((item) => item.active).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select>}
+            </FormField>
+            <FormField id="loss-location" label="Local de estoque" required>
+              {(props) => <Select {...props} required value={form.stockLocationId} onChange={(event) => setForm({ ...form, stockLocationId: event.target.value, preferredBatchId: "" })}><option value="">Selecione</option>{workspace.stockLocations.map((location) => <option key={location.id} value={location.id}>{location.unitName} — {location.name}</option>)}</Select>}
+            </FormField>
+            <FormField id="loss-quantity" label="Quantidade" required>
+              {(props) => <Input {...props} required inputMode="decimal" value={form.quantity} onChange={(event) => setForm({ ...form, quantity: event.target.value })} />}
+            </FormField>
 
-          <label className="block text-sm font-medium">Motivo
-            <select required value={form.reasonCode} onChange={(event) => setForm({ ...form, reasonCode: event.target.value, preferredBatchId: "" })} className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 font-normal">
-              <option value="">Selecione</option>
-              {activeReasons.map((reason) => <option key={reason.code} value={reason.code}>{reason.label}</option>)}
-            </select>
-          </label>
+            {trackedItem && (
+              <FormField
+                id="loss-batch"
+                label={expirationNeedsBatch ? "Lote vencido" : "Lote preferido"}
+                required={expirationNeedsBatch}
+                hint={expirationNeedsBatch ? "Para baixa por vencimento de item rastreado, selecione um lote cuja validade já foi atingida." : "Opcional. Sem escolha, permanece a seleção automática já existente."}
+                className="lg:col-span-2"
+              >
+                {(props) => <Select {...props} required={expirationNeedsBatch} value={form.preferredBatchId} onChange={(event) => setForm({ ...form, preferredBatchId: event.target.value })}><option value="">{expirationNeedsBatch ? "Selecione o lote vencido" : "Seleção automática"}</option>{batchOptions.map((batch) => <option key={batch.id} value={batch.id}>{batch.batchCode || "Lote sem código"} · {batch.expirationDate ? `validade ${batch.expirationDate}` : "sem validade registrada"} · saldo {batch.remainingQuantity.toDecimal()}</option>)}</Select>}
+              </FormField>
+            )}
 
-          <label className="block text-sm font-medium">Produto
-            <select required value={form.stockItemId} onChange={(event) => setForm({ ...form, stockItemId: event.target.value, preferredBatchId: "" })} className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 font-normal">
-              <option value="">Selecione</option>
-              {workspace.stockItems.filter((item) => item.active).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-            </select>
-          </label>
-
-          <label className="block text-sm font-medium">Local de estoque
-            <select required value={form.stockLocationId} onChange={(event) => setForm({ ...form, stockLocationId: event.target.value, preferredBatchId: "" })} className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 font-normal">
-              <option value="">Selecione</option>
-              {workspace.stockLocations.map((location) => <option key={location.id} value={location.id}>{location.unitName} — {location.name}</option>)}
-            </select>
-          </label>
-
-          <label className="block text-sm font-medium">Quantidade
-            <input required inputMode="decimal" value={form.quantity} onChange={(event) => setForm({ ...form, quantity: event.target.value })} className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 font-normal" />
-          </label>
-
-          {trackedItem && (
-            <label className="block text-sm font-medium lg:col-span-2">{expirationNeedsBatch ? "Lote vencido" : "Lote preferido (opcional)"}
-              <select required={expirationNeedsBatch} value={form.preferredBatchId} onChange={(event) => setForm({ ...form, preferredBatchId: event.target.value })} className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 font-normal">
-                <option value="">{expirationNeedsBatch ? "Selecione o lote vencido" : "Automático — FEFO"}</option>
-                {batchOptions.map((batch) => (
-                  <option key={batch.id} value={batch.id}>
-                    {batch.batchCode || "Lote sem código"} · {batch.expirationDate ? `validade ${batch.expirationDate}` : "validade desconhecida"} · saldo {batch.remainingQuantity.toDecimal()}
-                  </option>
-                ))}
-              </select>
-              <span className="mt-1 block text-xs font-normal text-neutral-500">
-                Vencimento só aceita lote rastreado com validade já atingida. Outras baixas usam o lote escolhido primeiro e FEFO no restante.
-              </span>
-            </label>
-          )}
-
-          <label className="block text-sm font-medium lg:col-span-2">Observação complementar (opcional)
-            <textarea rows={3} value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} className="mt-1 w-full resize-y rounded-lg border border-neutral-300 px-3 py-2 font-normal" />
-          </label>
-
-          <button disabled={saving || activeReasons.length === 0 || workspace.stockItems.length === 0 || workspace.stockLocations.length === 0} type="submit" className="rounded-lg bg-amber-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50 lg:col-span-2">
-            {saving ? "Registrando..." : "Registrar baixa"}
-          </button>
-        </form>
+            <FormField id="loss-notes" label="Observação" className="lg:col-span-2">
+              {(props) => <Textarea {...props} rows={3} value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} />}
+            </FormField>
+            <div className="flex justify-end lg:col-span-2"><Button type="submit" loading={saving} disabled={saving || activeReasons.length === 0}>Registrar baixa</Button></div>
+          </form>
+        </Panel>
       ) : (
-        <aside className="rounded-2xl border border-neutral-200 bg-white p-5 text-sm leading-6 text-neutral-600 shadow-sm">
-          <h2 className="font-semibold text-neutral-900">Baixa não autorizada</h2>
-          <p className="mt-1">Seu perfil pode consultar dados permitidos pelo escopo, mas não possui papel autorizado para registrar perdas de estoque.</p>
-        </aside>
+        <Panel tone="attention"><h2 className="font-semibold">Baixa indisponível para este perfil</h2><p className="mt-1 text-sm leading-6">Você pode consultar os registros visíveis, mas não possui permissão para registrar perdas de estoque.</p></Panel>
       )}
 
-      <section>
-        <div className="mb-3 flex items-end justify-between gap-4">
-          <div><h2 className="text-xl font-semibold">Histórico recente</h2><p className="text-sm text-neutral-500">Últimas perdas e baixas por vencimento visíveis no seu escopo.</p></div>
-          <span className="text-xs text-neutral-500">{workspace.stockLosses.length} movimentos</span>
-        </div>
-        <div className="overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px] text-left text-sm">
-              <thead className="bg-neutral-50 text-neutral-600"><tr><th className="px-4 py-3 font-medium">Data</th><th className="px-4 py-3 font-medium">Motivo</th><th className="px-4 py-3 font-medium">Produto</th><th className="px-4 py-3 font-medium">Local</th><th className="px-4 py-3 font-medium">Quantidade</th><th className="px-4 py-3 font-medium">Custo</th><th className="px-4 py-3 font-medium">Observação</th></tr></thead>
-              <tbody className="divide-y divide-neutral-100">
-                {workspace.stockLosses.map((loss) => (
-                  <tr key={loss.id}>
-                    <td className="px-4 py-3 whitespace-nowrap">{new Date(loss.occurredAt).toLocaleString("pt-BR")}</td>
-                    <td className="px-4 py-3"><span className="font-medium">{reasonLabels.get(loss.reasonCode) ?? loss.reasonCode}</span><span className="ml-2 text-xs text-neutral-400">{loss.movementType}</span></td>
-                    <td className="px-4 py-3">{itemNames.get(loss.stockItemId) ?? "Item indisponível"}</td>
-                    <td className="px-4 py-3">{locationNames.get(loss.stockLocationId) ?? "Local indisponível"}</td>
-                    <td className="px-4 py-3 font-semibold">{loss.quantity.toDecimal()}</td>
-                    <td className="px-4 py-3">R$ {loss.unitCostSnapshot.toDecimal().replace(".", ",")}</td>
-                    <td className="px-4 py-3 text-neutral-600">{loss.notes || "—"}</td>
-                  </tr>
-                ))}
-                {workspace.stockLosses.length === 0 && <tr><td colSpan={7} className="px-4 py-8 text-center text-neutral-500">Ainda não há baixas visíveis neste escopo.</td></tr>}
-              </tbody>
-            </table>
-          </div>
-        </div>
+      <section className="space-y-3">
+        <div><h2 className="text-xl font-semibold">Histórico recente</h2><p className="text-sm text-neutral-600">Últimas baixas e perdas visíveis para sua operação.</p></div>
+        {workspace.stockLosses.length === 0 ? (
+          <EmptyState title="Nenhuma baixa registrada" description="Os registros aparecerão aqui após a primeira baixa visível." />
+        ) : (
+          <>
+            <div className="hidden overflow-hidden rounded-2xl border border-neutral-200 bg-white md:block">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-neutral-50 text-neutral-600"><tr><th className="px-4 py-3 font-medium">Data</th><th className="px-4 py-3 font-medium">Motivo</th><th className="px-4 py-3 font-medium">Produto</th><th className="px-4 py-3 font-medium">Local</th><th className="px-4 py-3 font-medium">Quantidade</th><th className="px-4 py-3 font-medium">Observação</th></tr></thead>
+                <tbody className="divide-y divide-neutral-100">{workspace.stockLosses.map((loss) => <tr key={loss.id}><td className="whitespace-nowrap px-4 py-3">{new Date(loss.occurredAt).toLocaleString("pt-BR")}</td><td className="px-4 py-3 font-medium">{reasonLabels.get(loss.reasonCode) ?? loss.reasonCode}</td><td className="px-4 py-3">{itemNames.get(loss.stockItemId) ?? "Item indisponível"}</td><td className="px-4 py-3">{locationNames.get(loss.stockLocationId) ?? "Local indisponível"}</td><td className="px-4 py-3 font-semibold">{loss.quantity.toDecimal()}</td><td className="px-4 py-3 text-neutral-600">{loss.notes || "—"}</td></tr>)}</tbody>
+              </table>
+            </div>
+            <div className="grid gap-3 md:hidden">
+              {workspace.stockLosses.map((loss) => <Panel key={loss.id} padding="sm"><div className="flex items-start justify-between gap-3"><div><h3 className="font-semibold">{itemNames.get(loss.stockItemId) ?? "Item indisponível"}</h3><p className="mt-1 text-sm text-neutral-600">{locationNames.get(loss.stockLocationId) ?? "Local indisponível"}</p></div><span className="text-sm font-semibold">{loss.quantity.toDecimal()}</span></div><dl className="mt-4 grid grid-cols-2 gap-3 text-sm"><div><dt className="text-xs text-neutral-500">Motivo</dt><dd className="mt-1 font-medium">{reasonLabels.get(loss.reasonCode) ?? loss.reasonCode}</dd></div><div><dt className="text-xs text-neutral-500">Data</dt><dd className="mt-1 font-medium">{new Date(loss.occurredAt).toLocaleString("pt-BR")}</dd></div></dl>{loss.notes && <p className="mt-3 text-sm text-neutral-600">{loss.notes}</p>}</Panel>)}
+            </div>
+          </>
+        )}
       </section>
     </div>
   );

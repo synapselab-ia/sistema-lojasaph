@@ -19,15 +19,19 @@ describe("workspaceNavigation", () => {
     ]);
   });
 
-  it("groups stock operations below Estoque instead of the first level", () => {
+  it("groups the complete stock journey below Estoque", () => {
     const stock = workspaceNavigation.find((area) => area.id === "stock");
 
     expect(stock?.href).toBe("/workspace/estoque");
-    expect(stock?.items?.map((item) => item.href)).toEqual([
-      "/workspace/baixas",
-      "/workspace/devolucoes",
-      "/workspace/transferencias",
-      "/workspace/inventarios",
+    expect(stock?.items).toEqual([
+      { href: "/workspace/estoque/entradas", label: "Entradas" },
+      { href: "/workspace/estoque/retiradas", label: "Retiradas" },
+      { href: "/workspace/baixas", label: "Baixas e perdas" },
+      { href: "/workspace/devolucoes", label: "Devoluções" },
+      { href: "/workspace/transferencias", label: "Transferências" },
+      { href: "/workspace/inventarios", label: "Inventários" },
+      { href: "/workspace/estoque/lotes", label: "Lotes e validades" },
+      { href: "/workspace/estoque/minimos", label: "Estoque mínimo" },
     ]);
   });
 
@@ -35,10 +39,14 @@ describe("workspaceNavigation", () => {
     expect(workspaceNavigationHrefs()).toEqual([
       "/workspace",
       "/workspace/estoque",
+      "/workspace/estoque/entradas",
+      "/workspace/estoque/retiradas",
       "/workspace/baixas",
       "/workspace/devolucoes",
       "/workspace/transferencias",
       "/workspace/inventarios",
+      "/workspace/estoque/lotes",
+      "/workspace/estoque/minimos",
       "/workspace/compras",
       "/workspace/financeiro",
       "/workspace/caixa",
@@ -67,12 +75,13 @@ describe("workspace navigation active state", () => {
     expect(isWorkspaceRouteActive("/workspace/produtos-antigos", "/workspace/produtos")).toBe(false);
   });
 
-  it("marks the parent area active when a grouped subarea is active", () => {
+  it("marks the parent area active for legacy and nested stock routes", () => {
     const stock = workspaceNavigation.find((area) => area.id === "stock");
     const catalogs = workspaceNavigation.find((area) => area.id === "catalogs");
     const administration = workspaceNavigation.find((area) => area.id === "administration");
 
     expect(stock && isWorkspaceAreaActive("/workspace/transferencias", stock)).toBe(true);
+    expect(stock && isWorkspaceAreaActive("/workspace/estoque/entradas", stock)).toBe(true);
     expect(catalogs && isWorkspaceAreaActive("/workspace/fornecedores", catalogs)).toBe(true);
     expect(administration && isWorkspaceAreaActive("/workspace/administracao/acessos", administration)).toBe(true);
   });

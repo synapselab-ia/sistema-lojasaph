@@ -1,13 +1,13 @@
 # Workspace — Arquitetura da informação e navegação
 
-Status: **implementado na segunda slice da Fase 51 / Issue #142**  
+Status: **atualizado durante a consolidação da Fase 51 / Issue #142**  
 Data: **2026-08-28**
 
 ## Objetivo
 
-Organizar o workspace pelo modelo mental da operação sem criar páginas ausentes, alterar regras de autorização ou refatorar os módulos internos antes das slices próprias.
+Organizar o workspace pelo modelo mental da operação sem alterar silenciosamente regras de autorização, persistência ou domínio.
 
-O primeiro nível aprovado é:
+O primeiro nível aprovado permanece:
 
 1. Visão geral;
 2. Estoque;
@@ -19,77 +19,154 @@ O primeiro nível aprovado é:
 
 ## Mapa rota → área/subárea
 
-| Rota atual | Área | Subárea/cobertura atual | Decisão nesta slice |
-| --- | --- | --- | --- |
-| `/workspace` | Visão geral | Painel operacional atual | Mantida como destino direto de Visão geral. |
-| `/workspace/estoque` | Estoque | Posição/saldos, entradas, retiradas, lotes/validades e estoque mínimo hoje concentrados na mesma página | Mantida como entrada principal da área Estoque. Não foram criadas rotas artificiais para capacidades que ainda vivem nesta página. |
-| `/workspace/baixas` | Estoque | Baixas/perdas | Passa a aparecer como subárea de Estoque. |
-| `/workspace/devolucoes` | Estoque | Devoluções | Passa a aparecer como subárea de Estoque. |
-| `/workspace/transferencias` | Estoque | Transferências | Passa a aparecer como subárea de Estoque. |
-| `/workspace/inventarios` | Estoque | Inventários | Passa a aparecer como subárea de Estoque. |
-| `/workspace/compras` | Compras | Pedidos, recebimentos e histórico ainda compartilhando a página atual | Mantida como destino direto de Compras até a consolidação própria do módulo. |
-| `/workspace/financeiro` | Financeiro | Contas/documentos, vencimentos e pagamentos ainda compartilhando a página atual | Mantida como destino direto de Financeiro até a consolidação própria do módulo. |
-| `/workspace/caixa` | Caixa | Situação, sessões, movimentações, fechamento e histórico ainda compartilhando a página atual | Mantida como destino direto de Caixa até a consolidação própria do módulo. |
-| `/workspace/produtos` | Cadastros | Produtos | Passa a aparecer sob Cadastros. |
-| `/workspace/fornecedores` | Cadastros | Fornecedores | Passa a aparecer sob Cadastros. |
-| `/workspace/funcionarios` | Cadastros | Funcionários | Passa a aparecer sob Cadastros. |
-| `/workspace/backup` | Administração | Proteção dos dados | Única subárea administrativa operacional já existente promovida nesta slice. |
-| `/workspace/selecionar-organizacao` | Contexto do workspace | Seleção/troca de organização | Continua como fluxo contextual e utilitário `Trocar organização`, não como módulo de negócio. |
+| Rota | Área | Responsabilidade atual |
+| --- | --- | --- |
+| `/workspace` | Visão geral | Painel operacional. |
+| `/workspace/estoque` | Estoque | Posição/saldos, alertas objetivos e acesso às tarefas da área. |
+| `/workspace/estoque/entradas` | Estoque | Registro dedicado de entrada de estoque. |
+| `/workspace/estoque/retiradas` | Estoque | Registro dedicado de retirada para consumo por setor. |
+| `/workspace/baixas` | Estoque | Baixas, perdas, quebras e vencimentos conforme motivos já configurados. |
+| `/workspace/devolucoes` | Estoque | Devoluções parciais/totais relacionadas a retiradas anteriores. |
+| `/workspace/transferencias` | Estoque | Expedição e recebimento de transferências entre locais. |
+| `/workspace/inventarios` | Estoque | Inventários físicos, contagem, confirmação/cancelamento e histórico. |
+| `/workspace/estoque/lotes` | Estoque | Consulta de lotes com saldo e validades registradas. |
+| `/workspace/estoque/minimos` | Estoque | Consulta e manutenção de estoque mínimo por produto/local. |
+| `/workspace/compras` | Compras | Pedidos, recebimentos e histórico ainda compartilhando a página atual até a consolidação própria. |
+| `/workspace/financeiro` | Financeiro | Contas/documentos, vencimentos e pagamentos ainda compartilhando a página atual até a consolidação própria. |
+| `/workspace/caixa` | Caixa | Situação, sessões, movimentações, fechamento e histórico ainda compartilhando a página atual até a consolidação própria. |
+| `/workspace/produtos` | Cadastros | Lista de Produtos; criação e detalhe ficam em subrotas estáveis. |
+| `/workspace/fornecedores` | Cadastros | Lista de Fornecedores; criação e detalhe ficam em subrotas estáveis. |
+| `/workspace/funcionarios` | Cadastros | Lista de Funcionários; criação e detalhe ficam em subrotas estáveis. |
+| `/workspace/administracao/estrutura` | Administração | Estrutura organizacional. |
+| `/workspace/administracao/acessos` | Administração | Usuários e permissões. |
+| `/workspace/backup` | Administração | Proteção dos dados. |
+| `/workspace/selecionar-organizacao` | Contexto do workspace | Seleção/troca de organização; fluxo utilitário, não módulo de negócio. |
 
-## Lacunas conhecidas que não viram links
+## Contrato da área Estoque
 
-A taxonomia de produto prevê Administração mais ampla, mas estas experiências ainda não existem de forma suficiente no workspace e **não foram inventadas para completar o menu**:
+A raiz `/workspace/estoque` responde primeiro:
 
-- Estrutura organizacional (unidades, setores e locais);
-- Usuários e permissões;
-- configurações administrativas adicionais.
+> O que existe, onde existe e o que exige atenção?
 
-Essas lacunas permanecem para a etapa própria da Fase 51.
+Ela não concentra mais formulários de movimentação. Ações operacionais ficam em jornadas próprias e reutilizam os mesmos boundaries existentes.
 
-Também não foram criadas rotas separadas de Entradas, Lotes/Validades, Estoque mínimo, Pedidos, Recebimentos, Pagamentos ou Histórico quando a implementação atual ainda as concentra em páginas existentes. A separação de jornadas e URLs pertence às slices de consolidação de cada área.
+### Posição
+
+A visão principal oferece:
+
+- saldos por produto e local;
+- busca por produto/local;
+- filtro de situação do estoque mínimo;
+- quantidade de posições abaixo do mínimo;
+- quantidade de lotes já vencidos com saldo;
+- transferências em trânsito;
+- atalhos explícitos para as tarefas da área;
+- tabela em desktop e cards próprios em telas menores.
+
+O saldo permanece somente leitura na UI.
+
+### Entradas
+
+`/workspace/estoque/entradas` usa a operação persistente já existente. A separação de página não altera:
+
+- validação de quantidade/custo;
+- atomicidade;
+- idempotência;
+- lote/validade;
+- cálculo de saldo/custo;
+- autorização no backend/banco.
+
+A tela não resolve `REQ-STK-010` nem define nova política de custeio.
+
+### Retiradas
+
+`/workspace/estoque/retiradas` mantém:
+
+- setor de consumo obrigatório;
+- local de origem;
+- seleção opcional de lote quando aplicável;
+- regras de saldo/rastreabilidade já existentes.
+
+A UI deliberadamente chama o comportamento sem escolha de lote de **seleção automática**. Ela não transforma `REQ-EXP-004`/Q-019 em uma política FEFO homologada.
+
+### Baixas e perdas
+
+`/workspace/baixas` preserva motivos estruturados e a exigência de lote vencido quando a regra já existia para itens rastreados. O histórico deixa de expor tipos internos de movimento e possui representação mobile dedicada.
+
+### Devoluções
+
+`/workspace/devolucoes` permanece vinculada à retirada original. Produto, local, custo e rastreabilidade não podem ser substituídos pela tela. IDs internos deixam de ser apresentados como informação operacional; o usuário escolhe a retirada por data, produto, local e quantidade pendente.
+
+### Transferências
+
+`/workspace/transferencias` mantém o contrato de duas etapas:
+
+1. expedir reduz a origem;
+2. receber credita o destino somente pela quantidade confirmada.
+
+Recebimento parcial continua suportado. A UI não altera as transações nem permite transferir entre o mesmo local.
+
+### Inventários
+
+`/workspace/inventarios` preserva o fluxo de início → contagem → confirmação/cancelamento. A referência inicial continua protegendo a sessão contra alterações concorrentes, mas esse mecanismo é apresentado em linguagem operacional.
+
+Cancelar inventário exige confirmação explícita e não aplica ajustes. Tabelas de contagem/histórico possuem alternativa mobile deliberada.
+
+A limitação já existente para aumento de item rastreado sem lote explícito permanece visível; a UI não inventa lote ou validade para contornar a regra.
+
+### Lotes e validades
+
+`/workspace/estoque/lotes` é consulta somente leitura dos lotes ativos com saldo. Permite busca/filtro e identifica somente validade já atingida.
+
+Não existe alerta antecipado arbitrário nesta slice porque Q-020 continua aberta. Não existe promessa de FEFO porque Q-019/`REQ-EXP-004` continuam PENDING.
+
+### Estoque mínimo
+
+`/workspace/estoque/minimos` concentra consulta/manutenção da política existente por produto/local. A semântica continua:
+
+- ausência de política não gera alerta;
+- igualdade ao mínimo não gera alerta;
+- apenas saldo estritamente menor é sinalizado.
 
 ## Contrato de navegação desktop
 
 - sidebar persistente à esquerda;
 - sete áreas reconhecíveis no primeiro nível;
-- Estoque mantém `/workspace/estoque` como entrada da área e apresenta Baixas, Devoluções, Transferências e Inventários como destinos subordinados;
+- Estoque mantém `/workspace/estoque` como entrada da área e apresenta suas operações como destinos subordinados;
+- a raiz de Estoque fica destacada como página apenas quando o usuário está nela; em uma subárea, Estoque permanece destacado como área e somente a subárea recebe `aria-current=page`;
 - Cadastros apresenta Produtos, Fornecedores e Funcionários como destinos subordinados;
-- Administração apresenta apenas Proteção dos dados enquanto for a única tela real da área;
-- área ativa permanece evidente quando uma subárea está selecionada;
-- links reconhecem subrotas futuras de detalhe sem fazer `/workspace` ficar ativo em todas as páginas;
-- URLs existentes são preservadas integralmente nesta slice.
+- Administração apresenta Estrutura, Usuários e permissões e Proteção dos dados;
+- links reconhecem subrotas de detalhe sem fazer `/workspace` ficar ativo em todas as páginas.
 
 ## Contrato de navegação mobile
 
-- a barra horizontal com overflow deixa de ser o mecanismo principal;
-- uma barra superior fixa oferece acesso explícito ao `Menu`;
-- o menu abre um drawer vertical com a mesma hierarquia do desktop;
-- o drawer possui overlay e ação explícita de fechamento;
+- o drawer vertical continua sendo o mecanismo principal de navegação;
+- a mesma hierarquia do desktop fica disponível no menu;
 - selecionar um destino fecha o menu;
-- a lista pode rolar verticalmente sem transformar áreas em uma faixa horizontal difícil de orientar.
+- listas/tabelas densas das jornadas de Estoque possuem cards/formulários próprios em mobile quando overflow horizontal prejudicaria a tarefa.
 
 ## Autorização e segurança
 
 Esta arquitetura **não define autorização**.
 
-- nenhum item é escondido ou liberado por inferência a partir de `roles` no shell;
-- guards, RPCs, policies e RLS existentes continuam sendo a boundary autoritativa;
-- a mudança não altera queries, regras de estoque/financeiro/caixa ou escopos;
-- `/workspace/backup` mantém o contrato de leitura já existente;
-- seleção de organização e membership continuam sendo resolvidos pelo runtime atual.
+- guards, gateways, RPCs, policies e RLS existentes continuam sendo as boundaries autoritativas;
+- disponibilidade de ações na UI apenas reflete permissões já conhecidas e não substitui enforcement;
+- Q-022 permanece aberta e nenhum papel técnico foi renomeado como cargo de negócio;
+- nenhuma regra transacional foi movida para React;
+- nenhuma migration/RPC/RLS é necessária para esta consolidação de jornada.
 
-## Fora do escopo desta slice
+## Requisitos PENDING preservados
 
-- design system completo;
-- refatoração interna das páginas de Estoque, Compras, Financeiro ou Caixa;
-- novas páginas de Administração;
-- alteração de migrations/RLS/Supabase;
-- resolução de requisitos PENDING;
-- retomada de #75/#121;
-- deploy Vercel manual/rotineiro.
+A consolidação de Estoque não resolve por inferência:
+
+- `REQ-STK-007` — empréstimo;
+- `REQ-STK-010` — custeio;
+- `REQ-EXP-004` — FEFO;
+- `REQ-ITEM-004` — produto de venda/POS;
+- `REQ-ITEM-005` — ficha técnica/receita.
 
 ## Próxima etapa
 
-Depois da integração desta arquitetura e da navegação desktop/mobile, a sequência aprovada da Fase 51 promove:
+Depois da integração e validação da consolidação de Estoque, a sequência aprovada da Fase 51 promove:
 
-> **Design system mínimo e padrões reutilizáveis de página.**
+> **Compras.**
