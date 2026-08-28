@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  isAuthorizedApplicationInvite,
   isExpectedBootstrapInviteEmail,
   isSameOriginInviteRequest,
   parseImplicitInviteFragment,
@@ -39,5 +40,11 @@ describe("implicit invite flow", () => {
     expect(isExpectedBootstrapInviteEmail(" OWNER@example.com ", "owner@example.com")).toBe(true);
     expect(isExpectedBootstrapInviteEmail("other@example.com", "owner@example.com")).toBe(false);
     expect(isExpectedBootstrapInviteEmail(undefined, "owner@example.com")).toBe(false);
+  });
+
+  it("accepts bootstrap or membership-backed invites and rejects unrelated ones", () => {
+    expect(isAuthorizedApplicationInvite({ bootstrapEmailMatches: true, hasActiveMembership: false })).toBe(true);
+    expect(isAuthorizedApplicationInvite({ bootstrapEmailMatches: false, hasActiveMembership: true })).toBe(true);
+    expect(isAuthorizedApplicationInvite({ bootstrapEmailMatches: false, hasActiveMembership: false })).toBe(false);
   });
 });
