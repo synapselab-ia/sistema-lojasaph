@@ -26,15 +26,9 @@ export function PurchaseOrderForm({ onCreated }: { onCreated: (orderId: EntityId
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!supplierId) {
-      setSupplierItems([]);
-      setDraftItems({});
-      return;
-    }
+    if (!supplierId) return;
 
     let active = true;
-    setLoadingItems(true);
-    setMessage(null);
     void gateway.listSupplierItems(workspace.organizationId, supplierId as EntityId)
       .then((items) => {
         if (!active) return;
@@ -101,7 +95,19 @@ export function PurchaseOrderForm({ onCreated }: { onCreated: (orderId: EntityId
         <div className="grid gap-4 md:grid-cols-2">
           <FormField id="purchase-supplier" label="Fornecedor" required>
             {(props) => (
-              <Select {...props} required value={supplierId} onChange={(event) => setSupplierId(event.target.value)}>
+              <Select
+                {...props}
+                required
+                value={supplierId}
+                onChange={(event) => {
+                  const nextSupplierId = event.target.value;
+                  setSupplierId(nextSupplierId);
+                  setSupplierItems([]);
+                  setDraftItems({});
+                  setMessage(null);
+                  setLoadingItems(Boolean(nextSupplierId));
+                }}
+              >
                 <option value="">Selecione</option>
                 {workspace.suppliers.filter((supplier) => supplier.active).map((supplier) => (
                   <option key={supplier.id} value={supplier.id}>{supplier.tradeName}</option>
