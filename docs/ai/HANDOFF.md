@@ -2,15 +2,18 @@
 
 ## Estado de transição
 
-**Fase 51 / Issue #142 — consolidação de produto, arquitetura de informação e UX — agora é a frente ativa.**
+**Fase 51 / Issue #142 — consolidação de produto, arquitetura de informação e UX — é a frente ativa.**
 
-Baseline de entrada:
+Estado integrado confirmado:
 
-- `main=37124e86e28f3e07cee0b49afecc8cad29689c78`;
-- Fase 50 concluída; não refazer #138/#139;
+- `main=c015024fb2a05e9cdc8162029a13b4018cb8de91` após o merge do roadmap;
+- PR #143 `docs: establish product completion and UX consolidation roadmap`: merged;
+- CI pós-merge #506 / run `33181212548`: success;
+- Issue #142 continua aberta e ativa;
 - #75 e #121 continuam abertas e TOTALMENTE ON HOLD na trilha `REQ-PLAT-005`;
-- Issue #142 aberta em 2026-08-28 por prioridade explícita do operador;
-- branch documental: `agent/product-completion-ux-roadmap`.
+- nenhuma implementação da primeira slice foi iniciada ainda.
+
+Não refazer #138/#139, não refazer a auditoria e não reabrir discussão sobre a ordem aprovada sem nova evidência ou prioridade explícita.
 
 ## Por que a Fase 51 existe
 
@@ -20,7 +23,7 @@ O documento de autoridade é:
 
 - `docs/product/product-completion-ux-roadmap.md`.
 
-A `docs/qa/definition-of-done.md` foi ampliada para que UI não seja considerada pronta apenas por renderizar/passsar build.
+A `docs/qa/definition-of-done.md` foi ampliada para que UI não seja considerada pronta apenas por renderizar/passar build.
 
 ## Diagnóstico que não deve ser perdido
 
@@ -98,14 +101,15 @@ Não adicionar feature grande aleatória no meio desse programa salvo bug críti
 
 A primeira slice da Issue #142 é propositalmente pequena:
 
-1. inspecionar `/`, `/login`, `/bootstrap`, `/workspace`, `/workspace/selecionar-organizacao` e helpers de auth/redirect;
-2. remover a landing técnica de `/`;
-3. reutilizar o fluxo existente para decidir o destino por sessão/contexto;
-4. remover o CTA `Abrir demonstração` da navegação normal;
-5. não apagar rotas demo nesta slice se ainda forem úteis internamente;
-6. adicionar/ajustar testes do contrato de entrada;
-7. lint/typecheck/test/build verdes;
-8. sem deploy Vercel rotineiro/manual.
+1. criar branch de implementação a partir da `main` real;
+2. inspecionar `/`, `/login`, `/bootstrap`, `/workspace`, `/workspace/selecionar-organizacao` e helpers de auth/redirect;
+3. remover a landing técnica de `/`;
+4. reutilizar o fluxo existente para decidir o destino por sessão/contexto;
+5. remover o CTA `Abrir demonstração` da navegação normal;
+6. não apagar rotas demo nesta slice se ainda forem úteis internamente;
+7. adicionar/ajustar testes do contrato de entrada;
+8. lint/typecheck/test/build verdes;
+9. sem deploy Vercel rotineiro/manual.
 
 Não aproveitar essa slice para redesenhar sidebar, fazer design system completo ou tocar em banco.
 
@@ -141,6 +145,6 @@ Não retomar scheduling, Storage, R2/S3, restore drills ou evidência automátic
 
 ## Próximo chat
 
-Consultar GitHub real e `NEXT_ACTION`. Se esta documentação já estiver merged, iniciar diretamente a primeira slice da Issue #142 a partir da `main` atual, sem refazer a auditoria e sem reabrir discussão sobre a ordem já aprovada.
+Consultar GitHub real e `NEXT_ACTION`, criar uma branch de implementação a partir da `main` atual e iniciar diretamente a primeira slice da Issue #142. Não refazer a auditoria, não reabrir a landing como problema de design e não saltar para redesign da sidebar antes de concluir a remoção da entrada técnica.
 
 Restrições permanentes: GitHub é fonte de verdade; RLS é boundary; nenhum secret em browser/Git/docs; Production não recebe fixture para prova; nenhum deploy Vercel rotineiro; repo não deve ser tornado private automaticamente.
