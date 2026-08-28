@@ -2,11 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { parseImplicitInviteFragment } from "@/lib/auth/implicit-invite";
+import { safeInternalPath } from "@/lib/auth/redirect";
 
 export default function InviteAuthPage() {
   const [error, setError] = useState<string>();
 
   useEffect(() => {
+    const next = safeInternalPath(new URLSearchParams(window.location.search).get("next"), "/bootstrap");
     const parsed = parseImplicitInviteFragment(window.location.hash);
     window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
     let cancelled = false;
@@ -42,7 +44,7 @@ export default function InviteAuthPage() {
         }
 
         if (!cancelled) {
-          window.location.replace("/auth/atualizar-senha?next=%2Fbootstrap");
+          window.location.replace(`/auth/atualizar-senha?next=${encodeURIComponent(next)}`);
         }
       } catch {
         if (!cancelled) {
