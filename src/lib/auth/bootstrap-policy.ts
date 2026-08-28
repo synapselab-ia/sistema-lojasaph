@@ -73,5 +73,7 @@ export function determineBootstrapInvitationState(input: {
 }
 
 export function buildBootstrapInviteRedirectUrl(appBaseUrl: string): string {
-  return new URL("/auth/invite", appBaseUrl).toString();
+  const url = new URL("/auth/invite", appBaseUrl);
+  url.searchParams.set("next", "/bootstrap");
+  return url.toString();
 }
