@@ -4,6 +4,7 @@ import { EntityId } from "@/domain/common/entity-id";
 import {
   AdministrationAccess,
   AdministrationBusiness,
+  AdministrationEmployee,
   AdministrationMembershipScope,
   AdministrationRole,
   AdministrationSector,
@@ -68,6 +69,14 @@ interface AccessRow {
   active: boolean;
   employee_id: string | null;
   employee_name: string | null;
+}
+
+interface EmployeeRow {
+  id: string;
+  name: string;
+  code: string;
+  status: AdministrationStatus;
+  auth_user_id: string | null;
 }
 
 function queryError(message: string, error?: { message?: string } | null): DomainError {
@@ -179,5 +188,25 @@ export async function loadAdministrationAccess(
     active: row.active,
     employeeId: row.employee_id ? (row.employee_id as EntityId) : undefined,
     employeeName: row.employee_name ?? undefined,
+  }));
+}
+
+export async function loadAdministrationEmployees(
+  client: SupabaseClient,
+  organizationId: EntityId,
+): Promise<readonly AdministrationEmployee[]> {
+  const { data, error } = await client
+    .from("employees")
+    .select("id, name, code, status, auth_user_id")
+    .eq("organization_id", organizationId)
+    .order("name", { ascending: true });
+  if (error) throw queryError("Não foi possível carregar os funcionários da organização", error);
+
+  return ((data ?? []) as EmployeeRow[]).map((row) => ({
+    id: row.id as EntityId,
+    name: row.name,
+    code: row.code,
+    status: row.status,
+    linkedUserId: row.auth_user_id ? (row.auth_user_id as EntityId) : undefined,
   }));
 }
