@@ -19,6 +19,8 @@ O GitHub é a fonte oficial do projeto. Chats são sessões temporárias de trab
 7. documentação do módulo em trabalho
 8. ADRs relacionados em `docs/decisions/`
 
+Quando a frente ativa for a Fase 51 / consolidação de produto, também é obrigatória a leitura de `docs/product/product-completion-ux-roadmap.md` antes de alterar UI, navegação ou jornadas.
+
 ## Escopo macro
 
 O sistema deverá evoluir para cobrir:
@@ -40,6 +42,9 @@ O sistema deverá evoluir para cobrir:
 - Separar regras de negócio da interface e do provedor de dados.
 - Manter rastreabilidade para estoque e financeiro.
 - Priorizar experiência rápida em desktop, tablet e celular.
+- Avaliar conclusão de produto pela capacidade de executar jornadas reais, não apenas pela existência de schema/backend/tela mínima.
+- Organizar navegação e telas pelo modelo mental da operação, não pela decomposição interna do código.
+- Evitar expor ao usuário normal IDs internos, nomes de provider, RLS, migrations, fases e outros detalhes de engenharia sem necessidade operacional.
 - Evitar complexidade prematura, mantendo arquitetura profissional.
 - PostgreSQL é o modelo físico relacional; Supabase é o provedor hospedado inicial preferido e revisável conforme `ADR-006`.
 - Migrations versionadas no GitHub, RLS e adapters preservam a independência do domínio em relação ao provedor.
@@ -55,6 +60,7 @@ Consulte `docs/architecture/overview.md`, `docs/architecture/persistence.md` e `
 - `docs/ai/CURRENT_STATE.md`: onde o projeto está.
 - `docs/ai/HANDOFF.md`: contexto necessário entre sessões.
 - `docs/ai/NEXT_ACTION.md`: o que executar agora.
+- `docs/product/product-completion-ux-roadmap.md`: régua e ordem da consolidação de produto/UX iniciada após a Fase 50.
 
 Um novo chat deve partir desses arquivos, conferir o estado real do GitHub e executar a próxima ação documentada.
 
