@@ -6,15 +6,15 @@
 
 **Fase 51 / Issue #142 — consolidação de produto, arquitetura de informação e UX — permanece ativa.**
 
-Estado real após esta execução:
+Estado real após a consolidação de Estoque:
 
-- `main=97a5975ace5f8e011b27a4e8175d13dcee464253` — merge do PR #153;
-- PR #153 — `feat: consolidar jornadas de Cadastros` — **merged**;
-- CI pós-merge da `main` #539 / run `33197347690`: **success**;
+- `main=3f0049c98f36f351d88ffe20afc5c77d17f73f70` — merge do PR #155;
+- PR #155 — `feat: consolidar jornada de Estoque` — **merged**;
+- CI pós-merge da `main` #544 / run `33199243676`: **success**;
 - lint, typecheck, unit tests, production build e job de banco/migrations/RLS: **success**;
-- no head final do PR #153, Inventory Count Integration #256 e Business Transactions Integration #243: **success**;
+- no head final do PR #155, Inventory Count Integration #258 / run `33199098224`: **success**;
+- no head final do PR #155, Business Transactions Integration #245 / run `33199098274`: **success**;
 - Issue #142 continua aberta e ativa;
-- não há PR funcional aberto ao final desta slice;
 - #75 e #121 continuam abertas e **TOTALMENTE ON HOLD**;
 - nenhum deploy Vercel manual/rotineiro foi feito.
 
@@ -25,59 +25,60 @@ Estado real após esta execução:
 3. design system mínimo + padrões reutilizáveis — PR #149;
 4. Administração: Estrutura + Usuários/Permissões — PR #151;
 5. reconciliação/handoff de Cadastros — PR #152;
-6. Cadastros: Produtos, Fornecedores e Funcionários — PR #153.
+6. Cadastros: Produtos, Fornecedores e Funcionários — PR #153;
+7. Estoque: posição + jornadas operacionais consolidadas — PR #155.
 
-## Cadastros consolidado
+## Estoque consolidado
 
-### Produtos
+A área de Estoque deixou de depender de uma megapágina e agora separa consulta, atenção operacional e execução sem alterar os boundaries transacionais existentes.
 
-Rotas consolidadas:
+### Posição de estoque
 
-- `/workspace/produtos` — lista pesquisável/filtrável;
-- `/workspace/produtos/novo` — criação dedicada;
-- `/workspace/produtos/[id]` — detalhe estável e edição contextual.
+`/workspace/estoque` agora é uma visão operacional de leitura:
 
-Entregue:
+- saldos por produto e local;
+- busca por produto/local;
+- filtro por situação do estoque mínimo;
+- indicadores de posições abaixo do mínimo, lotes já vencidos com saldo e transferências em trânsito;
+- atalhos para as tarefas da área;
+- tabela desktop + cards mobile.
 
-- busca por nome, categoria, EAN, NCM, CEST e unidade;
-- filtros por status, categoria e tipo;
-- tabela desktop + cards mobile;
-- detalhe com identificação, dados fiscais e flags operacionais já suportadas;
-- criação/edição sobre `RuntimeWorkspaceProvider`, domínio e persistência existentes;
-- teste unitário do contrato puro de busca/filtros;
-- nenhuma regra fiscal nova inventada.
+Alteração de saldo continua acontecendo somente pelas operações próprias.
 
-### Fornecedores
+### Jornadas dedicadas
 
-Rotas consolidadas:
+- `/workspace/estoque/entradas` — registro de entrada usando `recordEntry`/gateway existente;
+- `/workspace/estoque/retiradas` — retirada para consumo por setor usando `recordWithdrawal` existente;
+- `/workspace/baixas` — baixas/perdas/vencimentos com motivos e regras de lote já existentes;
+- `/workspace/devolucoes` — devolução relacionada à retirada original, sem expor IDs técnicos na UX;
+- `/workspace/transferencias` — expedição e recebimento separados, inclusive recebimento parcial;
+- `/workspace/inventarios` — início, contagem, confirmação/cancelamento e histórico, com confirmação explícita ao cancelar;
+- `/workspace/estoque/lotes` — consulta de lotes com saldo e validades registradas;
+- `/workspace/estoque/minimos` — consulta/manutenção de mínimo por produto/local conforme política existente.
 
-- `/workspace/fornecedores` — lista com busca e status;
-- `/workspace/fornecedores/novo` — criação dedicada;
-- `/workspace/fornecedores/[id]` — detalhe estável e edição contextual.
+### UX e linguagem
 
-Entregue:
+- Estoque passou a aparecer como área com destinos subordinados na navegação;
+- a raiz de Estoque não fica marcada como página ativa quando uma subárea está aberta;
+- históricos críticos possuem alternativa mobile própria em vez de depender somente de tabela larga;
+- jargão de implementação foi removido das páginas de Estoque tocadas nesta slice;
+- estados de permissão/read-only, loading, empty, sucesso e erro foram tratados conforme aplicável.
 
-- identificação e contatos em contexto próprio;
-- `SupplierCommercialTermsPanel` reutilizado no detalhe;
-- `SupplierItemsPanel` reutilizado no detalhe;
-- nenhuma semântica nova inventada para agenda, embalagem, pedido mínimo ou condição comercial.
+A limpeza global de linguagem técnica fora de Estoque continua sendo uma etapa posterior da Fase 51.
 
-### Funcionários
+## Boundaries e regras preservados
 
-Rotas consolidadas:
+Nenhum schema, migration, RPC ou policy/RLS foi criado ou alterado para esta consolidação.
 
-- `/workspace/funcionarios` — lista com busca, status e unidade;
-- `/workspace/funcionarios/novo` — criação dedicada;
-- `/workspace/funcionarios/[id]` — detalhe estável e edição contextual.
+Continuam autoritativos:
 
-Entregue:
+- gateways/serviços de entrada, retirada, perda, devolução, transferência, inventário e mínimo;
+- transações atômicas já existentes;
+- escopos Organization/Unit/Location/Sector;
+- validações de saldo, lote e validade já implementadas;
+- RLS/grants/RPCs como fronteira de autorização.
 
-- dados operacionais e escopo padrão;
-- estado legível do vínculo de acesso, sem UUID na UX;
-- edição operacional preserva `linkedUserId` internamente;
-- Employee continua separado de login/membership;
-- login, papéis e permissões continuam em Administração;
-- a autorização existente não foi ampliada.
+A UI não passou a definir FEFO, custeio, empréstimo ou outra regra PENDING.
 
 ## Limite de homologação visual
 
@@ -85,31 +86,13 @@ Entregue:
 
 Build e CI comprovam integridade técnica, mas não substituem homologação visual desktop/tablet/mobile. Não foi feito deploy Vercel manual apenas para criar essa evidência.
 
-## Guardrails preservados
+## Próxima slice oficial: Compras
 
-- Q-022 continua aberta; não homologar papéis técnicos como cargos reais;
-- RLS/grants/RPCs continuam sendo a fronteira real de autorização;
-- nenhum requisito PENDING foi resolvido por conveniência visual;
-- nenhum schema, migration ou policy/RLS foi alterado na slice de Cadastros;
-- nenhuma fixture de Production foi criada;
-- #75/#121 continuam **TOTALMENTE ON HOLD**.
+**A próxima área da Fase 51 é Compras. Não refazer Cadastros ou Estoque sem bug/gap concreto.**
 
-## Próxima slice oficial: Estoque
+A próxima execução deve primeiro reconciliar o estado real e inventariar a jornada existente de pedidos, recebimentos e histórico antes de editar. O objetivo é separar responsabilidades e criar contexto estável para pedidos/recebimentos, preservando a integração transacional com Estoque e sem duplicar movimentação.
 
-**A próxima área da Fase 51 é Estoque. Não refazer Cadastros sem bug ou gap concreto.**
-
-Escopo macro a consolidar, conforme roadmap e o que já existe no produto:
-
-- posição/saldos;
-- entradas;
-- retiradas/baixas e perdas;
-- devoluções já suportadas;
-- transferências;
-- inventários/contagens;
-- lotes e validades;
-- estoque mínimo.
-
-Antes de editar, reconciliar `main`, Issue #142, PRs/branches/CI e inventariar as rotas, domínio, repositories, gateways, services, RPCs e queries existentes de Estoque. Reutilizar primeiro os boundaries existentes e não mudar regra de negócio/RLS sem gap comprovado.
+Não resolver regras de negócio por inferência nem criar migration/RPC para corrigir layout antes de provar gap real.
 
 ## Ordem oficial de fechamento do produto
 
@@ -118,8 +101,8 @@ Antes de editar, reconciliar `main`, Issue #142, PRs/branches/CI e inventariar a
 3. ~~design system mínimo~~ — PR #149;
 4. ~~Administração~~ — PR #151;
 5. ~~Cadastros~~ — PR #153;
-6. **Estoque** — próxima;
-7. Compras;
+6. ~~Estoque~~ — PR #155;
+7. **Compras** — próxima;
 8. Financeiro;
 9. Caixa;
 10. Dashboard;
