@@ -6,14 +6,14 @@
 
 **Fase 51 / Issue #142 — consolidação de produto, arquitetura de informação e UX — permanece ativa.**
 
-Estado real após a consolidação de Estoque:
+Baseline funcional após a consolidação de Compras:
 
-- `main=3f0049c98f36f351d88ffe20afc5c77d17f73f70` — merge do PR #155;
-- PR #155 — `feat: consolidar jornada de Estoque` — **merged**;
-- CI pós-merge da `main` #544 / run `33199243676`: **success**;
+- `main=63d97153cbe90fa13e9316522d1b909b5ed14840` — merge do PR #157;
+- PR #157 — `feat: consolidar jornada de Compras` — **merged**;
+- CI pós-merge da `main` #553 / run `33203276726`: **success**;
 - lint, typecheck, unit tests, production build e job de banco/migrations/RLS: **success**;
-- no head final do PR #155, Inventory Count Integration #258 / run `33199098224`: **success**;
-- no head final do PR #155, Business Transactions Integration #245 / run `33199098274`: **success**;
+- no head final do PR #157, Business Transactions Integration #251 / run `33203078639`: **success**;
+- no head final do PR #157, Inventory Count Integration #264 / run `33203078624`: **success**;
 - Issue #142 continua aberta e ativa;
 - #75 e #121 continuam abertas e **TOTALMENTE ON HOLD**;
 - nenhum deploy Vercel manual/rotineiro foi feito.
@@ -26,73 +26,123 @@ Estado real após a consolidação de Estoque:
 4. Administração: Estrutura + Usuários/Permissões — PR #151;
 5. reconciliação/handoff de Cadastros — PR #152;
 6. Cadastros: Produtos, Fornecedores e Funcionários — PR #153;
-7. Estoque: posição + jornadas operacionais consolidadas — PR #155.
+7. Estoque: posição + jornadas operacionais consolidadas — PR #155;
+8. Compras: pedidos + recebimentos + histórico consolidados — PR #157.
 
-## Estoque consolidado
+## Compras consolidado
 
-A área de Estoque deixou de depender de uma megapágina e agora separa consulta, atenção operacional e execução sem alterar os boundaries transacionais existentes.
+A área de Compras deixou de concentrar criação, listagem, emissão, recebimento, cancelamento e histórico em uma única página.
 
-### Posição de estoque
+### Visão da área
 
-`/workspace/estoque` agora é uma visão operacional de leitura:
+`/workspace/compras` agora apresenta:
 
-- saldos por produto e local;
-- busca por produto/local;
-- filtro por situação do estoque mínimo;
-- indicadores de posições abaixo do mínimo, lotes já vencidos com saldo e transferências em trânsito;
-- atalhos para as tarefas da área;
-- tabela desktop + cards mobile.
+- quantidade de pedidos visíveis;
+- rascunhos;
+- pedidos aguardando recebimento;
+- recebimentos recentes;
+- atalhos para Pedidos, Recebimentos e Histórico;
+- pedidos em andamento com acesso ao detalhe.
 
-Alteração de saldo continua acontecendo somente pelas operações próprias.
+### Pedidos
 
-### Jornadas dedicadas
+`/workspace/compras/pedidos` passou a ser a lista principal:
 
-- `/workspace/estoque/entradas` — registro de entrada usando `recordEntry`/gateway existente;
-- `/workspace/estoque/retiradas` — retirada para consumo por setor usando `recordWithdrawal` existente;
-- `/workspace/baixas` — baixas/perdas/vencimentos com motivos e regras de lote já existentes;
-- `/workspace/devolucoes` — devolução relacionada à retirada original, sem expor IDs técnicos na UX;
-- `/workspace/transferencias` — expedição e recebimento separados, inclusive recebimento parcial;
-- `/workspace/inventarios` — início, contagem, confirmação/cancelamento e histórico, com confirmação explícita ao cancelar;
-- `/workspace/estoque/lotes` — consulta de lotes com saldo e validades registradas;
-- `/workspace/estoque/minimos` — consulta/manutenção de mínimo por produto/local conforme política existente.
+- busca por fornecedor, local, produto, status ou observação;
+- filtro por status;
+- quantidade de itens pendentes;
+- total do pedido calculado a partir dos snapshots existentes;
+- tabela desktop e cards mobile;
+- URL estável para cada pedido.
+
+`/workspace/compras/pedidos/novo` concentra a criação e continua gerando pedido em **rascunho** pelo RPC existente.
+
+`/workspace/compras/pedidos/[id]` apresenta:
+
+- fornecedor e local de recebimento;
+- status, previsão, emissão e observações;
+- itens com quantidade pedida, recebida e pendente;
+- preço unitário e total registrados;
+- histórico de recebimentos;
+- ações contextuais de emitir, receber e cancelar conforme estado e permissões já existentes.
+
+Pedido inexistente ou inacessível utiliza o mesmo estado seguro, sem confirmar existência fora do escopo.
+
+### Recebimento
+
+`/workspace/compras/pedidos/[id]/receber` substitui a ação embutida na antiga megapágina.
+
+O fluxo:
+
+- mostra somente itens com quantidade pendente;
+- suporta recebimento parcial;
+- explicita pedido, recebido e pendente;
+- permite lote/validade quando o produto já possui rastreabilidade correspondente;
+- deixa itens em branco fora do recebimento atual;
+- usa o mesmo `receive_purchase_order` já existente via gateway.
+
+A UI **não escreve saldo diretamente**. O RPC continua sendo a fronteira autoritativa que, na mesma transação, registra o recebimento, atualiza quantidades do pedido, movimenta Estoque, trata lote/alocação quando aplicável, atualiza o status e preserva auditoria/idempotência.
+
+Portanto, a consolidação não criou segunda entrada de estoque nem dupla contabilização.
+
+### Recebimentos e histórico
+
+- `/workspace/compras/recebimentos` consulta entregas já efetivadas, produto, quantidade, custo registrado e lote/validade quando existentes;
+- `/workspace/compras/historico` concentra pedidos recebidos ou cancelados;
+- ambos preservam acesso ao detalhe original sem expor UUID como informação operacional.
 
 ### UX e linguagem
 
-- Estoque passou a aparecer como área com destinos subordinados na navegação;
-- a raiz de Estoque não fica marcada como página ativa quando uma subárea está aberta;
-- históricos críticos possuem alternativa mobile própria em vez de depender somente de tabela larga;
-- jargão de implementação foi removido das páginas de Estoque tocadas nesta slice;
-- estados de permissão/read-only, loading, empty, sucesso e erro foram tratados conforme aplicável.
-
-A limpeza global de linguagem técnica fora de Estoque continua sendo uma etapa posterior da Fase 51.
+- Compras passou a aparecer como área com destinos subordinados na navegação;
+- `window.prompt()` deixou de ser usado para cancelar pedido;
+- cancelamento usa diálogo explícito com motivo opcional e deixa claro que entradas já efetivadas não são revertidas;
+- criação, lista, detalhe e recebimento usam os componentes do design system;
+- mobile possui cards/fluxos verticais próprios em vez de depender somente de tabela larga;
+- estados loading, empty, erro, read-only e not-found foram tratados conforme aplicável.
 
 ## Boundaries e regras preservados
 
-Nenhum schema, migration, RPC ou policy/RLS foi criado ou alterado para esta consolidação.
+Nenhum schema, migration, RPC, grant ou policy/RLS foi criado ou alterado para esta consolidação.
 
 Continuam autoritativos:
 
-- gateways/serviços de entrada, retirada, perda, devolução, transferência, inventário e mínimo;
-- transações atômicas já existentes;
-- escopos Organization/Unit/Location/Sector;
-- validações de saldo, lote e validade já implementadas;
-- RLS/grants/RPCs como fronteira de autorização.
+- `create_purchase_order`;
+- `issue_purchase_order`;
+- `receive_purchase_order`;
+- `cancel_purchase_order`;
+- RLS/grants e escopo associado ao local de estoque;
+- validações de transição de status;
+- limite de quantidade recebida versus pendente;
+- atomicidade e idempotência do recebimento;
+- integração pedido → Estoque exatamente uma vez pelo fluxo já implementado.
 
-A UI não passou a definir FEFO, custeio, empréstimo ou outra regra PENDING.
+A UI não criou política de aprovação, pedido mínimo, agenda comercial, custeio ou FEFO.
 
 ## Limite de homologação visual
 
 **Não houve homologação em browser real nesta execução.**
 
-Build e CI comprovam integridade técnica, mas não substituem homologação visual desktop/tablet/mobile. Não foi feito deploy Vercel manual apenas para criar essa evidência.
+Build e CI comprovam integridade técnica, mas não substituem homologação visual desktop/tablet/mobile. Não foi feito deploy Vercel manual apenas para produzir essa evidência.
 
-## Próxima slice oficial: Compras
+## Próxima slice oficial: Financeiro
 
-**A próxima área da Fase 51 é Compras. Não refazer Cadastros ou Estoque sem bug/gap concreto.**
+**A próxima área da Fase 51 é Financeiro. Não refazer Cadastros, Estoque ou Compras sem bug/gap concreto.**
 
-A próxima execução deve primeiro reconciliar o estado real e inventariar a jornada existente de pedidos, recebimentos e histórico antes de editar. O objetivo é separar responsabilidades e criar contexto estável para pedidos/recebimentos, preservando a integração transacional com Estoque e sem duplicar movimentação.
+Inventário preliminar já confirmou que `/workspace/financeiro` ainda é uma megapágina de aproximadamente 26 KB que mistura:
 
-Não resolver regras de negócio por inferência nem criar migration/RPC para corrigir layout antes de provar gap real.
+- visão de contas a pagar;
+- criação de documento e parcelas;
+- instruções/referências de pagamento;
+- registro de pagamento;
+- estorno;
+- cancelamento;
+- anexos;
+- exportação CSV;
+- histórico de eventos.
+
+Também existem `window.prompt()` para estorno de pagamento e cancelamento de documento. A próxima execução deve inventariar os boundaries de Financeiro e organizar a jornada no padrão `lista → detalhe → ação`, preservando as regras financeiras já implementadas.
+
+Não criar migration/RPC para resolver layout antes de provar gap real.
 
 ## Ordem oficial de fechamento do produto
 
@@ -102,8 +152,8 @@ Não resolver regras de negócio por inferência nem criar migration/RPC para co
 4. ~~Administração~~ — PR #151;
 5. ~~Cadastros~~ — PR #153;
 6. ~~Estoque~~ — PR #155;
-7. **Compras** — próxima;
-8. Financeiro;
+7. ~~Compras~~ — PR #157;
+8. **Financeiro** — próxima;
 9. Caixa;
 10. Dashboard;
 11. limpeza de linguagem/resíduos de engenharia;
@@ -126,6 +176,8 @@ Continuam PENDING até decisão real de negócio:
 - `REQ-FIN-004` — cardinalidade final de pagamentos;
 - `REQ-CASH-007` — consumo de funcionários;
 - `REQ-CASH-008` — integração com vendas.
+
+Q-022 também permanece aberta; não reinterpretar papéis técnicos como cargos de negócio.
 
 ## #75/#121 — TOTALMENTE ON HOLD
 
