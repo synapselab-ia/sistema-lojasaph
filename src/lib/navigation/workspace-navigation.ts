@@ -10,7 +10,7 @@ export type WorkspaceNavigationArea = {
   items?: readonly WorkspaceNavigationItem[];
 };
 
-export const workspaceNavigation = [
+export const workspaceNavigation: readonly WorkspaceNavigationArea[] = [
   {
     id: "overview",
     label: "Visão geral",
@@ -56,7 +56,7 @@ export const workspaceNavigation = [
     label: "Administração",
     items: [{ href: "/workspace/backup", label: "Proteção dos dados" }],
   },
-] as const satisfies readonly WorkspaceNavigationArea[];
+];
 
 export function isWorkspaceRouteActive(pathname: string, href: string): boolean {
   if (href === "/workspace") return pathname === href;
