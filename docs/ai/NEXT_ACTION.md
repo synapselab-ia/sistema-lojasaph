@@ -4,23 +4,24 @@
 
 **Fase 51 / Issue #142 — consolidação de produto, arquitetura de informação e UX — continua como frente ativa.**
 
-Estado real de partida para a próxima execução:
+Baseline funcional para a próxima execução:
 
-- `main=3f0049c98f36f351d88ffe20afc5c77d17f73f70` — merge do PR #155;
-- PR #155 — Estoque consolidado — merged;
-- CI pós-merge #544 / run `33199243676`: success;
+- `main=63d97153cbe90fa13e9316522d1b909b5ed14840` — merge do PR #157;
+- PR #157 — Compras consolidado — merged;
+- CI pós-merge #553 / run `33203276726`: success;
 - lint, typecheck, tests, production build e banco/migrations/RLS: success;
-- Inventory Count Integration #258 e Business Transactions Integration #245: success no head final do PR;
+- Business Transactions Integration #251 / run `33203078639`: success no head final do PR;
+- Inventory Count Integration #264 / run `33203078624`: success no head final do PR;
 - Issue #142 aberta e ativa;
 - #75/#121 **TOTALMENTE ON HOLD**.
 
-Não refazer Cadastros ou Estoque sem bug/gap concreto.
+Não refazer Cadastros, Estoque ou Compras sem bug/gap concreto.
 
 ## NEXT_ACTION objetiva
 
-### Executar a próxima slice da Issue #142: **Compras**
+### Executar a próxima slice da Issue #142: **Financeiro**
 
-O objetivo é consolidar a jornada de pedidos e recebimentos como uma experiência coerente, com contexto estável e linguagem operacional, sem alterar silenciosamente regras comerciais, integração com Estoque, escopo, RLS ou requisitos PENDING.
+O objetivo é consolidar documentos/contas a pagar, parcelas, pagamentos, estornos, anexos e histórico como uma jornada coerente, com contexto estável e linguagem operacional, sem alterar silenciosamente regras financeiras, escopos, autorização, Storage ou requisitos PENDING.
 
 Documentos de autoridade:
 
@@ -29,7 +30,8 @@ Documentos de autoridade:
 - `docs/product/design-system.md`;
 - `docs/qa/definition-of-done.md`;
 - `docs/product/open-questions.md`;
-- ADRs e requisitos de Compras/Estoque já existentes.
+- `docs/product/requirements.md`;
+- ADRs e requisitos financeiros/anexos já existentes.
 
 ### 1. Reconciliar e inventariar antes de editar
 
@@ -37,29 +39,43 @@ No início da próxima execução:
 
 1. confirmar `main`, Issue #142, PRs, branches e CI reais;
 2. reler os documentos de autoridade;
-3. inventariar rotas, páginas, domínio, repositories, gateways, services, RPCs e queries de Compras;
-4. localizar criação/edição de pedido, transições de status, recebimentos e histórico;
-5. localizar a integração autoritativa entre recebimento e entrada de Estoque;
-6. mapear permissões/RLS atuais por Organization/Unit e demais escopos aplicáveis;
-7. identificar megapáginas, `window.prompt()` e linguagem técnica ainda presente;
+3. inventariar rotas, páginas, domínio, gateways, RPCs, views, queries, APIs, RLS/grants e testes de Financeiro;
+4. localizar criação/cancelamento de documento, parcelas, registro/estorno de pagamentos, instruções/referências de pagamento e cálculo de status/saldo;
+5. localizar o boundary de anexos privados e a exportação CSV existente;
+6. mapear permissões/escopos atuais por Organization/Unit/Sector e demais dimensões realmente usadas;
+7. identificar linguagem técnica, megapágina e interações provisórias como `window.prompt()`;
 8. definir o contrato de navegação e responsabilidade das páginas antes do código.
+
+Inventário preliminar já comprovado:
+
+- `/workspace/financeiro/page.tsx` é hoje uma única página de aproximadamente 26 KB;
+- ela mistura visão geral, criação de documento/parcelas, pagamentos, estornos, cancelamento, anexos e histórico;
+- `SupabaseFinanceGateway` já possui commands idempotentes para criação de documento, pagamento, estorno e cancelamento;
+- `FinanceAttachmentsPanel` e APIs server-side já formam boundary próprio para anexos;
+- a exportação usa gateway próprio;
+- estorno e cancelamento ainda usam `window.prompt()`.
 
 Não criar schema/RPC novo para resolver layout. Reaproveitar primeiro os boundaries existentes.
 
-### 2. Escopo funcional da consolidação de Compras
+### 2. Escopo funcional da consolidação de Financeiro
 
 Organizar conforme o comportamento já suportado:
 
-- lista/visão de pedidos;
-- criação de pedido quando existente;
-- detalhe estável do pedido quando a entidade justificar URL própria;
-- itens e quantidades pedidas;
-- fornecedor e unidade/contexto existentes;
-- recebimentos totais/parciais já suportados;
-- histórico e estado do pedido;
-- feedback e contexto do impacto do recebimento no Estoque.
+- visão/lista de contas a pagar/documentos;
+- busca/filtros somente quando os dados existentes justificarem;
+- criação dedicada de documento com parcelas;
+- detalhe estável do documento quando a entidade persistente justificar URL própria;
+- fornecedor, unidade/setor e identificação documental existentes;
+- parcelas com nominal, vencimento, pago líquido, saldo/diferença e status derivados;
+- instruções/referências de pagamento;
+- registro de pagamento;
+- histórico de pagamentos e estornos;
+- cancelamento de documento conforme regra existente;
+- anexos privados;
+- exportação CSV existente;
+- indicadores de vencimento/saldo que já possam ser derivados sem inventar regra.
 
-Preferir `lista → detalhe → ação` em vez de concentrar criação, edição, recebimento e histórico na mesma página.
+Preferir `lista → detalhe → ação` em vez de concentrar criação, pagamento, estorno, cancelamento, anexos e histórico na mesma página.
 
 ### 3. Preservar invariantes de domínio
 
@@ -67,53 +83,68 @@ Não mover regra crítica para componentes React.
 
 Preservar nos boundaries atuais, entre outras regras comprovadas pelo código/testes:
 
-- transições de status válidas;
-- quantidade pedida versus quantidade recebida;
-- recebimento parcial se já suportado;
-- vínculo com fornecedor, unidade, produto e condições comerciais existentes;
-- movimentação de estoque gerada pelo recebimento sem dupla contabilização;
-- atomicidade/idempotência já implementadas;
-- RLS/grants/RPCs como fronteira real de autorização.
+- documento exige conjunto válido de parcelas;
+- unidade/setor/fornecedor devem permanecer disponíveis no escopo real;
+- valores monetários mantêm precisão e validações existentes;
+- status da parcela permanece derivado de vencimento, saldo e eventos persistidos;
+- pagamento permanece evento auditável separado;
+- estorno não apaga o pagamento original e referencia o evento revertido;
+- somente pagamento reversível pode ser estornado e pagamento já estornado não pode ser estornado novamente;
+- documento com pagamentos líquidos não pode ser cancelado antes dos estornos exigidos pelo contrato atual;
+- diferença entre nominal e pago permanece explícita, sem ser classificada automaticamente como juros, multa, desconto ou outra categoria;
+- referências/instruções de pagamento continuam separadas do pagamento executado;
+- idempotência/atomicidade já implementadas;
+- RLS/grants/RPCs continuam a fronteira real de autorização.
 
 Se surgir gap, provar com código/teste antes de criar migration/RPC.
 
 ### 4. Arquitetura de informação e UX
 
-Usar linguagem de compra/operação, não nomes de tabela/RPC/RLS.
+Usar linguagem financeira/operacional, não nomes de tabela/RPC/RLS/Storage.
 
 Preferir:
 
-- lista pesquisável/filtrável se o volume e os dados existentes justificarem;
-- URL estável para detalhe do pedido;
-- ações contextuais no detalhe;
-- recebimento em fluxo explícito, sem `window.prompt()`;
-- feedback claro sobre sucesso/erro e quantidade recebida/pendente;
+- visão de contas a pagar orientada a fornecedor, vencimento, saldo e situação;
+- URL estável para documento/conta persistente quando aplicável;
+- criação em fluxo próprio;
+- pagamento como ação explícita no contexto da parcela/documento;
+- estorno e cancelamento em diálogos/formulários explícitos, sem `window.prompt()`;
+- histórico financeiro legível sem expor IDs técnicos;
+- feedback claro de sucesso/erro;
 - estados loading/empty/read-only/not-found seguros;
-- estratégia mobile deliberada, sem depender apenas de tabela larga.
+- estratégia mobile deliberada, sem depender apenas de tabela larga;
+- reutilização de `src/components/ui` e padrões provados em Cadastros/Estoque/Compras.
 
-Reutilizar `src/components/ui` e os padrões já provados em Cadastros/Estoque. Não criar abstração genérica sem repetição comprovada.
+Não criar abstração genérica sem repetição comprovada.
 
-### 5. Relação com Cadastros e Estoque
+### 5. Anexos e exportação
 
-Não duplicar manutenção de:
+Não duplicar nem enfraquecer os boundaries existentes.
 
-- Produto;
-- Fornecedor;
-- estrutura/unidades;
-- saldos/lotes de Estoque.
+Para anexos:
 
-Compras pode referenciar esses contextos, mas o recebimento deve continuar usando o boundary autoritativo existente para movimentar Estoque.
+- preservar `FinanceAttachmentsPanel`/APIs existentes quando a responsabilidade continuar adequada;
+- manter bucket/objetos privados;
+- não expor admin client, secret, signed URL permanente ou Storage como detalhe da UX;
+- autorização server-side/RLS continua obrigatória;
+- não transformar esta slice em trabalho de backup Storage (#121 permanece ON HOLD).
+
+Para exportação:
+
+- manter o gateway CSV existente;
+- tratar exportar como ação de produto quando útil, não como substituto da jornada normal;
+- não alterar contrato de dados por conveniência visual sem prova de necessidade.
 
 ### 6. Requisitos/PENDINGs
 
-Não resolver requisito de negócio por conveniência visual.
+Não resolver regra financeira por conveniência de UI.
 
 Em especial:
 
-- não decidir custeio (`REQ-STK-010`) dentro da UI de Compras;
-- não homologar FEFO (`REQ-EXP-004`) a partir do recebimento;
-- não inventar novas condições comerciais, aprovação ou política de compra sem evidência existente;
-- demais PENDINGs continuam inalterados.
+- `REQ-FIN-004` — cardinalidade final de pagamentos — continua PENDING;
+- não impor artificialmente “um pagamento por parcela” nem outra cardinalidade sem decisão explícita;
+- não interpretar diferença nominal/pago como juros/multa/desconto automaticamente;
+- demais PENDINGs permanecem inalterados.
 
 ### 7. Autorização
 
@@ -122,21 +153,24 @@ Q-022 continua aberta.
 Portanto:
 
 - não renomear papéis técnicos como cargos de negócio;
-- não ampliar ações por conveniência de UI;
-- manter checks no server/domain/banco quando já existirem;
-- UI apenas reflete disponibilidade, não se torna fronteira de segurança.
+- não ampliar ações financeiras por conveniência de UI;
+- manter enforcement no server/domain/banco quando já existir;
+- UI apenas reflete disponibilidade e nunca se torna fronteira de segurança;
+- não inferir acesso Organization-wide a partir de papel escopado.
 
 ### 8. Testes e validação
 
 Adicionar/ajustar testes somente nos contratos tocados, especialmente para:
 
-- transições de pedido;
-- recebimento total/parcial;
-- prevenção de recebimento além do permitido;
-- integração pedido → Estoque sem duplicação;
-- autorização/isolamento;
-- estados seguros de pedido inexistente/inacessível;
-- filtros/visões puras quando houver.
+- filtros/visões puras quando introduzidos;
+- estados seguro de documento inexistente/inacessível;
+- criação de documento/parcelas quando o contrato de UI mudar;
+- pagamento e saldo/status derivados;
+- estorno e prevenção de duplo estorno;
+- cancelamento bloqueado quando pagamentos líquidos exigirem estorno prévio;
+- autorização/isolamento por escopo;
+- anexos apenas se o boundary for tocado;
+- responsividade por estrutura/contrato quando possível tecnicamente.
 
 Manter verdes:
 
@@ -145,8 +179,8 @@ Manter verdes:
 - `npm run test`;
 - `npm run build`;
 - CI PostgreSQL/RLS aplicável;
-- Business Transactions Integration;
-- outras integrações apenas quando realmente afetadas.
+- Business Transactions Integration se Financeiro estiver coberto/afetado;
+- demais integrações somente quando realmente afetadas.
 
 Se browser real permitido estiver disponível, validar jornadas críticas em desktop e mobile. Se não estiver, registrar a limitação; **não fazer deploy Vercel manual apenas para homologação**.
 
@@ -154,41 +188,44 @@ Se browser real permitido estiver disponível, validar jornadas críticas em des
 
 Não:
 
-- reabrir Cadastros ou Estoque sem evidência concreta;
-- consolidar Financeiro ou Caixa;
+- reabrir Cadastros, Estoque ou Compras sem evidência concreta;
+- consolidar Caixa;
 - redesenhar Dashboard;
 - mudar Q-022/política de autorização;
-- resolver PENDINGs;
+- resolver `REQ-FIN-004` ou outros PENDINGs;
+- refazer arquitetura de anexos/Storage sem gap concreto;
 - fazer migração cosmética em massa;
 - tocar Production para prova;
 - retomar #75/#121;
 - fazer deploy Vercel manual/rotineiro.
 
-## Critérios de aceite para Compras
+## Critérios de aceite para Financeiro
 
 A slice só pode ser encerrada quando:
 
-- pedidos e recebimentos formam uma jornada coerente e navegável;
+- documentos/contas, parcelas e pagamentos formam jornada coerente e navegável;
 - entidade persistente relevante possui contexto/URL estável quando aplicável;
-- recebimento não depende de prompt técnico do navegador;
-- regras comerciais/transacionais permanecem fora da UI;
-- recebimento atualiza Estoque exatamente uma vez pelo boundary existente;
-- quantidade pedida/recebida/pendente fica compreensível;
+- criação deixa de competir com listagem/histórico na mesma megapágina;
+- pagamento possui contexto claro de parcela/documento;
+- estorno/cancelamento não dependem de `window.prompt()`;
+- nominal, pago, saldo/diferença, vencimento e status ficam compreensíveis;
+- histórico preserva pagamentos e estornos como eventos auditáveis;
+- anexos continuam privados e no boundary seguro existente;
 - mobile não depende apenas de overflow horizontal;
 - estados loading/empty/error/read-only/not-found e feedback são tratados;
 - permissões/RLS continuam a fronteira real;
-- requisitos PENDING permanecem sem inferência;
+- `REQ-FIN-004` e demais PENDINGs permanecem sem inferência;
 - lint, typecheck, testes, build, banco/RLS e integrações aplicáveis estão verdes;
 - ausência de browser/homologação visual é registrada honestamente se persistir;
 - `CURRENT_STATE`, `HANDOFF` e `NEXT_ACTION` são reconciliados.
 
-## Depois de Compras
+## Depois de Financeiro
 
-Somente após a integração da consolidação de Compras, promover:
+Somente após a integração da consolidação de Financeiro, promover:
 
-> **Financeiro**
+> **Caixa**
 
-Não saltar diretamente para Caixa/Dashboard.
+Não saltar diretamente para Dashboard.
 
 ## Ordem macro
 
@@ -198,8 +235,8 @@ Não saltar diretamente para Caixa/Dashboard.
 4. ~~Administração~~ — PR #151;
 5. ~~Cadastros~~ — PR #153;
 6. ~~Estoque~~ — PR #155;
-7. **Compras** — próxima;
-8. Financeiro;
+7. ~~Compras~~ — PR #157;
+8. **Financeiro** — próxima;
 9. Caixa;
 10. Dashboard;
 11. limpeza de linguagem;
