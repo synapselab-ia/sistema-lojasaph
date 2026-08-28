@@ -13,6 +13,26 @@ insert into public.organization_memberships(
   ('95000000-0000-4000-8000-000000000010','00000000-0000-4000-8000-000000000001','95000000-0000-4000-8000-000000000001','owner',null,null,null,true),
   ('95000000-0000-4000-8000-000000000011','00000000-0000-4000-8000-000000000001','95000000-0000-4000-8000-000000000003','viewer',null,'00000000-0000-4000-8000-000000000100',null,true);
 
+-- A location linked to a Sector must use that Sector's Unit.
+do $$
+begin
+  begin
+    insert into public.stock_locations(
+      organization_id, unit_id, sector_id, name, code, location_type
+    ) values (
+      '00000000-0000-4000-8000-000000000001',
+      '00000000-0000-4000-8000-000000000101',
+      '00000000-0000-4000-8000-000000000110',
+      'Local estrutural inválido',
+      'invalid-structure-location',
+      'warehouse'
+    );
+    raise exception 'stock location accepted a Sector from another Unit';
+  exception when check_violation then
+    if position('STOCK_LOCATION_SCOPE_HIERARCHY_MISMATCH' in sqlerrm) = 0 then raise; end if;
+  end;
+end $$;
+
 -- Public/anon cannot call the privileged access boundary; authenticated can reach it and is checked internally.
 do $$
 begin
