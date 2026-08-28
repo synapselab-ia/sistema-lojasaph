@@ -2,16 +2,17 @@
 
 ## Estado de transição
 
-**Fase 51 / Issue #142 continua ativa. A slice de Compras está integrada; a próxima slice é Financeiro.**
+**Fase 51 / Issue #142 continua ativa. A slice de Financeiro está integrada; a próxima slice é Caixa.**
 
-Baseline funcional ao final de Compras:
+Baseline funcional ao final de Financeiro:
 
-- `main=63d97153cbe90fa13e9316522d1b909b5ed14840` — merge do PR #157;
-- PR #157 — `feat: consolidar jornada de Compras` — merged;
-- CI pós-merge #553 / run `33203276726`: success;
+- `main=692e2fb1ed12085148a04f22c540863b0d699994` — merge do PR #159;
+- PR #159 — `feat: consolidar jornada de Financeiro` — merged;
+- CI pós-merge #557 / run `33205617449`: success;
 - lint, typecheck, tests, production build e banco/migrations/RLS: success;
-- Business Transactions Integration #251 / run `33203078639`: success no head final do PR;
-- Inventory Count Integration #264 / run `33203078624`: success no head final do PR;
+- CI #556 / run `33205483532`: success no head final do PR;
+- Business Transactions Integration #252 / run `33205483531`: success no head final do PR;
+- Inventory Count Integration #265 / run `33205483505`: success no head final do PR;
 - Issue #142 permanece aberta;
 - #75/#121 permanecem **TOTALMENTE ON HOLD**;
 - nenhum deploy Vercel manual/rotineiro foi feito.
@@ -27,110 +28,118 @@ Slices já integradas:
 - PR #152 — reconciliação/handoff de Cadastros;
 - PR #153 — Cadastros: Produtos, Fornecedores e Funcionários;
 - PR #155 — Estoque consolidado;
-- PR #157 — Compras consolidado.
+- PR #157 — Compras consolidado;
+- PR #159 — Financeiro consolidado.
 
-Não reabrir Cadastros, Estoque ou Compras sem bug ou gap concreto.
+Não reabrir essas áreas sem bug ou gap concreto.
 
-## O que o PR #157 entregou
+## O que o PR #159 entregou
 
 ### Estrutura da área
 
-Compras agora possui visão principal e destinos subordinados:
+Financeiro agora possui visão principal e destinos subordinados:
 
-- `/workspace/compras` — visão de pedidos em andamento e atenção operacional;
-- `/workspace/compras/pedidos` — lista pesquisável/filtrável;
-- `/workspace/compras/pedidos/novo` — criação de rascunho;
-- `/workspace/compras/pedidos/[id]` — detalhe estável e ações contextuais;
-- `/workspace/compras/pedidos/[id]/receber` — recebimento total/parcial explícito;
-- `/workspace/compras/recebimentos` — entregas já efetivadas;
-- `/workspace/compras/historico` — pedidos recebidos/cancelados.
+- `/workspace/financeiro` — indicadores, vencimentos que exigem atenção e atalhos;
+- `/workspace/financeiro/contas` — lista pesquisável/filtrável;
+- `/workspace/financeiro/contas/nova` — criação dedicada de documento e parcelas;
+- `/workspace/financeiro/contas/[id]` — detalhe estável, parcelas, anexos e histórico;
+- `/workspace/financeiro/contas/[id]/pagar` — registro explícito de pagamento;
+- `/workspace/financeiro/vencimentos` — consulta por status derivado;
+- `/workspace/financeiro/pagamentos` — histórico de pagamentos e estornos.
 
 ### Contratos preservados
 
 - nenhum schema/migration/RPC/RLS novo;
-- criação, emissão, recebimento e cancelamento continuam usando os RPCs existentes;
-- recebimento parcial continua suportado;
-- quantidade recebida não pode ultrapassar o pendente;
-- recebimento continua movimentando Estoque exatamente uma vez pelo mesmo boundary transacional/idempotente;
-- lote/validade não ganhou nova semântica de negócio;
-- RLS/grants continuam sendo a fronteira de segurança.
+- criação, pagamento, estorno e cancelamento continuam usando os RPCs existentes;
+- pagamento continua evento auditável e estorno continua evento relacionado, sem apagar histórico;
+- duplo estorno continua bloqueado;
+- cancelamento com pagamento líquido continua bloqueado até os estornos necessários;
+- diferenças entre nominal e pago permanecem explícitas, sem classificação automática;
+- referências/instruções permanecem separadas do pagamento executado;
+- anexos continuam privados no boundary existente;
+- escopos Organization/Unit/Sector, RLS/grants e idempotência permanecem autoritativos;
+- `REQ-FIN-004` continua PENDING.
 
 ### UX
 
-- a antiga megapágina foi removida da experiência normal;
-- pedido persistente possui URL própria;
-- a lista possui busca/filtro e alternativa mobile;
-- pedido mostra quantidade pedida, recebida e pendente;
-- recebimento ganhou fluxo vertical dedicado;
-- cancelamento deixou de depender de `window.prompt()`;
-- estados loading/empty/error/read-only/not-found foram tratados conforme o fluxo.
+- a antiga megapágina deixou de ser a experiência normal;
+- documento persistente ganhou URL própria;
+- criação e pagamento ganharam fluxos dedicados;
+- estorno/cancelamento deixaram de depender de `window.prompt()`;
+- listas/históricos possuem alternativa mobile;
+- documento inexistente/inacessível usa estado seguro;
+- exportação CSV foi preservada.
 
 ## Homologação visual
 
 **Não houve browser real disponível nesta execução.**
 
-Não declarar Compras homologado visualmente em desktop/tablet/mobile apenas por build/CI. Também não fazer deploy manual na Vercel apenas para criar essa evidência.
+Não declarar Financeiro homologado visualmente em desktop/tablet/mobile apenas por build/CI. Também não fazer deploy manual na Vercel apenas para criar essa evidência.
 
-## Próxima ação: Financeiro
+## Próxima ação: Caixa
 
-O próximo chat deve executar a consolidação de **Financeiro**, sem refazer Compras.
+O próximo chat deve executar a consolidação de **Caixa**, sem refazer Financeiro.
 
-Inventário preliminar já comprovado na `main`:
+Inventário preliminar comprovado na `main`:
 
-- somente `/workspace/financeiro/page.tsx` representa a área hoje;
-- a página possui aproximadamente 26 KB e concentra visão, criação, parcelas, pagamentos, estornos, cancelamento, anexos e exportação;
-- o gateway principal é `src/modules/finance/adapters/supabase-finance-gateway.ts`;
-- exportação usa boundary próprio `supabase-payables-export-gateway.ts`;
-- anexos já possuem componente/boundary próprio (`FinanceAttachmentsPanel` e APIs server-side existentes);
-- `window.prompt()` ainda é usado para motivo de estorno e cancelamento;
-- `REQ-FIN-004` continua PENDING e não pode ser resolvido pela refatoração.
+- `/workspace/caixa/page.tsx` ainda concentra configuração e operação em uma única página;
+- o gateway principal é `src/modules/cash/adapters/supabase-cash-gateway.ts`;
+- a migration-base é `supabase/migrations/20260818135623_cash_sessions_flow.sql`, posteriormente endurecida pelos escopos/permissões;
+- commands idempotentes existentes: `create_cash_register`, `create_payment_method`, `create_fee_rule`, `open_cash_session`, `set_cash_payment_total`, `record_cash_movement`, `close_cash_session`, `cancel_cash_session`;
+- a página atual mistura cadastro de caixa, meios de pagamento, regras de taxa, abertura de sessão, totais, movimentos, fechamento, cancelamento e histórico;
+- cancelamento de sessão ainda usa `window.prompt()`;
+- `REQ-CASH-001..006` já descrevem data/unidade, totais por meio, taxas configuráveis, fundo, movimentos e esperado x contado;
+- `REQ-CASH-007` e `REQ-CASH-008` permanecem PENDING;
+- Q-007 e Q-009 permanecem abertas e impedem inventar venda individual ou semântica final de consumo de funcionários.
 
 ### Passos obrigatórios
 
 1. reconciliar `main`, Issue #142, PRs, branches e CI reais;
-2. reler `NEXT_ACTION.md`, roadmap, IA, design system, DoD, open questions e requisitos/ADRs de Financeiro;
-3. inventariar domínio, tabelas, views, gateways, RPCs, RLS/grants, APIs de anexos e exportação antes de editar;
-4. localizar os boundaries autoritativos de criação de documento, pagamento, estorno e cancelamento;
-5. provar as regras atuais de documento/parcelas/pagamentos por código e testes;
-6. mapear permissões e escopos por Organization/Unit/Sector conforme implementados;
-7. definir a navegação e responsabilidades antes do código;
-8. preferir `lista → detalhe → ação` para documento/conta persistente;
-9. separar criação de documento da listagem/detalhe;
-10. tornar pagamento e estorno ações explícitas, sem `window.prompt()`;
-11. manter anexos no boundary existente, sem duplicar upload/download nem expor Storage/admin credentials;
-12. preservar exportação CSV sem colocá-la como regra de domínio;
-13. oferecer estratégia mobile deliberada, feedback e estados seguros;
-14. manter lint, typecheck, tests, build, banco/RLS e integrações aplicáveis verdes;
-15. registrar a ausência de browser real se continuar indisponível.
+2. reler `NEXT_ACTION.md`, roadmap, IA, design system, DoD, requirements e open questions;
+3. inventariar página, gateway, migration, RLS/grants, permissões e testes de Caixa antes de editar;
+4. provar como esperado, contado e divergência são calculados/persistidos;
+5. provar como totais por meio, taxa e `affects_cash_drawer` entram no esperado;
+6. mapear escopo real por Organization/Unit/Register e permissões de configuração/operação;
+7. separar configuração administrativa de sessão operacional sempre que o comportamento atual suportar;
+8. preferir sessão persistente com URL estável e ações contextuais;
+9. separar abertura, detalhe/operação, fechamento/cancelamento e histórico em responsabilidades claras;
+10. substituir `window.prompt()` por confirmação explícita sem mudar a regra do RPC;
+11. garantir estratégia mobile deliberada e feedback/estados seguros;
+12. manter lint, typecheck, tests, build, banco/RLS e integrações aplicáveis verdes;
+13. registrar ausência de browser real se persistir.
 
-## Invariantes para Financeiro
+## Invariantes para Caixa
 
 Não permitir que a reorganização visual altere silenciosamente:
 
-- total nominal derivado das parcelas conforme contrato existente;
-- status de parcela derivado de vencimento/saldo/eventos;
-- pagamento como evento auditável, sem apagar histórico;
-- estorno como evento relacionado ao pagamento original;
-- pagamentos já estornados não serem estornados novamente;
-- documento com pagamento líquido não ser cancelado antes dos estornos exigidos;
-- diferenças entre nominal e efetivamente pago permanecerem explícitas, sem classificá-las automaticamente como juros, multa ou desconto;
-- referências/instruções de pagamento permanecerem separadas do evento de pagamento;
-- anexos privados e autorização server-side;
-- idempotência/atomicidade dos comandos;
+- data de negócio e unidade/caixa da sessão;
+- sequência da sessão e unicidade já persistida;
+- fundo inicial separado dos totais operacionais;
+- totais por meio com bruto, taxa e líquido;
+- regras de taxa versionadas/configuráveis, sem hardcode na UI;
+- `affects_cash_drawer` conforme configuração existente;
+- movimentos de entrada/saída com valor, data, motivo e responsável conforme boundary atual;
+- sessão aberta como única situação mutável pelas operações suportadas;
+- valor esperado calculado pelo contrato persistente existente;
+- valor contado informado no fechamento;
+- divergência preservada explicitamente;
+- cancelamento sem exclusão física e com auditoria;
+- idempotência dos commands;
 - RLS/grants/RPCs como boundaries reais de autorização.
 
-`REQ-FIN-004` permanece PENDING. Não decidir nesta slice se a cardinalidade final de pagamentos por parcela deve ser restringida além do que o sistema já suporta.
+`REQ-CASH-007` continua PENDING. Não homologar `employee_consumption` como faturamento, venda ao funcionário, desconto ou consumo gratuito apenas porque o tipo existe tecnicamente.
+
+`REQ-CASH-008` continua PENDING. Não criar vendas individuais, POS/PDV ou integração de vendas nesta slice.
 
 ## Fora da próxima slice
 
-Não usar Financeiro para:
+Não usar Caixa para:
 
-- reabrir Cadastros, Estoque ou Compras sem evidência concreta;
-- consolidar Caixa;
+- reabrir áreas já consolidadas sem evidência concreta;
 - redesenhar Dashboard;
+- resolver Q-007/Q-009 ou `REQ-CASH-007/008` por conveniência;
 - mudar Q-022/política de autorização;
-- resolver `REQ-FIN-004` ou outros PENDINGs por conveniência;
-- alterar política de anexos/Storage sem necessidade comprovada da própria jornada;
+- criar integração de vendas/POS;
 - retomar #75/#121;
 - tocar Production para prova;
 - fazer deploy Vercel manual/rotineiro.
@@ -144,8 +153,8 @@ Não usar Financeiro para:
 5. ~~Cadastros~~ — PR #153;
 6. ~~Estoque~~ — PR #155;
 7. ~~Compras~~ — PR #157;
-8. **Financeiro** — próxima;
-9. Caixa;
+8. ~~Financeiro~~ — PR #159;
+9. **Caixa** — próxima;
 10. Dashboard;
 11. limpeza de linguagem;
 12. homologação UX real;
