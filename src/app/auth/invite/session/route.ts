@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { normalizeBootstrapOwnerEmail } from "@/lib/auth/bootstrap-policy";
 import {
+  isAuthorizedApplicationInvite,
   isExpectedBootstrapInviteEmail,
   isSameOriginInviteRequest,
 } from "@/lib/auth/implicit-invite";
@@ -34,11 +35,6 @@ export async function POST(request: NextRequest) {
     return noStoreJson({ ok: false }, 403);
   }
 
-  const expectedEmail = normalizeBootstrapOwnerEmail(process.env.LOJASAPH_BOOTSTRAP_OWNER_EMAIL);
-  if (!expectedEmail) {
-    return noStoreJson({ ok: false }, 403);
-  }
-
   const contentType = request.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase();
   if (contentType !== "application/json") {
     return noStoreJson({ ok: false }, 415);
@@ -69,12 +65,26 @@ export async function POST(request: NextRequest) {
   const verifier = createServerRlsSupabaseClient(accessToken);
   const { data: verifiedData, error: verifyError } = await verifier.auth.getUser(accessToken);
   const verifiedUser = verifiedData.user;
-  if (
-    verifyError
-    || !verifiedUser
-    || !verifiedUser.email_confirmed_at
-    || !isExpectedBootstrapInviteEmail(verifiedUser.email, expectedEmail)
-  ) {
+  if (verifyError || !verifiedUser || !verifiedUser.email_confirmed_at) {
+    return noStoreJson({ ok: false }, 403);
+  }
+
+  const expectedBootstrapEmail = normalizeBootstrapOwnerEmail(process.env.LOJASAPH_BOOTSTRAP_OWNER_EMAIL);
+  const bootstrapEmailMatches = isExpectedBootstrapInviteEmail(verifiedUser.email, expectedBootstrapEmail);
+  const { data: membershipData, error: membershipError } = await verifier
+    .from("organization_memberships")
+    .select("id")
+    .eq("user_id", verifiedUser.id)
+    .eq("active", true)
+    .limit(1);
+  if (membershipError) {
+    return noStoreJson({ ok: false }, 403);
+  }
+
+  if (!isAuthorizedApplicationInvite({
+    bootstrapEmailMatches,
+    hasActiveMembership: Boolean(membershipData?.length),
+  })) {
     return noStoreJson({ ok: false }, 403);
   }
 
@@ -84,12 +94,7 @@ export async function POST(request: NextRequest) {
     refresh_token: refreshToken,
   });
 
-  if (
-    sessionError
-    || !sessionData.user
-    || sessionData.user.id !== verifiedUser.id
-    || !isExpectedBootstrapInviteEmail(sessionData.user.email, expectedEmail)
-  ) {
+  if (sessionError || !sessionData.user || sessionData.user.id !== verifiedUser.id) {
     await sessionClient.auth.signOut();
     return noStoreJson({ ok: false }, 401);
   }
