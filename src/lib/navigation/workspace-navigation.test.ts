@@ -45,6 +45,8 @@ describe("workspaceNavigation", () => {
       "/workspace/produtos",
       "/workspace/fornecedores",
       "/workspace/funcionarios",
+      "/workspace/administracao/estrutura",
+      "/workspace/administracao/acessos",
       "/workspace/backup",
     ]);
   });
@@ -68,8 +70,10 @@ describe("workspace navigation active state", () => {
   it("marks the parent area active when a grouped subarea is active", () => {
     const stock = workspaceNavigation.find((area) => area.id === "stock");
     const catalogs = workspaceNavigation.find((area) => area.id === "catalogs");
+    const administration = workspaceNavigation.find((area) => area.id === "administration");
 
     expect(stock && isWorkspaceAreaActive("/workspace/transferencias", stock)).toBe(true);
     expect(catalogs && isWorkspaceAreaActive("/workspace/fornecedores", catalogs)).toBe(true);
+    expect(administration && isWorkspaceAreaActive("/workspace/administracao/acessos", administration)).toBe(true);
   });
 });

@@ -51,6 +51,7 @@ export default function EmployeesPage() {
       active: employee.active,
       defaultUnitId: employee.defaultUnitId ?? "",
       defaultSectorId: employee.defaultSectorId ?? "",
+      // O vínculo é preservado internamente; sua manutenção pertence a Usuários e permissões.
       linkedUserId: employee.linkedUserId ?? "",
     });
     setMessage(null);
@@ -116,7 +117,7 @@ export default function EmployeesPage() {
         </header>
         <section className="rounded-2xl border border-neutral-200 bg-white p-6 text-sm leading-6 text-neutral-600 shadow-sm">
           <h2 className="font-semibold text-neutral-900">Acesso administrativo necessário</h2>
-          <p className="mt-2">O diretório de funcionários pode conter vínculo técnico com identidade autenticada e fica restrito a owner, admin ou manager dentro do escopo autorizado.</p>
+          <p className="mt-2">O diretório de funcionários pode conter vínculo com uma identidade autenticada e fica restrito a owner, admin ou manager dentro do escopo autorizado.</p>
         </section>
       </div>
     );
@@ -128,7 +129,7 @@ export default function EmployeesPage() {
         <p className="text-sm font-medium text-emerald-700">Administração — cadastro persistente</p>
         <h1 className="mt-1 text-3xl font-semibold tracking-tight">Funcionários</h1>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-neutral-600">
-          Funcionário é uma identidade operacional separada do login. Vincular um usuário é opcional e não cria perfil, membership ou permissão automaticamente.
+          Funcionário é uma identidade operacional separada do login. O cadastro desta tela não concede acesso ao sistema; o vínculo com uma identidade autenticada é administrado separadamente em Usuários e permissões.
         </p>
       </header>
 
@@ -161,7 +162,7 @@ export default function EmployeesPage() {
                   </div>
                   <div className="rounded-xl bg-neutral-50 p-3">
                     <p className="text-xs text-neutral-500">Identidade de acesso</p>
-                    <p className="mt-1 font-medium">{employee.linkedUserId ? "Usuário vinculado" : "Sem login vinculado"}</p>
+                    <p className="mt-1 font-medium">{employee.linkedUserId ? "Identidade vinculada" : "Sem login vinculado"}</p>
                   </div>
                 </div>
               </article>
@@ -175,7 +176,7 @@ export default function EmployeesPage() {
         <form onSubmit={submit} className="h-fit space-y-4 rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
           <div>
             <h2 className="text-lg font-semibold">{editingId ? "Editar funcionário" : "Novo funcionário"}</h2>
-            <p className="mt-1 text-xs leading-5 text-neutral-500">O RLS valida novamente papel e escopo. Cadastro de funcionário não concede acesso ao sistema.</p>
+            <p className="mt-1 text-xs leading-5 text-neutral-500">O RLS valida novamente papel e escopo. Identidades de login não são editadas neste cadastro.</p>
           </div>
 
           <label className="block text-sm font-medium">
@@ -209,18 +210,6 @@ export default function EmployeesPage() {
               <option value="">Sem setor padrão</option>
               {availableSectors.map((sector) => <option key={sector.id} value={sector.id}>{sector.name} · {sector.unitName}</option>)}
             </select>
-          </label>
-
-          <label className="block text-sm font-medium">
-            ID do usuário autenticado (opcional)
-            <input
-              value={form.linkedUserId}
-              onChange={(event) => setForm({ ...form, linkedUserId: event.target.value })}
-              placeholder="UUID do auth.users"
-              pattern="[0-9a-fA-F-]{36}"
-              className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 font-mono text-xs font-normal"
-            />
-            <span className="mt-1 block text-xs font-normal leading-5 text-neutral-500">O vínculo identifica a mesma pessoa; papéis continuam sendo administrados separadamente em memberships.</span>
           </label>
 
           {editingId && (

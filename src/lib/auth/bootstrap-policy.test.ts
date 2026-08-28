@@ -89,8 +89,8 @@ describe("bootstrap owner policy", () => {
     })).toBe("ready");
   });
 
-  it("uses the dedicated implicit invite page as the Auth Admin redirect", () => {
+  it("uses the dedicated implicit invite page and explicit bootstrap destination", () => {
     expect(buildBootstrapInviteRedirectUrl("https://sistema.example/"))
-      .toBe("https://sistema.example/auth/invite");
+      .toBe("https://sistema.example/auth/invite?next=%2Fbootstrap");
   });
 });
