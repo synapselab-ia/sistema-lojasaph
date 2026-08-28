@@ -58,3 +58,10 @@ export function isExpectedBootstrapInviteEmail(
   const expected = expectedEmail?.trim().toLowerCase();
   return Boolean(actual && expected && actual === expected);
 }
+
+export function isAuthorizedApplicationInvite(input: {
+  readonly bootstrapEmailMatches: boolean;
+  readonly hasActiveMembership: boolean;
+}): boolean {
+  return input.bootstrapEmailMatches || input.hasActiveMembership;
+}
