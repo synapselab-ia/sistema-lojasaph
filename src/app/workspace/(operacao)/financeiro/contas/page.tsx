@@ -2,16 +2,15 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { EmptyState, FeedbackMessage, FormField, Input, PageHeader, Panel, Select, StatusBadge } from "@/components/ui";
-import { SemanticTone } from "@/components/ui";
+import { EmptyState, FeedbackMessage, FormField, Input, PageHeader, Panel, Select, SemanticTone, StatusBadge } from "@/components/ui";
 import { useRuntimeWorkspace } from "@/modules/master-data/ui/runtime-workspace-provider";
 import {
+  dateLabel,
   documentSituationLabel,
   filterFinanceDocuments,
   FinanceDocumentSituation,
   moneyLabel,
   summarizeDocument,
-  dateLabel,
 } from "@/modules/finance/ui/finance-view-model";
 import { useFinanceState } from "@/modules/finance/ui/use-finance-state";
 
@@ -54,12 +53,12 @@ export default function FinanceAccountsPage() {
 
       <Panel as="section">
         <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_240px]">
-          <FormField label="Buscar" htmlFor="finance-search" help="Fornecedor, unidade, número, tipo, série ou observação.">
-            {({ id, describedBy }) => <Input id={id} aria-describedby={describedBy} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Ex.: fornecedor, NF-123..." />}
+          <FormField id="finance-search" label="Buscar" hint="Fornecedor, unidade, número, tipo, série ou observação.">
+            {(field) => <Input {...field} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Ex.: fornecedor, NF-123..." />}
           </FormField>
-          <FormField label="Situação" htmlFor="finance-situation">
-            {({ id, describedBy }) => (
-              <Select id={id} aria-describedby={describedBy} value={situation} onChange={(event) => setSituation(event.target.value as FinanceDocumentSituation | "all")}>
+          <FormField id="finance-situation" label="Situação">
+            {(field) => (
+              <Select {...field} value={situation} onChange={(event) => setSituation(event.target.value as FinanceDocumentSituation | "all")}>
                 <option value="all">Todas</option>
                 <option value="overdue">Com vencimento em atraso</option>
                 <option value="due_today">Vence hoje</option>
