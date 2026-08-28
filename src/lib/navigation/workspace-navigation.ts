@@ -45,6 +45,11 @@ export const workspaceNavigation: readonly WorkspaceNavigationArea[] = [
     id: "finance",
     label: "Financeiro",
     href: "/workspace/financeiro",
+    items: [
+      { href: "/workspace/financeiro/contas", label: "Contas a pagar" },
+      { href: "/workspace/financeiro/vencimentos", label: "Vencimentos" },
+      { href: "/workspace/financeiro/pagamentos", label: "Pagamentos" },
+    ],
   },
   {
     id: "cash",
