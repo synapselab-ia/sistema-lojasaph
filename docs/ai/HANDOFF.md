@@ -4,140 +4,145 @@
 
 **Fase 51 / Issue #142 — consolidação de produto, arquitetura de informação e UX — é a frente ativa.**
 
-As duas primeiras slices estruturais da fase estão integradas:
+Slices integradas:
 
 - PR #145 — remoção da entrada técnica;
-- PR #147 — arquitetura da informação + navegação desktop/mobile.
+- PR #147 — arquitetura da informação + navegação desktop/mobile;
+- PR #149 — design system mínimo e padrões reutilizáveis.
 
-Estado real confirmado:
+Estado real confirmado após o PR #149:
 
-- `main=3bc28e28a3a6e0d4b4b4543724942d308317d0f4` após o PR #147;
-- CI final do PR #514 / run `33184629115`: success;
-- Business Transactions Integration #228 / run `33184629114`: success;
-- CI pós-merge #515 / run `33184891544`: success;
+- `main=14f1e98f7e78b229b57457c44ac5a1fd512e2254`;
+- CI do PR #518 / run `33186337616`: success;
+- Inventory Count Integration #242 / run `33186337684`: success;
+- Business Transactions Integration #229 / run `33186337724`: success;
+- CI pós-merge #519 / run `33186464104`: success;
 - Issue #142 continua aberta e ativa;
-- #75 e #121 continuam abertas e **TOTALMENTE ON HOLD** em `REQ-PLAT-005`;
-- nenhuma migration, RLS, regra de negócio ou dado Supabase foi alterado;
+- #75 e #121 continuam abertas e **TOTALMENTE ON HOLD**;
+- nenhuma migration/RLS/regra de negócio/query operacional/dado Supabase foi alterado no design system;
 - nenhum deploy Vercel manual/rotineiro foi realizado.
 
-Não refazer #138/#139, a auditoria, a remoção da landing ou o desenho de navegação já integrado. Não reabrir a ordem aprovada sem nova evidência ou prioridade explícita.
+Não refazer #138/#139, a auditoria, a entrada, o desenho de navegação ou o design system mínimo já integrados.
 
-## O que já foi concluído na Fase 51
+## Design system que agora é baseline
 
-### Entrada normal do produto
+Documento:
 
-`/` encaminha server-side:
+- `docs/product/design-system.md`.
 
-- backend operacional indisponível/bloqueado → `/login`;
-- não autenticado → `/login`;
-- autenticado → `/workspace`.
+Import público:
 
-`/workspace` continua responsável por membership, `sem-acesso`, seleção de organização e operação. `Abrir demonstração` saiu da navegação normal; `/cadastros` continua apenas como rota interna de engenharia/teste.
+- `src/components/ui/index.ts`.
 
-### Arquitetura da informação
+Disponível hoje:
 
-Contrato autoritativo da navegação atual:
+- `PageHeader`;
+- `Button` (`primary`, `secondary`, `danger`, `ghost`; disabled/loading);
+- `FormField` + `Input` / `Select` / `Textarea`;
+- `Panel`;
+- `StatusBadge`;
+- `FeedbackMessage`;
+- `EmptyState`;
+- `Drawer`;
+- `Dialog` / `ConfirmDialog`;
+- modal layer compartilhado com Escape, trap básico de foco, scroll lock e restauração de foco.
 
-- `docs/product/workspace-information-architecture.md`.
+Pontos já migrados/provados:
 
-Primeiro nível integrado:
+- `RuntimeShell` — Drawer/Button;
+- Login — painel, feedback, campos e botão;
+- Proteção dos dados — cabeçalho, painéis, badge e empty state.
 
-- Visão geral;
-- Estoque;
-- Compras;
-- Financeiro;
-- Caixa;
-- Cadastros;
-- Administração.
+Não interpretar a existência desses componentes como autorização para migrar todas as páginas de uma vez. A migração ampla acompanha as slices funcionais de cada área.
 
-Agrupamentos atuais:
+Ainda fora da fundação inicial:
 
-- Estoque: `/workspace/estoque` + Baixas + Devoluções + Transferências + Inventários;
-- Cadastros: Produtos + Fornecedores + Funcionários;
-- Administração: somente Proteção dos dados, porque é a única experiência administrativa real já existente;
-- Compras, Financeiro e Caixa continuam apontando às páginas atuais até suas slices próprias.
+- DataTable/lista responsiva genérica;
+- Tabs;
+- Toast;
+- SearchField/filtros;
+- paginação;
+- componentes de domínio específicos.
 
-As URLs existentes foram preservadas. Não foram inventadas páginas de Entradas, Lotes/Validades, Recebimentos, Histórico, Estrutura ou Usuários/Permissões só para completar o menu.
-
-### Navegação desktop/mobile
-
-Desktop usa sidebar vertical persistente e agrupada.
-
-Mobile usa barra superior + `Menu` + drawer vertical com a mesma hierarquia; a navegação principal deixou de depender de overflow horizontal.
-
-O estado ativo entende subrotas sem ativar indevidamente a Visão geral.
-
-### Autorização
-
-O menu não decide acesso. Guards, RPCs e RLS continuam sendo a boundary autoritativa. Não esconder/liberar funcionalidade por inferência visual.
+Criá-los somente quando uma jornada real fornecer contrato suficiente.
 
 ## Validação que não deve ser superestimada
 
-PR #147 e `main` passaram lint, typecheck, unit tests, build, banco/RLS e Business Transactions.
+Código, testes e banco estão verdes no PR e novamente na `main`.
 
-**Não houve homologação visual em browser real nesta sessão.** O ambiente não conseguiu executar a aplicação localmente por limitação de rede, e não foi feito deploy Vercel para contornar isso porque deploy manual/rotineiro está proibido. A homologação real desktop/tablet/mobile permanece etapa posterior explícita da Fase 51.
+**Não houve homologação visual em browser real nesta sessão.** Não registrar drawer/dialog/foco/responsividade como homologados apenas por build/CI. A validação real desktop/tablet/mobile continua na etapa explícita posterior da Fase 51.
 
 ## Próxima slice obrigatória
 
 A próxima slice é:
 
-> **Design system mínimo e padrões reutilizáveis de página.**
+> **Administração — Estrutura + Usuários/Permissões.**
 
-O próximo chat deve estabelecer uma fundação pequena antes de tocar em Administração/Cadastros/Estoque/Compras/Financeiro/Caixa em escala.
+Antes de editar UI, o próximo chat deve:
 
-Direção esperada:
+1. confirmar `main`, Issue #142, PRs, branches e CI reais;
+2. reler `docs/product/product-completion-ux-roadmap.md`, `workspace-information-architecture.md`, `design-system.md`, `docs/qa/definition-of-done.md` e `docs/product/open-questions.md`;
+3. inventariar o modelo e persistência já existentes para Organization, Business, Unit, Sector e StockLocation;
+4. inventariar membership, roles, escopos, associação/invite de identidade e RLS existentes;
+5. localizar APIs/repositories/adapters/actions já disponíveis e gaps reais de administrabilidade;
+6. só então desenhar as jornadas e páginas administrativas, reutilizando o design system integrado.
 
-1. confirmar o estado real de `main`, Issue #142, PRs e CI;
-2. ler `docs/product/product-completion-ux-roadmap.md`, `docs/product/workspace-information-architecture.md` e `docs/qa/definition-of-done.md`;
-3. inventariar padrões repetidos em `RuntimeShell`, `globals.css` e páginas representativas;
-4. definir contratos mínimos de componentes e estados reutilizáveis;
-5. implementar apenas a fundação necessária para as próximas slices, sem refatoração massiva;
-6. provar os componentes em pontos de baixo risco, preservando jornada e regras existentes;
-7. documentar os padrões para que as próximas áreas não recriem estilos/feedback ad hoc.
+`NEXT_ACTION.md` contém a delimitação executável e os critérios de aceite.
 
-`NEXT_ACTION.md` contém o escopo executável e os critérios de aceite.
+## Q-022 é um guardrail, não uma resposta
 
-## Baseline do design system aprovado pelo roadmap
+`docs/product/open-questions.md` ainda contém:
 
-O roadmap prevê, conforme necessidade real:
+- **Q-022 — Quem pode fazer cada ação?**
 
-- AppShell/navegação;
-- PageHeader;
-- Button / IconButton;
-- Input / Select / Textarea / FormField;
-- StatusBadge;
-- Card/superfície;
-- DataTable responsiva;
-- Tabs;
-- Dialog/ConfirmDialog;
-- Drawer;
-- Toast/feedback;
-- EmptyState;
-- SearchField.
+Ela está aberta. Portanto:
 
-A próxima slice **não precisa refatorar todas as páginas para todos esses componentes de uma vez**. Deve criar o núcleo mínimo, coerente e reutilizável que desbloqueia Administração e as consolidações seguintes.
+- não inventar perfis reais;
+- não inventar nova matriz de permissões para fazer a UI parecer completa;
+- não assumir que nomes técnicos de roles equivalem aos perfis finais do cliente;
+- preservar guards/RPCs/RLS existentes como fronteira técnica;
+- quando a UI puder expor apenas capacidades já sustentadas pela política atual, fazê-lo;
+- quando a experiência depender de uma decisão real não documentada, registrar a lacuna em vez de decidir silenciosamente.
+
+## Objetivo de Administração
+
+Conforme o roadmap, a área precisa evoluir para permitir, dentro do que a autorização existente suporta:
+
+### Estrutura
+
+- visualizar a estrutura organizacional;
+- cadastrar/editar unidades, setores e locais de estoque quando o backend já suportar a operação corretamente;
+- manter relações entre entidades;
+- usar inativação em vez de exclusão destrutiva quando essa for a regra existente/segura;
+- não inventar cascade ou regra de exclusão.
+
+### Usuários/Permissões
+
+- apresentar pessoas e acessos sem exigir UUID técnico na experiência normal;
+- mostrar acesso, papel e escopo de forma compreensível quando os dados existentes permitirem;
+- oferecer associação/convite/alteração/revogação somente nos limites comprovados da política existente;
+- separar conceitualmente Employee de identidade/autorização de acesso.
+
+A slice pode descobrir que alguma mutação administrativa ainda não possui boundary seguro/adequado. Nesse caso, implementar o menor backend necessário com migration/RLS/testes somente se a necessidade estiver comprovada; não criar SQL por antecipação.
 
 ## Fora da próxima slice
 
-Não usar a criação do design system para:
+Não usar Administração para:
 
-- redesenhar todas as páginas;
-- alterar URLs/arquitetura de informação já fechadas;
-- criar Estrutura ou Usuários/Permissões ainda;
-- reorganizar jornadas internas de Estoque/Compras/Financeiro/Caixa;
-- resolver `window.prompt()` em massa antes das slices dos módulos;
-- mudar regras de negócio/autorização;
-- tocar em migrations/RLS/Supabase sem necessidade comprovada;
+- refatorar Cadastros, Estoque, Compras, Financeiro ou Caixa;
+- resolver UUID técnico de Funcionários por uma refatoração ampla fora do contexto administrativo;
 - resolver requisitos PENDING;
+- redefinir toda a política de acesso sem decisão de negócio;
 - retomar #75/#121;
-- fazer deploy Vercel manual/rotineiro.
+- fazer deploy Vercel manual/rotineiro;
+- criar componentes genéricos de design system sem uso real na jornada administrativa.
 
 ## Ordem oficial
 
 1. ~~entrada técnica~~ — PR #145;
 2. ~~arquitetura da informação~~ — PR #147;
 3. ~~navegação desktop/mobile~~ — PR #147;
-4. design system mínimo;
+4. ~~design system mínimo~~ — PR #149;
 5. Administração;
 6. Cadastros;
 7. Estoque;
@@ -172,6 +177,6 @@ Não retomar scheduling, Storage, R2/S3, restore drills ou evidência automátic
 
 ## Próximo chat
 
-Consultar GitHub real e `NEXT_ACTION.md`, criar branch a partir da `main` vigente e executar somente a slice de **design system mínimo e padrões reutilizáveis**. Não refazer entrada/navegação e não saltar para Administração ou refatoração de módulos antes de concluir essa fundação.
+Consultar GitHub real e `NEXT_ACTION.md`, criar branch a partir da `main` vigente e executar somente a slice de **Administração — Estrutura + Usuários/Permissões**. Começar pelo inventário de modelo, autorização e boundaries existentes; não começar pela tela nem pela invenção de perfis.
 
 Restrições permanentes: GitHub é fonte de verdade; RLS é boundary; nenhum secret em browser/Git/docs; Production não recebe fixture para prova; nenhum deploy Vercel rotineiro; repo não deve ser tornado private automaticamente.
