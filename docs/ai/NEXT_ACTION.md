@@ -2,171 +2,198 @@
 
 ## Estado
 
-**Fase 51 / Issue #142 — consolidação de produto, arquitetura de informação e UX — é a frente ativa.**
+**Fase 51 / Issue #142 — consolidação de produto, arquitetura de informação e UX — continua como frente ativa.**
 
 Slices concluídas:
 
 - PR #145 — remoção da entrada técnica;
 - PR #147 — arquitetura da informação + navegação desktop/mobile;
-- PR #149 — design system mínimo + padrões reutilizáveis.
+- PR #149 — design system mínimo + padrões reutilizáveis;
+- PR #151 — Administração: Estrutura + Usuários/Permissões.
 
 Baseline integrado confirmado em 2026-08-28:
 
-- `main=14f1e98f7e78b229b57457c44ac5a1fd512e2254`;
-- PR #149 `feat(ui): establish minimal design system`: merged;
-- CI do PR #518 / run `33186337616`: success;
-- Inventory Count Integration #242 / run `33186337684`: success;
-- Business Transactions Integration #229 / run `33186337724`: success;
-- CI pós-merge #519 / run `33186464104`: success;
+- `main=a06e7c3dd96b4b010ca4c7754438b90e40720399`;
+- CI do PR #523 / run `33195119453`: success;
+- Inventory Count Integration #244 / run `33195119447`: success;
+- Business Transactions Integration #231 / run `33195119446`: success;
+- CI pós-merge #524 / run `33195244017`: success;
 - Issue #142 aberta e ativa;
-- #75 e #121 continuam **TOTALMENTE ON HOLD** em `REQ-PLAT-005`.
+- #75/#121 continuam **TOTALMENTE ON HOLD**.
 
-Documentos de autoridade para a próxima slice:
+Documentos de autoridade:
 
 - `docs/product/product-completion-ux-roadmap.md`;
 - `docs/product/workspace-information-architecture.md`;
 - `docs/product/design-system.md`;
+- `docs/product/administration-capability-map.md`;
 - `docs/qa/definition-of-done.md`;
-- `docs/product/open-questions.md`;
-- ADRs e documentação de autorização/persistência relacionados ao código encontrado no inventário.
+- `docs/product/open-questions.md`.
 
-Não refazer entrada, arquitetura/navegação ou design system mínimo já integrados.
+Não refazer as slices já integradas.
 
 ## NEXT_ACTION objetiva
 
-### Executar a quarta slice operacional da Issue #142: Administração — Estrutura + Usuários/Permissões
+### Executar a próxima slice da Issue #142: Cadastros — Produtos, Fornecedores e Funcionários no padrão lista → detalhe → ação
 
-O workspace já possui a área Administração, mas hoje só expõe Proteção dos dados. O modelo técnico suporta estrutura organizacional e autorização em nível mais rico do que a administrabilidade disponível na aplicação.
-
-A próxima slice deve transformar capacidades **já comprovadas** em jornadas administrativas utilizáveis, sem inventar política de acesso ou regra de negócio.
+O objetivo não é redesenhar visualmente três páginas isoladas. É validar um padrão de produto reutilizável para entidades persistentes importantes, separando descoberta/listagem, contexto de detalhe e ações de manutenção sem mudar silenciosamente domínio, RLS ou regras de negócio.
 
 ### 1. Reconciliar e inventariar antes de editar
 
-No início da implementação:
+No início:
 
 1. confirmar `main`, Issue #142, PRs, branches e CI reais;
 2. reler os documentos de autoridade acima;
-3. inventariar schema/migrations/domínio/repositories/adapters/runtime para:
-   - Organization;
-   - Business;
-   - Unit;
-   - Sector;
-   - StockLocation;
-4. inventariar autorização e identidade existentes:
-   - memberships;
-   - roles;
-   - escopos Organization/Business/Unit/Sector/StockLocation quando aplicável;
-   - guards/helpers;
-   - RPCs/policies/RLS;
-   - convites/bootstrap/associação de usuário existentes;
-   - relação entre Employee e identidade de autenticação;
-5. localizar quais mutações administrativas já possuem boundary seguro e quais existem somente como seed/migration/backend sem jornada utilizável;
-6. registrar um mapa explícito `capacidade → boundary → papel/escopo atual → UI possível → gap real` antes de implementar a interface.
+3. inventariar domínio, repositories, adapters, services, runtime provider e queries para Produto, Fornecedor e Funcionário;
+4. localizar `findById`/listagens e relações já suportadas;
+5. identificar quais dados hoje são carregados globalmente pelo `RuntimeWorkspaceProvider` e quais podem/devem ser buscados no detalhe sem duplicar regra;
+6. mapear permissões/RLS atuais de leitura/manutenção para cada cadastro;
+7. definir um contrato explícito `lista → detalhe → ação` para cada entidade antes de começar a implementação.
 
-Não começar pela tela. Primeiro provar o que pode ser administrado com segurança pelo sistema atual.
+Não criar schema/RPC novo apenas para viabilizar layout. Primeiro reaproveitar os boundaries existentes.
 
-### 2. Tratar Q-022 corretamente
+### 2. Fechar o contrato de rotas
 
-`docs/product/open-questions.md` mantém aberta:
+Preservar como entradas de lista:
 
-> **Q-022 — Quem pode fazer cada ação?**
+- `/workspace/produtos`;
+- `/workspace/fornecedores`;
+- `/workspace/funcionarios`.
 
-Isso significa que a slice **não pode**:
+Preferir detalhes estáveis:
 
-- inventar perfis reais do cliente;
-- renomear roles técnicas como se fossem política homologada;
-- criar nova matriz ampla de permissões apenas para completar a tela;
-- ampliar acesso no backend por conveniência de UX.
+- `/workspace/produtos/[id]`;
+- `/workspace/fornecedores/[id]`;
+- `/workspace/funcionarios/[id]`.
 
-A implementação deve preservar a política técnica atual enquanto ela for suficiente e representar na UI somente capacidades suportadas pelos guards/RPCs/RLS existentes.
+Só escolher outra forma se o inventário provar necessidade concreta. Links, active state e navegação devem continuar coerentes com a área Cadastros.
 
-Se uma ação administrativa depender de decisão real ainda ausente, registrar o gap e manter a ação indisponível em vez de adivinhar a regra.
+Detalhe inexistente/inacessível deve produzir estado seguro e compreensível, sem vazar IDs ou erro de persistência.
 
-### 3. Fechar a jornada de Estrutura
+### 3. Produtos
 
-Depois do inventário, criar uma experiência administrativa coerente para a estrutura que realmente puder ser mantida.
+Estado atual: `/workspace/produtos` reúne tabela horizontal, listagem, criação e edição em uma única página.
 
-Objetivo de produto:
+Transformar em:
 
-- visualizar a hierarquia atual de forma compreensível;
-- navegar entre Organization/Business/Unit/Sector/StockLocation sem expor IDs técnicos;
-- cadastrar/editar as entidades cujo backend seguro já suporte manutenção;
-- manter relações pai/filho corretas;
-- permitir inativação quando houver contrato existente adequado;
-- preservar histórico/referências e evitar exclusão física destrutiva por conveniência.
+**Lista**
 
-Se o backend não possuir uma mutação necessária, só criar migration/RPC/policy/adapters depois de provar que ela é indispensável à jornada aprovada. Toda nova mutação deve possuir autorização/RLS/testes e não pode depender apenas da UI.
+- leitura rápida de nome, categoria, unidade, tipo e status;
+- pesquisa e filtros que tenham utilidade comprovada com os campos existentes;
+- estratégia responsiva deliberada, sem depender de tabela larga com overflow como única solução;
+- CTA de criação somente quando autorizado.
 
-Não inventar cascade, exclusão ou reparenting sem contrato de negócio/técnico existente.
+**Detalhe**
 
-### 4. Fechar a jornada de Usuários/Permissões dentro do que é comprovado
+- identificação principal;
+- categoria/unidade/tipo;
+- EAN e dados fiscais já armazenados;
+- flags de lote, validade e retornável;
+- status;
+- fornecedores relacionados quando o vínculo existente permitir consulta útil;
+- estoque relacionado somente como contexto útil, sem copiar lógica da futura consolidação de Estoque.
 
-A experiência deve separar claramente:
+**Ações**
 
-- pessoa/funcionário operacional (`Employee`);
-- identidade autenticada;
-- membership/acesso;
-- papel;
-- escopo.
+- criação e edição contextualizadas;
+- manter a autorização existente de catálogo;
+- não resolver `REQ-ITEM-004`, `REQ-ITEM-005`, FEFO ou custeio nesta slice.
 
-Como mínimo, quando os boundaries existentes permitirem:
+### 4. Fornecedores
 
-- listar quem possui acesso à organização atual;
-- mostrar papel e escopo em linguagem compreensível;
-- mostrar status de acesso/associação sem UUID técnico na experiência normal;
-- reutilizar fluxo seguro de convite/associação existente quando ele for aplicável;
-- permitir alteração/revogação somente se houver boundary e política atuais que sustentem isso corretamente.
+Estado atual: `/workspace/fornecedores` mistura lista, criação/edição, contatos, condições comerciais e produtos fornecidos na mesma página.
 
-Não pedir ao administrador que copie `auth.users` UUID ou outro identificador interno como procedimento normal.
+Transformar em:
 
-Se alteração/revogação ou convite geral ainda não possuírem contrato seguro/completo, documentar o gap em vez de criar bypass ou service-role no browser.
+**Lista**
 
-### 5. Integrar Administração à arquitetura já aprovada
+- nome, documento quando existir, contato principal e status;
+- pesquisa/filtro com contrato comum às listas de Cadastros quando fizer sentido;
+- CTA de criação conforme autorização.
 
-- manter **Administração** como área do primeiro nível;
-- adicionar subdestinos reais somente quando as páginas existirem e estiverem funcionais;
-- preservar `/workspace/backup` como Proteção dos dados;
-- preferir URLs estáveis e explícitas para Estrutura e Usuários/Permissões;
-- atualizar `workspace-navigation` e seu contrato/testes apenas com destinos reais implementados;
-- não inventar páginas placeholder para completar a taxonomia.
+**Detalhe**
 
-### 6. Reutilizar o design system integrado
+- identificação do fornecedor;
+- contatos;
+- condições comerciais já persistidas;
+- produtos fornecidos e preços/embalagens já suportados;
+- histórico apenas se existir boundary real e valor de produto nesta slice.
 
-A nova Administração deve usar `src/components/ui` para os padrões já existentes:
+Reaproveitar `SupplierCommercialTermsPanel`, `SupplierItemsPanel` e seus adapters/boundaries quando adequados, refatorando-os para o detalhe em vez de reimplementar persistência.
 
-- `PageHeader`;
-- `Button`;
-- `FormField` + controles;
-- `Panel`;
-- `StatusBadge`;
-- `FeedbackMessage`;
-- `EmptyState`;
-- `Drawer`/`Dialog`/`ConfirmDialog` quando a jornada justificar.
+**Ações**
 
-Criar novo componente compartilhado somente quando a jornada administrativa provar um contrato reutilizável. Não criar DataTable/Tabs/Toast/SearchField genéricos apenas porque estavam previstos no roadmap; se a necessidade concreta justificar um deles, implementar o menor contrato necessário e documentá-lo no design system.
+- criação/edição do fornecedor e contatos em contexto claro;
+- manutenção das relações já suportadas;
+- não inventar agenda automática, conversão de embalagem ou regra de compras.
 
-### 7. Estados, acessibilidade e feedback
+### 5. Funcionários
 
-Para cada fluxo implementado:
+Estado atual: `/workspace/funcionarios` mistura lista, criação e edição. O UUID técnico já foi removido na slice de Administração.
 
-- loading deve bloquear duplo envio e indicar processamento;
-- vazio deve ser distinguido de erro e falta de permissão;
-- erro deve ficar próximo da ação/campo relevante;
-- sucesso deve confirmar a mudança sem expor detalhes de infraestrutura;
-- ações destrutivas/revogação/inativação devem ter confirmação/contexto adequado quando aplicável;
-- labels, foco, teclado e touch target devem seguir o design system;
-- não expor Supabase, RLS, membership, auth UUID, migration ou detalhes de provider ao usuário normal sem necessidade operacional.
+Transformar em:
 
-### 8. Testar regras e jornadas sem fabricar homologação
+**Lista**
 
-Adicionar testes adequados para:
+- nome, código, escopo operacional padrão, status e indicação legível de vínculo de acesso;
+- pesquisa/filtros apenas quando úteis;
+- criação conforme autorização.
 
-- mapeamento de capacidade administrativa e helpers puros quando houver;
-- autorização/boundaries novos ou alterados;
-- Organization isolation e escopos;
-- invariantes de estrutura/relações;
-- navegação de Administração;
-- contratos de UI relevantes sem depender de dados demo.
+**Detalhe**
+
+- dados operacionais do Employee;
+- Unidade/Setor padrão;
+- status;
+- vínculo de identidade apresentado por informação legível quando o boundary atual permitir.
+
+**Ações**
+
+- criação/edição dos dados operacionais;
+- não reintroduzir `auth.users` UUID;
+- não transformar Employee em membership;
+- a concessão/alteração de autorização continua em Administração → Usuários e permissões.
+
+Se for útil oferecer atalho para administrar acesso, ele deve navegar para a jornada administrativa existente, não duplicar sua mutação.
+
+### 6. Validar o padrão compartilhado sem criar framework antecipado
+
+As três jornadas devem provar quais primitivas realmente se repetem.
+
+Pode ser justificável criar o menor contrato compartilhado para:
+
+- lista responsiva de registros;
+- campo de pesquisa/filtros;
+- cabeçalho de detalhe/ações;
+- estado vazio;
+- feedback de ação.
+
+Não criar DataTable/Tabs/SearchField/paginação genéricos apenas por estarem previstos no roadmap. Criá-los somente se duas ou mais jornadas desta slice demonstrarem um contrato estável e documentável.
+
+Reutilizar `src/components/ui` para Button, PageHeader, FormField, Panel, StatusBadge, FeedbackMessage, EmptyState, Dialog/ConfirmDialog e demais componentes já integrados.
+
+### 7. Estados e UX
+
+Para as três jornadas:
+
+- diferenciar loading, vazio, erro, somente leitura e registro inexistente/inacessível;
+- impedir duplo envio;
+- usar linguagem de operação, não Supabase/RLS/adapter/migration;
+- manter foco/labels/teclado/touch target do design system;
+- evitar `window.prompt()`/`window.confirm()` como novo padrão;
+- preservar URLs de detalhe ao editar/confirmar sempre que possível;
+- não esconder ação crítica por overflow horizontal no mobile.
+
+### 8. Testes e validação
+
+Adicionar/ajustar testes para:
+
+- resolução segura de detalhe por ID/Organization;
+- autorização de leitura/manutenção;
+- contratos de lista/pesquisa/filtro puros quando houver;
+- navegação para detalhes;
+- relações exibidas no detalhe sem quebra de escopo;
+- estados not-found/forbidden sem vazamento técnico;
+- componentes compartilhados novos somente se realmente criados.
 
 Manter verdes:
 
@@ -174,23 +201,23 @@ Manter verdes:
 - `npm run typecheck`;
 - `npm run test`;
 - `npm run build`;
-- workflows PostgreSQL/RLS aplicáveis;
-- integrações de negócio afetadas.
+- CI PostgreSQL/RLS aplicável;
+- integrações afetadas.
 
-Se um browser real permitido estiver disponível, validar pelo menos as jornadas administrativas implementadas em desktop e mobile. Se não estiver, registrar a limitação explicitamente e **não declarar homologação visual**.
+Se browser real permitido estiver disponível, validar as três jornadas em desktop e mobile. Se não estiver, registrar explicitamente a limitação e não declarar homologação visual.
 
-### 9. Não extrapolar a slice
+### 9. Guardrails
 
 Nesta execução **não**:
 
-- refatorar Cadastros no padrão lista/detalhe/ação;
 - consolidar Estoque, Compras, Financeiro ou Caixa;
-- limpar toda a linguagem técnica da aplicação fora do que a nova Administração tocar naturalmente;
-- resolver `window.prompt()` em massa;
+- redesenhar Dashboard;
+- mudar política de autorização/Q-022;
+- reintroduzir UUID técnico de usuário;
 - resolver requisitos PENDING;
-- redefinir roles/perfis a partir de Q-022 sem decisão real;
-- criar service-role/secret em browser;
-- tocar em Production para fabricar dados/evidência;
+- criar lógica de venda/POS, ficha técnica, FEFO ou custeio;
+- fazer migração cosmética em massa fora das três jornadas;
+- tocar em Production para prova;
 - retomar #75/#121;
 - fazer deploy Vercel manual/rotineiro.
 
@@ -198,47 +225,45 @@ Nesta execução **não**:
 
 A slice só pode ser encerrada quando:
 
-- existe inventário explícito das capacidades administrativas e seus boundaries;
-- Estrutura deixa de ser apenas conceito/backend e possui experiência utilizável para as operações realmente suportadas;
-- usuários/acessos podem ser compreendidos sem manipulação normal de UUID técnico;
-- qualquer ação de membership/papel/escopo implementada respeita os guards/RPCs/RLS e não depende apenas da UI;
-- Q-022 permanece sem inferência onde ainda falta decisão de negócio;
-- Administração possui somente rotas reais, estáveis e navegáveis;
-- o design system integrado é reutilizado;
-- loading/empty/error/success e acessibilidade básica foram tratados nos fluxos implementados;
-- testes relevantes e isolamento por Organization/escopo estão verdes;
+- Produtos, Fornecedores e Funcionários possuem listas focadas e detalhes com URL estável;
+- criação/edição deixaram de competir permanentemente com a listagem completa na mesma megapágina;
+- relações existentes aparecem no contexto correto sem duplicar lógica de outros módulos;
+- Funcionários continua sem UUID técnico e sem confundir Employee com autorização;
+- permissões/RLS atuais continuam sendo a fronteira real;
+- o padrão compartilhado de Cadastros é pequeno, comprovado e reutilizado;
+- estados loading/empty/error/read-only/not-found e feedback foram tratados;
+- estratégia mobile não depende apenas de tabela larga/overflow;
 - lint, typecheck, testes, build e CI aplicável estão verdes;
 - ausência de browser/homologação visual é registrada honestamente se persistir;
 - `CURRENT_STATE`, `HANDOFF` e `NEXT_ACTION` são reconciliados.
 
 ## Depois desta slice
 
-Somente após a integração da Administração, promover:
+Somente após a integração de Cadastros, promover:
 
-> **Cadastros — refatorar Produtos, Fornecedores e Funcionários no padrão lista → detalhe → ação.**
+> **Estoque — consolidar posição, entradas, baixas/perdas, devoluções, transferências, inventários, lotes/validades e estoque mínimo como uma área coerente.**
 
-Não saltar diretamente para Estoque/Compras antes de fechar Cadastros na ordem aprovada.
+Não saltar diretamente para Compras/Financeiro.
 
 ## Ordem macro
 
 1. ~~entrada técnica~~ — PR #145;
-2. ~~arquitetura da informação~~ — PR #147;
-3. ~~navegação desktop/mobile~~ — PR #147;
-4. ~~design system mínimo~~ — PR #149;
-5. Administração;
-6. Cadastros;
-7. Estoque;
-8. Compras;
-9. Financeiro;
-10. Caixa;
-11. Dashboard;
-12. limpeza de linguagem;
-13. homologação UX;
-14. reconciliação funcional;
-15. PENDINGs necessários;
-16. dados representativos;
-17. migração/cutover;
-18. `REQ-PLAT-005` final.
+2. ~~arquitetura da informação/navegação~~ — PR #147;
+3. ~~design system mínimo~~ — PR #149;
+4. ~~Administração~~ — PR #151;
+5. **Cadastros**;
+6. Estoque;
+7. Compras;
+8. Financeiro;
+9. Caixa;
+10. Dashboard;
+11. limpeza de linguagem;
+12. homologação UX;
+13. reconciliação funcional;
+14. PENDINGs necessários;
+15. dados representativos;
+16. migração/cutover;
+17. `REQ-PLAT-005` final.
 
 ## PENDING — não promover por conveniência de UI
 
@@ -254,8 +279,6 @@ Não saltar diretamente para Estoque/Compras antes de fechar Cadastros na ordem 
 ## REQ-PLAT-005 continua ON HOLD
 
 Não investigar cron/scheduling, não disparar workflows para prova, não mexer em Storage/R2/S3/restore/secrets/variables e não fabricar evidência Production enquanto o hold estiver ativo.
-
-A trilha #75/#121 será retomada no fechamento funcional/homologação final, salvo revogação explícita do operador.
 
 ## Restrições permanentes
 
