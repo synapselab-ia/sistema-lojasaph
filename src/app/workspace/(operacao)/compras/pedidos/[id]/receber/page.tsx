@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Button, EmptyState, FeedbackMessage, FormField, Input, PageHeader, Panel, Textarea } from "@/components/ui";
 import { buttonClasses } from "@/components/ui/styles";
 import { EntityId } from "@/domain/common/entity-id";
@@ -17,6 +17,10 @@ interface ReceiptDraft {
   expirationDate: string;
 }
 
+function emptyReceiptDrafts(order: RuntimePurchaseOrder): Record<string, ReceiptDraft> {
+  return Object.fromEntries(order.items.map((item) => [item.id, { quantity: "", batchCode: "", expirationDate: "" }]));
+}
+
 export default function ReceivePurchaseOrderPage() {
   const params = useParams<{ id: string }>();
   const orderId = params.id as EntityId;
@@ -29,21 +33,28 @@ export default function ReceivePurchaseOrderPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ tone: "success" | "danger" | "info"; text: string } | null>(null);
 
-  const load = useCallback(async () => {
-    try {
-      const next = await gateway.getOrder(workspace.organizationId, orderId);
-      setOrder(next);
-      if (next) {
-        setDrafts(Object.fromEntries(next.items.map((item) => [item.id, { quantity: "", batchCode: "", expirationDate: "" }])));
-      }
-    } catch (error) {
-      setMessage({ tone: "danger", text: workspace.errorMessage(error) });
-    } finally {
-      setLoading(false);
-    }
+  useEffect(() => {
+    let active = true;
+    void gateway.getOrder(workspace.organizationId, orderId)
+      .then((next) => {
+        if (!active) return;
+        setOrder(next);
+        if (next) setDrafts(emptyReceiptDrafts(next));
+      })
+      .catch((error) => {
+        if (active) setMessage({ tone: "danger", text: workspace.errorMessage(error) });
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => { active = false; };
   }, [gateway, orderId, workspace]);
 
-  useEffect(() => { void load(); }, [load]);
+  async function refreshOrder() {
+    const next = await gateway.getOrder(workspace.organizationId, orderId);
+    setOrder(next);
+    if (next) setDrafts(emptyReceiptDrafts(next));
+  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -69,7 +80,7 @@ export default function ReceivePurchaseOrderPage() {
         items,
       });
       setNotes("");
-      await load();
+      await refreshOrder();
       setMessage({ tone: "success", text: "Recebimento registrado. As quantidades recebidas já foram incorporadas ao estoque pelo fluxo do pedido." });
     } catch (error) {
       setMessage({ tone: "danger", text: workspace.errorMessage(error) });
