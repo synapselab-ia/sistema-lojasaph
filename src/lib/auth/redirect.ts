@@ -16,3 +16,10 @@ export function urlWithMessage(path: string, key: "error" | "message", message: 
   url.searchParams.set(key, message);
   return `${url.pathname}${url.search}`;
 }
+
+export function rootEntryDestination(input: {
+  readonly backendAvailable: boolean;
+  readonly authenticated: boolean;
+}): "/login" | "/workspace" {
+  return input.backendAvailable && input.authenticated ? "/workspace" : "/login";
+}
