@@ -1,6 +1,6 @@
 # Current State — Sistema Lojasaph
 
-Última atualização: 2026-08-27
+Última atualização: 2026-08-28
 
 ## Estado atual
 
@@ -10,10 +10,11 @@ Estado integrado confirmado:
 
 - PR #139 `feat: expose EAN and fiscal identifiers on stock items`: merged;
 - Issue #138: closed / completed;
-- `main=f30137355fe1b8958cbfe36cf1cd6e515c647558`;
-- CI pós-merge #500 / run `33118720928`: `success`;
-- nenhum PR aberto após a integração;
-- únicas Issues abertas: #75 e #121, ambas da trilha `REQ-PLAT-005` e atualmente ON HOLD.
+- PR #140 integrou a reconciliação documental pós-Fase 50;
+- `main=e65d333f2410960b5201669014b062f5e1380542` antes desta atualização de hold;
+- CI pós-merge #502 / run `33119305469`: `success`;
+- nenhum PR funcional aberto após a integração;
+- únicas Issues abertas: #75 e #121, ambas da trilha `REQ-PLAT-005` e ON HOLD.
 
 Não refazer Fase 50/#138/#139.
 
@@ -78,41 +79,53 @@ Os demais SHOULDs do núcleo já possuem implementação anterior, incluindo his
 
 ### Bloqueios reais restantes
 
-1. **`REQ-PLAT-005`** — #75/#121: PostgreSQL já foi comprovado end-to-end; cobertura operacional completa de Supabase Storage/anexos permanece condicionada a evidência real.
+1. **`REQ-PLAT-005`** — #75/#121: PostgreSQL já possui prova real anterior; cobertura automática/scheduling e Storage ainda não têm evidência final, mas toda essa trilha está agora em hold total por decisão do operador até o sistema estar 100% concluído.
 2. **Cutover/importação real** — a fundação atende `REQ-IMP-001..004`, mas a escrita operacional real continua bloqueada até existirem fontes congeladas, transformações aprovadas, resolução das questões de negócio aplicáveis, reconciliação e validação do cliente.
 3. **Requisitos PENDING** — não podem ser promovidos sem decisão real de negócio, incluindo `REQ-ITEM-004`, `REQ-ITEM-005`, `REQ-STK-007`, `REQ-STK-010`, `REQ-EXP-004`, `REQ-FIN-004`, `REQ-CASH-007` e `REQ-CASH-008`.
 
 Não abrir nova Issue apenas para produzir atividade.
 
-## #121 — ON HOLD
+## #75/#121 — TOTALMENTE ON HOLD até sistema 100%
 
-`REQ-PLAT-005 — Backup e recuperação off-site do Supabase Storage` não é frente ativa enquanto não existir gatilho objetivo.
+Decisão explícita do operador em 2026-08-28: **não retomar a trilha `REQ-PLAT-005` enquanto o Sistema Lojasaph não estiver 100% concluído**, salvo nova instrução explícita revogando esse hold.
 
-Última evidência válida em 2026-08-27:
+A decisão cobre:
 
-- 0 buckets Storage;
-- 0 anexos financeiros;
-- 0 runs `automatic_storage`.
+- backup PostgreSQL automático e seu scheduling;
+- `Production Storage Backup`;
+- Supabase Storage/anexos;
+- Cloudflare R2 relacionado a essa trilha;
+- restore binário e restore drills pendentes;
+- observabilidade/evidência autoritativa de proteção;
+- investigação de cron/armamento/configuração de GitHub Actions.
 
-Gatilhos válidos:
+### Evidência preservada antes do hold total
 
-1. primeira execução **agendada** do `Production Storage Backup` após o armamento — janela esperada em **2026-08-28 03:47 America/Sao_Paulo**;
-2. primeiro anexo Production legítimo criado pelo fluxo normal;
-3. incidente/regressão real do pipeline Storage.
+A reconciliação única de 2026-08-28 ocorreu depois das janelas esperadas dos schedules e encontrou:
 
-Até um desses eventos ocorrer:
+- nenhum novo run `automatic_storage` persistido;
+- nenhum novo run `automatic_database` correspondente ao schedule daquele dia;
+- último `automatic_database` autoritativo conhecido: `succeeded` em 2026-08-27, com integridade verificada;
+- portanto, o schedule de 2026-08-28 não ficou comprovado como executado corretamente.
 
-- não fazer `workflow_dispatch` artificial;
-- não criar fixture/objeto Production;
-- não repetir a mesma introspecção vazia;
-- não alterar tooling/guardrails já comprovados por inércia.
+A investigação foi deliberadamente interrompida por decisão de prioridade do operador. Essa ausência de prova fica registrada para homologação/finalização, sem abrir frente técnica agora.
 
-Um snapshot agendado vazio pode provar execução da automação sobre estado vazio, mas não comprova recuperação de binários reais e não autoriza declarar Storage completamente coberto.
+Enquanto o hold estiver ativo:
+
+- não investigar schedules ausentes;
+- não fazer `workflow_dispatch` para antecipar prova;
+- não criar fixture/bucket/anexo sintético em Production;
+- não repetir introspecção de Storage/protection runs por rotina;
+- não alterar tooling, R2, S3, secrets, variables, retenção, lock/WORM ou guardrails de backup;
+- não transformar cron, anexo ou alerta em gatilho automático de retomada;
+- manter #75 e #121 abertas e ON HOLD.
 
 ## Estado de desenvolvimento
 
 Não há frente funcional ativa após a Fase 50.
 
-A próxima ação é **condicional**, não uma nova feature: observar um gatilho real da #121 ou receber nova prioridade/decisão de negócio/fonte de migração/regressão.
+A próxima frente deve vir de trabalho real de produto: nova prioridade explícita, bug/regressão funcional, fonte final de migração/cutover ou decisão de negócio que destrave um requisito `PENDING`.
 
-Nenhum deploy Vercel manual/rotineiro foi feito para a Fase 50 ou para esta reconciliação.
+`REQ-PLAT-005` não deve ser escolhida como próxima ação até o marco de sistema 100% concluído, salvo revogação explícita do hold pelo operador.
+
+Nenhum deploy Vercel manual/rotineiro deve ser feito por esta atualização documental.
