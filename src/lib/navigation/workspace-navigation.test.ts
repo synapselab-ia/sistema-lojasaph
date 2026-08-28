@@ -46,6 +46,17 @@ describe("workspaceNavigation", () => {
     ]);
   });
 
+  it("groups the finance journey below Financeiro", () => {
+    const finance = workspaceNavigation.find((area) => area.id === "finance");
+
+    expect(finance?.href).toBe("/workspace/financeiro");
+    expect(finance?.items).toEqual([
+      { href: "/workspace/financeiro/contas", label: "Contas a pagar" },
+      { href: "/workspace/financeiro/vencimentos", label: "Vencimentos" },
+      { href: "/workspace/financeiro/pagamentos", label: "Pagamentos" },
+    ]);
+  });
+
   it("keeps every current operational shell destination reachable", () => {
     expect(workspaceNavigationHrefs()).toEqual([
       "/workspace",
@@ -63,6 +74,9 @@ describe("workspaceNavigation", () => {
       "/workspace/compras/recebimentos",
       "/workspace/compras/historico",
       "/workspace/financeiro",
+      "/workspace/financeiro/contas",
+      "/workspace/financeiro/vencimentos",
+      "/workspace/financeiro/pagamentos",
       "/workspace/caixa",
       "/workspace/produtos",
       "/workspace/fornecedores",
@@ -92,12 +106,14 @@ describe("workspace navigation active state", () => {
   it("marks parent areas active for legacy and nested routes", () => {
     const stock = workspaceNavigation.find((area) => area.id === "stock");
     const purchases = workspaceNavigation.find((area) => area.id === "purchases");
+    const finance = workspaceNavigation.find((area) => area.id === "finance");
     const catalogs = workspaceNavigation.find((area) => area.id === "catalogs");
     const administration = workspaceNavigation.find((area) => area.id === "administration");
 
     expect(stock && isWorkspaceAreaActive("/workspace/transferencias", stock)).toBe(true);
     expect(stock && isWorkspaceAreaActive("/workspace/estoque/entradas", stock)).toBe(true);
     expect(purchases && isWorkspaceAreaActive("/workspace/compras/pedidos/abc", purchases)).toBe(true);
+    expect(finance && isWorkspaceAreaActive("/workspace/financeiro/contas/abc", finance)).toBe(true);
     expect(catalogs && isWorkspaceAreaActive("/workspace/fornecedores", catalogs)).toBe(true);
     expect(administration && isWorkspaceAreaActive("/workspace/administracao/acessos", administration)).toBe(true);
   });
