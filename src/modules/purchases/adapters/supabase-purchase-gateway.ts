@@ -38,6 +38,23 @@ export interface RuntimePurchaseOrder {
   readonly items: readonly RuntimePurchaseOrderItem[];
 }
 
+export interface RuntimePurchaseReceiptItem {
+  readonly id: EntityId;
+  readonly purchaseOrderItemId: EntityId;
+  readonly quantity: Quantity;
+  readonly unitCostSnapshot: Money;
+  readonly batchCode?: string;
+  readonly expirationDate?: string;
+}
+
+export interface RuntimePurchaseReceipt {
+  readonly id: EntityId;
+  readonly purchaseOrderId: EntityId;
+  readonly receivedAt: string;
+  readonly notes?: string;
+  readonly items: readonly RuntimePurchaseReceiptItem[];
+}
+
 interface SupplierItemRow {
   id: string;
   stock_item_id: string;
@@ -66,6 +83,21 @@ interface PurchaseOrderItemRow {
   unit_price_snapshot: number | string;
   purchase_unit_snapshot: string | null;
 }
+interface PurchaseReceiptRow {
+  id: string;
+  purchase_order_id: string;
+  received_at: string;
+  notes: string | null;
+}
+interface PurchaseReceiptItemRow {
+  id: string;
+  purchase_receipt_id: string;
+  purchase_order_item_id: string;
+  quantity: number | string;
+  unit_cost_snapshot: number | string;
+  batch_code: string | null;
+  expiration_date: string | null;
+}
 
 function commandError(scope: string, message: string): DomainError {
   const known: Record<string, string> = {
@@ -75,6 +107,7 @@ function commandError(scope: string, message: string): DomainError {
     INVALID_PURCHASE_PRICE: "O preço unitário deve ser válido e usar no máximo duas casas decimais.",
     SUPPLIER_NOT_AVAILABLE: "Fornecedor indisponível para este pedido.",
     SUPPLIER_ITEM_NOT_AVAILABLE: "Um item não pertence ao fornecedor selecionado ou está inativo.",
+    PURCHASE_ORDER_NOT_FOUND: "Pedido não encontrado ou indisponível no seu escopo.",
     PURCHASE_ORDER_NOT_ISSUABLE: "Somente pedidos em rascunho podem ser emitidos.",
     PURCHASE_ORDER_NOT_RECEIVABLE: "Este pedido não está disponível para recebimento.",
     PURCHASE_RECEIPT_EXCEEDS_PENDING: "A quantidade recebida não pode ultrapassar o saldo pendente do item.",
@@ -83,6 +116,7 @@ function commandError(scope: string, message: string): DomainError {
     RECEIVED_PURCHASE_ORDER_IMMUTABLE: "Pedido totalmente recebido não pode ser cancelado.",
     PURCHASE_ORDER_ALREADY_CANCELLED: "Pedido já cancelado.",
     INSUFFICIENT_ROLE: "Seu perfil não possui permissão para esta operação de compras.",
+    INSUFFICIENT_SCOPE: "Esta operação não está disponível no seu escopo atual.",
     IDEMPOTENCY_KEY_CONFLICT: "A operação foi repetida com dados diferentes. Atualize a tela antes de tentar novamente.",
   };
   const code = Object.keys(known).find((candidate) => message.includes(candidate));
@@ -137,22 +171,13 @@ export class SupabasePurchaseGateway {
     }));
   }
 
-  async listOrders(organizationId: EntityId): Promise<readonly RuntimePurchaseOrder[]> {
-    const { data: ordersData, error: ordersError } = await this.client
-      .from("purchase_orders")
-      .select("id, supplier_id, stock_location_id, status, expected_delivery_date, ordered_at, notes, created_at")
-      .eq("organization_id", organizationId)
-      .order("created_at", { ascending: false })
-      .limit(50);
-    if (ordersError) throw commandError("Não foi possível carregar os pedidos", ordersError.message);
-    const orders = (ordersData ?? []) as PurchaseOrderRow[];
-    if (orders.length === 0) return [];
-
+  private async hydrateOrders(organizationId: EntityId, rows: readonly PurchaseOrderRow[]): Promise<readonly RuntimePurchaseOrder[]> {
+    if (rows.length === 0) return [];
     const { data: itemsData, error: itemsError } = await this.client
       .from("purchase_order_items")
       .select("id, purchase_order_id, supplier_item_id, stock_item_id, ordered_quantity, received_quantity, unit_price_snapshot, purchase_unit_snapshot")
       .eq("organization_id", organizationId)
-      .in("purchase_order_id", orders.map((order) => order.id))
+      .in("purchase_order_id", rows.map((order) => order.id))
       .order("created_at", { ascending: true });
     if (itemsError) throw commandError("Não foi possível carregar os itens dos pedidos", itemsError.message);
 
@@ -172,7 +197,7 @@ export class SupabasePurchaseGateway {
       itemsByOrder.set(row.purchase_order_id, current);
     }
 
-    return orders.map((row) => Object.freeze({
+    return rows.map((row) => Object.freeze({
       id: row.id as EntityId,
       supplierId: row.supplier_id as EntityId,
       stockLocationId: row.stock_location_id as EntityId,
@@ -182,6 +207,73 @@ export class SupabasePurchaseGateway {
       notes: row.notes ?? undefined,
       createdAt: row.created_at,
       items: Object.freeze(itemsByOrder.get(row.id) ?? []),
+    }));
+  }
+
+  async listOrders(organizationId: EntityId): Promise<readonly RuntimePurchaseOrder[]> {
+    const { data, error } = await this.client
+      .from("purchase_orders")
+      .select("id, supplier_id, stock_location_id, status, expected_delivery_date, ordered_at, notes, created_at")
+      .eq("organization_id", organizationId)
+      .order("created_at", { ascending: false })
+      .limit(50);
+    if (error) throw commandError("Não foi possível carregar os pedidos", error.message);
+    return this.hydrateOrders(organizationId, (data ?? []) as PurchaseOrderRow[]);
+  }
+
+  async getOrder(organizationId: EntityId, purchaseOrderId: EntityId): Promise<RuntimePurchaseOrder | null> {
+    const { data, error } = await this.client
+      .from("purchase_orders")
+      .select("id, supplier_id, stock_location_id, status, expected_delivery_date, ordered_at, notes, created_at")
+      .eq("organization_id", organizationId)
+      .eq("id", purchaseOrderId)
+      .maybeSingle();
+    if (error) throw commandError("Não foi possível carregar o pedido", error.message);
+    if (!data) return null;
+    const hydrated = await this.hydrateOrders(organizationId, [data as PurchaseOrderRow]);
+    return hydrated[0] ?? null;
+  }
+
+  async listReceipts(organizationId: EntityId, limit = 50): Promise<readonly RuntimePurchaseReceipt[]> {
+    const { data: receiptsData, error: receiptsError } = await this.client
+      .from("purchase_receipts")
+      .select("id, purchase_order_id, received_at, notes")
+      .eq("organization_id", organizationId)
+      .order("received_at", { ascending: false })
+      .limit(limit);
+    if (receiptsError) throw commandError("Não foi possível carregar os recebimentos", receiptsError.message);
+
+    const receipts = (receiptsData ?? []) as PurchaseReceiptRow[];
+    if (receipts.length === 0) return [];
+
+    const { data: itemsData, error: itemsError } = await this.client
+      .from("purchase_receipt_items")
+      .select("id, purchase_receipt_id, purchase_order_item_id, quantity, unit_cost_snapshot, batch_code, expiration_date")
+      .eq("organization_id", organizationId)
+      .in("purchase_receipt_id", receipts.map((receipt) => receipt.id))
+      .order("created_at", { ascending: true });
+    if (itemsError) throw commandError("Não foi possível carregar os itens dos recebimentos", itemsError.message);
+
+    const itemsByReceipt = new Map<string, RuntimePurchaseReceiptItem[]>();
+    for (const row of (itemsData ?? []) as PurchaseReceiptItemRow[]) {
+      const current = itemsByReceipt.get(row.purchase_receipt_id) ?? [];
+      current.push(Object.freeze({
+        id: row.id as EntityId,
+        purchaseOrderItemId: row.purchase_order_item_id as EntityId,
+        quantity: Quantity.fromDecimal(String(row.quantity)),
+        unitCostSnapshot: Money.fromDecimal(String(row.unit_cost_snapshot)),
+        batchCode: row.batch_code ?? undefined,
+        expirationDate: row.expiration_date ?? undefined,
+      }));
+      itemsByReceipt.set(row.purchase_receipt_id, current);
+    }
+
+    return receipts.map((row) => Object.freeze({
+      id: row.id as EntityId,
+      purchaseOrderId: row.purchase_order_id as EntityId,
+      receivedAt: row.received_at,
+      notes: row.notes ?? undefined,
+      items: Object.freeze(itemsByReceipt.get(row.id) ?? []),
     }));
   }
 
