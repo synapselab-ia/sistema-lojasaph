@@ -8,9 +8,10 @@ Integração confirmada:
 
 - PR #139 merged;
 - Issue #138 closed;
-- `main=f30137355fe1b8958cbfe36cf1cd6e515c647558`;
-- CI pós-merge #500 / `33118720928`: success;
-- nenhum PR aberto;
+- PR #140 integrou a reconciliação documental pós-Fase 50;
+- `main=e65d333f2410960b5201669014b062f5e1380542` antes desta atualização de hold;
+- CI pós-merge #502 / `33119305469`: success;
+- nenhum PR funcional aberto;
 - Issues abertas: somente #75 e #121, ambas da proteção de dados e ON HOLD.
 
 Não refazer #138/#139.
@@ -61,33 +62,43 @@ Não:
 
 Após a Fase 50, a revisão de requirements + Issues + código não encontrou outro MUST/SHOULD funcional independente para promover.
 
-A Fase 41 já havia fechado o núcleo sem novo MUST funcional pendente. As frentes SHOULD que ainda eram independentes foram posteriormente entregues: anexos financeiros, exportação, condições/produtos de fornecedor, estoque mínimo, Dashboard de estoque, Dashboard de compras/fornecedores e agora EAN/dados fiscais.
+A Fase 41 já havia fechado o núcleo sem novo MUST funcional pendente. As frentes SHOULD que ainda eram independentes foram posteriormente entregues: anexos financeiros, exportação, condições/produtos de fornecedor, estoque mínimo, Dashboard de estoque, Dashboard de compras/fornecedores e EAN/dados fiscais.
 
-O que resta é condicionado:
+O que resta é condicionado por fonte/decisão de negócio ou está explicitamente em hold.
 
-### #75/#121 — `REQ-PLAT-005`
+## Decisão operacional — 2026-08-28
 
-PostgreSQL Production já possui backup off-site/restauração comprovados. Storage/anexos permanece ON HOLD aguardando evidência real.
+**#75 e #121 / `REQ-PLAT-005` ficam TOTALMENTE ON HOLD até o Sistema Lojasaph estar 100% concluído.**
 
-Último estado válido:
+Essa é uma decisão explícita de prioridade do operador e substitui a orientação anterior de retomar automaticamente ao ocorrer cron, primeiro anexo ou incidente do pipeline.
 
-- 0 buckets;
-- 0 anexos Production;
-- 0 runs `automatic_storage`.
+Antes do marco de sistema 100%:
 
-Gatilhos de retomada:
+- não investigar scheduling de backup;
+- não retomar #121 por cron, anexo ou alerta;
+- não executar `workflow_dispatch` para obter evidência;
+- não criar fixture/bucket/anexo sintético em Production;
+- não alterar workflows, S3/R2, secrets, variables, retenção, lock/WORM ou guardrails de `REQ-PLAT-005`;
+- não repetir introspecções de Storage/protection runs por rotina;
+- manter #75/#121 abertas e ON HOLD;
+- só retomar se o operador der nova instrução explícita revogando o hold ou quando o sistema estiver 100% concluído.
 
-1. primeira execução **agendada** do `Production Storage Backup`, janela esperada em **2026-08-28 03:47 America/Sao_Paulo**;
-2. primeiro anexo legítimo no produto;
-3. incidente/regressão real.
+### Evidência registrada antes do hold total
 
-Não antecipar com dispatch manual ou fixture.
+A reconciliação única de 2026-08-28, depois das janelas agendadas, encontrou:
 
-### Importação/cutover real
+- 0 novos runs `automatic_storage`;
+- 0 novos runs `automatic_database` correspondentes aos schedules daquele dia;
+- último `automatic_database` autoritativo conhecido: `succeeded` em 2026-08-27 com integridade verificada;
+- schedule de 2026-08-28 não comprovado como executado corretamente.
+
+Não corrigir/investigar isso agora. Preservar como pendência para homologação/finalização.
+
+## Importação/cutover real
 
 `REQ-IMP-001..004` possuem fundação de staging/dry-run/idempotência/relatório. O cutover real não é uma lacuna técnica pronta para implementação genérica: depende de fontes congeladas, regras aprovadas, resolução das questões aplicáveis, reconciliação e validação do cliente.
 
-### PENDING
+## PENDING
 
 Não promover por inferência:
 
@@ -104,10 +115,10 @@ Não promover por inferência:
 
 O próximo chat deve primeiro consultar GitHub real e `NEXT_ACTION`.
 
-Se ainda for antes do gatilho da #121 ou não houver anexo/incidente novo, **não criar Fase 51** e não mexer no produto por inércia.
+**Não escolher #75/#121 como próxima frente enquanto o sistema não estiver 100% concluído**, mesmo que exista cron perdido, anexo novo ou alerta relacionado à proteção de dados. Só uma nova instrução explícita do operador pode antecipar a retomada.
 
-Quando o primeiro horário agendado da #121 já tiver passado, fazer uma única reconciliação do workflow agendado e da persistência `automatic_storage`; seguir a Issue conforme a evidência real, sem dispatch artificial.
+Se surgir nova prioridade explícita, bug/regressão funcional, fonte final de migração ou decisão de negócio para um PENDING, isso pode se tornar a próxima frente via Issue → branch → PR.
 
-Se surgir nova prioridade explícita, bug/regressão, fonte final de migração ou decisão de negócio para um PENDING, isso pode se tornar a próxima frente via Issue → branch → PR.
+Quando o sistema estiver 100% concluído, retomar `REQ-PLAT-005` como etapa de homologação final e reconciliar scheduling, backup automático, Storage, restore e critérios de fechamento das Issues.
 
 Restrições permanentes: GitHub é fonte de verdade; RLS é boundary; nenhum secret em browser/Git/docs; Production não recebe fixture para prova; nenhum deploy Vercel rotineiro; repo não deve ser tornado private automaticamente.
