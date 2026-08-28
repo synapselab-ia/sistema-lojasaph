@@ -54,7 +54,6 @@ export function RuntimeShell({
         </div>
         <div className="mt-5 flex flex-wrap gap-2 lg:flex-col">
           {canSwitchOrganization && <Link href="/workspace/selecionar-organizacao" className="inline-flex min-h-11 items-center justify-center rounded-lg border border-neutral-300 px-3 py-2 text-center text-xs font-medium">Trocar organização</Link>}
-          <Link href="/cadastros" className="inline-flex min-h-11 items-center justify-center rounded-lg border border-neutral-300 px-3 py-2 text-center text-xs font-medium">Abrir demonstração</Link>
           <form action="/auth/signout" method="post"><button type="submit" className="min-h-11 w-full rounded-lg border border-neutral-300 px-3 py-2 text-xs font-medium">Sair</button></form>
         </div>
       </aside>

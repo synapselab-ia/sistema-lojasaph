@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { safeInternalPath, urlWithMessage } from "./redirect";
+import { rootEntryDestination, safeInternalPath, urlWithMessage } from "./redirect";
 
 describe("safeInternalPath", () => {
   it("accepts local absolute paths", () => {
@@ -27,5 +27,19 @@ describe("urlWithMessage", () => {
     expect(urlWithMessage("/login?next=%2Fworkspace", "error", "Sessão expirada & inválida")).toBe(
       "/login?next=%2Fworkspace&error=Sess%C3%A3o+expirada+%26+inv%C3%A1lida",
     );
+  });
+});
+
+describe("rootEntryDestination", () => {
+  it("sends unauthenticated visitors to login", () => {
+    expect(rootEntryDestination({ backendAvailable: true, authenticated: false })).toBe("/login");
+  });
+
+  it("sends authenticated visitors into the existing workspace flow", () => {
+    expect(rootEntryDestination({ backendAvailable: true, authenticated: true })).toBe("/workspace");
+  });
+
+  it("keeps isolated environments on the non-operational login screen", () => {
+    expect(rootEntryDestination({ backendAvailable: false, authenticated: true })).toBe("/login");
   });
 });
