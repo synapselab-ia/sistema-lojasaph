@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ReactNode, useState } from "react";
+import { Button, Drawer } from "@/components/ui";
 import {
   isWorkspaceAreaActive,
   isWorkspaceRouteActive,
@@ -117,9 +118,7 @@ function ShellSidebarContent({
           </Link>
         )}
         <form action="/auth/signout" method="post">
-          <button type="submit" className="min-h-11 w-full rounded-lg border border-neutral-300 px-3 py-2 text-xs font-medium">
-            Sair
-          </button>
+          <Button type="submit" variant="secondary" size="sm" block>Sair</Button>
         </form>
       </div>
     </>
@@ -144,48 +143,34 @@ export function RuntimeShell({
     <div className="min-h-screen bg-neutral-100 lg:grid lg:grid-cols-[270px_1fr]">
       <header className="sticky top-0 z-30 flex min-h-16 items-center justify-between border-b border-neutral-200 bg-white px-4 lg:hidden">
         <Link href="/" className="font-semibold tracking-tight">Sistema Lojasaph</Link>
-        <button
+        <Button
           type="button"
+          variant="secondary"
+          size="sm"
           aria-controls="workspace-mobile-navigation"
           aria-expanded={mobileNavigationOpen}
           onClick={() => setMobileNavigationOpen(true)}
-          className="inline-flex min-h-11 items-center justify-center rounded-lg border border-neutral-300 px-4 text-sm font-semibold"
         >
           Menu
-        </button>
+        </Button>
       </header>
 
-      {mobileNavigationOpen && (
-        <div className="lg:hidden">
-          <button
-            type="button"
-            aria-label="Fechar menu de navegação"
-            onClick={() => setMobileNavigationOpen(false)}
-            className="fixed inset-0 z-40 bg-neutral-950/40"
+      <div className="lg:hidden">
+        <Drawer
+          id="workspace-mobile-navigation"
+          open={mobileNavigationOpen}
+          onClose={() => setMobileNavigationOpen(false)}
+          title="Navegação"
+        >
+          <ShellSidebarContent
+            organizationName={organizationName}
+            roles={roles}
+            canSwitchOrganization={canSwitchOrganization}
+            pathname={pathname}
+            onNavigate={() => setMobileNavigationOpen(false)}
           />
-          <aside
-            id="workspace-mobile-navigation"
-            className="fixed inset-y-0 left-0 z-50 w-[min(88vw,22rem)] overflow-y-auto bg-white p-5 shadow-2xl"
-          >
-            <div className="mb-2 flex items-center justify-end">
-              <button
-                type="button"
-                onClick={() => setMobileNavigationOpen(false)}
-                className="inline-flex min-h-11 items-center justify-center rounded-lg border border-neutral-300 px-3 text-sm font-medium"
-              >
-                Fechar
-              </button>
-            </div>
-            <ShellSidebarContent
-              organizationName={organizationName}
-              roles={roles}
-              canSwitchOrganization={canSwitchOrganization}
-              pathname={pathname}
-              onNavigate={() => setMobileNavigationOpen(false)}
-            />
-          </aside>
-        </div>
-      )}
+        </Drawer>
+      </div>
 
       <aside className="hidden min-w-0 border-r border-neutral-200 bg-white p-6 lg:sticky lg:top-0 lg:block lg:h-screen lg:overflow-y-auto">
         <ShellSidebarContent
