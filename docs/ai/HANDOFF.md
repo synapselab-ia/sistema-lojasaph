@@ -4,153 +4,126 @@
 
 **Fase 51 / Issue #142 — consolidação de produto, arquitetura de informação e UX — continua ativa.**
 
-Slices integradas:
+Não refazer as slices já concluídas:
 
 - PR #145 — remoção da entrada técnica;
 - PR #147 — arquitetura da informação + navegação desktop/mobile;
-- PR #149 — design system mínimo e padrões reutilizáveis;
-- PR #151 — Administração: Estrutura + Usuários/Permissões.
+- PR #149 — design system mínimo;
+- PR #151 — Administração: Estrutura + Usuários/Permissões;
+- PR #152 — reconciliação/handoff para Cadastros.
 
-Baseline confirmado após Administração:
+Baseline real que iniciou esta execução:
 
-- `main=a06e7c3dd96b4b010ca4c7754438b90e40720399`;
-- CI do PR #523 / run `33195119453`: success;
-- Inventory Count Integration #244 / run `33195119447`: success;
-- Business Transactions Integration #231 / run `33195119446`: success;
-- CI pós-merge #524 / run `33195244017`: success;
-- Issue #142 continua aberta;
-- #75/#121 continuam **TOTALMENTE ON HOLD**;
-- nenhum deploy Vercel manual/rotineiro ou prova em Production foi feito.
+- `main=5eda252ba209602434dcc7cdf5463355a38df6c6`;
+- PR #152 merged;
+- CI pós-merge #526: success;
+- Issue #142 aberta;
+- #75/#121 **TOTALMENTE ON HOLD**.
 
-Não refazer as slices já integradas.
+## PR desta execução
 
-## Administração entregue
+- PR #153 — `feat: consolidar jornadas de Cadastros`;
+- branch `feat/51-cadastros-produtos`;
+- base `main=5eda252ba209602434dcc7cdf5463355a38df6c6`.
 
-Mapa de autoridade da slice:
+Apesar do nome histórico da branch mencionar Produtos, o PR fecha a slice completa de **Cadastros: Produtos, Fornecedores e Funcionários**.
 
-- `docs/product/administration-capability-map.md`.
-
-Rotas reais:
-
-- `/workspace/administracao/estrutura`;
-- `/workspace/administracao/acessos`;
-- `/workspace/backup` permanece Proteção dos dados.
-
-### Estrutura
-
-A UI persistente administra Negócios, Unidades, Setores e Locais de estoque somente onde os grants/RLS atuais permitem. Não há delete físico, reparenting arbitrário ou alteração de política de estoque negativo nesta jornada.
-
-Foi adicionado invariável de banco que impede `stock_locations.sector_id` de apontar para Setor de outra Unidade.
-
-### Acessos
-
-Memberships continuam sem DML autenticado direto. A jornada utiliza RPCs estreitos para:
-
-- listar acessos;
-- criar/reactivar membership;
-- alterar role/escopo/estado;
-- proteger o último owner Organization-wide;
-- registrar auditoria;
-- vincular Employee à identidade autenticada.
-
-Convite usa Supabase Auth Admin somente server-side. O callback normal exige membership ativo; convite por si só não concede acesso.
-
-A tela de Funcionários não pede mais UUID de `auth.users`. Employee e autorização permanecem conceitos separados.
-
-## Q-022 permanece aberta
-
-Não interpretar a nova tela como homologação dos papéis técnicos com cargos reais.
-
-Continuam válidos os guardrails:
-
-- não inventar perfis reais;
-- não ampliar autorização por conveniência de UI;
-- não assumir que `manager`, `inventory`, `finance`, etc. correspondem automaticamente a cargos do cliente;
-- preservar guards/RPCs/RLS como fronteira técnica;
-- registrar gaps quando uma decisão depender de Q-022.
-
-Q-001/Q-002 também não foram resolvidas pela UI de Estrutura.
-
-## Limite de validação
-
-Código e banco passaram todos os gates do PR e novamente na `main`.
-
-**Não houve browser real disponível nesta sessão.** Administração ainda precisa ser homologada visualmente na etapa explícita desktop/tablet/mobile; build/CI não contam como essa homologação.
-
-## Próxima slice obrigatória
-
-A próxima slice, conforme `docs/product/product-completion-ux-roadmap.md`, é:
-
-> **Cadastros — Produtos, Fornecedores e Funcionários no padrão lista → detalhe → ação.**
-
-Estado atual comprovado:
+## Cadastros entregue no PR #153
 
 ### Produtos
 
-`/workspace/produtos` ainda é uma megapágina que reúne:
-
-- tabela horizontal com `min-width`;
-- listagem completa;
-- criação;
-- edição;
-- identificação/fiscal;
-- configurações de lote/validade/status.
-
-Não existe `/workspace/produtos/[id]` como detalhe estável.
+- `/workspace/produtos`: lista com busca/filtros, tabela desktop e cards mobile;
+- `/workspace/produtos/novo`: criação dedicada;
+- `/workspace/produtos/[id]`: detalhe estável + edição contextual;
+- detalhe mostra categoria, unidade, tipo, EAN, NCM, CEST, status e flags operacionais;
+- persistência/autorização continuam no `RuntimeWorkspaceProvider`, domínio/repository e RLS existentes;
+- teste puro de busca/filtros adicionado.
 
 ### Fornecedores
 
-`/workspace/fornecedores` reúne na mesma página:
-
-- lista;
-- criação/edição;
-- contatos;
-- condições comerciais;
-- produtos fornecidos.
-
-Não existe rota estável de detalhe por fornecedor. `SupplierCommercialTermsPanel` e `SupplierItemsPanel` já oferecem boundaries/contexto que devem ser inventariados e reaproveitados, não reimplementados cegamente.
+- `/workspace/fornecedores`: lista focada com busca e status;
+- `/workspace/fornecedores/novo`: criação dedicada;
+- `/workspace/fornecedores/[id]`: detalhe estável + edição contextual;
+- contatos ficam no detalhe;
+- `SupplierCommercialTermsPanel` foi reaproveitado no detalhe;
+- `SupplierItemsPanel` foi reaproveitado no detalhe;
+- não foi criada semântica nova para agenda, pedido mínimo, embalagem, preço ou automação de compras.
 
 ### Funcionários
 
-`/workspace/funcionarios` ainda reúne lista + criação + edição. O UUID técnico foi removido da UX, mas falta:
+- `/workspace/funcionarios`: lista focada com busca, status e unidade;
+- `/workspace/funcionarios/novo`: criação dedicada;
+- `/workspace/funcionarios/[id]`: detalhe estável + edição contextual;
+- detalhe mostra dados operacionais, escopo padrão e apenas o estado legível do vínculo de acesso;
+- `linkedUserId` é preservado internamente na edição, sem aparecer na UX;
+- Employee continua separado de login/membership;
+- concessão/alteração de acesso continua pertencendo a Administração → Usuários e permissões.
 
-- detalhe estável;
-- apresentação contextual do vínculo de acesso;
-- consolidação com os padrões do design system.
+## O que não mudou
 
-O vínculo Employee ↔ identidade deve continuar sendo administrado pela boundary de Administração; não reintroduzir UUID nem fundir Employee com membership.
+- nenhuma migration;
+- nenhuma policy/RLS;
+- nenhum RPC;
+- nenhuma matriz de autorização/Q-022;
+- nenhum requisito PENDING;
+- nenhum deploy Vercel manual;
+- nenhum trabalho de #75/#121;
+- nenhuma fixture/evidência fabricada em Production.
 
-## Como começar Cadastros
+## Validação técnica já concluída
+
+Head funcional antes dos commits Markdown:
+
+- `eb144abf6e51dd99d89d96e7dbc0833b6597114b`.
+
+Resultados:
+
+- CI #535 / run `33197011401`: success;
+- lint: success;
+- typecheck: success;
+- unit tests: success;
+- production build: success;
+- banco/migrations/RLS: success;
+- Inventory Count Integration #253 / run `33197011414`: success;
+- Business Transactions Integration #240 / run `33197011395`: success.
+
+Os commits de documentação posteriores devem ser verificados pelo CI final do PR antes do merge.
+
+## Homologação visual
+
+**Não houve browser real disponível nesta execução.**
+
+Não declarar Produtos/Fornecedores/Funcionários homologados visualmente em desktop/tablet/mobile apenas por build/CI. Também não fazer deploy manual na Vercel apenas para criar essa evidência.
+
+## Próxima ação após integrar o PR #153
+
+A próxima área oficial da Fase 51 é:
+
+> **Estoque — consolidar posição, entradas, baixas/perdas, devoluções existentes, transferências, inventários/contagens, lotes/validades e estoque mínimo como uma área coerente.**
 
 O próximo chat deve:
 
-1. reconciliar `main`, Issue #142, PRs/branches e CI;
-2. reler `NEXT_ACTION.md`, roadmap, IA, design system e Definition of Done;
-3. inventariar domínio/repositories/adapters/runtime de Produto, Fornecedor e Funcionário;
-4. mapear as relações já existentes que cabem no detalhe:
-   - Produto: categoria, unidade, identificação/fiscal, flags, fornecedores relacionados e estoque relacionado quando útil;
-   - Fornecedor: contatos, condições comerciais, itens/preços já existentes e histórico que realmente possuir boundary atual;
-   - Funcionário: dados operacionais, escopo padrão e vínculo de acesso legível;
-5. definir antes do código o contrato de rotas e o que pertence à lista versus detalhe versus ação;
-6. preservar URLs principais `/workspace/produtos`, `/workspace/fornecedores`, `/workspace/funcionarios`;
-7. adicionar URLs estáveis de detalhe, preferencialmente `[id]`, se o inventário confirmar que o contrato cabe nelas;
-8. implementar pesquisa/filtro/lista responsiva somente com o menor componente compartilhado que as três jornadas comprovarem necessário;
-9. reutilizar `src/components/ui` e migrar os controles tocados pela slice;
-10. manter regras, RLS e persistência existentes; schema/RPC novo somente com gap comprovado;
-11. testar URLs, estados, autorização e adapters envolvidos;
-12. manter CI e integrações afetadas verdes;
-13. registrar honestamente se browser real continuar indisponível.
+1. reconciliar `main`, Issue #142, PRs, branches e CI reais;
+2. confirmar que PR #153 está integrado antes de começar Estoque;
+3. reler `NEXT_ACTION.md`, roadmap, IA, design system e Definition of Done;
+4. inventariar as rotas e boundaries existentes de inventory antes de editar;
+5. identificar jornadas atuais e megapáginas/duplicações sem reimplementar regras;
+6. preservar transações atômicas, escopo por organização/unidade/local e RLS existentes;
+7. não inventar FEFO, custeio, empréstimo ou outras regras PENDING;
+8. usar `lista → detalhe → ação` quando o domínio persistente justificar URL estável;
+9. reutilizar o design system e criar componente genérico apenas se o uso repetido provar o contrato;
+10. manter lint, typecheck, tests, build, banco/RLS e integrações verdes;
+11. registrar a ausência de browser real se continuar indisponível.
 
 ## Fora da próxima slice
 
-Não usar Cadastros para:
+Não usar Estoque para:
 
-- consolidar Estoque, Compras, Financeiro ou Caixa;
+- reabrir Cadastros sem bug/gap concreto;
+- consolidar Compras, Financeiro ou Caixa;
 - redesenhar Dashboard;
-- resolver requisitos PENDING;
-- mudar política de autorização/Q-022;
-- mover vínculo Employee/Auth de volta para a página de Funcionários por UUID;
-- criar abstrações genéricas sem uso comprovado;
+- mudar Q-022/política de autorização;
+- resolver PENDINGs por conveniência;
 - retomar #75/#121;
 - fazer deploy Vercel manual/rotineiro.
 
@@ -160,8 +133,8 @@ Não usar Cadastros para:
 2. ~~arquitetura da informação/navegação~~ — PR #147;
 3. ~~design system mínimo~~ — PR #149;
 4. ~~Administração~~ — PR #151;
-5. **Cadastros** — próxima;
-6. Estoque;
+5. **Cadastros** — PR #153;
+6. **Estoque** — próxima após integração;
 7. Compras;
 8. Financeiro;
 9. Caixa;
@@ -174,21 +147,6 @@ Não usar Cadastros para:
 16. migração/cutover;
 17. `REQ-PLAT-005` final.
 
-## PENDING continua PENDING
+## Guardrails permanentes
 
-Não promover por conveniência de UI:
-
-- `REQ-ITEM-004` — produto de venda/POS;
-- `REQ-ITEM-005` — ficha técnica/receita;
-- `REQ-STK-007` — empréstimo;
-- `REQ-STK-010` — custeio;
-- `REQ-EXP-004` — FEFO;
-- `REQ-FIN-004` — cardinalidade final de pagamentos;
-- `REQ-CASH-007` — consumo de funcionários;
-- `REQ-CASH-008` — integração com vendas.
-
-## #75/#121 permanecem ON HOLD
-
-Não retomar scheduling, Storage/R2/S3, restore drills, secrets/variables, Production fixtures ou evidência de proteção durante a consolidação funcional. O hold só termina por decisão explícita ou no production-readiness final.
-
-Restrições permanentes: GitHub é fonte de verdade; RLS é boundary; nenhum secret em browser/Git/docs; Production não recebe fixture para prova; nenhum deploy Vercel rotineiro; repo não deve ser tornado private automaticamente.
+GitHub é fonte de verdade; RLS é boundary; nenhum secret em browser/Git/docs; Production não recebe fixture para prova; nenhum deploy Vercel rotineiro; #75/#121 permanecem ON HOLD até production-readiness final ou decisão explícita.

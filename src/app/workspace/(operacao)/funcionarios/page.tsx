@@ -1,232 +1,138 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
-import { asEntityId, EntityId } from "@/domain/common/entity-id";
-import { Employee } from "@/modules/employees/domain/employee";
+import Link from "next/link";
+import { useMemo, useState } from "react";
+import { EmptyState, FeedbackMessage, FormField, Input, PageHeader, Panel, Select, StatusBadge } from "@/components/ui";
+import { buttonClasses } from "@/components/ui/styles";
+import { EntityId } from "@/domain/common/entity-id";
 import { useRuntimeWorkspace } from "@/modules/master-data/ui/runtime-workspace-provider";
 
-interface EmployeeFormState {
-  name: string;
-  code: string;
-  active: boolean;
-  defaultUnitId: string;
-  defaultSectorId: string;
-  linkedUserId: string;
-}
+type EmployeeStatusFilter = "all" | "active" | "inactive";
+type EmployeeUnitFilter = "all" | "organization" | EntityId;
 
-const emptyEmployee = (): EmployeeFormState => ({
-  name: "",
-  code: "",
-  active: true,
-  defaultUnitId: "",
-  defaultSectorId: "",
-  linkedUserId: "",
-});
+function normalizeSearch(value: string): string {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR").trim();
+}
 
 export default function EmployeesPage() {
   const workspace = useRuntimeWorkspace();
-  const [editingId, setEditingId] = useState<EntityId | null>(null);
-  const [form, setForm] = useState<EmployeeFormState>(emptyEmployee());
-  const [message, setMessage] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState<EmployeeStatusFilter>("all");
+  const [unitFilter, setUnitFilter] = useState<EmployeeUnitFilter>("all");
 
-  const availableSectors = useMemo(
-    () => workspace.sectors.filter((sector) => !form.defaultUnitId || sector.unitId === form.defaultUnitId),
-    [form.defaultUnitId, workspace.sectors],
-  );
-
-  function unitName(id?: EntityId): string {
-    return id ? workspace.units.find((unit) => unit.id === id)?.name ?? "Unidade indisponível" : "Toda a organização";
-  }
-
-  function sectorName(id?: EntityId): string | undefined {
-    return id ? workspace.sectors.find((sector) => sector.id === id)?.name ?? "Setor indisponível" : undefined;
-  }
-
-  function startEdit(employee: Employee) {
-    setEditingId(employee.id);
-    setForm({
-      name: employee.name,
-      code: employee.code ?? "",
-      active: employee.active,
-      defaultUnitId: employee.defaultUnitId ?? "",
-      defaultSectorId: employee.defaultSectorId ?? "",
-      // O vínculo é preservado internamente; sua manutenção pertence a Usuários e permissões.
-      linkedUserId: employee.linkedUserId ?? "",
-    });
-    setMessage(null);
-  }
-
-  function reset() {
-    setEditingId(null);
-    setForm(emptyEmployee());
-  }
-
-  function changeUnit(value: string) {
-    const selectedSector = workspace.sectors.find((sector) => sector.id === form.defaultSectorId);
-    setForm({
-      ...form,
-      defaultUnitId: value,
-      defaultSectorId: selectedSector && selectedSector.unitId !== value ? "" : form.defaultSectorId,
-    });
-  }
-
-  function changeSector(value: string) {
-    const sector = workspace.sectors.find((candidate) => candidate.id === value);
-    setForm({
-      ...form,
-      defaultSectorId: value,
-      defaultUnitId: sector ? sector.unitId : form.defaultUnitId,
-    });
-  }
-
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setSaving(true);
-    setMessage(null);
-    try {
-      const payload = {
-        name: form.name,
-        code: form.code || undefined,
-        active: form.active,
-        defaultUnitId: form.defaultUnitId ? asEntityId(form.defaultUnitId) : undefined,
-        defaultSectorId: form.defaultSectorId ? asEntityId(form.defaultSectorId) : undefined,
-        linkedUserId: form.linkedUserId ? asEntityId(form.linkedUserId) : undefined,
-      };
-      if (editingId) {
-        await workspace.updateEmployee(editingId, payload);
-        setMessage("Funcionário atualizado no banco.");
-      } else {
-        await workspace.createEmployee(payload);
-        setMessage("Funcionário criado no banco.");
-      }
-      reset();
-    } catch (error) {
-      setMessage(workspace.errorMessage(error));
-    } finally {
-      setSaving(false);
-    }
-  }
+  const employees = useMemo(() => {
+    const search = normalizeSearch(query);
+    return [...workspace.employees]
+      .filter((employee) => {
+        if (status === "active" && !employee.active) return false;
+        if (status === "inactive" && employee.active) return false;
+        if (unitFilter === "organization" && employee.defaultUnitId) return false;
+        if (unitFilter !== "all" && unitFilter !== "organization" && employee.defaultUnitId !== unitFilter) return false;
+        if (!search) return true;
+        const unitName = employee.defaultUnitId ? workspace.units.find((unit) => unit.id === employee.defaultUnitId)?.name : "Toda a organização";
+        const sectorName = employee.defaultSectorId ? workspace.sectors.find((sector) => sector.id === employee.defaultSectorId)?.name : undefined;
+        return [employee.name, employee.code, unitName, sectorName]
+          .filter((value): value is string => Boolean(value))
+          .some((value) => normalizeSearch(value).includes(search));
+      })
+      .sort((left, right) => left.name.localeCompare(right.name, "pt-BR"));
+  }, [query, status, unitFilter, workspace.employees, workspace.sectors, workspace.units]);
 
   if (!workspace.permissions.manageEmployees) {
     return (
-      <div className="mx-auto max-w-3xl space-y-6">
-        <header>
-          <p className="text-sm font-medium text-emerald-700">Administração</p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight">Funcionários</h1>
-        </header>
-        <section className="rounded-2xl border border-neutral-200 bg-white p-6 text-sm leading-6 text-neutral-600 shadow-sm">
-          <h2 className="font-semibold text-neutral-900">Acesso administrativo necessário</h2>
-          <p className="mt-2">O diretório de funcionários pode conter vínculo com uma identidade autenticada e fica restrito a owner, admin ou manager dentro do escopo autorizado.</p>
-        </section>
+      <div className="mx-auto max-w-4xl space-y-6">
+        <PageHeader eyebrow="Cadastros · Funcionários" title="Funcionários" description="O diretório de funcionários contém dados operacionais e indicação de vínculo com acesso ao sistema." />
+        <FeedbackMessage tone="attention">Seu perfil não possui permissão para consultar o diretório de funcionários neste escopo.</FeedbackMessage>
       </div>
     );
   }
 
+  const hasFilters = Boolean(query.trim()) || status !== "all" || unitFilter !== "all";
+  const clearFilters = () => {
+    setQuery("");
+    setStatus("all");
+    setUnitFilter("all");
+  };
+
   return (
-    <div className="mx-auto max-w-7xl space-y-7">
-      <header>
-        <p className="text-sm font-medium text-emerald-700">Administração — cadastro persistente</p>
-        <h1 className="mt-1 text-3xl font-semibold tracking-tight">Funcionários</h1>
-        <p className="mt-3 max-w-3xl text-sm leading-6 text-neutral-600">
-          Funcionário é uma identidade operacional separada do login. O cadastro desta tela não concede acesso ao sistema; o vínculo com uma identidade autenticada é administrado separadamente em Usuários e permissões.
-        </p>
-      </header>
+    <div className="mx-auto max-w-7xl space-y-6">
+      <PageHeader
+        eyebrow="Cadastros · Funcionários"
+        title="Funcionários"
+        description="Consulte identidades operacionais e seus escopos padrão. Cadastro de funcionário não concede login; acesso e permissões continuam separados em Administração."
+        actions={<Link href="/workspace/funcionarios/novo" className={buttonClasses({ variant: "primary" })}>Novo funcionário</Link>}
+      />
 
-      {message && <p className="rounded-xl border border-neutral-200 bg-white px-4 py-3 text-sm shadow-sm">{message}</p>}
+      <Panel as="section" className="space-y-4">
+        <div className="grid gap-4 lg:grid-cols-[minmax(260px,1fr)_200px_240px]">
+          <FormField id="employee-search" label="Buscar funcionário" hint="Busque por nome, código, unidade ou setor.">
+            {(props) => <Input {...props} type="search" value={query} placeholder="Ex.: Ana, caixa, cozinha" onChange={(event) => setQuery(event.target.value)} />}
+          </FormField>
+          <FormField id="employee-status-filter" label="Status">
+            {(props) => (
+              <Select {...props} value={status} onChange={(event) => setStatus(event.target.value as EmployeeStatusFilter)}>
+                <option value="all">Todos</option>
+                <option value="active">Ativos</option>
+                <option value="inactive">Inativos</option>
+              </Select>
+            )}
+          </FormField>
+          <FormField id="employee-unit-filter" label="Unidade padrão">
+            {(props) => (
+              <Select {...props} value={unitFilter} onChange={(event) => setUnitFilter(event.target.value as EmployeeUnitFilter)}>
+                <option value="all">Todas</option>
+                <option value="organization">Toda a organização</option>
+                {workspace.units.map((unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}
+              </Select>
+            )}
+          </FormField>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-neutral-100 pt-4 text-sm text-neutral-600">
+          <p>{employees.length} de {workspace.employees.length} {workspace.employees.length === 1 ? "funcionário" : "funcionários"}</p>
+          {hasFilters && <button type="button" className="font-semibold text-neutral-800 underline-offset-4 hover:underline" onClick={clearFilters}>Limpar filtros</button>}
+        </div>
+      </Panel>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
-        <section className="space-y-3">
-          {workspace.employees.map((employee) => {
-            const sector = sectorName(employee.defaultSectorId);
+      {employees.length === 0 ? (
+        <EmptyState
+          title={workspace.employees.length === 0 ? "Nenhum funcionário cadastrado" : "Nenhum funcionário encontrado"}
+          description={workspace.employees.length === 0 ? "Cadastre o primeiro funcionário para iniciar o diretório operacional." : "Ajuste a busca ou os filtros para localizar outros funcionários."}
+          action={workspace.employees.length === 0
+            ? <Link href="/workspace/funcionarios/novo" className={buttonClasses({ variant: "primary" })}>Cadastrar funcionário</Link>
+            : hasFilters
+              ? <button type="button" className={buttonClasses()} onClick={clearFilters}>Limpar filtros</button>
+              : undefined}
+        />
+      ) : (
+        <section className="grid gap-4 lg:grid-cols-2" aria-label="Lista de funcionários">
+          {employees.map((employee) => {
+            const unitName = employee.defaultUnitId ? workspace.units.find((unit) => unit.id === employee.defaultUnitId)?.name ?? "Unidade indisponível" : "Toda a organização";
+            const sectorName = employee.defaultSectorId ? workspace.sectors.find((sector) => sector.id === employee.defaultSectorId)?.name ?? "Setor indisponível" : undefined;
             return (
-              <article key={employee.id} className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="font-semibold">{employee.name}</h2>
-                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${employee.active ? "bg-emerald-50 text-emerald-700" : "bg-neutral-100 text-neutral-500"}`}>
-                        {employee.active ? "Ativo" : "Inativo"}
-                      </span>
-                    </div>
-                    <p className="mt-1 text-xs text-neutral-500">{employee.code ? `Código: ${employee.code}` : "Sem código operacional"}</p>
+              <Panel key={employee.id} as="article" className="flex flex-col gap-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <Link href={`/workspace/funcionarios/${employee.id}`} className="font-semibold text-neutral-950 underline-offset-4 hover:underline">{employee.name}</Link>
+                    <p className="mt-1 text-sm text-neutral-600">{employee.code ? `Código: ${employee.code}` : "Sem código operacional"}</p>
                   </div>
-                  <button type="button" onClick={() => startEdit(employee)} className="rounded-lg border border-neutral-200 px-3 py-1.5 text-sm font-medium hover:bg-neutral-50">
-                    Editar
-                  </button>
+                  <StatusBadge tone={employee.active ? "success" : "neutral"}>{employee.active ? "Ativo" : "Inativo"}</StatusBadge>
                 </div>
-                <div className="mt-4 grid gap-2 text-sm sm:grid-cols-2">
-                  <div className="rounded-xl bg-neutral-50 p-3">
-                    <p className="text-xs text-neutral-500">Escopo operacional padrão</p>
-                    <p className="mt-1 font-medium">{unitName(employee.defaultUnitId)}{sector ? ` · ${sector}` : ""}</p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-xl bg-neutral-50 p-4 text-sm">
+                    <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">Escopo padrão</p>
+                    <p className="mt-2 font-medium text-neutral-900">{unitName}{sectorName ? ` · ${sectorName}` : ""}</p>
                   </div>
-                  <div className="rounded-xl bg-neutral-50 p-3">
-                    <p className="text-xs text-neutral-500">Identidade de acesso</p>
-                    <p className="mt-1 font-medium">{employee.linkedUserId ? "Identidade vinculada" : "Sem login vinculado"}</p>
+                  <div className="rounded-xl bg-neutral-50 p-4 text-sm">
+                    <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">Acesso ao sistema</p>
+                    <p className="mt-2 font-medium text-neutral-900">{employee.linkedUserId ? "Identidade vinculada" : "Sem login vinculado"}</p>
                   </div>
                 </div>
-              </article>
+                <Link href={`/workspace/funcionarios/${employee.id}`} className={buttonClasses({ block: true })}>Ver detalhe</Link>
+              </Panel>
             );
           })}
-          {workspace.employees.length === 0 && (
-            <p className="rounded-2xl border border-dashed border-neutral-300 bg-white p-6 text-sm text-neutral-500">Nenhum funcionário cadastrado no escopo administrativo disponível.</p>
-          )}
         </section>
-
-        <form onSubmit={submit} className="h-fit space-y-4 rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-          <div>
-            <h2 className="text-lg font-semibold">{editingId ? "Editar funcionário" : "Novo funcionário"}</h2>
-            <p className="mt-1 text-xs leading-5 text-neutral-500">O RLS valida novamente papel e escopo. Identidades de login não são editadas neste cadastro.</p>
-          </div>
-
-          <label className="block text-sm font-medium">
-            Nome
-            <input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 font-normal" />
-          </label>
-
-          <label className="block text-sm font-medium">
-            Código operacional (opcional)
-            <input value={form.code} onChange={(event) => setForm({ ...form, code: event.target.value })} className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 font-normal" />
-          </label>
-
-          <label className="block text-sm font-medium">
-            Unidade padrão
-            <select
-              required={!workspace.permissions.manageEmployeesOrganizationWide}
-              value={form.defaultUnitId}
-              onChange={(event) => changeUnit(event.target.value)}
-              className="mt-1 w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 font-normal"
-            >
-              <option value="" disabled={!workspace.permissions.manageEmployeesOrganizationWide}>
-                {workspace.permissions.manageEmployeesOrganizationWide ? "Toda a organização" : "Selecione uma unidade"}
-              </option>
-              {workspace.units.map((unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}
-            </select>
-          </label>
-
-          <label className="block text-sm font-medium">
-            Setor padrão (opcional)
-            <select value={form.defaultSectorId} onChange={(event) => changeSector(event.target.value)} className="mt-1 w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 font-normal">
-              <option value="">Sem setor padrão</option>
-              {availableSectors.map((sector) => <option key={sector.id} value={sector.id}>{sector.name} · {sector.unitName}</option>)}
-            </select>
-          </label>
-
-          {editingId && (
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={form.active} onChange={(event) => setForm({ ...form, active: event.target.checked })} />
-              Funcionário ativo
-            </label>
-          )}
-
-          <div className="flex gap-2">
-            <button disabled={saving} type="submit" className="flex-1 rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
-              {saving ? "Salvando..." : editingId ? "Salvar" : "Criar funcionário"}
-            </button>
-            {editingId && <button type="button" onClick={reset} className="rounded-lg border border-neutral-300 px-4 py-2 text-sm">Cancelar</button>}
-          </div>
-        </form>
-      </div>
+      )}
     </div>
   );
 }

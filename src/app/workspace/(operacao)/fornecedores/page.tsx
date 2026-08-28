@@ -1,117 +1,114 @@
 "use client";
 
-import { FormEvent, useState } from "react";
-import { EntityId } from "@/domain/common/entity-id";
+import Link from "next/link";
+import { useMemo, useState } from "react";
+import { EmptyState, FormField, Input, PageHeader, Panel, Select, StatusBadge } from "@/components/ui";
+import { buttonClasses } from "@/components/ui/styles";
 import { useRuntimeWorkspace } from "@/modules/master-data/ui/runtime-workspace-provider";
-import { Supplier, SupplierContactInput } from "@/modules/suppliers/domain/supplier";
-import { SupplierCommercialTermsPanel } from "@/modules/suppliers/ui/supplier-commercial-terms-panel";
-import { SupplierItemsPanel } from "@/modules/suppliers/ui/supplier-items-panel";
 
-interface SupplierFormState {
-  tradeName: string;
-  taxId: string;
-  active: boolean;
-  contacts: SupplierContactInput[];
+function normalizeSearch(value: string): string {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR").trim();
 }
 
-const emptyContact = (): SupplierContactInput => ({ name: "", phone: "", email: "", isPrimary: false });
-const emptySupplier = (): SupplierFormState => ({ tradeName: "", taxId: "", active: true, contacts: [{ ...emptyContact(), isPrimary: true }] });
+type SupplierStatusFilter = "all" | "active" | "inactive";
 
 export default function RuntimeSuppliersPage() {
   const workspace = useRuntimeWorkspace();
-  const [editingId, setEditingId] = useState<EntityId | null>(null);
-  const [form, setForm] = useState<SupplierFormState>(emptySupplier());
-  const [message, setMessage] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState<SupplierStatusFilter>("all");
 
-  function startEdit(supplier: Supplier) {
-    setEditingId(supplier.id);
-    setForm({
-      tradeName: supplier.tradeName,
-      taxId: supplier.taxId ?? "",
-      active: supplier.active,
-      contacts: supplier.contacts.length
-        ? supplier.contacts.map((contact) => ({ name: contact.name, phone: contact.phone ?? "", email: contact.email ?? "", isPrimary: contact.isPrimary }))
-        : [{ ...emptyContact(), isPrimary: true }],
-    });
-    setMessage(null);
-  }
+  const suppliers = useMemo(() => {
+    const search = normalizeSearch(query);
+    return [...workspace.suppliers]
+      .filter((supplier) => {
+        if (status === "active" && !supplier.active) return false;
+        if (status === "inactive" && supplier.active) return false;
+        if (!search) return true;
+        const primary = supplier.contacts.find((contact) => contact.isPrimary) ?? supplier.contacts[0];
+        return [supplier.tradeName, supplier.taxId, primary?.name, primary?.phone, primary?.email]
+          .filter((value): value is string => Boolean(value))
+          .some((value) => normalizeSearch(value).includes(search));
+      })
+      .sort((left, right) => left.tradeName.localeCompare(right.tradeName, "pt-BR"));
+  }, [query, status, workspace.suppliers]);
 
-  function reset() {
-    setEditingId(null);
-    setForm(emptySupplier());
-  }
-
-  function updateContact(index: number, patch: Partial<SupplierContactInput>) {
-    setForm((current) => ({ ...current, contacts: current.contacts.map((contact, currentIndex) => currentIndex === index ? { ...contact, ...patch } : contact) }));
-  }
-
-  function markPrimary(index: number) {
-    setForm((current) => ({ ...current, contacts: current.contacts.map((contact, currentIndex) => ({ ...contact, isPrimary: currentIndex === index })) }));
-  }
-
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setSaving(true);
-    setMessage(null);
-    try {
-      const payload = { ...form, taxId: form.taxId || undefined };
-      if (editingId) {
-        await workspace.updateSupplier(editingId, payload);
-        setMessage("Fornecedor atualizado no banco.");
-      } else {
-        await workspace.createSupplier(payload);
-        setMessage("Fornecedor criado no banco.");
-      }
-      reset();
-    } catch (error) {
-      setMessage(workspace.errorMessage(error));
-    } finally {
-      setSaving(false);
-    }
-  }
+  const hasFilters = Boolean(query.trim()) || status !== "all";
 
   return (
-    <div className="mx-auto max-w-7xl space-y-7">
-      <header>
-        <p className="text-sm font-medium text-emerald-700">Compras — cadastro persistente</p>
-        <h1 className="mt-1 text-3xl font-semibold tracking-tight">Fornecedores</h1>
-        <p className="mt-3 text-sm text-neutral-600">Fornecedor, contatos, condições comerciais e produtos compráveis são persistidos com RLS. Agenda e embalagem permanecem informativas e não criam automação ou conversão implícita de compras.</p>
-      </header>
-      {message && <p className="rounded-xl border border-neutral-200 bg-white px-4 py-3 text-sm shadow-sm">{message}</p>}
+    <div className="mx-auto max-w-7xl space-y-6">
+      <PageHeader
+        eyebrow="Cadastros · Fornecedores"
+        title="Fornecedores"
+        description="Consulte fornecedores e abra o detalhe para contatos, condições comerciais e produtos fornecidos. Agenda e embalagem permanecem informativas, sem automação implícita."
+        actions={workspace.permissions.manageSuppliers ? <Link href="/workspace/fornecedores/novo" className={buttonClasses({ variant: "primary" })}>Novo fornecedor</Link> : undefined}
+      />
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
-        <section className="space-y-3">
-          {workspace.suppliers.map((supplier) => (
-            <article key={supplier.id} className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-              <div className="flex items-start justify-between gap-4">
-                <div><div className="flex items-center gap-2"><h2 className="font-semibold">{supplier.tradeName}</h2><span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${supplier.active ? "bg-emerald-50 text-emerald-700" : "bg-neutral-100 text-neutral-500"}`}>{supplier.active ? "Ativo" : "Inativo"}</span></div><p className="mt-1 text-xs text-neutral-500">{supplier.taxId ? `Documento: ${supplier.taxId}` : "Sem documento fiscal informado"}</p></div>
-                {workspace.permissions.manageSuppliers && <button type="button" onClick={() => startEdit(supplier)} className="rounded-lg border border-neutral-200 px-3 py-1.5 text-sm font-medium hover:bg-neutral-50">Editar</button>}
-              </div>
-              <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                {supplier.contacts.length ? supplier.contacts.map((contact) => <div key={contact.id} className="rounded-xl bg-neutral-50 p-3 text-sm"><div className="flex items-center gap-2"><span className="font-medium">{contact.name}</span>{contact.isPrimary && <span className="rounded-full bg-neutral-900 px-2 py-0.5 text-[10px] font-semibold text-white">Principal</span>}</div><p className="mt-1 text-neutral-600">{contact.phone || contact.email || "Sem telefone/e-mail"}</p></div>) : <p className="text-sm text-neutral-500">Nenhum contato cadastrado.</p>}
-              </div>
-              <SupplierCommercialTermsPanel supplierId={supplier.id} />
-              <SupplierItemsPanel supplierId={supplier.id} />
-            </article>
-          ))}
-          {workspace.suppliers.length === 0 && <p className="rounded-2xl border border-dashed border-neutral-300 bg-white p-6 text-sm text-neutral-500">Nenhum fornecedor cadastrado nesta organização.</p>}
+      <Panel as="section" className="space-y-4">
+        <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
+          <FormField id="supplier-search" label="Buscar fornecedor" hint="Busque por nome, documento ou contato principal.">
+            {(props) => <Input {...props} type="search" value={query} placeholder="Ex.: distribuidora, CNPJ, contato" onChange={(event) => setQuery(event.target.value)} />}
+          </FormField>
+          <FormField id="supplier-status-filter" label="Status">
+            {(props) => (
+              <Select {...props} value={status} onChange={(event) => setStatus(event.target.value as SupplierStatusFilter)}>
+                <option value="all">Todos</option>
+                <option value="active">Ativos</option>
+                <option value="inactive">Inativos</option>
+              </Select>
+            )}
+          </FormField>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-neutral-100 pt-4 text-sm text-neutral-600">
+          <p>{suppliers.length} de {workspace.suppliers.length} {workspace.suppliers.length === 1 ? "fornecedor" : "fornecedores"}</p>
+          {hasFilters && <button type="button" className="font-semibold text-neutral-800 underline-offset-4 hover:underline" onClick={() => { setQuery(""); setStatus("all"); }}>Limpar filtros</button>}
+        </div>
+      </Panel>
+
+      {suppliers.length === 0 ? (
+        <EmptyState
+          title={workspace.suppliers.length === 0 ? "Nenhum fornecedor cadastrado" : "Nenhum fornecedor encontrado"}
+          description={workspace.suppliers.length === 0 ? "Cadastre o primeiro fornecedor para organizar contatos e relações comerciais." : "Ajuste a busca ou o filtro para localizar outros fornecedores."}
+          action={workspace.suppliers.length === 0 && workspace.permissions.manageSuppliers
+            ? <Link href="/workspace/fornecedores/novo" className={buttonClasses({ variant: "primary" })}>Cadastrar fornecedor</Link>
+            : hasFilters
+              ? <button type="button" className={buttonClasses()} onClick={() => { setQuery(""); setStatus("all"); }}>Limpar filtros</button>
+              : undefined}
+        />
+      ) : (
+        <section className="grid gap-4 lg:grid-cols-2" aria-label="Lista de fornecedores">
+          {suppliers.map((supplier) => {
+            const primary = supplier.contacts.find((contact) => contact.isPrimary) ?? supplier.contacts[0];
+            return (
+              <Panel key={supplier.id} as="article" className="flex flex-col gap-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <Link href={`/workspace/fornecedores/${supplier.id}`} className="font-semibold text-neutral-950 underline-offset-4 hover:underline">{supplier.tradeName}</Link>
+                    <p className="mt-1 text-sm text-neutral-600">{supplier.taxId ? `Documento: ${supplier.taxId}` : "Sem documento fiscal informado"}</p>
+                  </div>
+                  <StatusBadge tone={supplier.active ? "success" : "neutral"}>{supplier.active ? "Ativo" : "Inativo"}</StatusBadge>
+                </div>
+                <div className="rounded-xl bg-neutral-50 p-4 text-sm">
+                  <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">Contato principal</p>
+                  {primary ? (
+                    <div className="mt-2 space-y-1">
+                      <p className="font-medium text-neutral-900">{primary.name}</p>
+                      <p className="text-neutral-600">{[primary.phone, primary.email].filter(Boolean).join(" · ") || "Sem telefone ou e-mail informado"}</p>
+                    </div>
+                  ) : <p className="mt-2 text-neutral-600">Nenhum contato cadastrado.</p>}
+                </div>
+                <Link href={`/workspace/fornecedores/${supplier.id}`} className={buttonClasses({ block: true })}>Ver detalhe</Link>
+              </Panel>
+            );
+          })}
         </section>
+      )}
 
-        {workspace.permissions.manageSuppliers ? (
-          <form onSubmit={submit} className="h-fit space-y-4 rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-            <div><h2 className="text-lg font-semibold">{editingId ? "Editar fornecedor" : "Novo fornecedor"}</h2><p className="mt-1 text-xs text-neutral-500">A autorização final é conferida novamente pelo RLS. Condições comerciais e produtos compráveis são mantidos no card do fornecedor depois do cadastro.</p></div>
-            <label className="block text-sm font-medium">Nome fantasia<input required value={form.tradeName} onChange={(event) => setForm({ ...form, tradeName: event.target.value })} className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 font-normal" /></label>
-            <label className="block text-sm font-medium">CNPJ/CPF (opcional)<input value={form.taxId} onChange={(event) => setForm({ ...form, taxId: event.target.value })} className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 font-normal" /></label>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between"><p className="text-sm font-semibold">Contatos</p><button type="button" onClick={() => setForm({ ...form, contacts: [...form.contacts, emptyContact()] })} className="text-xs font-semibold underline">Adicionar contato</button></div>
-              {form.contacts.map((contact, index) => <div key={index} className="space-y-2 rounded-xl bg-neutral-50 p-3"><input placeholder="Nome" value={contact.name} onChange={(event) => updateContact(index, { name: event.target.value })} className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm" /><div className="grid grid-cols-2 gap-2"><input placeholder="Telefone" value={contact.phone ?? ""} onChange={(event) => updateContact(index, { phone: event.target.value })} className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm" /><input placeholder="E-mail" type="email" value={contact.email ?? ""} onChange={(event) => updateContact(index, { email: event.target.value })} className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm" /></div><label className="flex items-center gap-2 text-xs"><input type="radio" name="primary-contact" checked={contact.isPrimary ?? false} onChange={() => markPrimary(index)} />Contato principal</label></div>)}
-            </div>
-            {editingId && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.active} onChange={(event) => setForm({ ...form, active: event.target.checked })} />Fornecedor ativo</label>}
-            <div className="flex gap-2"><button disabled={saving} type="submit" className="flex-1 rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{saving ? "Salvando..." : editingId ? "Salvar" : "Criar fornecedor"}</button>{editingId && <button type="button" onClick={reset} className="rounded-lg border border-neutral-300 px-4 py-2 text-sm">Cancelar</button>}</div>
-          </form>
-        ) : <aside className="h-fit rounded-2xl border border-neutral-200 bg-white p-5 text-sm leading-6 text-neutral-600 shadow-sm"><h2 className="font-semibold text-neutral-900">Somente leitura</h2><p className="mt-1">Seu perfil pode consultar fornecedores, condições comerciais e produtos vinculados, mas não possui papel autorizado para manutenção.</p></aside>}
-      </div>
+      {!workspace.permissions.manageSuppliers && (
+        <Panel as="aside" tone="info">
+          <h2 className="font-semibold">Consulta de fornecedores</h2>
+          <p className="mt-1 text-sm leading-6">Seu perfil pode consultar fornecedores e seus vínculos comerciais. Alterações ficam disponíveis apenas para perfis autorizados.</p>
+        </Panel>
+      )}
     </div>
   );
 }
