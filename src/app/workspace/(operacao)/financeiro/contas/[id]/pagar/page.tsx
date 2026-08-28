@@ -116,9 +116,9 @@ export default function FinancePaymentPage() {
         <h2 className="text-lg font-semibold">Parcela</h2>
         <p className="mt-1 text-sm leading-6 text-neutral-600">Escolha a parcela que receberá o evento. O sistema preserva diferenças entre valor nominal e valor pago sem classificá-las automaticamente.</p>
         <div className="mt-5">
-          <FormField label="Parcela" htmlFor="payment-installment" required>
-            {({ id, describedBy }) => (
-              <Select id={id} aria-describedby={describedBy} required disabled={unavailable} value={installmentId} onChange={(event) => setInstallmentId(event.target.value)}>
+          <FormField id="payment-installment" label="Parcela" required>
+            {(field) => (
+              <Select {...field} required disabled={unavailable} value={installmentId} onChange={(event) => setInstallmentId(event.target.value)}>
                 <option value="">Selecione</option>
                 {detail.installments.map((installment) => (
                   <option key={installment.id} value={installment.id}>Parcela {installment.installmentNumber}/{installment.installmentCount} · {dateLabel(installment.dueDate)} · {installmentStatusLabel[installment.paymentStatus]}</option>
@@ -139,17 +139,17 @@ export default function FinancePaymentPage() {
       <Panel as="section">
         <h2 className="text-lg font-semibold">Dados do pagamento</h2>
         <div className="mt-5 grid gap-4 md:grid-cols-2">
-          <FormField label="Valor pago" htmlFor="payment-amount" required>
-            {({ id, describedBy }) => <Input id={id} aria-describedby={describedBy} required disabled={unavailable} inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} />}
+          <FormField id="payment-amount" label="Valor pago" required>
+            {(field) => <Input {...field} required disabled={unavailable} inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} />}
           </FormField>
-          <FormField label="Data e hora" htmlFor="payment-date" required>
-            {({ id, describedBy }) => <Input id={id} aria-describedby={describedBy} required disabled={unavailable} type="datetime-local" value={paidAt} onChange={(event) => setPaidAt(event.target.value)} />}
+          <FormField id="payment-date" label="Data e hora" required>
+            {(field) => <Input {...field} required disabled={unavailable} type="datetime-local" value={paidAt} onChange={(event) => setPaidAt(event.target.value)} />}
           </FormField>
-          <FormField label="Referência do pagamento" htmlFor="payment-reference" help="Opcional. É a referência do evento executado, separada da instrução cadastrada na parcela.">
-            {({ id, describedBy }) => <Input id={id} aria-describedby={describedBy} disabled={unavailable} value={paymentReference} onChange={(event) => setPaymentReference(event.target.value)} />}
+          <FormField id="payment-reference" label="Referência do pagamento" hint="Opcional. É a referência do evento executado, separada da instrução cadastrada na parcela.">
+            {(field) => <Input {...field} disabled={unavailable} value={paymentReference} onChange={(event) => setPaymentReference(event.target.value)} />}
           </FormField>
-          <FormField label="Observação" htmlFor="payment-notes">
-            {({ id, describedBy }) => <Textarea id={id} aria-describedby={describedBy} disabled={unavailable} rows={3} value={notes} onChange={(event) => setNotes(event.target.value)} />}
+          <FormField id="payment-notes" label="Observação">
+            {(field) => <Textarea {...field} disabled={unavailable} rows={3} value={notes} onChange={(event) => setNotes(event.target.value)} />}
           </FormField>
         </div>
       </Panel>
