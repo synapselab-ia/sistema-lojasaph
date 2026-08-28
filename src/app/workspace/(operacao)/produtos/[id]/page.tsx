@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams } from "next/navigation";
 import { useState } from "react";
 import { Button, EmptyState, FeedbackMessage, PageHeader, Panel, StatusBadge } from "@/components/ui";
 import { buttonClasses } from "@/components/ui/styles";
@@ -16,7 +16,6 @@ function booleanLabel(value: boolean): string {
 
 export default function ProductDetailPage() {
   const params = useParams<{ id: string }>();
-  const searchParams = useSearchParams();
   const workspace = useRuntimeWorkspace();
   const [editing, setEditing] = useState(false);
   const [updated, setUpdated] = useState(false);
@@ -41,7 +40,6 @@ export default function ProductDetailPage() {
   }
 
   const categoryName = workspace.categories.find((category) => category.id === item.categoryId)?.name ?? "Categoria indisponível";
-  const created = searchParams.get("created") === "1";
 
   if (editing) {
     return (
@@ -50,7 +48,7 @@ export default function ProductDetailPage() {
           eyebrow="Cadastros · Produtos"
           title={item.name}
           description="Atualize os dados do catálogo sem alterar os fluxos de estoque vinculados ao produto."
-          actions={<Link href={`/workspace/produtos/${item.id}`} className={buttonClasses()}>Voltar ao detalhe</Link>}
+          actions={<button type="button" className={buttonClasses()} onClick={() => setEditing(false)}>Voltar ao detalhe</button>}
         />
         <ProductForm
           item={item}
@@ -80,7 +78,6 @@ export default function ProductDetailPage() {
         )}
       />
 
-      {created && <FeedbackMessage tone="success">Produto criado com sucesso.</FeedbackMessage>}
       {updated && <FeedbackMessage tone="success">Produto atualizado com sucesso.</FeedbackMessage>}
 
       <div className="grid gap-5 lg:grid-cols-2">
