@@ -79,6 +79,14 @@ export interface AdministrationAccess {
   readonly employeeName?: string;
 }
 
+export interface AdministrationEmployee {
+  readonly id: EntityId;
+  readonly name: string;
+  readonly code: string;
+  readonly status: AdministrationStatus;
+  readonly linkedUserId?: EntityId;
+}
+
 export const administrationRoleLabels: Record<AdministrationRole, string> = {
   owner: "Proprietário",
   admin: "Administrador",
