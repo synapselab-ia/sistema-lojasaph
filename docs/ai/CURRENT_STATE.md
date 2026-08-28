@@ -6,14 +6,15 @@
 
 **Fase 51 / Issue #142 — consolidação de produto, arquitetura de informação e UX — permanece ativa.**
 
-Baseline funcional após a consolidação de Compras:
+Baseline funcional após a consolidação de Financeiro:
 
-- `main=63d97153cbe90fa13e9316522d1b909b5ed14840` — merge do PR #157;
-- PR #157 — `feat: consolidar jornada de Compras` — **merged**;
-- CI pós-merge da `main` #553 / run `33203276726`: **success**;
-- lint, typecheck, unit tests, production build e job de banco/migrations/RLS: **success**;
-- no head final do PR #157, Business Transactions Integration #251 / run `33203078639`: **success**;
-- no head final do PR #157, Inventory Count Integration #264 / run `33203078624`: **success**;
+- `main=692e2fb1ed12085148a04f22c540863b0d699994` — merge do PR #159;
+- PR #159 — `feat: consolidar jornada de Financeiro` — **merged**;
+- CI pós-merge da `main` #557 / run `33205617449`: **success**;
+- lint, typecheck, unit tests, production build e banco/migrations/RLS: **success**;
+- no head final do PR #159, CI #556 / run `33205483532`: **success**;
+- no head final do PR #159, Business Transactions Integration #252 / run `33205483531`: **success**;
+- no head final do PR #159, Inventory Count Integration #265 / run `33205483505`: **success**;
 - Issue #142 continua aberta e ativa;
 - #75 e #121 continuam abertas e **TOTALMENTE ON HOLD**;
 - nenhum deploy Vercel manual/rotineiro foi feito.
@@ -27,78 +28,69 @@ Baseline funcional após a consolidação de Compras:
 5. reconciliação/handoff de Cadastros — PR #152;
 6. Cadastros: Produtos, Fornecedores e Funcionários — PR #153;
 7. Estoque: posição + jornadas operacionais consolidadas — PR #155;
-8. Compras: pedidos + recebimentos + histórico consolidados — PR #157.
+8. Compras: pedidos + recebimentos + histórico consolidados — PR #157;
+9. Financeiro: contas, vencimentos, pagamentos e documento estável — PR #159.
 
-## Compras consolidado
+## Financeiro consolidado
 
-A área de Compras deixou de concentrar criação, listagem, emissão, recebimento, cancelamento e histórico em uma única página.
+A área de Financeiro deixou de concentrar visão, criação de documento/parcelas, pagamentos, estornos, cancelamento, anexos e histórico em uma única página.
 
 ### Visão da área
 
-`/workspace/compras` agora apresenta:
+`/workspace/financeiro` agora apresenta:
 
-- quantidade de pedidos visíveis;
-- rascunhos;
-- pedidos aguardando recebimento;
-- recebimentos recentes;
-- atalhos para Pedidos, Recebimentos e Histórico;
-- pedidos em andamento com acesso ao detalhe.
+- total nominal;
+- pago líquido;
+- saldo positivo em aberto;
+- quantidade de parcelas vencidas;
+- parcelas vencidas ou vencendo hoje que exigem atenção;
+- atalhos para Contas a pagar, Vencimentos e Pagamentos;
+- exportação CSV já existente para perfis autorizados.
 
-### Pedidos
+Nenhuma janela arbitrária de “próximos N dias” foi criada.
 
-`/workspace/compras/pedidos` passou a ser a lista principal:
+### Contas a pagar e documento estável
 
-- busca por fornecedor, local, produto, status ou observação;
-- filtro por status;
-- quantidade de itens pendentes;
-- total do pedido calculado a partir dos snapshots existentes;
+`/workspace/financeiro/contas` passou a ser a lista principal:
+
+- busca por fornecedor, unidade, número, tipo, série ou observação;
+- filtro por situação derivada;
+- nominal, saldo/diferença e próximo vencimento em aberto;
 - tabela desktop e cards mobile;
-- URL estável para cada pedido.
+- URL estável para cada documento.
 
-`/workspace/compras/pedidos/novo` concentra a criação e continua gerando pedido em **rascunho** pelo RPC existente.
+`/workspace/financeiro/contas/nova` concentra a criação de documento e parcelas usando o mesmo command/RPC idempotente existente.
 
-`/workspace/compras/pedidos/[id]` apresenta:
+`/workspace/financeiro/contas/[id]` apresenta:
 
-- fornecedor e local de recebimento;
-- status, previsão, emissão e observações;
-- itens com quantidade pedida, recebida e pendente;
-- preço unitário e total registrados;
-- histórico de recebimentos;
-- ações contextuais de emitir, receber e cancelar conforme estado e permissões já existentes.
+- fornecedor, unidade e setor;
+- identificação documental;
+- nominal, pago líquido e saldo/diferença;
+- parcelas, vencimentos, status e referências;
+- anexos privados pelo boundary já existente;
+- histórico de pagamentos e estornos;
+- ações contextuais de pagamento, estorno e cancelamento.
 
-Pedido inexistente ou inacessível utiliza o mesmo estado seguro, sem confirmar existência fora do escopo.
+Documento inexistente ou inacessível usa estado seguro, sem confirmar existência fora do escopo.
 
-### Recebimento
+### Pagamento, estorno e cancelamento
 
-`/workspace/compras/pedidos/[id]/receber` substitui a ação embutida na antiga megapágina.
+`/workspace/financeiro/contas/[id]/pagar` registra pagamento no contexto explícito do documento/parcela e continua chamando o mesmo `record_installment_payment` pelo gateway existente.
 
-O fluxo:
+A UI deliberadamente não inventa limite `valor pago <= nominal/saldo`, pois o contrato persistente atual preserva diferenças e `REQ-FIN-004`/Q-014/Q-015 permanecem sem decisão adicional.
 
-- mostra somente itens com quantidade pendente;
-- suporta recebimento parcial;
-- explicita pedido, recebido e pendente;
-- permite lote/validade quando o produto já possui rastreabilidade correspondente;
-- deixa itens em branco fora do recebimento atual;
-- usa o mesmo `receive_purchase_order` já existente via gateway.
+Estorno e cancelamento deixaram de usar `window.prompt()`:
 
-A UI **não escreve saldo diretamente**. O RPC continua sendo a fronteira autoritativa que, na mesma transação, registra o recebimento, atualiza quantidades do pedido, movimenta Estoque, trata lote/alocação quando aplicável, atualiza o status e preserva auditoria/idempotência.
+- estorno usa diálogo explícito com motivo opcional e continua criando evento reverso sem apagar o pagamento original;
+- pagamento já estornado não oferece nova ação de estorno na UI e continua protegido pelo banco;
+- cancelamento usa diálogo explícito com motivo opcional;
+- documento com pagamento líquido continua exigindo estorno antes do cancelamento conforme o RPC existente.
 
-Portanto, a consolidação não criou segunda entrada de estoque nem dupla contabilização.
+### Vencimentos e pagamentos
 
-### Recebimentos e histórico
-
-- `/workspace/compras/recebimentos` consulta entregas já efetivadas, produto, quantidade, custo registrado e lote/validade quando existentes;
-- `/workspace/compras/historico` concentra pedidos recebidos ou cancelados;
-- ambos preservam acesso ao detalhe original sem expor UUID como informação operacional.
-
-### UX e linguagem
-
-- Compras passou a aparecer como área com destinos subordinados na navegação;
-- `window.prompt()` deixou de ser usado para cancelar pedido;
-- cancelamento usa diálogo explícito com motivo opcional e deixa claro que entradas já efetivadas não são revertidas;
-- criação, lista, detalhe e recebimento usam os componentes do design system;
-- mobile possui cards/fluxos verticais próprios em vez de depender somente de tabela larga;
-- estados loading, empty, erro, read-only e not-found foram tratados conforme aplicável.
+- `/workspace/financeiro/vencimentos` consulta parcelas pelos status persistentes/derivados: vencida, vence hoje, a vencer, paga e cancelada;
+- `/workspace/financeiro/pagamentos` consulta pagamentos e estornos como eventos separados, com contexto de documento/parcela quando disponível;
+- ambas possuem tabela desktop e alternativa mobile própria.
 
 ## Boundaries e regras preservados
 
@@ -106,17 +98,19 @@ Nenhum schema, migration, RPC, grant ou policy/RLS foi criado ou alterado para e
 
 Continuam autoritativos:
 
-- `create_purchase_order`;
-- `issue_purchase_order`;
-- `receive_purchase_order`;
-- `cancel_purchase_order`;
-- RLS/grants e escopo associado ao local de estoque;
-- validações de transição de status;
-- limite de quantidade recebida versus pendente;
-- atomicidade e idempotência do recebimento;
-- integração pedido → Estoque exatamente uma vez pelo fluxo já implementado.
+- `create_payable_document`;
+- `record_installment_payment`;
+- `reverse_installment_payment`;
+- `cancel_payable_document`;
+- `SupabaseFinanceGateway` e o registry idempotente existente;
+- RLS/grants e escopos por Organization/Unit/Sector;
+- status/saldo derivados dos registros persistidos;
+- anexos privados e autorização server-side existente;
+- exportação CSV pelo gateway próprio.
 
-A UI não criou política de aprovação, pedido mínimo, agenda comercial, custeio ou FEFO.
+A consolidação adicionou somente uma consulta read-only dedicada ao detalhe para não depender do limite da visão geral; ela continua sujeita ao mesmo RLS.
+
+A UI não decidiu cardinalidade final de pagamentos, não classificou diferenças financeiras e não alterou Storage.
 
 ## Limite de homologação visual
 
@@ -124,23 +118,22 @@ A UI não criou política de aprovação, pedido mínimo, agenda comercial, cust
 
 Build e CI comprovam integridade técnica, mas não substituem homologação visual desktop/tablet/mobile. Não foi feito deploy Vercel manual apenas para produzir essa evidência.
 
-## Próxima slice oficial: Financeiro
+## Próxima slice oficial: Caixa
 
-**A próxima área da Fase 51 é Financeiro. Não refazer Cadastros, Estoque ou Compras sem bug/gap concreto.**
+**A próxima área da Fase 51 é Caixa. Não refazer Cadastros, Estoque, Compras ou Financeiro sem bug/gap concreto.**
 
-Inventário preliminar já confirmou que `/workspace/financeiro` ainda é uma megapágina de aproximadamente 26 KB que mistura:
+Inventário preliminar já confirmado na `main`:
 
-- visão de contas a pagar;
-- criação de documento e parcelas;
-- instruções/referências de pagamento;
-- registro de pagamento;
-- estorno;
-- cancelamento;
-- anexos;
-- exportação CSV;
-- histórico de eventos.
+- `/workspace/caixa` ainda é uma única página que mistura configuração e operação;
+- `SupabaseCashGateway` já contém commands idempotentes para criar caixa, meio de pagamento, regra de taxa, abrir sessão, registrar totais, registrar movimento, fechar e cancelar sessão;
+- a página atual mistura cadastro de caixas, meios/taxas, abertura de sessão, totais por meio, movimentos, fechamento/cancelamento e histórico;
+- cancelamento de sessão ainda usa `window.prompt()`;
+- sessões possuem data de negócio e sequência explícitas;
+- totais por meio preservam bruto, taxa e líquido;
+- fechamento preserva esperado, contado e divergência;
+- `REQ-CASH-007` (consumo de funcionários) e `REQ-CASH-008` (integração com vendas) continuam PENDING e não podem ser resolvidos pela reorganização de UX.
 
-Também existem `window.prompt()` para estorno de pagamento e cancelamento de documento. A próxima execução deve inventariar os boundaries de Financeiro e organizar a jornada no padrão `lista → detalhe → ação`, preservando as regras financeiras já implementadas.
+A próxima execução deve inventariar também migration/RLS/permissões de Caixa antes de editar e preferir separar **configuração → sessões → detalhe/fechamento → histórico** conforme os boundaries realmente suportados.
 
 Não criar migration/RPC para resolver layout antes de provar gap real.
 
@@ -153,8 +146,8 @@ Não criar migration/RPC para resolver layout antes de provar gap real.
 5. ~~Cadastros~~ — PR #153;
 6. ~~Estoque~~ — PR #155;
 7. ~~Compras~~ — PR #157;
-8. **Financeiro** — próxima;
-9. Caixa;
+8. ~~Financeiro~~ — PR #159;
+9. **Caixa** — próxima;
 10. Dashboard;
 11. limpeza de linguagem/resíduos de engenharia;
 12. homologação UX em jornadas desktop/tablet/mobile;
@@ -166,7 +159,7 @@ Não criar migration/RPC para resolver layout antes de provar gap real.
 
 ## PENDING permanece sem inferência
 
-Continuam PENDING até decisão real de negócio:
+Continuam PENDING até decisão real de negócio, entre outros:
 
 - `REQ-ITEM-004` — produto de venda/POS;
 - `REQ-ITEM-005` — ficha técnica/receita;
