@@ -10,8 +10,18 @@ insert into auth.users(id,email,email_confirmed_at) values
 insert into public.organization_memberships(
   id, organization_id, user_id, role, business_id, unit_id, sector_id, active
 ) values
-  ('95000000-0000-4000-8000-000000000010','00000000-0000-4000-8000-000000000001','95000000-0000-4000-8000-000000000001','owner',null,null,null,true),
-  ('95000000-0000-4000-8000-000000000001','95000000-0000-4000-8000-000000000003','viewer',null,'00000000-0000-4000-8000-000000000100',null,true);
+  (
+    '95000000-0000-4000-8000-000000000010',
+    '00000000-0000-4000-8000-000000000001',
+    '95000000-0000-4000-8000-000000000001',
+    'owner', null, null, null, true
+  ),
+  (
+    '95000000-0000-4000-8000-000000000011',
+    '00000000-0000-4000-8000-000000000001',
+    '95000000-0000-4000-8000-000000000003',
+    'viewer', null, '00000000-0000-4000-8000-000000000100', null, true
+  );
 
 insert into public.employees(
   id, organization_id, name, code, status, default_unit_id
@@ -24,7 +34,7 @@ insert into public.employees(
   '00000000-0000-4000-8000-000000000100'
 );
 
--- A location linked to a Sector must use that Sector's Unit.
+-- Estrutura: um local vinculado a Setor precisa pertencer à mesma Unidade.
 do $$
 begin
   begin
@@ -44,7 +54,7 @@ begin
   end;
 end $$;
 
--- Public/anon cannot call the privileged access boundary; authenticated can reach it and is checked internally.
+-- O boundary administrativo é alcançável somente por authenticated e autoriza internamente por papel/escopo.
 do $$
 begin
   if has_function_privilege('anon','public.admin_list_organization_access(uuid)','EXECUTE') then
@@ -68,23 +78,23 @@ set role authenticated;
 select set_config('request.jwt.claim.sub','95000000-0000-4000-8000-000000000001',false);
 select set_config('request.jwt.claim.role','authenticated',false);
 
--- Organization-wide owner sees access data with product-safe identity fields.
+-- Owner Organization-wide enxerga somente campos de identidade necessários ao produto.
 do $$
 declare
   access_count integer;
-  target_confirmed boolean;
+  owner_confirmed boolean;
 begin
   select count(*), bool_or(email_confirmed)
-    into access_count, target_confirmed
+    into access_count, owner_confirmed
   from public.admin_list_organization_access('00000000-0000-4000-8000-000000000001')
   where email = 'admin-owner@example.invalid';
 
-  if access_count <> 1 or target_confirmed is not true then
+  if access_count <> 1 or owner_confirmed is not true then
     raise exception 'owner access listing did not return expected identity state';
   end if;
 end $$;
 
--- Create and maintain scoped access through the narrow RPC boundary.
+-- Criação, alteração e vínculo Employee usam os RPCs estreitos e deixam auditoria.
 do $$
 declare
   created_id uuid;
@@ -167,6 +177,7 @@ begin
   end if;
 
   perform public.admin_link_employee_identity(created_id, null);
+
   if exists (
     select 1 from public.employees e
     where e.id = '95000000-0000-4000-8000-000000000020'
@@ -175,12 +186,16 @@ begin
     raise exception 'employee identity unlink did not clear the link';
   end if;
 
-  if (select count(*) from public.audit_logs a where a.entity_id = created_id and a.action = 'employee.identity_link') <> 2 then
+  if (
+    select count(*)
+    from public.audit_logs a
+    where a.entity_id = created_id and a.action = 'employee.identity_link'
+  ) <> 2 then
     raise exception 'employee identity changes were not audited';
   end if;
 end $$;
 
--- The final active Organization-wide owner cannot be downgraded or revoked.
+-- O último owner ativo com escopo Organization-wide não pode ser removido ou rebaixado.
 do $$
 begin
   begin
@@ -200,10 +215,11 @@ end $$;
 
 reset role;
 
--- A scoped viewer cannot call any administrative access RPC.
+-- Um viewer scoped não pode usar nenhuma mutação ou leitura administrativa privilegiada.
 set role authenticated;
 select set_config('request.jwt.claim.sub','95000000-0000-4000-8000-000000000003',false);
 select set_config('request.jwt.claim.role','authenticated',false);
+
 do $$
 begin
   begin
