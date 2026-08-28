@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button, Dialog, EmptyState, FeedbackMessage, FormField, PageHeader, Panel, StatusBadge, Textarea } from "@/components/ui";
 import { buttonClasses } from "@/components/ui/styles";
 import { EntityId } from "@/domain/common/entity-id";
@@ -40,29 +40,41 @@ export default function PurchaseOrderDetailPage() {
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
 
-  const load = useCallback(async () => {
-    try {
-      const [nextOrder, allReceipts] = await Promise.all([
-        gateway.getOrder(workspace.organizationId, orderId),
-        gateway.listReceipts(workspace.organizationId),
-      ]);
-      setOrder(nextOrder);
-      setReceipts(allReceipts.filter((receipt) => receipt.purchaseOrderId === orderId));
-    } catch (error) {
-      setMessage({ tone: "danger", text: workspace.errorMessage(error) });
-    } finally {
-      setLoading(false);
-    }
+  useEffect(() => {
+    let active = true;
+    void Promise.all([
+      gateway.getOrder(workspace.organizationId, orderId),
+      gateway.listReceipts(workspace.organizationId),
+    ])
+      .then(([nextOrder, allReceipts]) => {
+        if (!active) return;
+        setOrder(nextOrder);
+        setReceipts(allReceipts.filter((receipt) => receipt.purchaseOrderId === orderId));
+      })
+      .catch((error) => {
+        if (active) setMessage({ tone: "danger", text: workspace.errorMessage(error) });
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => { active = false; };
   }, [gateway, orderId, workspace]);
 
-  useEffect(() => { void load(); }, [load]);
+  async function refreshOrder() {
+    const [nextOrder, allReceipts] = await Promise.all([
+      gateway.getOrder(workspace.organizationId, orderId),
+      gateway.listReceipts(workspace.organizationId),
+    ]);
+    setOrder(nextOrder);
+    setReceipts(allReceipts.filter((receipt) => receipt.purchaseOrderId === orderId));
+  }
 
   async function issueOrder() {
     setSaving(true);
     setMessage(null);
     try {
       await gateway.issue(workspace.organizationId, orderId);
-      await load();
+      await refreshOrder();
       setMessage({ tone: "success", text: "Pedido emitido. Ele agora está disponível para recebimento." });
     } catch (error) {
       setMessage({ tone: "danger", text: workspace.errorMessage(error) });
@@ -78,7 +90,7 @@ export default function PurchaseOrderDetailPage() {
       await gateway.cancel(workspace.organizationId, orderId, cancelReason || undefined);
       setCancelOpen(false);
       setCancelReason("");
-      await load();
+      await refreshOrder();
       setMessage({ tone: "success", text: "Pedido cancelado. Recebimentos já registrados, se existirem, permanecem no histórico de estoque." });
     } catch (error) {
       setMessage({ tone: "danger", text: workspace.errorMessage(error) });
