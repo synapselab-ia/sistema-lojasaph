@@ -11,10 +11,10 @@ export const purchaseOrderStatusLabels: Record<PurchaseOrderStatus, string> = {
   cancelled: "Cancelado",
 };
 
-export const purchaseOrderStatusTones: Record<PurchaseOrderStatus, "neutral" | "info" | "warning" | "success" | "danger"> = {
+export const purchaseOrderStatusTones: Record<PurchaseOrderStatus, "neutral" | "info" | "attention" | "success" | "danger"> = {
   draft: "neutral",
   ordered: "info",
-  partially_received: "warning",
+  partially_received: "attention",
   received: "success",
   cancelled: "danger",
 };
