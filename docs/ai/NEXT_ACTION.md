@@ -7,126 +7,190 @@
 Slices concluídas:
 
 - PR #145 — remoção da entrada técnica;
-- PR #147 — arquitetura da informação + navegação desktop/mobile.
+- PR #147 — arquitetura da informação + navegação desktop/mobile;
+- PR #149 — design system mínimo + padrões reutilizáveis.
 
 Baseline integrado confirmado em 2026-08-28:
 
-- `main=3bc28e28a3a6e0d4b4b4543724942d308317d0f4`;
-- PR #147 `feat: group workspace navigation by product area`: merged;
-- CI final do PR #514 / run `33184629115`: success;
-- Business Transactions Integration #228 / run `33184629114`: success;
-- CI pós-merge #515 / run `33184891544`: success;
+- `main=14f1e98f7e78b229b57457c44ac5a1fd512e2254`;
+- PR #149 `feat(ui): establish minimal design system`: merged;
+- CI do PR #518 / run `33186337616`: success;
+- Inventory Count Integration #242 / run `33186337684`: success;
+- Business Transactions Integration #229 / run `33186337724`: success;
+- CI pós-merge #519 / run `33186464104`: success;
 - Issue #142 aberta e ativa;
-- #75 e #121 continuam **TOTALMENTE ON HOLD** em `REQ-PLAT-005`;
-- documentos de autoridade:
-  - `docs/product/product-completion-ux-roadmap.md`;
-  - `docs/product/workspace-information-architecture.md`;
-  - `docs/qa/definition-of-done.md`.
+- #75 e #121 continuam **TOTALMENTE ON HOLD** em `REQ-PLAT-005`.
 
-Não refazer a landing/entrada técnica nem a arquitetura/navegação já integradas.
+Documentos de autoridade para a próxima slice:
+
+- `docs/product/product-completion-ux-roadmap.md`;
+- `docs/product/workspace-information-architecture.md`;
+- `docs/product/design-system.md`;
+- `docs/qa/definition-of-done.md`;
+- `docs/product/open-questions.md`;
+- ADRs e documentação de autorização/persistência relacionados ao código encontrado no inventário.
+
+Não refazer entrada, arquitetura/navegação ou design system mínimo já integrados.
 
 ## NEXT_ACTION objetiva
 
-### Executar a terceira slice da Issue #142: criar design system mínimo e padrões reutilizáveis de página
+### Executar a quarta slice operacional da Issue #142: Administração — Estrutura + Usuários/Permissões
 
-A arquitetura do produto já está fechada o suficiente para parar de criar estilos e interações página a página. A próxima slice deve estabelecer uma fundação visual/comportamental pequena **antes** das refatorações de Administração, Cadastros, Estoque, Compras, Financeiro e Caixa.
+O workspace já possui a área Administração, mas hoje só expõe Proteção dos dados. O modelo técnico suporta estrutura organizacional e autorização em nível mais rico do que a administrabilidade disponível na aplicação.
 
-O objetivo não é redesenhar a aplicação inteira. É criar contratos reutilizáveis que eliminem repetição e permitam que as próximas slices evoluam com consistência.
+A próxima slice deve transformar capacidades **já comprovadas** em jornadas administrativas utilizáveis, sem inventar política de acesso ou regra de negócio.
 
 ### 1. Reconciliar e inventariar antes de editar
 
 No início da implementação:
 
 1. confirmar `main`, Issue #142, PRs, branches e CI reais;
-2. ler os três documentos de autoridade listados acima;
-3. inspecionar `src/app/globals.css`;
-4. inspecionar `src/components/runtime-shell.tsx` e a navegação integrada;
-5. inventariar padrões repetidos em páginas representativas de leitura, formulário e tabela — sem refatorá-las ainda;
-6. registrar quais padrões são realmente comuns e quais ainda dependem da jornada específica do módulo.
+2. reler os documentos de autoridade acima;
+3. inventariar schema/migrations/domínio/repositories/adapters/runtime para:
+   - Organization;
+   - Business;
+   - Unit;
+   - Sector;
+   - StockLocation;
+4. inventariar autorização e identidade existentes:
+   - memberships;
+   - roles;
+   - escopos Organization/Business/Unit/Sector/StockLocation quando aplicável;
+   - guards/helpers;
+   - RPCs/policies/RLS;
+   - convites/bootstrap/associação de usuário existentes;
+   - relação entre Employee e identidade de autenticação;
+5. localizar quais mutações administrativas já possuem boundary seguro e quais existem somente como seed/migration/backend sem jornada utilizável;
+6. registrar um mapa explícito `capacidade → boundary → papel/escopo atual → UI possível → gap real` antes de implementar a interface.
 
-Não importar uma biblioteca visual grande por conveniência sem necessidade comprovada. O projeto atual usa Tailwind e componentes próprios; preferir uma fundação pequena e controlada.
+Não começar pela tela. Primeiro provar o que pode ser administrado com segurança pelo sistema atual.
 
-### 2. Definir o núcleo mínimo de componentes
+### 2. Tratar Q-022 corretamente
 
-Criar uma camada reutilizável coerente, preferencialmente em `src/components/ui` ou estrutura equivalente, cobrindo o que já é recorrente e necessário para as próximas slices.
+`docs/product/open-questions.md` mantém aberta:
 
-Como baseline desta primeira fundação, considerar e implementar os contratos realmente necessários entre:
+> **Q-022 — Quem pode fazer cada ação?**
 
-- `PageHeader` — eyebrow/contexto, título, descrição e ações;
-- `Button` — hierarquia consistente para ação primária, secundária e destrutiva/atenção quando aplicável;
-- `Input`, `Select`, `Textarea` + `FormField` — label, ajuda, erro e disabled de modo consistente;
-- `StatusBadge` — estados semânticos reutilizáveis;
-- `Panel`/`Card` — superfície e seção padrão;
-- `EmptyState` — ausência de dados com linguagem e ação opcionais;
-- `Drawer` — extrair/consolidar o padrão mobile já provado no shell se isso reduzir duplicação sem mudar o contrato de navegação;
-- `Dialog`/`ConfirmDialog` — fundação acessível para ações futuras que hoje dependem de interações ad hoc.
+Isso significa que a slice **não pode**:
 
-Não é obrigatório criar `DataTable`, `Tabs`, `Toast` e `SearchField` nesta mesma slice se o inventário mostrar que uma implementação genérica agora seria prematura. Esses componentes entram quando houver contrato real suficiente.
+- inventar perfis reais do cliente;
+- renomear roles técnicas como se fossem política homologada;
+- criar nova matriz ampla de permissões apenas para completar a tela;
+- ampliar acesso no backend por conveniência de UX.
 
-### 3. Definir tokens e regras de uso mínimas
+A implementação deve preservar a política técnica atual enquanto ela for suficiente e representar na UI somente capacidades suportadas pelos guards/RPCs/RLS existentes.
 
-Sem criar um tema complexo, consolidar decisões básicas já repetidas:
+Se uma ação administrativa depender de decisão real ainda ausente, registrar o gap e manter a ação indisponível em vez de adivinhar a regra.
 
-- tipografia e hierarquia de títulos/textos auxiliares;
-- espaçamento de página/seções;
-- radius/border/surface;
-- estados semânticos de sucesso, atenção, erro e neutro;
-- alturas mínimas e foco para controles clicáveis/toque;
-- largura/densidade de formulários e painéis;
-- comportamento de disabled/loading onde aplicável.
+### 3. Fechar a jornada de Estrutura
 
-Evitar cores, tamanhos e classes divergentes para a mesma intenção sem justificativa.
+Depois do inventário, criar uma experiência administrativa coerente para a estrutura que realmente puder ser mantida.
 
-### 4. Provar a fundação sem refatoração massiva
+Objetivo de produto:
 
-Aplicar os componentes novos em **pontos de baixo risco suficientes para provar a API**, por exemplo:
+- visualizar a hierarquia atual de forma compreensível;
+- navegar entre Organization/Business/Unit/Sector/StockLocation sem expor IDs técnicos;
+- cadastrar/editar as entidades cujo backend seguro já suporte manutenção;
+- manter relações pai/filho corretas;
+- permitir inativação quando houver contrato existente adequado;
+- preservar histórico/referências e evitar exclusão física destrutiva por conveniência.
 
-- `RuntimeShell` para reutilizar o Drawer/Button quando natural;
-- uma página predominantemente read-only ou administrativa já existente, como `Proteção dos dados`, para PageHeader/Panel/StatusBadge/EmptyState;
-- no máximo um formulário simples/representativo para provar FormField/controles, se necessário.
+Se o backend não possuir uma mutação necessária, só criar migration/RPC/policy/adapters depois de provar que ela é indispensável à jornada aprovada. Toda nova mutação deve possuir autorização/RLS/testes e não pode depender apenas da UI.
 
-Não converter todas as páginas nesta slice. A migração ampla deve ocorrer junto das próximas etapas funcionais, quando a jornada de cada área for consolidada.
+Não inventar cascade, exclusão ou reparenting sem contrato de negócio/técnico existente.
 
-### 5. Documentar o contrato do design system
+### 4. Fechar a jornada de Usuários/Permissões dentro do que é comprovado
 
-Criar documentação de produto/UI, por exemplo `docs/product/design-system.md`, contendo:
+A experiência deve separar claramente:
 
-- componentes disponíveis e finalidade;
-- variantes permitidas;
-- regras de hierarquia de ação;
-- padrões de loading/empty/error/success;
-- regras mínimas de teclado, foco e touch target;
-- exemplos de quando reutilizar versus quando criar padrão específico;
-- lista explícita do que ainda não faz parte do design system.
+- pessoa/funcionário operacional (`Employee`);
+- identidade autenticada;
+- membership/acesso;
+- papel;
+- escopo.
 
-O documento deve orientar as slices seguintes e evitar que cada módulo invente sua própria convenção.
+Como mínimo, quando os boundaries existentes permitirem:
 
-### 6. Testar sem fabricar homologação visual
+- listar quem possui acesso à organização atual;
+- mostrar papel e escopo em linguagem compreensível;
+- mostrar status de acesso/associação sem UUID técnico na experiência normal;
+- reutilizar fluxo seguro de convite/associação existente quando ele for aplicável;
+- permitir alteração/revogação somente se houver boundary e política atuais que sustentem isso corretamente.
 
-Adicionar testes para contratos puros/variantes/helpers quando aplicável e manter verdes:
+Não pedir ao administrador que copie `auth.users` UUID ou outro identificador interno como procedimento normal.
+
+Se alteração/revogação ou convite geral ainda não possuírem contrato seguro/completo, documentar o gap em vez de criar bypass ou service-role no browser.
+
+### 5. Integrar Administração à arquitetura já aprovada
+
+- manter **Administração** como área do primeiro nível;
+- adicionar subdestinos reais somente quando as páginas existirem e estiverem funcionais;
+- preservar `/workspace/backup` como Proteção dos dados;
+- preferir URLs estáveis e explícitas para Estrutura e Usuários/Permissões;
+- atualizar `workspace-navigation` e seu contrato/testes apenas com destinos reais implementados;
+- não inventar páginas placeholder para completar a taxonomia.
+
+### 6. Reutilizar o design system integrado
+
+A nova Administração deve usar `src/components/ui` para os padrões já existentes:
+
+- `PageHeader`;
+- `Button`;
+- `FormField` + controles;
+- `Panel`;
+- `StatusBadge`;
+- `FeedbackMessage`;
+- `EmptyState`;
+- `Drawer`/`Dialog`/`ConfirmDialog` quando a jornada justificar.
+
+Criar novo componente compartilhado somente quando a jornada administrativa provar um contrato reutilizável. Não criar DataTable/Tabs/Toast/SearchField genéricos apenas porque estavam previstos no roadmap; se a necessidade concreta justificar um deles, implementar o menor contrato necessário e documentá-lo no design system.
+
+### 7. Estados, acessibilidade e feedback
+
+Para cada fluxo implementado:
+
+- loading deve bloquear duplo envio e indicar processamento;
+- vazio deve ser distinguido de erro e falta de permissão;
+- erro deve ficar próximo da ação/campo relevante;
+- sucesso deve confirmar a mudança sem expor detalhes de infraestrutura;
+- ações destrutivas/revogação/inativação devem ter confirmação/contexto adequado quando aplicável;
+- labels, foco, teclado e touch target devem seguir o design system;
+- não expor Supabase, RLS, membership, auth UUID, migration ou detalhes de provider ao usuário normal sem necessidade operacional.
+
+### 8. Testar regras e jornadas sem fabricar homologação
+
+Adicionar testes adequados para:
+
+- mapeamento de capacidade administrativa e helpers puros quando houver;
+- autorização/boundaries novos ou alterados;
+- Organization isolation e escopos;
+- invariantes de estrutura/relações;
+- navegação de Administração;
+- contratos de UI relevantes sem depender de dados demo.
+
+Manter verdes:
 
 - `npm run lint`;
 - `npm run typecheck`;
 - `npm run test`;
 - `npm run build`;
-- workflows PostgreSQL/RLS aplicáveis.
+- workflows PostgreSQL/RLS aplicáveis;
+- integrações de negócio afetadas.
 
-Quando houver ambiente browser disponível sem violar a política de deploy, verificar foco, drawer/dialog, controles e responsividade dos pontos migrados.
+Se um browser real permitido estiver disponível, validar pelo menos as jornadas administrativas implementadas em desktop e mobile. Se não estiver, registrar a limitação explicitamente e **não declarar homologação visual**.
 
-Se browser real continuar indisponível, registrar essa limitação explicitamente. **Não declarar homologação visual real apenas porque build/CI passaram.**
-
-### 7. Não extrapolar a slice
+### 9. Não extrapolar a slice
 
 Nesta execução **não**:
 
-- refatorar todas as páginas para o novo design system;
-- alterar a arquitetura da informação/URLs já fechadas;
-- criar Administração de Estrutura ou Usuários/Permissões ainda;
-- refatorar jornadas internas de Cadastros/Estoque/Compras/Financeiro/Caixa;
-- substituir todos os `window.prompt()`/confirms da aplicação de uma vez;
-- alterar regras de negócio, queries ou autorização;
-- tocar em migrations/RLS/Supabase sem prova concreta de necessidade;
-- resolver requisitos PENDING por conveniência visual;
+- refatorar Cadastros no padrão lista/detalhe/ação;
+- consolidar Estoque, Compras, Financeiro ou Caixa;
+- limpar toda a linguagem técnica da aplicação fora do que a nova Administração tocar naturalmente;
+- resolver `window.prompt()` em massa;
+- resolver requisitos PENDING;
+- redefinir roles/perfis a partir de Q-022 sem decisão real;
+- criar service-role/secret em browser;
+- tocar em Production para fabricar dados/evidência;
 - retomar #75/#121;
 - fazer deploy Vercel manual/rotineiro.
 
@@ -134,32 +198,33 @@ Nesta execução **não**:
 
 A slice só pode ser encerrada quando:
 
-- existe uma camada mínima de componentes reutilizáveis, não apenas classes copiadas;
-- hierarquia de ação, campos, superfícies e estados semânticos possuem contratos consistentes;
-- pelo menos pontos de baixo risco usam a fundação e provam que ela funciona no código real;
-- o shell/navegação não regrediu;
-- acessibilidade básica de controles interativos foi considerada — labels, foco, teclado e touch target conforme aplicável;
-- nenhum componente novo introduz decisão de autorização ou regra de negócio;
-- documentação do design system existe e delimita o que está ou não suportado;
-- testes relevantes foram criados/ajustados;
+- existe inventário explícito das capacidades administrativas e seus boundaries;
+- Estrutura deixa de ser apenas conceito/backend e possui experiência utilizável para as operações realmente suportadas;
+- usuários/acessos podem ser compreendidos sem manipulação normal de UUID técnico;
+- qualquer ação de membership/papel/escopo implementada respeita os guards/RPCs/RLS e não depende apenas da UI;
+- Q-022 permanece sem inferência onde ainda falta decisão de negócio;
+- Administração possui somente rotas reais, estáveis e navegáveis;
+- o design system integrado é reutilizado;
+- loading/empty/error/success e acessibilidade básica foram tratados nos fluxos implementados;
+- testes relevantes e isolamento por Organization/escopo estão verdes;
 - lint, typecheck, testes, build e CI aplicável estão verdes;
-- qualquer ausência de browser/homologação visual foi registrada honestamente;
-- `CURRENT_STATE`, `HANDOFF` e `NEXT_ACTION` foram reconciliados.
+- ausência de browser/homologação visual é registrada honestamente se persistir;
+- `CURRENT_STATE`, `HANDOFF` e `NEXT_ACTION` são reconciliados.
 
 ## Depois desta slice
 
-Somente após a integração do design system mínimo, promover a próxima etapa:
+Somente após a integração da Administração, promover:
 
-> **Administração — Estrutura + Usuários/Permissões**, respeitando Q-022, escopos e RLS existentes.
+> **Cadastros — refatorar Produtos, Fornecedores e Funcionários no padrão lista → detalhe → ação.**
 
-Não saltar diretamente para Cadastros/Estoque/Compras antes de fechar a administrabilidade básica prevista na ordem da Fase 51.
+Não saltar diretamente para Estoque/Compras antes de fechar Cadastros na ordem aprovada.
 
-## Ordem macro que não deve ser perdida
+## Ordem macro
 
 1. ~~entrada técnica~~ — PR #145;
 2. ~~arquitetura da informação~~ — PR #147;
 3. ~~navegação desktop/mobile~~ — PR #147;
-4. design system mínimo;
+4. ~~design system mínimo~~ — PR #149;
 5. Administração;
 6. Cadastros;
 7. Estoque;
@@ -200,4 +265,4 @@ A trilha #75/#121 será retomada no fechamento funcional/homologação final, sa
 - não fabricar evidência Production;
 - não fazer deploy Vercel rotineiro;
 - não tornar o repositório private automaticamente;
-- não misturar redesign visual amplo com mudança silenciosa de regra de negócio.
+- não misturar redesign visual com mudança silenciosa de regra de negócio/autorização.
