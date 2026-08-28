@@ -41,7 +41,6 @@ export default function PurchaseOrderDetailPage() {
   const [cancelReason, setCancelReason] = useState("");
 
   const load = useCallback(async () => {
-    setLoading(true);
     try {
       const [nextOrder, allReceipts] = await Promise.all([
         gateway.getOrder(workspace.organizationId, orderId),
