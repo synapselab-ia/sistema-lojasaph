@@ -13,6 +13,7 @@ import {
 import { asEntityId } from "@/domain/common/entity-id";
 import {
   inviteOrganizationAccessAction,
+  linkEmployeeIdentityAction,
   updateOrganizationAccessAction,
 } from "@/lib/administration/actions";
 import { resolveMembershipContext } from "@/lib/auth/runtime";
@@ -21,6 +22,7 @@ import { canManageOrganizationAccess } from "@/modules/administration/applicatio
 import { administrationScopeValue } from "@/modules/administration/application/administration-scope";
 import {
   loadAdministrationAccess,
+  loadAdministrationEmployees,
   loadAdministrationStructure,
 } from "@/modules/administration/adapters/supabase-administration-query";
 import {
@@ -115,29 +117,32 @@ export default async function AdministrationAccessPage({ searchParams }: AccessP
 
   const organizationId = asEntityId(organization.id);
   const client = await createServerSupabaseClient();
-  const [structure, accesses] = await Promise.all([
+  const [structure, accesses, employees] = await Promise.all([
     loadAdministrationStructure(client, organizationId, asEntityId(context.userId)),
     loadAdministrationAccess(client, organizationId),
+    loadAdministrationEmployees(client, organizationId),
   ]);
   const scopes = scopeOptions(structure);
+  const firstMembershipByUser = new Map<string, string>();
+  for (const access of accesses) {
+    if (!firstMembershipByUser.has(access.userId)) {
+      firstMembershipByUser.set(access.userId, access.membershipId);
+    }
+  }
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
       <PageHeader
         eyebrow="Administração"
         title="Usuários e permissões"
-        description={
-          <>
-            Convide pessoas por e-mail e atribua os perfis e escopos que já existem no sistema. Funcionário operacional e identidade de acesso continuam sendo conceitos separados.
-          </>
-        }
+        description="Convide pessoas por e-mail, atribua os perfis e escopos já existentes e, quando corresponder à mesma pessoa, vincule a identidade de acesso a um funcionário operacional cadastrado."
       />
 
       {error && <FeedbackMessage tone="danger">{error}</FeedbackMessage>}
       {message && <FeedbackMessage tone="success">{message}</FeedbackMessage>}
 
       <FeedbackMessage tone="attention">
-        Os perfis disponíveis representam as permissões atuais do sistema. A associação definitiva entre esses perfis e os cargos reais da operação ainda precisa de homologação; não atribua acesso apenas pelo nome do cargo.
+        Os perfis disponíveis representam as permissões técnicas atuais do sistema. A associação definitiva entre esses perfis e os cargos reais da operação ainda precisa de homologação; não atribua acesso apenas pelo nome do cargo.
       </FeedbackMessage>
 
       <Panel>
@@ -185,6 +190,10 @@ export default async function AdministrationAccessPage({ searchParams }: AccessP
             {accesses.map((access) => {
               const currentScope = administrationScopeValue(access);
               const availableScope = scopes.some((scope) => scope.value === currentScope);
+              const identityOwnerCard = firstMembershipByUser.get(access.userId) === access.membershipId;
+              const employeeOptions = employees.filter(
+                (employee) => !employee.linkedUserId || employee.linkedUserId === access.userId,
+              );
 
               return (
                 <Panel key={access.membershipId} as="article" className="space-y-4">
@@ -215,6 +224,32 @@ export default async function AdministrationAccessPage({ searchParams }: AccessP
                       <dd className="mt-1 font-medium text-neutral-900">{accessScopeLabel(access, structure)}</dd>
                     </div>
                   </dl>
+
+                  {identityOwnerCard && (
+                    <details>
+                      <summary className="cursor-pointer text-sm font-semibold underline underline-offset-4">Vincular funcionário</summary>
+                      <form action={linkEmployeeIdentityAction} className="mt-4 grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                        <input type="hidden" name="membershipId" value={access.membershipId} />
+                        <FormField
+                          id={`access-${access.membershipId}-employee`}
+                          label="Funcionário operacional"
+                          hint="O vínculo identifica a mesma pessoa. Ele não concede, remove nem amplia permissões."
+                        >
+                          {(props) => (
+                            <Select {...props} name="employeeId" defaultValue={access.employeeId ?? ""}>
+                              <option value="">Sem funcionário vinculado</option>
+                              {employeeOptions.map((employee) => (
+                                <option key={employee.id} value={employee.id}>
+                                  {employee.name}{employee.code ? ` · ${employee.code}` : ""}{employee.status === "inactive" ? " · inativo" : ""}
+                                </option>
+                              ))}
+                            </Select>
+                          )}
+                        </FormField>
+                        <Button type="submit">Salvar vínculo</Button>
+                      </form>
+                    </details>
+                  )}
 
                   <details>
                     <summary className="cursor-pointer text-sm font-semibold underline underline-offset-4">Alterar acesso</summary>
