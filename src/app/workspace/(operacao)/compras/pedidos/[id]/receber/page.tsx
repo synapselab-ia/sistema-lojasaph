@@ -30,7 +30,6 @@ export default function ReceivePurchaseOrderPage() {
   const [message, setMessage] = useState<{ tone: "success" | "danger" | "info"; text: string } | null>(null);
 
   const load = useCallback(async () => {
-    setLoading(true);
     try {
       const next = await gateway.getOrder(workspace.organizationId, orderId);
       setOrder(next);
