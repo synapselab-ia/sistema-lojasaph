@@ -54,7 +54,11 @@ export const workspaceNavigation: readonly WorkspaceNavigationArea[] = [
   {
     id: "administration",
     label: "Administração",
-    items: [{ href: "/workspace/backup", label: "Proteção dos dados" }],
+    items: [
+      { href: "/workspace/administracao/estrutura", label: "Estrutura" },
+      { href: "/workspace/administracao/acessos", label: "Usuários e permissões" },
+      { href: "/workspace/backup", label: "Proteção dos dados" },
+    ],
   },
 ];
 
