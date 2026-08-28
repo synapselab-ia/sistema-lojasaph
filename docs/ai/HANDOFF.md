@@ -2,92 +2,113 @@
 
 ## Estado de transição
 
-**Fase 51 / Issue #142 continua ativa. A slice de Cadastros está integrada; a próxima slice é Estoque.**
+**Fase 51 / Issue #142 continua ativa. A slice de Estoque está integrada; a próxima slice é Compras.**
 
-Estado real ao final desta execução:
+Estado real ao final da implementação funcional:
 
-- `main=97a5975ace5f8e011b27a4e8175d13dcee464253`;
-- PR #153 — `feat: consolidar jornadas de Cadastros` — merged;
-- CI pós-merge #539 / run `33197347690`: success;
+- `main=3f0049c98f36f351d88ffe20afc5c77d17f73f70` — merge do PR #155;
+- PR #155 — `feat: consolidar jornada de Estoque` — merged;
+- CI pós-merge #544 / run `33199243676`: success;
 - lint, typecheck, tests, production build e banco/migrations/RLS: success;
-- Inventory Count Integration #256 e Business Transactions Integration #243 passaram no head final do PR;
+- Inventory Count Integration #258 / run `33199098224`: success no head final do PR;
+- Business Transactions Integration #245 / run `33199098274`: success no head final do PR;
 - Issue #142 permanece aberta;
-- nenhum PR funcional aberto;
 - #75/#121 permanecem **TOTALMENTE ON HOLD**;
 - nenhum deploy Vercel manual/rotineiro foi feito.
 
 ## Não refazer
 
-As seguintes slices já estão integradas:
+Slices já integradas:
 
 - PR #145 — remoção da entrada técnica;
 - PR #147 — arquitetura da informação + navegação desktop/mobile;
 - PR #149 — design system mínimo;
 - PR #151 — Administração: Estrutura + Usuários/Permissões;
 - PR #152 — reconciliação/handoff de Cadastros;
-- PR #153 — Cadastros: Produtos, Fornecedores e Funcionários.
+- PR #153 — Cadastros: Produtos, Fornecedores e Funcionários;
+- PR #155 — Estoque consolidado.
 
-Não reabrir Cadastros sem bug ou gap concreto.
+Não reabrir Cadastros ou Estoque sem bug ou gap concreto.
 
-## O que o PR #153 entregou
+## O que o PR #155 entregou
 
-### Produtos
+### Estrutura da área
 
-- `/workspace/produtos`: lista com busca/filtros, tabela desktop e cards mobile;
-- `/workspace/produtos/novo`: criação dedicada;
-- `/workspace/produtos/[id]`: detalhe estável + edição contextual;
-- identificação, categoria, unidade, tipo, EAN, NCM, CEST, status e flags operacionais;
-- persistência/autorização continuam nos boundaries existentes;
-- teste puro de busca/filtros adicionado.
+Estoque agora possui visão principal e destinos subordinados:
 
-### Fornecedores
+- `/workspace/estoque` — posição/saldos e atenção operacional;
+- `/workspace/estoque/entradas` — entradas;
+- `/workspace/estoque/retiradas` — retiradas por setor;
+- `/workspace/baixas` — baixas e perdas;
+- `/workspace/devolucoes` — devoluções relacionadas a retiradas;
+- `/workspace/transferencias` — expedição/recebimento;
+- `/workspace/inventarios` — contagens físicas;
+- `/workspace/estoque/lotes` — lotes e validades;
+- `/workspace/estoque/minimos` — estoque mínimo.
 
-- `/workspace/fornecedores`: lista focada;
-- `/workspace/fornecedores/novo`: criação dedicada;
-- `/workspace/fornecedores/[id]`: detalhe estável + edição contextual;
-- contatos, condições comerciais e produtos fornecidos reunidos no detalhe;
-- `SupplierCommercialTermsPanel` e `SupplierItemsPanel` foram reutilizados;
-- nenhuma regra comercial nova foi inventada.
+### Contratos preservados
 
-### Funcionários
+- nenhum schema/migration/RPC/RLS novo;
+- entrada, retirada, perdas, devoluções, transferências, inventário e mínimo continuam usando os boundaries existentes;
+- saldo não é editado diretamente na visão de posição;
+- transferências mantêm expedição e recebimento como etapas distintas;
+- inventário mantém proteção contra mudança concorrente durante contagem;
+- aumento de item rastreado não inventa lote/validade para contornar a regra existente;
+- a UI não homologou FEFO, custeio ou empréstimo.
 
-- `/workspace/funcionarios`: lista focada;
-- `/workspace/funcionarios/novo`: criação dedicada;
-- `/workspace/funcionarios/[id]`: detalhe estável + edição contextual;
-- `linkedUserId` preservado internamente e não exposto na UX;
-- Employee continua separado de login/membership;
-- acesso, papéis e permissões continuam em Administração.
+### UX
+
+- posição ganhou busca/filtro e indicadores objetivos;
+- páginas tocadas usam linguagem operacional em vez de jargão de implementação;
+- cancelamento de inventário exige confirmação explícita;
+- tabelas/históricos críticos ganharam alternativa mobile quando necessário;
+- estados read-only/loading/empty/success/error foram tratados conforme o fluxo.
 
 ## Homologação visual
 
 **Não houve browser real disponível nesta execução.**
 
-Não declarar Cadastros homologado visualmente em desktop/tablet/mobile apenas por build/CI. Também não fazer deploy manual na Vercel apenas para criar essa evidência.
+Não declarar Estoque homologado visualmente em desktop/tablet/mobile apenas por build/CI. Também não fazer deploy manual na Vercel apenas para criar essa evidência.
 
-## Próxima ação: Estoque
+## Próxima ação: Compras
 
-O próximo chat deve executar a consolidação de **Estoque**, sem refazer Cadastros.
+O próximo chat deve executar a consolidação de **Compras**, sem refazer Estoque.
 
 Passos obrigatórios:
 
 1. reconciliar `main`, Issue #142, PRs, branches e CI reais;
 2. reler `NEXT_ACTION.md`, roadmap, IA, design system, DoD e open questions;
-3. inventariar rotas, páginas, domínio, repositories, gateways, services, RPCs e queries de Estoque antes de editar;
-4. localizar as transações atômicas já existentes para entrada, retirada, perda, devolução, transferência e inventário;
-5. mapear permissões/RLS por organização, unidade, local e setor;
-6. consolidar posição/saldos, entradas, baixas/perdas, devoluções existentes, transferências, inventários/contagens, lotes/validades e estoque mínimo como uma área coerente;
-7. preservar regras críticas fora da UI e reutilizar boundaries existentes;
-8. não inventar FEFO, custeio, empréstimo ou qualquer requisito PENDING;
-9. reutilizar o design system e criar abstrações genéricas apenas quando o uso repetido provar o contrato;
-10. manter lint, typecheck, tests, build, banco/RLS e integrações aplicáveis verdes;
-11. registrar a ausência de browser real se continuar indisponível.
+3. inventariar rotas, páginas, domínio, repositories, gateways, services, RPCs e queries de Compras antes de editar;
+4. localizar o boundary autoritativo de criação/edição de pedido e de recebimento;
+5. mapear a integração já existente entre recebimento de compra e movimentação de Estoque, evitando qualquer dupla contabilização;
+6. mapear permissões/RLS atuais por Organization/Unit e demais escopos relevantes;
+7. identificar megapágina, `window.prompt()` ou linguagem técnica ainda presente na jornada atual;
+8. definir o contrato `lista → detalhe → ação` quando pedido/recebimento justificar URL estável;
+9. separar pedido, recebimento e histórico conforme o comportamento já suportado, sem inventar regra comercial;
+10. manter feedback explícito, estados seguros e estratégia mobile deliberada;
+11. manter lint, typecheck, tests, build, banco/RLS e Business Transactions Integration verdes; executar outras integrações somente quando afetadas;
+12. registrar a ausência de browser real se continuar indisponível.
+
+## Invariantes para Compras
+
+Não permitir que a reorganização visual altere silenciosamente:
+
+- status/transições já aceitas de pedido;
+- quantidade pedida versus recebida;
+- recebimentos parciais se já suportados;
+- vínculo com fornecedor, unidade, produto e condições comerciais existentes;
+- geração de movimentação de estoque no recebimento;
+- idempotência/atomicidade existente;
+- autorização e isolamento por RLS/grants/RPCs.
+
+Se surgir gap real, provar com código/teste antes de criar migration/RPC.
 
 ## Fora da próxima slice
 
-Não usar Estoque para:
+Não usar Compras para:
 
-- reabrir Cadastros sem evidência concreta;
-- consolidar Compras, Financeiro ou Caixa;
+- reabrir Cadastros ou Estoque sem evidência concreta;
+- consolidar Financeiro ou Caixa;
 - redesenhar Dashboard;
 - mudar Q-022/política de autorização;
 - resolver PENDINGs por conveniência;
@@ -102,8 +123,8 @@ Não usar Estoque para:
 3. ~~design system mínimo~~ — PR #149;
 4. ~~Administração~~ — PR #151;
 5. ~~Cadastros~~ — PR #153;
-6. **Estoque** — próxima;
-7. Compras;
+6. ~~Estoque~~ — PR #155;
+7. **Compras** — próxima;
 8. Financeiro;
 9. Caixa;
 10. Dashboard;
