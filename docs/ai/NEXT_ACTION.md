@@ -4,35 +4,20 @@
 
 **Fase 51 / Issue #142 — consolidação de produto, arquitetura de informação e UX — continua como frente ativa.**
 
-Slices concluídas/encaminhadas:
+Estado real de partida para a próxima execução:
 
-- PR #145 — remoção da entrada técnica;
-- PR #147 — arquitetura da informação + navegação desktop/mobile;
-- PR #149 — design system mínimo;
-- PR #151 — Administração: Estrutura + Usuários/Permissões;
-- PR #152 — reconciliação/handoff de Cadastros;
-- PR #153 — Cadastros: Produtos, Fornecedores e Funcionários no padrão `lista → detalhe → ação`.
-
-Baseline de entrada do PR #153:
-
-- `main=5eda252ba209602434dcc7cdf5463355a38df6c6`;
+- `main=97a5975ace5f8e011b27a4e8175d13dcee464253` — merge do PR #153;
+- PR #153 — Cadastros: Produtos, Fornecedores e Funcionários — merged;
+- CI pós-merge #539 / run `33197347690`: success;
+- lint, typecheck, tests, production build e banco/migrations/RLS: success;
 - Issue #142 aberta e ativa;
 - #75/#121 **TOTALMENTE ON HOLD**.
-
-Validação funcional do PR #153 antes dos commits Markdown:
-
-- head `eb144abf6e51dd99d89d96e7dbc0833b6597114b`;
-- CI #535: success;
-- lint/typecheck/tests/build: success;
-- banco/migrations/RLS: success;
-- Inventory Count Integration #253: success;
-- Business Transactions Integration #240: success.
 
 Não refazer Cadastros sem bug ou gap concreto.
 
 ## NEXT_ACTION objetiva
 
-### Depois de confirmar a integração do PR #153, executar a próxima slice da Issue #142: **Estoque**
+### Executar a próxima slice da Issue #142: **Estoque**
 
 O objetivo é consolidar a área operacional de Estoque como uma experiência coerente, sem alterar silenciosamente regras transacionais, escopo, RLS ou requisitos PENDING.
 
@@ -43,20 +28,19 @@ Documentos de autoridade:
 - `docs/product/design-system.md`;
 - `docs/qa/definition-of-done.md`;
 - `docs/product/open-questions.md`;
-- ADRs/requisitos de inventory já existentes.
+- ADRs e requisitos de inventory já existentes.
 
-### 1. Reconciliar antes de editar
+### 1. Reconciliar e inventariar antes de editar
 
 No início da próxima execução:
 
 1. confirmar `main`, Issue #142, PRs, branches e CI reais;
-2. confirmar que PR #153 está integrado; se ainda estiver aberto, revisar CI/diff e integrar antes de iniciar Estoque;
-3. reler os documentos de autoridade;
-4. inventariar rotas, páginas, domain, repositories, gateways, services, RPCs e queries de Estoque;
-5. localizar transações atômicas já existentes para entrada, retirada, perda, transferência, inventário e demais movimentos;
-6. mapear permissões/RLS atuais por organização, unidade, local e setor;
-7. identificar quais telas atuais são megapáginas, duplicam informação ou expõem linguagem técnica;
-8. definir o contrato de navegação e responsabilidade das páginas antes do código.
+2. reler os documentos de autoridade;
+3. inventariar rotas, páginas, domínio, repositories, gateways, services, RPCs e queries de Estoque;
+4. localizar transações atômicas já existentes para entrada, retirada, perda, devolução, transferência, inventário e demais movimentos;
+5. mapear permissões/RLS atuais por organização, unidade, local e setor;
+6. identificar telas que funcionam como megapáginas, duplicam informação ou expõem linguagem técnica;
+7. definir o contrato de navegação e responsabilidade das páginas antes do código.
 
 Não criar schema/RPC novo para resolver layout. Reaproveitar primeiro os boundaries existentes.
 
@@ -81,7 +65,7 @@ A área deve favorecer tarefas operacionais reais, reduzindo páginas isoladas e
 
 Não mover regra crítica para componentes React.
 
-Preservar no domínio/banco/boundaries atuais, entre outras regras já existentes:
+Preservar nos boundaries atuais, entre outras regras já existentes:
 
 - transações atômicas de movimentação;
 - escopo correto de organização/unidade/local/setor;
@@ -101,7 +85,7 @@ Preferir:
 - visão de posição para descoberta e acompanhamento;
 - detalhe contextual quando uma entidade persistente justificar URL estável;
 - ações dedicadas para movimentos críticos;
-- filtros/pesquisa somente quando úteis;
+- filtros/pesquisa quando úteis;
 - feedback explícito de sucesso/erro;
 - empty/loading/read-only/not-found seguros;
 - estratégia mobile deliberada, sem depender apenas de tabelas largas.
@@ -110,7 +94,7 @@ Reutilizar `src/components/ui` e os padrões já provados em Cadastros. Não cri
 
 ### 5. Relação com Cadastros
 
-Produtos já possuem detalhe próprio. Estoque pode apontar para o produto ou usar seu nome/contexto, mas não deve reabrir a manutenção do cadastro dentro da área de Estoque.
+Produtos já possuem detalhe próprio. Estoque pode apontar para o produto ou usar seu contexto, mas não deve reabrir manutenção de cadastro dentro da área de Estoque.
 
 Não duplicar:
 
@@ -129,7 +113,7 @@ Não resolver nesta slice por conveniência:
 - `REQ-ITEM-004` — produto de venda/POS;
 - `REQ-ITEM-005` — ficha técnica/receita.
 
-Se alguma tela depender de uma decisão PENDING, apresentar somente o comportamento já suportado e registrar o gap.
+Se uma tela depender de decisão PENDING, apresentar somente o comportamento já suportado e registrar o gap.
 
 ### 7. Autorização
 
@@ -210,7 +194,7 @@ Não saltar diretamente para Financeiro/Caixa/Dashboard.
 2. ~~arquitetura da informação/navegação~~ — PR #147;
 3. ~~design system mínimo~~ — PR #149;
 4. ~~Administração~~ — PR #151;
-5. **Cadastros** — PR #153;
+5. ~~Cadastros~~ — PR #153;
 6. **Estoque** — próxima;
 7. Compras;
 8. Financeiro;
