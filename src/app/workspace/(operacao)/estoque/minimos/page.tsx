@@ -107,7 +107,7 @@ export default function StockMinimumsPage() {
               const balance = balancesByKey.get(`${policy.stockLocationId}:${policy.stockItemId}`);
               const below = balance
                 ? isBelowStockMinimum(balance.quantity, policy)
-                : policy.minimumQuantity.toDecimal() !== "0";
+                : policy.minimumQuantity.isPositive();
               return (
                 <Panel key={`${policy.stockLocationId}:${policy.stockItemId}`} padding="sm">
                   <div className="flex items-start justify-between gap-3">
