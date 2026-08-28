@@ -6,140 +6,135 @@
 
 **Fase 51 / Issue #142 — consolidação de produto, arquitetura de informação e UX — permanece como frente ativa.**
 
-As três primeiras slices estruturais da Fase 51 estão concluídas e integradas:
+Slices estruturais e de produto integradas até aqui:
 
-1. remoção da entrada técnica do produto — PR #145;
+1. remoção da entrada técnica — PR #145;
 2. arquitetura da informação + navegação desktop/mobile — PR #147;
-3. design system mínimo + padrões reutilizáveis — PR #149.
+3. design system mínimo + padrões reutilizáveis — PR #149;
+4. Administração: Estrutura + Usuários/Permissões — PR #151.
 
-Estado integrado confirmado:
+Estado integrado confirmado após a slice de Administração:
 
-- `main=14f1e98f7e78b229b57457c44ac5a1fd512e2254` após o merge do PR #149;
-- PR #149 `feat(ui): establish minimal design system`: merged por squash;
-- CI do PR #518 / run `33186337616`: `success`;
-- Inventory Count Integration #242 / run `33186337684`: `success`;
-- Business Transactions Integration #229 / run `33186337724`: `success`;
-- CI pós-merge #519 / run `33186464104`: `success`;
+- `main=a06e7c3dd96b4b010ca4c7754438b90e40720399` após o squash merge do PR #151;
+- PR #151 `feat: add administration structure and access management`: merged;
+- CI do PR #523 / run `33195119453`: `success`;
+- Inventory Count Integration #244 / run `33195119447`: `success`;
+- Business Transactions Integration #231 / run `33195119446`: `success`;
+- CI pós-merge #524 / run `33195244017`: `success`;
 - Issue #142 continua aberta e ativa;
 - #75 e #121 continuam abertas e **TOTALMENTE ON HOLD** em `REQ-PLAT-005`;
 - nenhum deploy Vercel manual/rotineiro foi feito;
-- nenhuma migration, RLS, regra de negócio, query operacional ou dado Supabase foi alterado nesta slice.
+- nenhuma evidência ou fixture de Production foi fabricada.
 
-Não refazer Fase 50/#138/#139, a auditoria que originou a Fase 51, a entrada técnica, a arquitetura/navegação ou o design system mínimo já integrados sem nova evidência.
+Não refazer as slices acima sem nova evidência concreta.
 
-## O que já foi fechado na Fase 51
+## Administração agora integrada
 
-### 1. Entrada normal do produto — PR #145
+Contrato/inventário durável:
 
-`/` encaminha server-side para o fluxo existente de login/workspace. O CTA de demonstração saiu da experiência normal; as rotas demo permanecem apenas para engenharia/teste.
+- `docs/product/administration-capability-map.md`.
 
-### 2. Arquitetura da informação e navegação — PR #147
+### Estrutura
 
-Contrato:
+Rota real:
 
-- `docs/product/workspace-information-architecture.md`.
+- `/workspace/administracao/estrutura`.
 
-Primeiro nível do workspace:
+A experiência persistente agora permite, dentro do RLS já existente:
 
-- Visão geral;
-- Estoque;
-- Compras;
-- Financeiro;
-- Caixa;
-- Cadastros;
-- Administração.
+- visualizar Negócios, Unidades, Setores e Locais de estoque visíveis;
+- criar/editar/inativar as entidades cujo target scope é administrável pelo usuário;
+- preservar relações pai/filho sem reparenting arbitrário;
+- evitar exclusão física destrutiva;
+- manter `allow_negative_stock` fora dessa jornada;
+- impedir no banco que um Local de estoque seja associado a um Setor de outra Unidade.
 
-Desktop usa sidebar agrupada; mobile usa menu + drawer vertical. URLs existentes foram preservadas e autorização continua em guards/RPCs/RLS, não no menu.
+A autorização continua nos grants/RLS, não na aparência da tela.
 
-### 3. Design system mínimo — PR #149
+### Usuários e permissões
 
-Contrato:
+Rota real:
 
-- `docs/product/design-system.md`.
+- `/workspace/administracao/acessos`.
 
-Camada pública:
+A jornada agora permite para `owner/admin` Organization-wide, sem DML direto de memberships no browser:
 
-- `src/components/ui/index.ts`.
+- listar quem possui acesso usando e-mail e estado legível;
+- convidar uma identidade por e-mail usando Auth Admin apenas server-side;
+- adicionar/reactivar membership pelos RPCs autenticados;
+- alterar role técnico, escopo e estado ativo/inativo;
+- proteger o último owner Organization-wide;
+- auditar criação/reactivação/alteração;
+- vincular/desvincular Employee da identidade autenticada sem pedir UUID.
 
-Fundação integrada:
+`Funcionários` não expõe mais o campo manual `UUID do auth.users`. Employee continua conceitualmente separado de login e autorização.
 
-- `PageHeader`;
-- `Button` com variantes `primary`, `secondary`, `danger`, `ghost`, além de disabled/loading;
-- `FormField` + `Input` / `Select` / `Textarea`;
-- `Panel`;
-- `StatusBadge`;
-- `FeedbackMessage`;
-- `EmptyState`;
-- `Drawer`;
-- `Dialog` / `ConfirmDialog`;
-- modal layer compartilhado com `Escape`, trap básico de `Tab`, bloqueio de scroll e restauração de foco;
-- contratos puros de estilos/tons/tamanhos e foco visível global.
+O callback de convite aceita o bootstrap inicial ou, para convite administrativo normal, uma identidade que já possua membership ativo comprovado via RLS. Um token de convite sozinho não concede acesso ao Lojasaph.
 
-Pontos de prova deliberadamente pequenos:
+## Guardrail de autorização permanece
 
-- `RuntimeShell` reutiliza `Drawer` e `Button` sem mudar a arquitetura de navegação;
-- Login reutiliza `Panel`, feedback, campos e `Button` sem mudar autenticação;
-- Proteção dos dados reutiliza `PageHeader`, `Panel`, `StatusBadge` e `EmptyState` sem mudar query, semântica de proteção ou RLS.
+`docs/product/open-questions.md` mantém **Q-022 — Quem pode fazer cada ação?** aberta.
 
-Não houve migração cosmética em massa das páginas de domínio.
+Portanto:
 
-Componentes deliberadamente adiados até existir contrato de jornada suficiente:
+- `owner/admin/manager/finance/purchases/inventory/cashier/viewer` continuam nomes técnicos do modelo atual;
+- nenhuma equivalência com cargos reais foi homologada;
+- não ampliar, renomear ou redesenhar a matriz de acesso por conveniência de UI;
+- qualquer próxima tela deve continuar refletindo boundaries/RLS existentes e registrar lacunas reais em vez de adivinhar política.
 
-- DataTable/lista responsiva genérica;
-- Tabs;
-- Toast global;
-- SearchField/filtros;
-- paginação;
-- componentes específicos de Estoque, Compras, Financeiro, Caixa e Dashboard.
+Q-001/Q-002 também permanecem sem inferência; a nova Estrutura não redefine por si só o significado operacional de cozinha/quiosque/empório.
 
-## Validação e limitação de homologação visual
+## Validação e limite de homologação visual
 
-PR #149 passou:
+O PR #151 e a `main` pós-merge passaram:
 
 - lint;
 - typecheck;
-- unit tests, incluindo contratos do design system;
+- unit tests;
 - production build;
-- suítes PostgreSQL/RLS;
+- migrations/seed;
+- suites PostgreSQL/RLS completas;
 - Inventory Count Integration;
 - Business Transactions Integration.
 
-A `main` pós-merge passou novamente a CI #519 completa.
-
-**Não houve homologação visual em browser real nesta sessão.** A infraestrutura disponível para esta execução não forneceu um runtime browser da aplicação, e o projeto continua proibindo deploy Vercel manual/rotineiro como atalho para prova. Não declarar foco, drawer/dialog ou responsividade homologados visualmente apenas com base em código/CI; a homologação real de jornadas permanece etapa posterior da Fase 51.
+**Não houve homologação visual em browser real nesta sessão.** Não registrar as novas jornadas administrativas como homologadas em desktop/tablet/mobile somente por código/CI. A homologação real continua em etapa posterior da Fase 51.
 
 ## Próxima slice da Fase 51
 
-A próxima etapa aprovada é:
+A próxima etapa oficial, conforme o roadmap, é:
 
-> **Administração — Estrutura + Usuários/Permissões.**
+> **Cadastros — refatorar Produtos, Fornecedores e Funcionários no padrão lista → detalhe → ação.**
 
-A próxima implementação deve primeiro reconciliar o backend/modelo já existente para Organization/Business/Unit/Sector/StockLocation, memberships, papéis/escopos, convites/identidade e RLS antes de desenhar telas.
+Estado atual que justifica a slice:
 
-Ponto obrigatório: `docs/product/open-questions.md` mantém **Q-022 — Quem pode fazer cada ação?** aberta. A próxima slice não pode inventar perfis reais ou uma nova matriz de acesso para preencher a UI. Deve preservar a política técnica existente e delimitar qualquer lacuna de negócio ainda não decidida.
+- `/workspace/produtos` ainda combina tabela horizontal, criação e edição na mesma página e não possui rota de detalhe estável;
+- `/workspace/fornecedores` ainda combina lista, contatos, condições comerciais, itens fornecidos, criação e edição na mesma página e não possui rota de detalhe estável;
+- `/workspace/funcionarios` ainda combina lista, criação e edição na mesma página; o UUID técnico saiu, mas falta detalhe estável e apresentação contextual do vínculo de acesso;
+- as três páginas ainda usam muitos controles/feedbacks locais anteriores ao design system mínimo;
+- o padrão `lista → detalhe → ação` ainda não foi validado em um domínio completo.
 
-O design system integrado deve ser reutilizado onde couber; não criar uma segunda convenção visual na Administração.
+A próxima sessão deve primeiro inventariar domínio/repositories/adapters e relações já existentes de Produtos, Fornecedores e Funcionários, definir as rotas/contratos de detalhe e somente então refatorar as três jornadas. Não alterar regra de negócio, RLS ou schema sem gap comprovado.
 
 ## Ordem oficial de fechamento do produto
 
-1. ~~remover a entrada técnica atual~~ — PR #145;
-2. ~~fechar arquitetura da informação~~ — PR #147;
-3. ~~fechar navegação desktop/mobile~~ — PR #147;
-4. ~~criar design system mínimo~~ — PR #149;
-5. fechar Administração: Estrutura + Usuários/Permissões;
-6. refatorar Cadastros no padrão lista/detalhe/ação;
-7. consolidar Estoque;
-8. consolidar Compras;
-9. consolidar Financeiro;
-10. consolidar Caixa;
-11. revisar Dashboard após os destinos principais;
-12. limpar linguagem/resíduos de engenharia;
-13. homologar UX em jornadas desktop/tablet/mobile;
-14. executar nova reconciliação funcional com régua de produto;
-15. resolver apenas PENDINGs necessários;
-16. homologar com dados representativos;
-17. preparar/executar migração e cutover real;
-18. retomar `REQ-PLAT-005` como production-readiness final.
+1. ~~entrada técnica~~ — PR #145;
+2. ~~arquitetura da informação~~ — PR #147;
+3. ~~navegação desktop/mobile~~ — PR #147;
+4. ~~design system mínimo~~ — PR #149;
+5. ~~Administração~~ — PR #151;
+6. **Cadastros** — próxima slice;
+7. Estoque;
+8. Compras;
+9. Financeiro;
+10. Caixa;
+11. Dashboard;
+12. limpeza de linguagem/resíduos de engenharia;
+13. homologação UX em jornadas desktop/tablet/mobile;
+14. reconciliação funcional final;
+15. PENDINGs necessários;
+16. dados representativos;
+17. migração/cutover;
+18. `REQ-PLAT-005` final.
 
 ## PENDING permanece sem inferência
 
