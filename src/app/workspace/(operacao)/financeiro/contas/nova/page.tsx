@@ -96,49 +96,49 @@ export default function NewFinanceDocumentPage() {
       <Panel as="section">
         <h2 className="text-lg font-semibold">Identificação</h2>
         <div className="mt-5 grid gap-4 md:grid-cols-2">
-          <FormField label="Fornecedor" htmlFor="supplier" required>
-            {({ id, describedBy }) => (
-              <Select id={id} aria-describedby={describedBy} required value={supplierId} onChange={(event) => setSupplierId(event.target.value)}>
+          <FormField id="supplier" label="Fornecedor" required>
+            {(field) => (
+              <Select {...field} required value={supplierId} onChange={(event) => setSupplierId(event.target.value)}>
                 <option value="">Selecione</option>
                 {workspace.suppliers.filter((supplier) => supplier.active).map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.tradeName}</option>)}
               </Select>
             )}
           </FormField>
-          <FormField label="Unidade" htmlFor="unit" required>
-            {({ id, describedBy }) => (
-              <Select id={id} aria-describedby={describedBy} required value={unitId} disabled={loading} onChange={(event) => { setUnitId(event.target.value); setSectorId(""); }}>
+          <FormField id="unit" label="Unidade" required>
+            {(field) => (
+              <Select {...field} required value={unitId} disabled={loading} onChange={(event) => { setUnitId(event.target.value); setSectorId(""); }}>
                 <option value="">Selecione</option>
                 {state.units.map((unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}
               </Select>
             )}
           </FormField>
-          <FormField label="Setor" htmlFor="sector" help="Opcional. Quando informado, deve pertencer à unidade selecionada.">
-            {({ id, describedBy }) => (
-              <Select id={id} aria-describedby={describedBy} value={sectorId} disabled={!unitId} onChange={(event) => setSectorId(event.target.value)}>
+          <FormField id="sector" label="Setor" hint="Opcional. Quando informado, deve pertencer à unidade selecionada.">
+            {(field) => (
+              <Select {...field} value={sectorId} disabled={!unitId} onChange={(event) => setSectorId(event.target.value)}>
                 <option value="">Sem setor específico</option>
                 {sectorsForUnit.map((sector) => <option key={sector.id} value={sector.id}>{sector.name}</option>)}
               </Select>
             )}
           </FormField>
-          <FormField label="Tipo do documento" htmlFor="document-type" required>
-            {({ id, describedBy }) => <Input id={id} aria-describedby={describedBy} required value={documentType} onChange={(event) => setDocumentType(event.target.value)} />}
+          <FormField id="document-type" label="Tipo do documento" required>
+            {(field) => <Input {...field} required value={documentType} onChange={(event) => setDocumentType(event.target.value)} />}
           </FormField>
-          <FormField label="Número" htmlFor="document-number">
-            {({ id, describedBy }) => <Input id={id} aria-describedby={describedBy} value={documentNumber} onChange={(event) => setDocumentNumber(event.target.value)} />}
+          <FormField id="document-number" label="Número">
+            {(field) => <Input {...field} value={documentNumber} onChange={(event) => setDocumentNumber(event.target.value)} />}
           </FormField>
-          <FormField label="Série" htmlFor="series">
-            {({ id, describedBy }) => <Input id={id} aria-describedby={describedBy} value={series} onChange={(event) => setSeries(event.target.value)} />}
+          <FormField id="series" label="Série">
+            {(field) => <Input {...field} value={series} onChange={(event) => setSeries(event.target.value)} />}
           </FormField>
-          <FormField label="Data de emissão" htmlFor="issued-at">
-            {({ id, describedBy }) => <Input id={id} aria-describedby={describedBy} type="date" value={issuedAt} onChange={(event) => setIssuedAt(event.target.value)} />}
+          <FormField id="issued-at" label="Data de emissão">
+            {(field) => <Input {...field} type="date" value={issuedAt} onChange={(event) => setIssuedAt(event.target.value)} />}
           </FormField>
-          <FormField label="Chave / identificador" htmlFor="access-key">
-            {({ id, describedBy }) => <Input id={id} aria-describedby={describedBy} value={accessKey} onChange={(event) => setAccessKey(event.target.value)} />}
+          <FormField id="access-key" label="Chave / identificador">
+            {(field) => <Input {...field} value={accessKey} onChange={(event) => setAccessKey(event.target.value)} />}
           </FormField>
         </div>
         <div className="mt-4">
-          <FormField label="Descrição / observação" htmlFor="description">
-            {({ id, describedBy }) => <Textarea id={id} aria-describedby={describedBy} value={description} onChange={(event) => setDescription(event.target.value)} rows={3} />}
+          <FormField id="description" label="Descrição / observação">
+            {(field) => <Textarea {...field} value={description} onChange={(event) => setDescription(event.target.value)} rows={3} />}
           </FormField>
         </div>
       </Panel>
@@ -160,17 +160,17 @@ export default function NewFinanceDocumentPage() {
                 <Button type="button" variant="ghost" size="sm" disabled={installments.length === 1} onClick={() => setInstallments((current) => current.filter((item) => item.key !== installment.key))}>Remover</Button>
               </div>
               <div className="mt-4 grid gap-4 md:grid-cols-2">
-                <FormField label="Valor" htmlFor={`amount-${installment.key}`} required>
-                  {({ id, describedBy }) => <Input id={id} aria-describedby={describedBy} required inputMode="decimal" value={installment.amount} onChange={(event) => setInstallments((current) => current.map((item) => item.key === installment.key ? { ...item, amount: event.target.value } : item))} />}
+                <FormField id={`amount-${installment.key}`} label="Valor" required>
+                  {(field) => <Input {...field} required inputMode="decimal" value={installment.amount} onChange={(event) => setInstallments((current) => current.map((item) => item.key === installment.key ? { ...item, amount: event.target.value } : item))} />}
                 </FormField>
-                <FormField label="Vencimento" htmlFor={`due-${installment.key}`} required>
-                  {({ id, describedBy }) => <Input id={id} aria-describedby={describedBy} required type="date" value={installment.dueDate} onChange={(event) => setInstallments((current) => current.map((item) => item.key === installment.key ? { ...item, dueDate: event.target.value } : item))} />}
+                <FormField id={`due-${installment.key}`} label="Vencimento" required>
+                  {(field) => <Input {...field} required type="date" value={installment.dueDate} onChange={(event) => setInstallments((current) => current.map((item) => item.key === installment.key ? { ...item, dueDate: event.target.value } : item))} />}
                 </FormField>
-                <FormField label="Referência de pagamento" htmlFor={`reference-${installment.key}`} help="Linha, código, chave ou instrução registrada para esta parcela.">
-                  {({ id, describedBy }) => <Input id={id} aria-describedby={describedBy} value={installment.paymentReference} onChange={(event) => setInstallments((current) => current.map((item) => item.key === installment.key ? { ...item, paymentReference: event.target.value } : item))} />}
+                <FormField id={`reference-${installment.key}`} label="Referência de pagamento" hint="Linha, código, chave ou instrução registrada para esta parcela.">
+                  {(field) => <Input {...field} value={installment.paymentReference} onChange={(event) => setInstallments((current) => current.map((item) => item.key === installment.key ? { ...item, paymentReference: event.target.value } : item))} />}
                 </FormField>
-                <FormField label="Rótulo da referência" htmlFor={`label-${installment.key}`}>
-                  {({ id, describedBy }) => <Input id={id} aria-describedby={describedBy} value={installment.paymentLabel} onChange={(event) => setInstallments((current) => current.map((item) => item.key === installment.key ? { ...item, paymentLabel: event.target.value } : item))} />}
+                <FormField id={`label-${installment.key}`} label="Rótulo da referência">
+                  {(field) => <Input {...field} value={installment.paymentLabel} onChange={(event) => setInstallments((current) => current.map((item) => item.key === installment.key ? { ...item, paymentLabel: event.target.value } : item))} />}
                 </FormField>
               </div>
             </div>
