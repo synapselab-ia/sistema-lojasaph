@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import { Button, ConfirmDialog, EmptyState, FeedbackMessage, FormField, Input, PageHeader, Panel, Select, StatusBadge } from "@/components/ui";
 import { EntityId } from "@/domain/common/entity-id";
 import { createBrowserSupabaseClient } from "@/lib/supabase/browser";
@@ -219,24 +219,24 @@ function lineState(count: RuntimeInventoryCount, line: InventoryLine, item: Inve
   const positive = countedNumber !== null && countedNumber > expectedNumber;
   const trackedPositive = positive && Boolean(item?.trackBatch || item?.trackExpiration);
   const costRequired = positive && expectedNumber <= 0 && !trackedPositive;
-  return { key, draft, trackedPositive, costRequired };
+  return { key, draft, positive, trackedPositive, costRequired };
 }
 
-function InventoryLineRow({ count, line, item, drafts, setDrafts, canManage, savingKey, saveLine }: { count: RuntimeInventoryCount; line: InventoryLine; item: InventoryItem; drafts: Drafts; setDrafts: React.Dispatch<React.SetStateAction<Drafts>>; canManage: boolean; savingKey: string | null; saveLine: (count: RuntimeInventoryCount, stockItemId: EntityId) => Promise<void> }) {
-  const { key, draft, trackedPositive, costRequired } = lineState(count, line, item, drafts);
+function InventoryLineRow({ count, line, item, drafts, setDrafts, canManage, savingKey, saveLine }: { count: RuntimeInventoryCount; line: InventoryLine; item: InventoryItem; drafts: Drafts; setDrafts: Dispatch<SetStateAction<Drafts>>; canManage: boolean; savingKey: string | null; saveLine: (count: RuntimeInventoryCount, stockItemId: EntityId) => Promise<void> }) {
+  const { key, draft, positive, trackedPositive, costRequired } = lineState(count, line, item, drafts);
   return (
     <tr className={trackedPositive ? "bg-rose-50/50" : undefined}>
       <td className="px-4 py-3"><p className="font-medium">{item?.name ?? "Produto indisponível"}</p>{trackedPositive && <p className="mt-1 max-w-sm text-xs text-rose-700">O aumento de item rastreado exige lote explícito e não pode ser concluído nesta linha.</p>}</td>
       <td className="px-4 py-3 font-semibold">{line.expectedQuantity.toDecimal()}</td>
       <td className="px-4 py-3"><Input disabled={!canManage} inputMode="decimal" aria-label={`Contagem de ${item?.name ?? "produto"}`} value={draft.quantity} onChange={(event) => setDrafts((current) => ({ ...current, [key]: { ...draft, quantity: event.target.value } }))} className="w-28" /></td>
-      <td className="px-4 py-3"><Input disabled={!canManage || !Number.isFinite(numeric(draft.quantity) ?? NaN) || trackedPositive} inputMode="decimal" placeholder={costRequired ? "Obrigatório" : "Opcional"} aria-label={`Custo de ajuste de ${item?.name ?? "produto"}`} value={draft.cost} onChange={(event) => setDrafts((current) => ({ ...current, [key]: { ...draft, cost: event.target.value } }))} className="w-32" /></td>
+      <td className="px-4 py-3"><Input disabled={!canManage || !positive || trackedPositive} inputMode="decimal" placeholder={costRequired ? "Obrigatório" : "Opcional"} aria-label={`Custo de ajuste de ${item?.name ?? "produto"}`} value={draft.cost} onChange={(event) => setDrafts((current) => ({ ...current, [key]: { ...draft, cost: event.target.value } }))} className="w-32" /></td>
       <td className="px-4 py-3"><Button type="button" variant="secondary" size="sm" disabled={!canManage || savingKey !== null || !draft.quantity.trim() || trackedPositive} loading={savingKey === `line:${key}`} onClick={() => void saveLine(count, line.stockItemId)}>Salvar</Button></td>
     </tr>
   );
 }
 
-function InventoryLineCard({ count, line, item, drafts, setDrafts, canManage, savingKey, saveLine }: { count: RuntimeInventoryCount; line: InventoryLine; item: InventoryItem; drafts: Drafts; setDrafts: React.Dispatch<React.SetStateAction<Drafts>>; canManage: boolean; savingKey: string | null; saveLine: (count: RuntimeInventoryCount, stockItemId: EntityId) => Promise<void> }) {
-  const { key, draft, trackedPositive, costRequired } = lineState(count, line, item, drafts);
+function InventoryLineCard({ count, line, item, drafts, setDrafts, canManage, savingKey, saveLine }: { count: RuntimeInventoryCount; line: InventoryLine; item: InventoryItem; drafts: Drafts; setDrafts: Dispatch<SetStateAction<Drafts>>; canManage: boolean; savingKey: string | null; saveLine: (count: RuntimeInventoryCount, stockItemId: EntityId) => Promise<void> }) {
+  const { key, draft, positive, trackedPositive, costRequired } = lineState(count, line, item, drafts);
   return (
     <Panel padding="sm" tone={trackedPositive ? "danger" : "neutral"}>
       <div className="flex items-start justify-between gap-3"><h4 className="font-semibold">{item?.name ?? "Produto indisponível"}</h4><span className="text-sm font-semibold">Esperado {line.expectedQuantity.toDecimal()}</span></div>
@@ -246,7 +246,7 @@ function InventoryLineCard({ count, line, item, drafts, setDrafts, canManage, sa
           {(props) => <Input {...props} disabled={!canManage} inputMode="decimal" value={draft.quantity} onChange={(event) => setDrafts((current) => ({ ...current, [key]: { ...draft, quantity: event.target.value } }))} />}
         </FormField>
         <FormField id={`cost-${key}`} label="Custo do ajuste" hint={costRequired ? "Obrigatório quando há aumento sem custo anterior." : "Informe somente quando aplicável."}>
-          {(props) => <Input {...props} disabled={!canManage || trackedPositive} inputMode="decimal" value={draft.cost} onChange={(event) => setDrafts((current) => ({ ...current, [key]: { ...draft, cost: event.target.value } }))} />}
+          {(props) => <Input {...props} disabled={!canManage || !positive || trackedPositive} inputMode="decimal" value={draft.cost} onChange={(event) => setDrafts((current) => ({ ...current, [key]: { ...draft, cost: event.target.value } }))} />}
         </FormField>
       </div>
       <div className="mt-3 flex justify-end"><Button type="button" variant="secondary" size="sm" disabled={!canManage || savingKey !== null || !draft.quantity.trim() || trackedPositive} loading={savingKey === `line:${key}`} onClick={() => void saveLine(count, line.stockItemId)}>Salvar contagem</Button></div>
