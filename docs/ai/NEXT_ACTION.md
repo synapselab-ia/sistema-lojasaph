@@ -4,196 +4,155 @@
 
 **Fase 51 / Issue #142 — consolidação de produto, arquitetura de informação e UX — continua como frente ativa.**
 
-Slices concluídas:
+Slices concluídas/encaminhadas:
 
 - PR #145 — remoção da entrada técnica;
 - PR #147 — arquitetura da informação + navegação desktop/mobile;
-- PR #149 — design system mínimo + padrões reutilizáveis;
-- PR #151 — Administração: Estrutura + Usuários/Permissões.
+- PR #149 — design system mínimo;
+- PR #151 — Administração: Estrutura + Usuários/Permissões;
+- PR #152 — reconciliação/handoff de Cadastros;
+- PR #153 — Cadastros: Produtos, Fornecedores e Funcionários no padrão `lista → detalhe → ação`.
 
-Baseline integrado confirmado em 2026-08-28:
+Baseline de entrada do PR #153:
 
-- `main=a06e7c3dd96b4b010ca4c7754438b90e40720399`;
-- CI do PR #523 / run `33195119453`: success;
-- Inventory Count Integration #244 / run `33195119447`: success;
-- Business Transactions Integration #231 / run `33195119446`: success;
-- CI pós-merge #524 / run `33195244017`: success;
+- `main=5eda252ba209602434dcc7cdf5463355a38df6c6`;
 - Issue #142 aberta e ativa;
-- #75/#121 continuam **TOTALMENTE ON HOLD**.
+- #75/#121 **TOTALMENTE ON HOLD**.
+
+Validação funcional do PR #153 antes dos commits Markdown:
+
+- head `eb144abf6e51dd99d89d96e7dbc0833b6597114b`;
+- CI #535: success;
+- lint/typecheck/tests/build: success;
+- banco/migrations/RLS: success;
+- Inventory Count Integration #253: success;
+- Business Transactions Integration #240: success.
+
+Não refazer Cadastros sem bug ou gap concreto.
+
+## NEXT_ACTION objetiva
+
+### Depois de confirmar a integração do PR #153, executar a próxima slice da Issue #142: **Estoque**
+
+O objetivo é consolidar a área operacional de Estoque como uma experiência coerente, sem alterar silenciosamente regras transacionais, escopo, RLS ou requisitos PENDING.
 
 Documentos de autoridade:
 
 - `docs/product/product-completion-ux-roadmap.md`;
 - `docs/product/workspace-information-architecture.md`;
 - `docs/product/design-system.md`;
-- `docs/product/administration-capability-map.md`;
 - `docs/qa/definition-of-done.md`;
-- `docs/product/open-questions.md`.
+- `docs/product/open-questions.md`;
+- ADRs/requisitos de inventory já existentes.
 
-Não refazer as slices já integradas.
+### 1. Reconciliar antes de editar
 
-## NEXT_ACTION objetiva
-
-### Executar a próxima slice da Issue #142: Cadastros — Produtos, Fornecedores e Funcionários no padrão lista → detalhe → ação
-
-O objetivo não é redesenhar visualmente três páginas isoladas. É validar um padrão de produto reutilizável para entidades persistentes importantes, separando descoberta/listagem, contexto de detalhe e ações de manutenção sem mudar silenciosamente domínio, RLS ou regras de negócio.
-
-### 1. Reconciliar e inventariar antes de editar
-
-No início:
+No início da próxima execução:
 
 1. confirmar `main`, Issue #142, PRs, branches e CI reais;
-2. reler os documentos de autoridade acima;
-3. inventariar domínio, repositories, adapters, services, runtime provider e queries para Produto, Fornecedor e Funcionário;
-4. localizar `findById`/listagens e relações já suportadas;
-5. identificar quais dados hoje são carregados globalmente pelo `RuntimeWorkspaceProvider` e quais podem/devem ser buscados no detalhe sem duplicar regra;
-6. mapear permissões/RLS atuais de leitura/manutenção para cada cadastro;
-7. definir um contrato explícito `lista → detalhe → ação` para cada entidade antes de começar a implementação.
+2. confirmar que PR #153 está integrado; se ainda estiver aberto, revisar CI/diff e integrar antes de iniciar Estoque;
+3. reler os documentos de autoridade;
+4. inventariar rotas, páginas, domain, repositories, gateways, services, RPCs e queries de Estoque;
+5. localizar transações atômicas já existentes para entrada, retirada, perda, transferência, inventário e demais movimentos;
+6. mapear permissões/RLS atuais por organização, unidade, local e setor;
+7. identificar quais telas atuais são megapáginas, duplicam informação ou expõem linguagem técnica;
+8. definir o contrato de navegação e responsabilidade das páginas antes do código.
 
-Não criar schema/RPC novo apenas para viabilizar layout. Primeiro reaproveitar os boundaries existentes.
+Não criar schema/RPC novo para resolver layout. Reaproveitar primeiro os boundaries existentes.
 
-### 2. Fechar o contrato de rotas
+### 2. Escopo funcional da consolidação de Estoque
 
-Preservar como entradas de lista:
+Inventariar e organizar, conforme o que já existe no produto:
 
-- `/workspace/produtos`;
-- `/workspace/fornecedores`;
-- `/workspace/funcionarios`.
+- posição/saldos de estoque;
+- entradas;
+- retiradas/baixas;
+- perdas;
+- devoluções já suportadas;
+- transferências entre locais;
+- inventários/contagens;
+- lotes;
+- validades;
+- estoque mínimo.
 
-Preferir detalhes estáveis:
+A área deve favorecer tarefas operacionais reais, reduzindo páginas isoladas e duplicação de contexto.
 
-- `/workspace/produtos/[id]`;
-- `/workspace/fornecedores/[id]`;
-- `/workspace/funcionarios/[id]`.
+### 3. Preservar invariantes de domínio
 
-Só escolher outra forma se o inventário provar necessidade concreta. Links, active state e navegação devem continuar coerentes com a área Cadastros.
+Não mover regra crítica para componentes React.
 
-Detalhe inexistente/inacessível deve produzir estado seguro e compreensível, sem vazar IDs ou erro de persistência.
+Preservar no domínio/banco/boundaries atuais, entre outras regras já existentes:
 
-### 3. Produtos
+- transações atômicas de movimentação;
+- escopo correto de organização/unidade/local/setor;
+- restrições de saldo negativo conforme política existente;
+- validações de lote/validade já implementadas;
+- recebimento/transferência/retirada sem dupla contabilização;
+- RLS/grants como fronteira real de autorização.
 
-Estado atual: `/workspace/produtos` reúne tabela horizontal, listagem, criação e edição em uma única página.
+Se surgir gap, provar com código/teste antes de criar migration/RPC.
 
-Transformar em:
+### 4. Arquitetura de informação e UX
 
-**Lista**
+Usar linguagem operacional, não nomes de tabela/RPC/RLS.
 
-- leitura rápida de nome, categoria, unidade, tipo e status;
-- pesquisa e filtros que tenham utilidade comprovada com os campos existentes;
-- estratégia responsiva deliberada, sem depender de tabela larga com overflow como única solução;
-- CTA de criação somente quando autorizado.
+Preferir:
 
-**Detalhe**
+- visão de posição para descoberta e acompanhamento;
+- detalhe contextual quando uma entidade persistente justificar URL estável;
+- ações dedicadas para movimentos críticos;
+- filtros/pesquisa somente quando úteis;
+- feedback explícito de sucesso/erro;
+- empty/loading/read-only/not-found seguros;
+- estratégia mobile deliberada, sem depender apenas de tabelas largas.
 
-- identificação principal;
-- categoria/unidade/tipo;
-- EAN e dados fiscais já armazenados;
-- flags de lote, validade e retornável;
-- status;
-- fornecedores relacionados quando o vínculo existente permitir consulta útil;
-- estoque relacionado somente como contexto útil, sem copiar lógica da futura consolidação de Estoque.
+Reutilizar `src/components/ui` e os padrões já provados em Cadastros. Não criar DataTable/Tabs/SearchField/paginação genéricos sem uso repetido comprovado.
 
-**Ações**
+### 5. Relação com Cadastros
 
-- criação e edição contextualizadas;
-- manter a autorização existente de catálogo;
-- não resolver `REQ-ITEM-004`, `REQ-ITEM-005`, FEFO ou custeio nesta slice.
+Produtos já possuem detalhe próprio. Estoque pode apontar para o produto ou usar seu nome/contexto, mas não deve reabrir a manutenção do cadastro dentro da área de Estoque.
 
-### 4. Fornecedores
+Não duplicar:
 
-Estado atual: `/workspace/fornecedores` mistura lista, criação/edição, contatos, condições comerciais e produtos fornecidos na mesma página.
+- formulário de Produto;
+- dados fiscais;
+- manutenção de Fornecedor;
+- Employee/login.
 
-Transformar em:
+### 6. Requisitos que continuam PENDING
 
-**Lista**
+Não resolver nesta slice por conveniência:
 
-- nome, documento quando existir, contato principal e status;
-- pesquisa/filtro com contrato comum às listas de Cadastros quando fizer sentido;
-- CTA de criação conforme autorização.
+- `REQ-STK-007` — empréstimo;
+- `REQ-STK-010` — custeio;
+- `REQ-EXP-004` — FEFO;
+- `REQ-ITEM-004` — produto de venda/POS;
+- `REQ-ITEM-005` — ficha técnica/receita.
 
-**Detalhe**
+Se alguma tela depender de uma decisão PENDING, apresentar somente o comportamento já suportado e registrar o gap.
 
-- identificação do fornecedor;
-- contatos;
-- condições comerciais já persistidas;
-- produtos fornecidos e preços/embalagens já suportados;
-- histórico apenas se existir boundary real e valor de produto nesta slice.
+### 7. Autorização
 
-Reaproveitar `SupplierCommercialTermsPanel`, `SupplierItemsPanel` e seus adapters/boundaries quando adequados, refatorando-os para o detalhe em vez de reimplementar persistência.
+Q-022 continua aberta.
 
-**Ações**
+Portanto:
 
-- criação/edição do fornecedor e contatos em contexto claro;
-- manutenção das relações já suportadas;
-- não inventar agenda automática, conversão de embalagem ou regra de compras.
-
-### 5. Funcionários
-
-Estado atual: `/workspace/funcionarios` mistura lista, criação e edição. O UUID técnico já foi removido na slice de Administração.
-
-Transformar em:
-
-**Lista**
-
-- nome, código, escopo operacional padrão, status e indicação legível de vínculo de acesso;
-- pesquisa/filtros apenas quando úteis;
-- criação conforme autorização.
-
-**Detalhe**
-
-- dados operacionais do Employee;
-- Unidade/Setor padrão;
-- status;
-- vínculo de identidade apresentado por informação legível quando o boundary atual permitir.
-
-**Ações**
-
-- criação/edição dos dados operacionais;
-- não reintroduzir `auth.users` UUID;
-- não transformar Employee em membership;
-- a concessão/alteração de autorização continua em Administração → Usuários e permissões.
-
-Se for útil oferecer atalho para administrar acesso, ele deve navegar para a jornada administrativa existente, não duplicar sua mutação.
-
-### 6. Validar o padrão compartilhado sem criar framework antecipado
-
-As três jornadas devem provar quais primitivas realmente se repetem.
-
-Pode ser justificável criar o menor contrato compartilhado para:
-
-- lista responsiva de registros;
-- campo de pesquisa/filtros;
-- cabeçalho de detalhe/ações;
-- estado vazio;
-- feedback de ação.
-
-Não criar DataTable/Tabs/SearchField/paginação genéricos apenas por estarem previstos no roadmap. Criá-los somente se duas ou mais jornadas desta slice demonstrarem um contrato estável e documentável.
-
-Reutilizar `src/components/ui` para Button, PageHeader, FormField, Panel, StatusBadge, FeedbackMessage, EmptyState, Dialog/ConfirmDialog e demais componentes já integrados.
-
-### 7. Estados e UX
-
-Para as três jornadas:
-
-- diferenciar loading, vazio, erro, somente leitura e registro inexistente/inacessível;
-- impedir duplo envio;
-- usar linguagem de operação, não Supabase/RLS/adapter/migration;
-- manter foco/labels/teclado/touch target do design system;
-- evitar `window.prompt()`/`window.confirm()` como novo padrão;
-- preservar URLs de detalhe ao editar/confirmar sempre que possível;
-- não esconder ação crítica por overflow horizontal no mobile.
+- não renomear papéis técnicos como cargos de negócio;
+- não ampliar ações por conveniência de UI;
+- manter checks no server/domain/banco quando já existirem;
+- UI apenas reflete disponibilidade, não se torna fronteira de segurança.
 
 ### 8. Testes e validação
 
-Adicionar/ajustar testes para:
+Adicionar/ajustar testes nos contratos efetivamente tocados, especialmente para:
 
-- resolução segura de detalhe por ID/Organization;
-- autorização de leitura/manutenção;
-- contratos de lista/pesquisa/filtro puros quando houver;
-- navegação para detalhes;
-- relações exibidas no detalhe sem quebra de escopo;
-- estados not-found/forbidden sem vazamento técnico;
-- componentes compartilhados novos somente se realmente criados.
+- invariantes transacionais;
+- escopo organization/unit/location/sector;
+- seleção de lote quando aplicável;
+- estado de inventário/contagem;
+- autorização e isolamento;
+- filtros/visões puras quando houver;
+- estados seguros de registro inexistente/inacessível.
 
 Manter verdes:
 
@@ -202,48 +161,48 @@ Manter verdes:
 - `npm run test`;
 - `npm run build`;
 - CI PostgreSQL/RLS aplicável;
-- integrações afetadas.
+- Inventory Count Integration;
+- Business Transactions Integration quando afetada.
 
-Se browser real permitido estiver disponível, validar as três jornadas em desktop e mobile. Se não estiver, registrar explicitamente a limitação e não declarar homologação visual.
+Se browser real permitido estiver disponível, validar jornadas críticas em desktop e mobile. Se não estiver, registrar a limitação; **não fazer deploy Vercel manual apenas para homologação**.
 
-### 9. Guardrails
+### 9. Guardrails desta execução
 
-Nesta execução **não**:
+Não:
 
-- consolidar Estoque, Compras, Financeiro ou Caixa;
+- reabrir Cadastros sem evidência concreta;
+- consolidar Compras, Financeiro ou Caixa;
 - redesenhar Dashboard;
-- mudar política de autorização/Q-022;
-- reintroduzir UUID técnico de usuário;
-- resolver requisitos PENDING;
-- criar lógica de venda/POS, ficha técnica, FEFO ou custeio;
-- fazer migração cosmética em massa fora das três jornadas;
-- tocar em Production para prova;
+- mudar Q-022/política de autorização;
+- resolver PENDINGs;
+- fazer migração cosmética em massa;
+- tocar Production para prova;
 - retomar #75/#121;
 - fazer deploy Vercel manual/rotineiro.
 
-## Critérios de aceite
+## Critérios de aceite para Estoque
 
 A slice só pode ser encerrada quando:
 
-- Produtos, Fornecedores e Funcionários possuem listas focadas e detalhes com URL estável;
-- criação/edição deixaram de competir permanentemente com a listagem completa na mesma megapágina;
-- relações existentes aparecem no contexto correto sem duplicar lógica de outros módulos;
-- Funcionários continua sem UUID técnico e sem confundir Employee com autorização;
-- permissões/RLS atuais continuam sendo a fronteira real;
-- o padrão compartilhado de Cadastros é pequeno, comprovado e reutilizado;
-- estados loading/empty/error/read-only/not-found e feedback foram tratados;
-- estratégia mobile não depende apenas de tabela larga/overflow;
-- lint, typecheck, testes, build e CI aplicável estão verdes;
+- as principais tarefas de Estoque formam uma arquitetura coerente e navegável;
+- regras transacionais permanecem fora da UI;
+- saldos/movimentos não são duplicados por novas telas;
+- URLs/ações críticas têm contexto operacional claro;
+- mobile não depende apenas de overflow horizontal;
+- estados loading/empty/error/read-only/not-found e feedback são tratados;
+- permissões/RLS continuam a fronteira real;
+- requisitos PENDING permanecem sem inferência;
+- lint, typecheck, testes, build, banco/RLS e integrações aplicáveis estão verdes;
 - ausência de browser/homologação visual é registrada honestamente se persistir;
 - `CURRENT_STATE`, `HANDOFF` e `NEXT_ACTION` são reconciliados.
 
-## Depois desta slice
+## Depois de Estoque
 
-Somente após a integração de Cadastros, promover:
+Somente após a integração da consolidação de Estoque, promover:
 
-> **Estoque — consolidar posição, entradas, baixas/perdas, devoluções, transferências, inventários, lotes/validades e estoque mínimo como uma área coerente.**
+> **Compras**
 
-Não saltar diretamente para Compras/Financeiro.
+Não saltar diretamente para Financeiro/Caixa/Dashboard.
 
 ## Ordem macro
 
@@ -251,41 +210,20 @@ Não saltar diretamente para Compras/Financeiro.
 2. ~~arquitetura da informação/navegação~~ — PR #147;
 3. ~~design system mínimo~~ — PR #149;
 4. ~~Administração~~ — PR #151;
-5. **Cadastros**;
-6. Estoque;
+5. **Cadastros** — PR #153;
+6. **Estoque** — próxima;
 7. Compras;
 8. Financeiro;
 9. Caixa;
 10. Dashboard;
 11. limpeza de linguagem;
-12. homologação UX;
+12. homologação UX real;
 13. reconciliação funcional;
 14. PENDINGs necessários;
 15. dados representativos;
 16. migração/cutover;
 17. `REQ-PLAT-005` final.
 
-## PENDING — não promover por conveniência de UI
+## #75/#121 permanecem ON HOLD
 
-- `REQ-ITEM-004` — produto de venda/POS;
-- `REQ-ITEM-005` — ficha técnica/receita;
-- `REQ-STK-007` — empréstimo;
-- `REQ-STK-010` — custeio;
-- `REQ-EXP-004` — FEFO;
-- `REQ-FIN-004` — cardinalidade final de pagamentos;
-- `REQ-CASH-007` — consumo de funcionários;
-- `REQ-CASH-008` — integração com vendas.
-
-## REQ-PLAT-005 continua ON HOLD
-
-Não investigar cron/scheduling, não disparar workflows para prova, não mexer em Storage/R2/S3/restore/secrets/variables e não fabricar evidência Production enquanto o hold estiver ativo.
-
-## Restrições permanentes
-
-- GitHub é a fonte de continuidade;
-- RLS continua boundary de acesso;
-- nenhum secret em browser/Git/docs/chat;
-- não fabricar evidência Production;
-- não fazer deploy Vercel rotineiro;
-- não tornar o repositório private automaticamente;
-- não misturar redesign visual com mudança silenciosa de regra de negócio/autorização.
+Não investigar scheduling, Storage/R2/S3, restore drills, secrets/variables, Production fixtures ou evidência de proteção durante a consolidação funcional. O hold só termina por decisão explícita ou no production-readiness final.
