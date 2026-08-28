@@ -2,103 +2,127 @@
 
 ## Estado de transição
 
-**Fase 50 / Issue #138 (`REQ-ITEM-003`) concluída. Não existe nova frente funcional ativa.**
+**Fase 51 / Issue #142 — consolidação de produto, arquitetura de informação e UX — agora é a frente ativa.**
 
-Integração confirmada:
+Baseline de entrada:
 
-- PR #139 merged;
-- Issue #138 closed;
-- PR #140 integrou a reconciliação documental pós-Fase 50;
-- `main=e65d333f2410960b5201669014b062f5e1380542` antes desta atualização de hold;
-- CI pós-merge #502 / `33119305469`: success;
-- nenhum PR funcional aberto;
-- Issues abertas: somente #75 e #121, ambas da proteção de dados e ON HOLD.
+- `main=37124e86e28f3e07cee0b49afecc8cad29689c78`;
+- Fase 50 concluída; não refazer #138/#139;
+- #75 e #121 continuam abertas e TOTALMENTE ON HOLD na trilha `REQ-PLAT-005`;
+- Issue #142 aberta em 2026-08-28 por prioridade explícita do operador;
+- branch documental: `agent/product-completion-ux-roadmap`.
 
-Não refazer #138/#139.
+## Por que a Fase 51 existe
 
-## O que a Fase 50 entregou
+A auditoria de fechamento detectou que a régua anterior estava excessivamente técnica. O núcleo possui forte cobertura de domínio, banco, RLS, testes e CI, mas a experiência de produto ainda cresceu página por página e não passou por consolidação de arquitetura da informação, jornadas e administrabilidade.
 
-EAN/NCM/CEST já existiam no schema de `stock_items`; a fase somente os tornou utilizáveis na aplicação.
+O documento de autoridade é:
 
-Arquivos funcionais centrais:
+- `docs/product/product-completion-ux-roadmap.md`.
 
-- `src/modules/catalog/domain/stock-item.ts`;
-- `src/modules/catalog/domain/stock-item.test.ts`;
-- `src/modules/catalog/adapters/supabase-stock-item-repository.ts`;
-- `src/app/workspace/(operacao)/produtos/page.tsx`.
+A `docs/qa/definition-of-done.md` foi ampliada para que UI não seja considerada pronta apenas por renderizar/passsar build.
 
-Contrato final:
+## Diagnóstico que não deve ser perdido
 
-- EAN, NCM e CEST opcionais;
-- `trim` apenas; branco = ausência / `NULL`;
-- update omisso preserva o valor; branco explícito limpa;
-- EAN mantém unicidade por Organization já existente no PostgreSQL;
-- sem lookup externo, máscara, GTIN/check-digit ou validação tributária;
-- sessão autenticada + RLS, sem service/admin key no browser;
-- sem migration/view/RPC/fixture Production.
+### 1. A landing atual de `/` é inútil como produto
 
-Production read-only em 2026-08-27: 3 itens, nenhum com EAN/NCM/CEST preenchido. Nada foi mutado para criar evidência.
+Ela expõe "workspace persistente", demonstração, Supabase/PostgreSQL, RLS, CI e conteúdo de roadmap obsoleto. Deve desaparecer completamente da experiência normal.
 
-Validação do PR:
+A raiz deve apenas encaminhar:
 
-- head `f638abebe844473013d043e6c1bc213878124bd2`;
-- CI #499 / `33118596139`: success;
-- Business Transactions #225 / `33118596143`: success;
-- Inventory Count #241 / `33118596171`: success;
-- pós-merge CI #500 / `33118720928`: success.
+- não autenticado → login;
+- autenticado → fluxo operacional já existente (workspace/seleção/bootstrap conforme contexto).
 
-## Q-006 continua sem resposta
+Não redesenhar essa landing: **removê-la**.
 
-O `Gabarito` pode representar catálogo de venda/POS separado de item de estoque. A Fase 50 não respondeu essa questão.
+### 2. A navegação precisa ser reorganizada antes de redesenhar telas
 
-Não:
+O menu plano atual mistura módulos e operações. Baseline alvo:
 
-- criar produto de venda por inferência;
-- importar EAN/NCM/CEST do `Gabarito` automaticamente;
-- redefinir `internal_code`;
-- promover `REQ-ITEM-004` sem validação real.
+- Visão geral;
+- Estoque;
+- Compras;
+- Financeiro;
+- Caixa;
+- Cadastros;
+- Administração.
 
-## Reconciliação do roadmap
+Estoque deve agrupar posição, entradas, baixas, devoluções, transferências, inventários, lotes/validades e mínimo/alertas.
 
-Após a Fase 50, a revisão de requirements + Issues + código não encontrou outro MUST/SHOULD funcional independente para promover.
+### 3. O padrão de tela precisa mudar
 
-A Fase 41 já havia fechado o núcleo sem novo MUST funcional pendente. As frentes SHOULD que ainda eram independentes foram posteriormente entregues: anexos financeiros, exportação, condições/produtos de fornecedor, estoque mínimo, Dashboard de estoque, Dashboard de compras/fornecedores e EAN/dados fiscais.
+Preferir para entidades complexas:
 
-O que resta é condicionado por fonte/decisão de negócio ou está explicitamente em hold.
+`lista → detalhe → ação`
 
-## Decisão operacional — 2026-08-28
+com URLs estáveis e contexto próprio. Evitar megapáginas que misturam formulário de criação, listagem, execução e histórico.
 
-**#75 e #121 / `REQ-PLAT-005` ficam TOTALMENTE ON HOLD até o Sistema Lojasaph estar 100% concluído.**
+Compras e Financeiro são exemplos prioritários para essa consolidação e ainda usam interações técnicas como `window.prompt()`.
 
-Essa é uma decisão explícita de prioridade do operador e substitui a orientação anterior de retomar automaticamente ao ocorrer cron, primeiro anexo ou incidente do pipeline.
+### 4. Administração tem gaps reais
 
-Antes do marco de sistema 100%:
+- Estrutura: backend/modelo existe, mas falta manutenção adequada de unidades/setores/locais no workspace persistente;
+- Usuários/Permissões: RLS/roles/scopes existem, mas falta experiência administrativa de produto;
+- Funcionários não pode depender de `UUID do auth.users` exposto ao operador.
 
-- não investigar scheduling de backup;
-- não retomar #121 por cron, anexo ou alerta;
-- não executar `workflow_dispatch` para obter evidência;
-- não criar fixture/bucket/anexo sintético em Production;
-- não alterar workflows, S3/R2, secrets, variables, retenção, lock/WORM ou guardrails de `REQ-PLAT-005`;
-- não repetir introspecções de Storage/protection runs por rotina;
-- manter #75/#121 abertas e ON HOLD;
-- só retomar se o operador der nova instrução explícita revogando o hold ou quando o sistema estiver 100% concluído.
+Q-022 continua autoridade para pessoas/perfis reais; não inventar política de acesso.
 
-### Evidência registrada antes do hold total
+### 5. Não começar pelo Dashboard
 
-A reconciliação única de 2026-08-28, depois das janelas agendadas, encontrou:
+O Dashboard deve ser revisado **depois** de Estoque/Compras/Financeiro/Caixa e dos destinos principais estarem consolidados, para que seus atalhos e indicadores apontem para jornadas estáveis.
 
-- 0 novos runs `automatic_storage`;
-- 0 novos runs `automatic_database` correspondentes aos schedules daquele dia;
-- último `automatic_database` autoritativo conhecido: `succeeded` em 2026-08-27 com integridade verificada;
-- schedule de 2026-08-28 não comprovado como executado corretamente.
+## Ordem oficial
 
-Não corrigir/investigar isso agora. Preservar como pendência para homologação/finalização.
+1. remover entrada técnica;
+2. arquitetura da informação;
+3. navegação desktop/mobile;
+4. design system mínimo;
+5. Administração;
+6. Cadastros;
+7. Estoque;
+8. Compras;
+9. Financeiro;
+10. Caixa;
+11. Dashboard;
+12. limpeza de linguagem técnica;
+13. homologação UX real;
+14. reconciliação funcional final;
+15. PENDINGs necessários;
+16. dados representativos;
+17. migração/cutover;
+18. `REQ-PLAT-005` final.
 
-## Importação/cutover real
+Não adicionar feature grande aleatória no meio desse programa salvo bug crítico, segurança, urgência operacional ou nova decisão explícita.
 
-`REQ-IMP-001..004` possuem fundação de staging/dry-run/idempotência/relatório. O cutover real não é uma lacuna técnica pronta para implementação genérica: depende de fontes congeladas, regras aprovadas, resolução das questões aplicáveis, reconciliação e validação do cliente.
+## Primeira slice executável
 
-## PENDING
+A primeira slice da Issue #142 é propositalmente pequena:
+
+1. inspecionar `/`, `/login`, `/bootstrap`, `/workspace`, `/workspace/selecionar-organizacao` e helpers de auth/redirect;
+2. remover a landing técnica de `/`;
+3. reutilizar o fluxo existente para decidir o destino por sessão/contexto;
+4. remover o CTA `Abrir demonstração` da navegação normal;
+5. não apagar rotas demo nesta slice se ainda forem úteis internamente;
+6. adicionar/ajustar testes do contrato de entrada;
+7. lint/typecheck/test/build verdes;
+8. sem deploy Vercel rotineiro/manual.
+
+Não aproveitar essa slice para redesenhar sidebar, fazer design system completo ou tocar em banco.
+
+## Regra de UI daqui para frente
+
+Uma Issue com UI só é concluída quando, quando aplicável:
+
+- jornada está clara;
+- linguagem é operacional;
+- loading/empty/error/success existem;
+- feedback/confirm dialogs são adequados;
+- desktop/tablet/mobile foram realmente considerados/validados;
+- IDs e termos técnicos desnecessários não aparecem;
+- componentes/padrões existentes são reutilizados;
+- permissões e regras autoritativas continuam corretas.
+
+## PENDING continua PENDING
 
 Não promover por inferência:
 
@@ -111,14 +135,12 @@ Não promover por inferência:
 - `REQ-CASH-007` / consumo de funcionários;
 - `REQ-CASH-008` / integração com vendas.
 
+## #75/#121 permanecem ON HOLD
+
+Não retomar scheduling, Storage, R2/S3, restore drills ou evidência automática de proteção durante a Fase 51. O hold só termina no fechamento funcional/homologação ou por nova instrução explícita do operador.
+
 ## Próximo chat
 
-O próximo chat deve primeiro consultar GitHub real e `NEXT_ACTION`.
-
-**Não escolher #75/#121 como próxima frente enquanto o sistema não estiver 100% concluído**, mesmo que exista cron perdido, anexo novo ou alerta relacionado à proteção de dados. Só uma nova instrução explícita do operador pode antecipar a retomada.
-
-Se surgir nova prioridade explícita, bug/regressão funcional, fonte final de migração ou decisão de negócio para um PENDING, isso pode se tornar a próxima frente via Issue → branch → PR.
-
-Quando o sistema estiver 100% concluído, retomar `REQ-PLAT-005` como etapa de homologação final e reconciliar scheduling, backup automático, Storage, restore e critérios de fechamento das Issues.
+Consultar GitHub real e `NEXT_ACTION`. Se esta documentação já estiver merged, iniciar diretamente a primeira slice da Issue #142 a partir da `main` atual, sem refazer a auditoria e sem reabrir discussão sobre a ordem já aprovada.
 
 Restrições permanentes: GitHub é fonte de verdade; RLS é boundary; nenhum secret em browser/Git/docs; Production não recebe fixture para prova; nenhum deploy Vercel rotineiro; repo não deve ser tornado private automaticamente.
