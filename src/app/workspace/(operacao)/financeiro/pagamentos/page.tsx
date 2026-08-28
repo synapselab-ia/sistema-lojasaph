@@ -48,12 +48,12 @@ export default function FinancePaymentsPage() {
 
       <Panel as="section">
         <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_240px]">
-          <FormField label="Buscar" htmlFor="payment-search" help="Fornecedor, documento, referência ou observação.">
-            {({ id, describedBy }) => <Input id={id} aria-describedby={describedBy} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Ex.: fornecedor, referência..." />}
+          <FormField id="payment-search" label="Buscar" hint="Fornecedor, documento, referência ou observação.">
+            {(field) => <Input {...field} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Ex.: fornecedor, referência..." />}
           </FormField>
-          <FormField label="Evento" htmlFor="payment-event-type">
-            {({ id, describedBy }) => (
-              <Select id={id} aria-describedby={describedBy} value={eventType} onChange={(event) => setEventType(event.target.value as PaymentEventType | "all")}>
+          <FormField id="payment-event-type" label="Evento">
+            {(field) => (
+              <Select {...field} value={eventType} onChange={(event) => setEventType(event.target.value as PaymentEventType | "all")}>
                 <option value="all">Todos</option>
                 <option value="payment">Pagamentos</option>
                 <option value="reversal">Estornos</option>
