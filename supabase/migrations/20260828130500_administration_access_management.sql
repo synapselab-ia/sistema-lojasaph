@@ -1,6 +1,61 @@
--- Fase 51: administração de acessos sem expor auth.users ou abrir DML direto em memberships.
--- Q-022 continua aberto: estes RPCs administram os papéis técnicos já existentes, sem mapear pessoas reais por suposição.
+-- Fase 51: administração de Estrutura + Usuários/Permissões.
+-- Q-001/Q-002 e Q-022 continuam abertos: a migration preserva a hierarquia e os papéis técnicos existentes sem inferir semântica de negócio.
 
+create or replace function private.validate_stock_location_scope_hierarchy()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  sector_unit_id uuid;
+begin
+  if new.sector_id is null then
+    return new;
+  end if;
+
+  select s.unit_id into sector_unit_id
+  from public.sectors s
+  where s.id = new.sector_id
+    and s.organization_id = new.organization_id;
+
+  if not found then
+    raise exception 'STOCK_LOCATION_SECTOR_NOT_AVAILABLE' using errcode = '23503';
+  end if;
+
+  if sector_unit_id <> new.unit_id then
+    raise exception 'STOCK_LOCATION_SCOPE_HIERARCHY_MISMATCH' using errcode = '23514';
+  end if;
+
+  return new;
+end;
+$$;
+
+revoke all on function private.validate_stock_location_scope_hierarchy() from public, anon, authenticated;
+
+do $$
+begin
+  if exists (
+    select 1
+    from public.stock_locations l
+    join public.sectors s
+      on s.id = l.sector_id
+     and s.organization_id = l.organization_id
+    where l.sector_id is not null
+      and s.unit_id <> l.unit_id
+  ) then
+    raise exception 'EXISTING_STOCK_LOCATION_SCOPE_HIERARCHY_MISMATCH' using errcode = '23514';
+  end if;
+end $$;
+
+drop trigger if exists stock_locations_scope_hierarchy on public.stock_locations;
+create trigger stock_locations_scope_hierarchy
+before insert or update of organization_id, unit_id, sector_id
+on public.stock_locations
+for each row execute function private.validate_stock_location_scope_hierarchy();
+
+-- Memberships intentionally remain without direct authenticated INSERT/UPDATE grants.
+-- These RPCs are the narrow administrative boundary and require Organization-wide owner/admin.
 create or replace function public.admin_list_organization_access(target_organization_id uuid)
 returns table (
   membership_id uuid,
@@ -132,7 +187,11 @@ begin
   values (
     target_organization_id,
     auth.uid(),
-    case when membership_was_active is null then 'membership.create' else 'membership.reactivate' end,
+    case
+      when membership_was_active is null then 'membership.create'
+      when membership_was_active then 'membership.ensure_active'
+      else 'membership.reactivate'
+    end,
     'organization_membership',
     membership_id,
     jsonb_build_object(
