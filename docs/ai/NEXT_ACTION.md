@@ -4,88 +4,106 @@
 
 **Fase 51 / Issue #142 — consolidação de produto, arquitetura de informação e UX — é a frente ativa.**
 
-A primeira slice da fase foi concluída no PR #145.
+Slices concluídas:
+
+- PR #145 — remoção da entrada técnica;
+- PR #147 — arquitetura da informação + navegação desktop/mobile.
 
 Baseline integrado confirmado em 2026-08-28:
 
-- `main=62c2f82546cc93dd2499c3c5f5a156be702879b3`;
-- PR #145 `feat: remove technical entry from root`: merged;
-- CI do PR #509 / run `33183155459`: success;
-- Business Transactions Integration #226 / run `33183155489`: success;
-- CI pós-merge #510 / run `33183295797`: success;
+- `main=3bc28e28a3a6e0d4b4b4543724942d308317d0f4`;
+- PR #147 `feat: group workspace navigation by product area`: merged;
+- CI final do PR #514 / run `33184629115`: success;
+- Business Transactions Integration #228 / run `33184629114`: success;
+- CI pós-merge #515 / run `33184891544`: success;
 - Issue #142 aberta e ativa;
 - #75 e #121 continuam **TOTALMENTE ON HOLD** em `REQ-PLAT-005`;
-- documento de autoridade: `docs/product/product-completion-ux-roadmap.md`.
+- documentos de autoridade:
+  - `docs/product/product-completion-ux-roadmap.md`;
+  - `docs/product/workspace-information-architecture.md`;
+  - `docs/qa/definition-of-done.md`.
 
-Não refazer a landing/entrada técnica já removida.
+Não refazer a landing/entrada técnica nem a arquitetura/navegação já integradas.
 
 ## NEXT_ACTION objetiva
 
-### Executar a segunda slice da Issue #142: fechar arquitetura da informação e navegação desktop/mobile
+### Executar a terceira slice da Issue #142: criar design system mínimo e padrões reutilizáveis de página
 
-A navegação atual é plana e expõe operações internas como destinos equivalentes. A próxima slice deve organizar o produto em áreas compreensíveis **antes** de redesenhar páginas individuais.
+A arquitetura do produto já está fechada o suficiente para parar de criar estilos e interações página a página. A próxima slice deve estabelecer uma fundação visual/comportamental pequena **antes** das refatorações de Administração, Cadastros, Estoque, Compras, Financeiro e Caixa.
 
-Baseline de primeiro nível já aprovado:
+O objetivo não é redesenhar a aplicação inteira. É criar contratos reutilizáveis que eliminem repetição e permitam que as próximas slices evoluam com consistência.
 
-- Visão geral;
-- Estoque;
-- Compras;
-- Financeiro;
-- Caixa;
-- Cadastros;
-- Administração.
-
-### 1. Reconciliar antes de editar
+### 1. Reconciliar e inventariar antes de editar
 
 No início da implementação:
 
 1. confirmar `main`, Issue #142, PRs, branches e CI reais;
-2. ler `docs/product/product-completion-ux-roadmap.md`;
-3. inventariar as rotas e layouts atuais em `src/app/workspace`;
-4. inspecionar `src/components/runtime-shell.tsx` e componentes/helpers de navegação relacionados;
-5. identificar condicionais de papel/escopo que possam afetar visibilidade ou acesso, sem alterar a política de autorização.
+2. ler os três documentos de autoridade listados acima;
+3. inspecionar `src/app/globals.css`;
+4. inspecionar `src/components/runtime-shell.tsx` e a navegação integrada;
+5. inventariar padrões repetidos em páginas representativas de leitura, formulário e tabela — sem refatorá-las ainda;
+6. registrar quais padrões são realmente comuns e quais ainda dependem da jornada específica do módulo.
 
-Não inferir acesso a partir do menu: RLS e guards existentes continuam sendo a boundary autoritativa.
+Não importar uma biblioteca visual grande por conveniência sem necessidade comprovada. O projeto atual usa Tailwind e componentes próprios; preferir uma fundação pequena e controlada.
 
-### 2. Produzir um mapa explícito rota → área/subárea
+### 2. Definir o núcleo mínimo de componentes
 
-Antes da mudança visual, registrar no PR ou em documentação adequada o mapeamento de destinos atuais para a arquitetura alvo.
+Criar uma camada reutilizável coerente, preferencialmente em `src/components/ui` ou estrutura equivalente, cobrindo o que já é recorrente e necessário para as próximas slices.
 
-Como mínimo:
+Como baseline desta primeira fundação, considerar e implementar os contratos realmente necessários entre:
 
-- `/workspace` → Visão geral;
-- produtos, fornecedores e funcionários → Cadastros;
-- posição/entradas/baixas/devoluções/transferências/inventários/lotes-validades/mínimo → Estoque;
-- compras/pedidos/recebimentos/histórico → Compras;
-- contas a pagar/pagamentos/vencimentos/documentos → Financeiro;
-- sessões/movimentações/fechamento/histórico → Caixa;
-- seleção/estrutura/permissões/proteção/configurações administrativas aplicáveis → Administração, respeitando o que realmente existe hoje.
+- `PageHeader` — eyebrow/contexto, título, descrição e ações;
+- `Button` — hierarquia consistente para ação primária, secundária e destrutiva/atenção quando aplicável;
+- `Input`, `Select`, `Textarea` + `FormField` — label, ajuda, erro e disabled de modo consistente;
+- `StatusBadge` — estados semânticos reutilizáveis;
+- `Panel`/`Card` — superfície e seção padrão;
+- `EmptyState` — ausência de dados com linguagem e ação opcionais;
+- `Drawer` — extrair/consolidar o padrão mobile já provado no shell se isso reduzir duplicação sem mudar o contrato de navegação;
+- `Dialog`/`ConfirmDialog` — fundação acessível para ações futuras que hoje dependem de interações ad hoc.
 
-Não inventar páginas ausentes nesta slice apenas para completar a taxonomia. Lacunas de Administração pertencem à etapa própria posterior.
+Não é obrigatório criar `DataTable`, `Tabs`, `Toast` e `SearchField` nesta mesma slice se o inventário mostrar que uma implementação genérica agora seria prematura. Esses componentes entram quando houver contrato real suficiente.
 
-### 3. Implementar a nova estrutura do shell
+### 3. Definir tokens e regras de uso mínimas
 
-Depois do mapa estar coerente:
+Sem criar um tema complexo, consolidar decisões básicas já repetidas:
 
-- substituir a lista plana atual por navegação agrupada segundo as áreas aprovadas;
-- garantir estado ativo compreensível para área e subárea;
-- desktop deve permitir orientação rápida entre áreas e operações relacionadas;
-- mobile deve possuir um padrão de navegação utilizável sem depender de overflow horizontal como solução principal;
-- preservar URLs atuais quando possível nesta slice;
-- se alguma URL mudar por necessidade comprovada, atualizar links e redirects de forma consistente;
-- não alterar regras de negócio, queries ou autorização para acomodar a navegação.
+- tipografia e hierarquia de títulos/textos auxiliares;
+- espaçamento de página/seções;
+- radius/border/surface;
+- estados semânticos de sucesso, atenção, erro e neutro;
+- alturas mínimas e foco para controles clicáveis/toque;
+- largura/densidade de formulários e painéis;
+- comportamento de disabled/loading onde aplicável.
 
-### 4. Testar o contrato de navegação
+Evitar cores, tamanhos e classes divergentes para a mesma intenção sem justificativa.
 
-Adicionar/ajustar testes adequados para garantir, no mínimo:
+### 4. Provar a fundação sem refatoração massiva
 
-- áreas e agrupamentos esperados;
-- links atuais relevantes continuam alcançáveis;
-- estado ativo não quebra em subrotas;
-- navegação mobile/desktop não depende de dados de demonstração;
-- não existe retorno de `Abrir demonstração` à experiência normal.
+Aplicar os componentes novos em **pontos de baixo risco suficientes para provar a API**, por exemplo:
 
-Além disso, manter verdes:
+- `RuntimeShell` para reutilizar o Drawer/Button quando natural;
+- uma página predominantemente read-only ou administrativa já existente, como `Proteção dos dados`, para PageHeader/Panel/StatusBadge/EmptyState;
+- no máximo um formulário simples/representativo para provar FormField/controles, se necessário.
+
+Não converter todas as páginas nesta slice. A migração ampla deve ocorrer junto das próximas etapas funcionais, quando a jornada de cada área for consolidada.
+
+### 5. Documentar o contrato do design system
+
+Criar documentação de produto/UI, por exemplo `docs/product/design-system.md`, contendo:
+
+- componentes disponíveis e finalidade;
+- variantes permitidas;
+- regras de hierarquia de ação;
+- padrões de loading/empty/error/success;
+- regras mínimas de teclado, foco e touch target;
+- exemplos de quando reutilizar versus quando criar padrão específico;
+- lista explícita do que ainda não faz parte do design system.
+
+O documento deve orientar as slices seguintes e evitar que cada módulo invente sua própria convenção.
+
+### 6. Testar sem fabricar homologação visual
+
+Adicionar testes para contratos puros/variantes/helpers quando aplicável e manter verdes:
 
 - `npm run lint`;
 - `npm run typecheck`;
@@ -93,16 +111,22 @@ Além disso, manter verdes:
 - `npm run build`;
 - workflows PostgreSQL/RLS aplicáveis.
 
-### 5. Não extrapolar a slice
+Quando houver ambiente browser disponível sem violar a política de deploy, verificar foco, drawer/dialog, controles e responsividade dos pontos migrados.
+
+Se browser real continuar indisponível, registrar essa limitação explicitamente. **Não declarar homologação visual real apenas porque build/CI passaram.**
+
+### 7. Não extrapolar a slice
 
 Nesta execução **não**:
 
-- criar o design system inteiro;
-- refatorar as páginas internas de Estoque/Compras/Financeiro/Caixa;
-- criar a administração completa de Estrutura ou Usuários/Permissões;
-- resolver UUID técnico de Funcionários ainda, salvo ajuste puramente de navegação sem regra nova;
-- resolver requisitos PENDING por conveniência de UI;
+- refatorar todas as páginas para o novo design system;
+- alterar a arquitetura da informação/URLs já fechadas;
+- criar Administração de Estrutura ou Usuários/Permissões ainda;
+- refatorar jornadas internas de Cadastros/Estoque/Compras/Financeiro/Caixa;
+- substituir todos os `window.prompt()`/confirms da aplicação de uma vez;
+- alterar regras de negócio, queries ou autorização;
 - tocar em migrations/RLS/Supabase sem prova concreta de necessidade;
+- resolver requisitos PENDING por conveniência visual;
 - retomar #75/#121;
 - fazer deploy Vercel manual/rotineiro.
 
@@ -110,30 +134,31 @@ Nesta execução **não**:
 
 A slice só pode ser encerrada quando:
 
-- o primeiro nível da navegação reflete Visão geral, Estoque, Compras, Financeiro, Caixa, Cadastros e Administração de forma coerente com o que existe;
-- operações de Estoque não aparecem mais como módulos equivalentes independentes no primeiro nível;
-- desktop e mobile possuem desenho de navegação intencional e utilizável;
-- rotas existentes continuam acessíveis ou possuem transição explicitamente documentada;
-- permissões/guards/RLS não foram enfraquecidos;
-- nenhuma feature ausente foi inventada apenas para preencher o menu;
+- existe uma camada mínima de componentes reutilizáveis, não apenas classes copiadas;
+- hierarquia de ação, campos, superfícies e estados semânticos possuem contratos consistentes;
+- pelo menos pontos de baixo risco usam a fundação e provam que ela funciona no código real;
+- o shell/navegação não regrediu;
+- acessibilidade básica de controles interativos foi considerada — labels, foco, teclado e touch target conforme aplicável;
+- nenhum componente novo introduz decisão de autorização ou regra de negócio;
+- documentação do design system existe e delimita o que está ou não suportado;
 - testes relevantes foram criados/ajustados;
 - lint, typecheck, testes, build e CI aplicável estão verdes;
-- documentação/handoff são reconciliados;
-- PR explica o mapa de arquitetura e as escolhas desktop/mobile.
+- qualquer ausência de browser/homologação visual foi registrada honestamente;
+- `CURRENT_STATE`, `HANDOFF` e `NEXT_ACTION` foram reconciliados.
 
 ## Depois desta slice
 
-Somente após a integração da arquitetura/navegação, promover a próxima etapa:
+Somente após a integração do design system mínimo, promover a próxima etapa:
 
-> **Design system mínimo e padrões reutilizáveis de página.**
+> **Administração — Estrutura + Usuários/Permissões**, respeitando Q-022, escopos e RLS existentes.
 
-Não saltar diretamente para refatoração ampla dos módulos antes desse padrão visual/comportamental existir.
+Não saltar diretamente para Cadastros/Estoque/Compras antes de fechar a administrabilidade básica prevista na ordem da Fase 51.
 
 ## Ordem macro que não deve ser perdida
 
-1. ~~entrada técnica~~ — concluída no PR #145;
-2. arquitetura da informação;
-3. navegação desktop/mobile;
+1. ~~entrada técnica~~ — PR #145;
+2. ~~arquitetura da informação~~ — PR #147;
+3. ~~navegação desktop/mobile~~ — PR #147;
 4. design system mínimo;
 5. Administração;
 6. Cadastros;
