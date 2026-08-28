@@ -40,9 +40,9 @@ export default function FinanceDueDatesPage() {
 
       <Panel as="section">
         <div className="max-w-sm">
-          <FormField label="Situação da parcela" htmlFor="due-status">
-            {({ id, describedBy }) => (
-              <Select id={id} aria-describedby={describedBy} value={status} onChange={(event) => setStatus(event.target.value as InstallmentPaymentStatus | "all")}>
+          <FormField id="due-status" label="Situação da parcela">
+            {(field) => (
+              <Select {...field} value={status} onChange={(event) => setStatus(event.target.value as InstallmentPaymentStatus | "all")}>
                 <option value="all">Todas</option>
                 <option value="overdue">Vencidas</option>
                 <option value="due_today">Vence hoje</option>
