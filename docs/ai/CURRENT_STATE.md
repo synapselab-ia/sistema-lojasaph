@@ -6,69 +6,44 @@
 
 **Fase 51 / Issue #142 — consolidação de produto, arquitetura de informação e UX — permanece como frente ativa.**
 
-A primeira slice da Fase 51, remoção da entrada técnica do produto, foi concluída e integrada.
+As duas primeiras slices estruturais da Fase 51 estão concluídas e integradas:
+
+1. remoção da entrada técnica do produto — PR #145;
+2. arquitetura da informação + navegação desktop/mobile — PR #147.
 
 Estado integrado confirmado:
 
-- `main=62c2f82546cc93dd2499c3c5f5a156be702879b3`;
-- PR #145 `feat: remove technical entry from root`: merged por squash;
-- CI do PR #509 / run `33183155459`: `success`;
-- Business Transactions Integration #226 / run `33183155489`: `success`;
-- CI pós-merge #510 / run `33183295797`: `success`;
+- `main=3bc28e28a3a6e0d4b4b4543724942d308317d0f4` após o merge do PR #147;
+- PR #147 `feat: group workspace navigation by product area`: merged por squash;
+- CI final do PR #514 / run `33184629115`: `success`;
+- Business Transactions Integration #228 / run `33184629114`: `success`;
+- CI pós-merge #515 / run `33184891544`: `success`;
 - Issue #142 continua aberta e ativa;
 - #75 e #121 continuam abertas e **TOTALMENTE ON HOLD** em `REQ-PLAT-005`;
 - nenhum deploy Vercel manual/rotineiro foi feito;
 - nenhuma migration, RLS, regra de negócio ou dado Supabase foi alterado nesta slice.
 
-Não refazer Fase 50/#138/#139, não refazer a auditoria que originou a Fase 51 e não refazer a slice de entrada já integrada.
+Não refazer Fase 50/#138/#139, não refazer a auditoria que originou a Fase 51, não refazer a slice de entrada e não reconstruir a arquitetura de navegação já integrada sem nova evidência.
 
-## O que mudou na primeira slice da Fase 51
+## O que já foi fechado na Fase 51
 
-### Entrada `/`
+### 1. Entrada normal do produto — PR #145
 
-A landing técnica foi removida. A raiz agora resolve o ponto de entrada no servidor:
+A raiz `/` não renderiza mais landing técnica. O contrato atual é server-side:
 
 - ambiente sem backend operacional permitido → `/login`;
 - usuário não autenticado → `/login`;
 - usuário autenticado → `/workspace`.
 
-`/workspace` continua sendo o fluxo autoritativo já existente para decidir membership, `sem-acesso`, seleção de organização e workspace operacional. A raiz não duplicou essas regras.
+`/workspace` continua sendo a autoridade para membership, `sem-acesso`, seleção de organização e operação. O CTA `Abrir demonstração` saiu do `RuntimeShell`; as rotas demo permanecem apenas para engenharia/testes.
 
-O código de bootstrap/invite permanece intacto e continua sendo usado pelos fluxos existentes que já apontam para `/bootstrap`.
+### 2. Arquitetura da informação e navegação — PR #147
 
-### Demonstração
+Documento de contrato:
 
-O CTA `Abrir demonstração` foi removido do `RuntimeShell` normal.
+- `docs/product/workspace-information-architecture.md`.
 
-As rotas/código de demonstração, incluindo `/cadastros`, **não foram apagados** nesta slice e continuam disponíveis para engenharia/testes sem serem promovidos ao usuário operacional.
-
-### Testes
-
-`src/lib/auth/redirect.test.ts` passou a cobrir o contrato de destino da raiz para:
-
-- sessão não autenticada;
-- sessão autenticada;
-- ambiente isolado/sem backend operacional.
-
-A validação completa do PR e da `main` pós-merge passou por lint, typecheck, unit tests, production build e suítes PostgreSQL/RLS.
-
-## Diagnóstico de produto que permanece válido
-
-O núcleo técnico está mais maduro do que a arquitetura de informação, as jornadas e a administrabilidade da UI. A partir da Fase 51, "backend/regra/tela existem" não basta para declarar uma necessidade pronta como produto.
-
-Documento de autoridade:
-
-- `docs/product/product-completion-ux-roadmap.md`.
-
-A régua de fechamento considera se uma pessoa autorizada consegue executar a tarefa pela aplicação sem conhecimento técnico externo.
-
-## Próxima slice da Fase 51
-
-A próxima etapa aprovada é:
-
-> **Arquitetura da informação + desenho da navegação desktop/mobile.**
-
-Baseline de áreas já aprovada no roadmap:
+O primeiro nível do workspace agora segue as sete áreas aprovadas:
 
 - Visão geral;
 - Estoque;
@@ -78,15 +53,73 @@ Baseline de áreas já aprovada no roadmap:
 - Cadastros;
 - Administração.
 
-A próxima implementação deve primeiro mapear as rotas reais e os requisitos/permissões já existentes para essa hierarquia e só então alterar o shell de navegação. Não redesenhar páginas de módulo antes de fechar esse mapa.
+A navegação deixou de tratar 13 destinos como módulos equivalentes.
 
-Em especial, Estoque deve deixar de parecer cinco módulos independentes no menu principal e passar a agrupar posição, entradas, baixas, devoluções, transferências, inventários, lotes/validades e estoque mínimo como subáreas coerentes.
+Mapeamento integrado, preservando URLs existentes:
+
+- `/workspace` → Visão geral;
+- `/workspace/estoque` → entrada da área Estoque;
+- `/workspace/baixas`, `/workspace/devolucoes`, `/workspace/transferencias`, `/workspace/inventarios` → subáreas de Estoque;
+- `/workspace/compras` → Compras;
+- `/workspace/financeiro` → Financeiro;
+- `/workspace/caixa` → Caixa;
+- `/workspace/produtos`, `/workspace/fornecedores`, `/workspace/funcionarios` → Cadastros;
+- `/workspace/backup` → Administração / Proteção dos dados;
+- `/workspace/selecionar-organizacao` continua sendo fluxo contextual, não módulo de negócio.
+
+Não foram inventadas páginas de Entradas, Lotes/Validades, Recebimentos, Histórico, Estrutura ou Usuários/Permissões apenas para completar a taxonomia. As capacidades que ainda vivem em megapáginas continuam nas rotas atuais até as respectivas slices de consolidação.
+
+### Desktop
+
+O workspace usa sidebar vertical persistente, com áreas e subáreas agrupadas e estado ativo coerente. Subrotas futuras de detalhe podem manter o destino pai ativo sem fazer `/workspace` ficar ativo em toda a aplicação.
+
+### Mobile
+
+A faixa horizontal com `overflow-x` deixou de ser o mecanismo principal. O shell agora usa barra superior com ação `Menu` e drawer vertical com a mesma hierarquia do desktop, overlay, fechamento explícito e fechamento após seleção de destino.
+
+### Autorização
+
+A navegação não virou fronteira de segurança e não infere autorização a partir de `roles` para liberar operações. Guards existentes, RPCs e RLS continuam autoritativos.
+
+## Validação e limitação de homologação visual
+
+A slice foi validada por contrato de código e CI:
+
+- testes do mapa/ordem de áreas, alcance das rotas, agrupamento de Estoque, estado ativo em subrotas e ausência de rota demo na navegação normal;
+- lint;
+- typecheck;
+- unit tests;
+- production build;
+- suítes PostgreSQL/RLS;
+- Business Transactions Integration.
+
+**Não houve homologação visual em browser real nesta sessão.** O ambiente disponível não conseguiu clonar/executar a aplicação por rede e o projeto proíbe deploy Vercel manual/rotineiro para esse tipo de prova. Não declarar a experiência mobile/desktop homologada apenas com base em CSS/CI; a homologação real por jornadas permanece na etapa própria da Fase 51.
+
+## Diagnóstico de produto que permanece válido
+
+O núcleo técnico está mais maduro do que as jornadas e a administrabilidade da UI. A partir da Fase 51, "backend/regra/tela existem" não basta para declarar uma necessidade pronta como produto.
+
+Documentos de autoridade:
+
+- `docs/product/product-completion-ux-roadmap.md`;
+- `docs/product/workspace-information-architecture.md`;
+- `docs/qa/definition-of-done.md`.
+
+## Próxima slice da Fase 51
+
+A próxima etapa aprovada é:
+
+> **Design system mínimo e padrões reutilizáveis de página.**
+
+A próxima implementação deve criar uma fundação pequena e operacional antes de refatorar Administração, Cadastros, Estoque, Compras, Financeiro ou Caixa em escala.
+
+O objetivo não é redesenhar todas as páginas. É reduzir classes/contratos ad hoc e estabelecer componentes reutilizáveis para cabeçalho de página, ações, campos, superfícies, estados, feedback e overlays, provando-os em uma área de baixo risco.
 
 ## Ordem oficial de fechamento do produto
 
 1. ~~remover a entrada técnica atual~~ — concluído no PR #145;
-2. fechar arquitetura da informação;
-3. fechar navegação desktop/mobile;
+2. ~~fechar arquitetura da informação~~ — concluído no PR #147;
+3. ~~fechar navegação desktop/mobile~~ — concluído no PR #147;
 4. criar design system mínimo;
 5. fechar Administração: Estrutura + Usuários/Permissões;
 6. refatorar Cadastros no padrão lista/detalhe/ação;
