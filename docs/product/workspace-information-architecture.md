@@ -38,7 +38,13 @@ O primeiro nível aprovado permanece:
 | `/workspace/compras/pedidos/[id]/receber` | Compras | Registro explícito de recebimento total/parcial pelo boundary autoritativo do pedido. |
 | `/workspace/compras/recebimentos` | Compras | Consulta dos recebimentos já registrados e incorporados ao Estoque. |
 | `/workspace/compras/historico` | Compras | Consulta de pedidos recebidos ou cancelados. |
-| `/workspace/financeiro` | Financeiro | Contas/documentos, vencimentos e pagamentos ainda compartilhando a página atual até a consolidação própria. |
+| `/workspace/financeiro` | Financeiro | Visão da área com indicadores derivados, atenção de vencimentos e acesso às jornadas. |
+| `/workspace/financeiro/contas` | Financeiro | Lista pesquisável/filtrável de documentos e contas a pagar disponíveis no escopo atual. |
+| `/workspace/financeiro/contas/nova` | Financeiro | Registro dedicado de documento financeiro e suas parcelas. |
+| `/workspace/financeiro/contas/[id]` | Financeiro | Detalhe estável do documento, parcelas, referências, anexos, pagamentos, estornos e cancelamento. |
+| `/workspace/financeiro/contas/[id]/pagar` | Financeiro | Registro explícito de pagamento para uma parcela do documento. |
+| `/workspace/financeiro/vencimentos` | Financeiro | Consulta de parcelas por status derivado de vencimento/pagamento. |
+| `/workspace/financeiro/pagamentos` | Financeiro | Histórico de eventos de pagamento e estorno. |
 | `/workspace/caixa` | Caixa | Situação, sessões, movimentações, fechamento e histórico ainda compartilhando a página atual até a consolidação própria. |
 | `/workspace/produtos` | Cadastros | Lista de Produtos; criação e detalhe ficam em subrotas estáveis. |
 | `/workspace/fornecedores` | Cadastros | Lista de Fornecedores; criação e detalhe ficam em subrotas estáveis. |
@@ -201,12 +207,88 @@ Portanto, a consolidação de UX não introduz uma segunda entrada de estoque ne
 
 Nenhuma dessas páginas cria nova semântica de agenda, pedido mínimo, embalagem, aprovação ou condição comercial.
 
+## Contrato da área Financeiro
+
+A raiz `/workspace/financeiro` responde primeiro:
+
+> O que está em aberto, o que já foi pago e o que exige atenção por vencimento?
+
+A visão principal não contém mais o formulário completo de documento, pagamento, estorno e cancelamento. Ela apresenta indicadores derivados dos registros existentes, parcelas vencidas/vencendo hoje e atalhos para as jornadas da área.
+
+### Contas a pagar
+
+`/workspace/financeiro/contas` é a lista principal de documentos. Ela oferece:
+
+- busca por fornecedor, unidade, número, tipo, série ou observação;
+- filtro de situação derivada do conjunto de parcelas;
+- total nominal, saldo/diferença e vencimento em aberto;
+- tabela em desktop e cards próprios em telas menores;
+- navegação para URL estável de detalhe.
+
+A criação fica em `/workspace/financeiro/contas/nova` e usa o mesmo boundary idempotente existente. Fornecedor, unidade, setor, identificação do documento, parcelas e referências continuam sendo validados pelo backend/banco.
+
+A UI não decide a cardinalidade final de pagamentos, não redistribui parcelas e não classifica diferença monetária.
+
+### Documento financeiro
+
+`/workspace/financeiro/contas/[id]` concentra o contexto persistente da obrigação:
+
+- fornecedor, unidade e setor;
+- tipo, número, série, emissão e identificador quando registrados;
+- total nominal, pago líquido e saldo/diferença;
+- parcelas, vencimentos, status e referências de pagamento;
+- anexos privados vinculados ao documento;
+- histórico de pagamentos e estornos;
+- ações contextuais de registrar pagamento, estornar e cancelar quando disponíveis.
+
+Documento inexistente ou inacessível usa estado seguro sem confirmar a existência de registro fora do escopo.
+
+Anexos permanecem subordinados ao documento e reutilizam o boundary privado existente. A consolidação não cria um cadastro paralelo de anexos nem altera Storage.
+
+### Pagamento
+
+`/workspace/financeiro/contas/[id]/pagar` registra um evento de pagamento pelo RPC existente.
+
+A tela permite escolher uma parcela e informa nominal, pago líquido e saldo/diferença atual. Ela deliberadamente **não impede por regra de UI** um valor que produza diferença para o nominal, porque o comportamento persistente atual preserva essa diferença e Q-015/`REQ-FIN-004` continuam sem decisão adicional.
+
+A referência do pagamento executado permanece separada da instrução/referência cadastrada na parcela.
+
+### Estorno e cancelamento
+
+Estorno e cancelamento deixam de usar `window.prompt()`.
+
+- estorno usa diálogo explícito com motivo opcional e cria o evento reverso pelo mesmo RPC, sem apagar o pagamento original;
+- um pagamento já estornado não oferece nova ação de estorno na UI, mantendo também o enforcement de banco;
+- cancelamento usa diálogo explícito com motivo opcional;
+- documento com pagamento líquido diferente de zero continua precisando ter os pagamentos estornados antes do cancelamento, conforme a regra persistente existente.
+
+Nenhuma dessas regras foi movida para React; a UI apenas apresenta o comportamento já autorizado.
+
+### Vencimentos
+
+`/workspace/financeiro/vencimentos` consulta parcelas por status derivado já existente:
+
+- vencida;
+- vence hoje;
+- a vencer;
+- paga;
+- cancelada.
+
+Não foi criada janela arbitrária de “próximos N dias”, pois a configuração dessa antecedência não está homologada. O timezone organizacional continua sendo usado pelo cálculo persistente do status.
+
+### Pagamentos
+
+`/workspace/financeiro/pagamentos` apresenta pagamentos e estornos como eventos separados, com contexto de documento/parcela quando disponível. Ações destrutivas permanecem no detalhe do documento, não na consulta global.
+
+O export CSV existente permanece disponível na visão financeira para perfis com a permissão correspondente.
+
 ## Contrato de navegação desktop
 
 - sidebar persistente à esquerda;
 - sete áreas reconhecíveis no primeiro nível;
 - Estoque mantém `/workspace/estoque` como entrada da área e apresenta suas operações como destinos subordinados;
 - Compras mantém `/workspace/compras` como entrada da área e apresenta Pedidos, Recebimentos e Histórico como destinos subordinados;
+- Financeiro mantém `/workspace/financeiro` como entrada da área e apresenta Contas a pagar, Vencimentos e Pagamentos como destinos subordinados;
 - a raiz de uma área fica destacada como página apenas quando o usuário está nela; em uma subárea, a área permanece destacada e somente a subárea recebe `aria-current=page`;
 - Cadastros apresenta Produtos, Fornecedores e Funcionários como destinos subordinados;
 - Administração apresenta Estrutura, Usuários e permissões e Proteção dos dados;
@@ -217,8 +299,8 @@ Nenhuma dessas páginas cria nova semântica de agenda, pedido mínimo, embalage
 - o drawer vertical continua sendo o mecanismo principal de navegação;
 - a mesma hierarquia do desktop fica disponível no menu;
 - selecionar um destino fecha o menu;
-- listas/tabelas densas de Estoque e Compras possuem cards/formulários próprios em mobile quando overflow horizontal prejudicaria a tarefa;
-- recebimento de pedido possui fluxo vertical dedicado, em vez de campos embutidos em tabela larga.
+- listas/tabelas densas de Estoque, Compras e Financeiro possuem cards/formulários próprios em mobile quando overflow horizontal prejudicaria a tarefa;
+- recebimento de pedido e pagamento financeiro possuem fluxos verticais dedicados, em vez de campos embutidos em tabela larga.
 
 ## Autorização e segurança
 
@@ -227,25 +309,33 @@ Esta arquitetura **não define autorização**.
 - guards, gateways, RPCs, policies e RLS existentes continuam sendo as boundaries autoritativas;
 - disponibilidade de ações na UI apenas reflete permissões já conhecidas e não substitui enforcement;
 - pedidos e recebimentos continuam scope-aware pelo local de estoque relacionado;
+- documentos, parcelas, referências e pagamentos continuam scope-aware pela unidade/setor do documento financeiro;
+- criação, pagamento, estorno e cancelamento continuam passando pelos wrappers públicos autorizados e pelas funções privadas existentes;
 - Q-022 permanece aberta e nenhum papel técnico foi renomeado como cargo de negócio;
 - nenhuma regra transacional foi movida para React;
 - nenhuma migration/RPC/RLS é necessária para estas consolidações de jornada.
 
 ## Requisitos PENDING preservados
 
-As consolidações de Estoque e Compras não resolvem por inferência:
+As consolidações de Estoque, Compras e Financeiro não resolvem por inferência:
 
 - `REQ-STK-007` — empréstimo;
 - `REQ-STK-010` — custeio;
 - `REQ-EXP-004` — FEFO;
 - `REQ-ITEM-004` — produto de venda/POS;
 - `REQ-ITEM-005` — ficha técnica/receita;
+- `REQ-FIN-004` — cardinalidade final de pagamentos por parcela;
+- Q-013 — detalhes finais da identidade documental financeira;
+- Q-014 — pagamentos parciais/múltiplos;
+- Q-015 — classificação de diferença entre nominal e pago;
+- Q-016 — conteúdo final da referência Pix/Boleto;
+- Q-017 — semântica de “Checar data”;
 - Q-018 — momento exato de obrigatoriedade de validade;
 - Q-024 — semântica dos dias de pedido/entrega;
 - Q-025 — regra de pedido mínimo.
 
 ## Próxima etapa
 
-Depois da integração e validação da consolidação de Compras, a sequência aprovada da Fase 51 promove:
+Depois da integração e validação da consolidação de Financeiro, a sequência aprovada da Fase 51 promove:
 
-> **Financeiro.**
+> **Caixa.**
