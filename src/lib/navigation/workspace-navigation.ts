@@ -35,6 +35,11 @@ export const workspaceNavigation: readonly WorkspaceNavigationArea[] = [
     id: "purchases",
     label: "Compras",
     href: "/workspace/compras",
+    items: [
+      { href: "/workspace/compras/pedidos", label: "Pedidos" },
+      { href: "/workspace/compras/recebimentos", label: "Recebimentos" },
+      { href: "/workspace/compras/historico", label: "Histórico" },
+    ],
   },
   {
     id: "finance",
