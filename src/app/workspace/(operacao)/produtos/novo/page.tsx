@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FeedbackMessage, PageHeader } from "@/components/ui";
+import { useState } from "react";
+import { FeedbackMessage, PageHeader, Panel } from "@/components/ui";
 import { buttonClasses } from "@/components/ui/styles";
 import { ProductForm } from "@/modules/catalog/ui/product-form";
 import { useRuntimeWorkspace } from "@/modules/master-data/ui/runtime-workspace-provider";
@@ -10,6 +11,7 @@ import { useRuntimeWorkspace } from "@/modules/master-data/ui/runtime-workspace-
 export default function NewProductPage() {
   const router = useRouter();
   const workspace = useRuntimeWorkspace();
+  const [created, setCreated] = useState(false);
 
   if (!workspace.permissions.manageCatalog) {
     return (
@@ -25,6 +27,23 @@ export default function NewProductPage() {
     );
   }
 
+  if (created) {
+    return (
+      <div className="mx-auto max-w-4xl space-y-6">
+        <PageHeader
+          eyebrow="Cadastros · Produtos"
+          title="Produto cadastrado"
+          description="O produto foi incluído no catálogo e já está disponível para consulta nos fluxos que utilizam produtos."
+        />
+        <FeedbackMessage tone="success">Produto criado com sucesso.</FeedbackMessage>
+        <Panel as="section" className="flex flex-col gap-3 sm:flex-row">
+          <Link href="/workspace/produtos" className={buttonClasses({ variant: "primary" })}>Voltar para produtos</Link>
+          <button type="button" className={buttonClasses()} onClick={() => setCreated(false)}>Cadastrar outro produto</button>
+        </Panel>
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       <PageHeader
@@ -34,7 +53,7 @@ export default function NewProductPage() {
         actions={<Link href="/workspace/produtos" className={buttonClasses()}>Voltar para produtos</Link>}
       />
       <ProductForm
-        onSaved={() => router.replace("/workspace/produtos?created=1")}
+        onSaved={() => setCreated(true)}
         onCancel={() => router.push("/workspace/produtos")}
       />
     </div>
