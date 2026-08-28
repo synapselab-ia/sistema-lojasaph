@@ -45,11 +45,10 @@ async function selectedOrganization(path: string) {
   if (context.organizations.length === 0) redirect("/sem-acesso");
   if (!context.selectedOrganization) redirect("/workspace/selecionar-organizacao");
   if (!context.userId) redirect(`/login?next=${encodeURIComponent(path)}`);
+
   return {
-    context,
     organization: context.selectedOrganization,
     organizationId: asEntityId(context.selectedOrganization.id),
-    userId: asEntityId(context.userId),
   };
 }
 
@@ -60,8 +59,18 @@ function normalizedNameAndCode(formData: FormData): { name: string; code: string
   return { name, code };
 }
 
-function genericStructureError(path: string): never {
-  redirect(urlWithMessage(path, "error", "Não foi possível salvar a estrutura. Confira os dados e seu escopo de acesso."));
+function genericStructureError(): never {
+  redirect(urlWithMessage(
+    STRUCTURE_PATH,
+    "error",
+    "Não foi possível salvar a estrutura. Confira os dados e seu escopo de acesso.",
+  ));
+}
+
+function completeStructureAction(message: string): never {
+  revalidatePath(STRUCTURE_PATH);
+  revalidatePath("/workspace", "layout");
+  redirect(urlWithMessage(STRUCTURE_PATH, "message", message));
 }
 
 function accessErrorMessage(error: unknown): string {
@@ -72,7 +81,23 @@ function accessErrorMessage(error: unknown): string {
   if (message.includes("MEMBERSHIP_SCOPE_HIERARCHY_MISMATCH")) {
     return "O escopo escolhido não corresponde à estrutura da organização.";
   }
+  if (message.includes("EMPLOYEE_IDENTITY_ALREADY_LINKED")) {
+    return "Este funcionário já está vinculado a outra identidade de acesso.";
+  }
+  if (message.includes("ADMIN_ENVIRONMENT_BLOCKED") || message.includes("APP_URL_UNVERIFIED")) {
+    return "O envio de convites ainda não está habilitado com segurança neste ambiente.";
+  }
+  if (message.includes("AUTH_DIRECTORY_UNAVAILABLE") || message.includes("AUTH_INVITE_FAILED")) {
+    return "Não foi possível consultar ou convidar a identidade de acesso agora.";
+  }
   return "Não foi possível atualizar o acesso. Confira os dados e tente novamente.";
+}
+
+function completeAccessAction(message: string): never {
+  revalidatePath(ACCESS_PATH);
+  revalidatePath("/workspace/funcionarios");
+  revalidatePath("/workspace", "layout");
+  redirect(urlWithMessage(ACCESS_PATH, "message", message));
 }
 
 async function validateLocationSector(
@@ -95,7 +120,7 @@ async function validateLocationSector(
 export async function createBusinessAction(formData: FormData) {
   const { organizationId } = await selectedOrganization(STRUCTURE_PATH);
   const values = normalizedNameAndCode(formData);
-  if (!values) genericStructureError(STRUCTURE_PATH);
+  if (!values) genericStructureError();
 
   const client = await createServerSupabaseClient();
   const { error } = await client.from("businesses").insert({
@@ -104,11 +129,8 @@ export async function createBusinessAction(formData: FormData) {
     code: values.code,
     status: "active",
   });
-  if (error) genericStructureError(STRUCTURE_PATH);
-
-  revalidatePath(STRUCTURE_PATH);
-  revalidatePath("/workspace", "layout");
-  redirect(urlWithMessage(STRUCTURE_PATH, "message", "Negócio adicionado à estrutura."));
+  if (error) genericStructureError();
+  completeStructureAction("Negócio adicionado à estrutura.");
 }
 
 export async function updateBusinessAction(formData: FormData) {
@@ -116,7 +138,7 @@ export async function updateBusinessAction(formData: FormData) {
   const id = requiredEntityId(formData, "id");
   const values = normalizedNameAndCode(formData);
   const status = field(formData, "status");
-  if (!id || !values || !isAdministrationStatus(status)) genericStructureError(STRUCTURE_PATH);
+  if (!id || !values || !isAdministrationStatus(status)) genericStructureError();
 
   const client = await createServerSupabaseClient();
   const { data, error } = await client
@@ -126,18 +148,15 @@ export async function updateBusinessAction(formData: FormData) {
     .eq("id", id)
     .select("id")
     .maybeSingle();
-  if (error || !data) genericStructureError(STRUCTURE_PATH);
-
-  revalidatePath(STRUCTURE_PATH);
-  revalidatePath("/workspace", "layout");
-  redirect(urlWithMessage(STRUCTURE_PATH, "message", "Negócio atualizado."));
+  if (error || !data) genericStructureError();
+  completeStructureAction("Negócio atualizado.");
 }
 
 export async function createUnitAction(formData: FormData) {
   const { organizationId } = await selectedOrganization(STRUCTURE_PATH);
   const businessId = requiredEntityId(formData, "businessId");
   const values = normalizedNameAndCode(formData);
-  if (!businessId || !values) genericStructureError(STRUCTURE_PATH);
+  if (!businessId || !values) genericStructureError();
 
   const client = await createServerSupabaseClient();
   const { error } = await client.from("units").insert({
@@ -147,11 +166,8 @@ export async function createUnitAction(formData: FormData) {
     code: values.code,
     status: "active",
   });
-  if (error) genericStructureError(STRUCTURE_PATH);
-
-  revalidatePath(STRUCTURE_PATH);
-  revalidatePath("/workspace", "layout");
-  redirect(urlWithMessage(STRUCTURE_PATH, "message", "Unidade adicionada à estrutura."));
+  if (error) genericStructureError();
+  completeStructureAction("Unidade adicionada à estrutura.");
 }
 
 export async function updateUnitAction(formData: FormData) {
@@ -159,7 +175,7 @@ export async function updateUnitAction(formData: FormData) {
   const id = requiredEntityId(formData, "id");
   const values = normalizedNameAndCode(formData);
   const status = field(formData, "status");
-  if (!id || !values || !isAdministrationStatus(status)) genericStructureError(STRUCTURE_PATH);
+  if (!id || !values || !isAdministrationStatus(status)) genericStructureError();
 
   const client = await createServerSupabaseClient();
   const { data, error } = await client
@@ -169,18 +185,15 @@ export async function updateUnitAction(formData: FormData) {
     .eq("id", id)
     .select("id")
     .maybeSingle();
-  if (error || !data) genericStructureError(STRUCTURE_PATH);
-
-  revalidatePath(STRUCTURE_PATH);
-  revalidatePath("/workspace", "layout");
-  redirect(urlWithMessage(STRUCTURE_PATH, "message", "Unidade atualizada."));
+  if (error || !data) genericStructureError();
+  completeStructureAction("Unidade atualizada.");
 }
 
 export async function createSectorAction(formData: FormData) {
   const { organizationId } = await selectedOrganization(STRUCTURE_PATH);
   const unitId = requiredEntityId(formData, "unitId");
   const values = normalizedNameAndCode(formData);
-  if (!unitId || !values) genericStructureError(STRUCTURE_PATH);
+  if (!unitId || !values) genericStructureError();
 
   const client = await createServerSupabaseClient();
   const { error } = await client.from("sectors").insert({
@@ -190,11 +203,8 @@ export async function createSectorAction(formData: FormData) {
     code: values.code,
     status: "active",
   });
-  if (error) genericStructureError(STRUCTURE_PATH);
-
-  revalidatePath(STRUCTURE_PATH);
-  revalidatePath("/workspace", "layout");
-  redirect(urlWithMessage(STRUCTURE_PATH, "message", "Setor adicionado à estrutura."));
+  if (error) genericStructureError();
+  completeStructureAction("Setor adicionado à estrutura.");
 }
 
 export async function updateSectorAction(formData: FormData) {
@@ -202,7 +212,7 @@ export async function updateSectorAction(formData: FormData) {
   const id = requiredEntityId(formData, "id");
   const values = normalizedNameAndCode(formData);
   const status = field(formData, "status");
-  if (!id || !values || !isAdministrationStatus(status)) genericStructureError(STRUCTURE_PATH);
+  if (!id || !values || !isAdministrationStatus(status)) genericStructureError();
 
   const client = await createServerSupabaseClient();
   const { data, error } = await client
@@ -212,11 +222,8 @@ export async function updateSectorAction(formData: FormData) {
     .eq("id", id)
     .select("id")
     .maybeSingle();
-  if (error || !data) genericStructureError(STRUCTURE_PATH);
-
-  revalidatePath(STRUCTURE_PATH);
-  revalidatePath("/workspace", "layout");
-  redirect(urlWithMessage(STRUCTURE_PATH, "message", "Setor atualizado."));
+  if (error || !data) genericStructureError();
+  completeStructureAction("Setor atualizado.");
 }
 
 export async function createStockLocationAction(formData: FormData) {
@@ -225,8 +232,8 @@ export async function createStockLocationAction(formData: FormData) {
   const sectorId = optionalEntityId(formData, "sectorId");
   const values = normalizedNameAndCode(formData);
   const locationType = field(formData, "locationType");
-  if (!unitId || sectorId === null || !values || !isStockLocationType(locationType)) genericStructureError(STRUCTURE_PATH);
-  if (!(await validateLocationSector(organizationId, unitId, sectorId))) genericStructureError(STRUCTURE_PATH);
+  if (!unitId || sectorId === null || !values || !isStockLocationType(locationType)) genericStructureError();
+  if (!(await validateLocationSector(organizationId, unitId, sectorId))) genericStructureError();
 
   const client = await createServerSupabaseClient();
   const { error } = await client.from("stock_locations").insert({
@@ -238,11 +245,8 @@ export async function createStockLocationAction(formData: FormData) {
     location_type: locationType,
     status: "active",
   });
-  if (error) genericStructureError(STRUCTURE_PATH);
-
-  revalidatePath(STRUCTURE_PATH);
-  revalidatePath("/workspace", "layout");
-  redirect(urlWithMessage(STRUCTURE_PATH, "message", "Local de estoque adicionado."));
+  if (error) genericStructureError();
+  completeStructureAction("Local de estoque adicionado.");
 }
 
 export async function updateStockLocationAction(formData: FormData) {
@@ -253,7 +257,7 @@ export async function updateStockLocationAction(formData: FormData) {
   const status = field(formData, "status");
   const locationType = field(formData, "locationType");
   if (!id || sectorId === null || !values || !isAdministrationStatus(status) || !isStockLocationType(locationType)) {
-    genericStructureError(STRUCTURE_PATH);
+    genericStructureError();
   }
 
   const client = await createServerSupabaseClient();
@@ -263,9 +267,9 @@ export async function updateStockLocationAction(formData: FormData) {
     .eq("organization_id", organizationId)
     .eq("id", id)
     .maybeSingle();
-  if (lookupError || !existing) genericStructureError(STRUCTURE_PATH);
+  if (lookupError || !existing) genericStructureError();
   const unitId = asEntityId(existing.unit_id as string);
-  if (!(await validateLocationSector(organizationId, unitId, sectorId))) genericStructureError(STRUCTURE_PATH);
+  if (!(await validateLocationSector(organizationId, unitId, sectorId))) genericStructureError();
 
   const { data, error } = await client
     .from("stock_locations")
@@ -280,11 +284,8 @@ export async function updateStockLocationAction(formData: FormData) {
     .eq("id", id)
     .select("id")
     .maybeSingle();
-  if (error || !data) genericStructureError(STRUCTURE_PATH);
-
-  revalidatePath(STRUCTURE_PATH);
-  revalidatePath("/workspace", "layout");
-  redirect(urlWithMessage(STRUCTURE_PATH, "message", "Local de estoque atualizado."));
+  if (error || !data) genericStructureError();
+  completeStructureAction("Local de estoque atualizado.");
 }
 
 async function findAuthUserByEmail(email: string): Promise<User | undefined> {
@@ -292,6 +293,7 @@ async function findAuthUserByEmail(email: string): Promise<User | undefined> {
   for (let page = 1; page <= MAX_AUTH_USER_PAGES; page += 1) {
     const { data, error } = await admin.auth.admin.listUsers({ page, perPage: AUTH_USERS_PER_PAGE });
     if (error) throw new Error("AUTH_DIRECTORY_UNAVAILABLE");
+
     const match = data.users.find((user) => user.email?.trim().toLowerCase() === email);
     if (match) return match;
     if (data.users.length < AUTH_USERS_PER_PAGE) return undefined;
@@ -318,19 +320,23 @@ async function inviteAuthUser(email: string): Promise<User> {
 export async function inviteOrganizationAccessAction(formData: FormData) {
   const { organization, organizationId } = await selectedOrganization(ACCESS_PATH);
   if (!canManageOrganizationAccess(organization.organizationWideRoles)) {
-    redirect(urlWithMessage(ACCESS_PATH, "error", "Seu acesso não permite administrar usuários e permissões da organização."));
+    redirect(urlWithMessage(
+      ACCESS_PATH,
+      "error",
+      "Seu acesso não permite administrar usuários e permissões da organização.",
+    ));
   }
 
   const email = field(formData, "email").toLowerCase();
   const role = field(formData, "role");
   const scope = parseAdministrationScope(field(formData, "scope"));
   if (!EMAIL_PATTERN.test(email) || !isAdministrationRole(role) || !scope) {
-    redirect(urlWithMessage(ACCESS_PATH, "error", "Informe e-mail, papel e escopo válidos."));
+    redirect(urlWithMessage(ACCESS_PATH, "error", "Informe e-mail, perfil e escopo válidos."));
   }
 
+  let invitationSent = false;
   try {
     let user = await findAuthUserByEmail(email);
-    let invitationSent = false;
     if (!user) {
       user = await inviteAuthUser(email);
       invitationSent = true;
@@ -346,29 +352,33 @@ export async function inviteOrganizationAccessAction(formData: FormData) {
       target_sector_id: scope.sectorId ?? null,
     });
     if (error) throw new Error(error.message);
-
-    revalidatePath(ACCESS_PATH);
-    revalidatePath("/workspace", "layout");
-    redirect(urlWithMessage(
-      ACCESS_PATH,
-      "message",
-      invitationSent
-        ? "Convite enviado e acesso preparado. A pessoa define a senha pelo link recebido."
-        : "Acesso adicionado à identidade já existente.",
-    ));
   } catch (error) {
     redirect(urlWithMessage(ACCESS_PATH, "error", accessErrorMessage(error)));
   }
+
+  completeAccessAction(
+    invitationSent
+      ? "Convite enviado e acesso preparado. A pessoa define a senha pelo link recebido."
+      : "Acesso adicionado à identidade já existente.",
+  );
 }
 
 export async function updateOrganizationAccessAction(formData: FormData) {
-  await selectedOrganization(ACCESS_PATH);
+  const { organization } = await selectedOrganization(ACCESS_PATH);
+  if (!canManageOrganizationAccess(organization.organizationWideRoles)) {
+    redirect(urlWithMessage(
+      ACCESS_PATH,
+      "error",
+      "Seu acesso não permite administrar usuários e permissões da organização.",
+    ));
+  }
+
   const membershipId = requiredEntityId(formData, "membershipId");
   const role = field(formData, "role");
   const scope = parseAdministrationScope(field(formData, "scope"));
-  const active = field(formData, "active") === "true";
-  if (!membershipId || !isAdministrationRole(role) || !scope) {
-    redirect(urlWithMessage(ACCESS_PATH, "error", "Informe papel, escopo e estado válidos."));
+  const activeValue = field(formData, "active");
+  if (!membershipId || !isAdministrationRole(role) || !scope || !["true", "false"].includes(activeValue)) {
+    redirect(urlWithMessage(ACCESS_PATH, "error", "Informe perfil, escopo e estado válidos."));
   }
 
   try {
@@ -379,14 +389,42 @@ export async function updateOrganizationAccessAction(formData: FormData) {
       target_business_id: scope.businessId ?? null,
       target_unit_id: scope.unitId ?? null,
       target_sector_id: scope.sectorId ?? null,
-      target_active: active,
+      target_active: activeValue === "true",
     });
     if (error) throw new Error(error.message);
-
-    revalidatePath(ACCESS_PATH);
-    revalidatePath("/workspace", "layout");
-    redirect(urlWithMessage(ACCESS_PATH, "message", "Acesso atualizado."));
   } catch (error) {
     redirect(urlWithMessage(ACCESS_PATH, "error", accessErrorMessage(error)));
   }
+
+  completeAccessAction("Acesso atualizado.");
+}
+
+export async function linkEmployeeIdentityAction(formData: FormData) {
+  const { organization } = await selectedOrganization(ACCESS_PATH);
+  if (!canManageOrganizationAccess(organization.organizationWideRoles)) {
+    redirect(urlWithMessage(
+      ACCESS_PATH,
+      "error",
+      "Seu acesso não permite administrar vínculos de identidade da organização.",
+    ));
+  }
+
+  const membershipId = requiredEntityId(formData, "membershipId");
+  const employeeId = optionalEntityId(formData, "employeeId");
+  if (!membershipId || employeeId === null) {
+    redirect(urlWithMessage(ACCESS_PATH, "error", "Selecione um funcionário válido."));
+  }
+
+  try {
+    const client = await createServerSupabaseClient();
+    const { error } = await client.rpc("admin_link_employee_identity", {
+      target_membership_id: membershipId,
+      target_employee_id: employeeId ?? null,
+    });
+    if (error) throw new Error(error.message);
+  } catch (error) {
+    redirect(urlWithMessage(ACCESS_PATH, "error", accessErrorMessage(error)));
+  }
+
+  completeAccessAction(employeeId ? "Funcionário vinculado à identidade de acesso." : "Vínculo com funcionário removido.");
 }
