@@ -6,19 +6,22 @@
 
 **Fase 51 / Issue #142 — consolidação de produto, arquitetura de informação e UX — permanece ativa.**
 
-Baseline funcional após a consolidação do Dashboard / Visão geral:
+A slice de **limpeza de linguagem/resíduos de engenharia da experiência normal** foi integrada pelo PR #165.
 
-- `main=395a2cd578b47c2b98ac449f50c1d4e3a094627d` — merge do PR #163;
-- PR #163 — `feat: consolidar Visão geral do Dashboard` — **merged**;
-- CI pós-merge da `main` #566 / run `33392864692`: **success**;
+Baseline funcional comprovado:
+
+- PR #165 — `refactor: limpar linguagem técnica da experiência normal` — **merged**;
+- merge funcional: `602c840788026ce6b520d0c441b672b48063476e`;
+- CI do head do PR #165 #569: **success**;
+- Business Transactions Integration #256: **success**;
+- Inventory Count Integration #269: **success**;
+- CI pós-merge da `main` #570 / run `33398505368`: **success**;
 - lint, typecheck, unit tests, production build e job de banco/migrations/RLS: **success**;
-- no head final do PR #163, CI #565 / run `33392616909`: **success**;
-- Business Transactions Integration #255 / run `33392616971`: **success**;
-- Inventory Count Integration #268 / run `33392616820`: **success**;
-- o CI #564 falhou apenas no typecheck por duas guards de `snapshot`; a correção foi feita no mesmo PR antes do merge e todos os gates posteriores ficaram verdes;
 - Issue #142 continua aberta e ativa;
 - #75 e #121 continuam abertas e **TOTALMENTE ON HOLD**;
 - nenhum deploy Vercel manual/rotineiro foi feito.
+
+A documentação pode receber commits posteriores sem mudança de runtime; `602c840...` é o baseline funcional da slice #165.
 
 ## Slices da Fase 51 já integradas
 
@@ -31,64 +34,65 @@ Baseline funcional após a consolidação do Dashboard / Visão geral:
 7. Compras: pedidos + recebimentos + histórico consolidados — PR #157;
 8. Financeiro: documentos + parcelas + pagamentos consolidados — PR #159;
 9. Caixa: sessões + fechamento + configuração consolidados — PR #161;
-10. Dashboard / Visão geral — PR #163.
+10. Dashboard / Visão geral — PR #163;
+11. limpeza de linguagem/resíduos de engenharia — PR #165.
 
 Não refazer essas slices sem bug ou gap concreto.
 
-## Dashboard consolidado
+## O que a limpeza de linguagem entregou
 
-`/workspace` permanece um painel **somente leitura** sobre os read models existentes. O PR #163 não criou nova fronteira transacional nem alterou a semântica dos dados.
+A experiência normal deixou de expor detalhes de implementação sem valor operacional, mantendo os contratos funcionais existentes.
 
-### Hierarquia e controles
+### Entrada, autenticação e contexto
 
-A Visão geral agora organiza a experiência em:
+Foram removidas ou traduzidas referências visíveis a:
 
-- contexto da organização e data de negócio;
-- filtros de Unidade, Setor, horizonte de alertas e período gerencial explícito;
-- fila `Precisa de atenção` antes dos indicadores informativos;
-- resumo financeiro;
-- visão de Estoque;
-- visão de Compras e fornecedores;
-- sinais de operação atual de Caixa e Compras.
+- `Workspace persistente`;
+- Supabase/RLS;
+- cookie `httpOnly`;
+- `membership`;
+- backend/provider;
+- Auth/runbook/allowlist em textos voltados ao operador.
 
-Os controles e estados tocados reutilizam `PageHeader`, `Panel`, `FormField`, `Select`, `Input`, `Button`, `FeedbackMessage` e `EmptyState` do design system existente.
+Os mesmos controles internos de sessão, autorização e seleção de organização permanecem ativos.
 
-### Semântica de filtros preservada
+### Administração e papéis
 
-O inventário de `SupabaseDashboardQuery`, `buildDashboardSummary`, overview queries e testes confirmou e a UI continua respeitando:
+A tela de Usuários e permissões continua permitindo atribuir os perfis técnicos existentes, mas a experiência deixa explícito que **perfil do sistema não equivale automaticamente a cargo real**.
 
-- `Organization` continua sendo a fronteira global autorizada pelo banco/RLS;
-- Unidade e Setor só filtram dados quando existe vínculo explícito;
-- Caixa permanece em escopo de Unidade, mesmo quando um Setor está selecionado;
-- métricas temporais de Caixa usam a data de negócio;
-- o período gerencial explícito não é tratado como sinônimo do horizonte relativo;
-- indicadores de estado atual, como caixas abertos, pedidos pendentes e estoque mínimo, não viram métricas históricas apenas porque um período foi selecionado;
-- timezone da organização continua definindo a data de negócio;
-- Financeiro, Estoque e Compras só recebem filtro setorial onde o contrato existente o suporta.
+Q-022 permanece aberta. Fora da tarefa administrativa de permissões, códigos técnicos de papel deixaram de ser exibidos como informação operacional comum.
 
-Nenhum KPI, threshold, SLA, score, meta, tendência, comparação ou janela nova foi inventado.
+### Proteção dos dados
 
-### Navegação consolidada
+A tela foi traduzida para linguagem operacional: banco de dados, prazo entre cópias, integridade, retenção, anexos e teste de restauração.
 
-Alertas e cards agora preferem a jornada mais específica já existente quando os dados possuem contexto suficiente, incluindo:
+A alteração foi apenas de apresentação. Permanecem iguais:
 
-- Financeiro → `/workspace/financeiro/contas` ou `/workspace/financeiro/vencimentos`;
-- Caixa → `/workspace/caixa/sessoes`;
-- Compras → `/workspace/compras/pedidos` e `/workspace/compras/recebimentos`;
-- Estoque mínimo → `/workspace/estoque/minimos`;
-- lotes/validades → `/workspace/estoque/lotes`;
-- transferências → `/workspace/transferencias`;
-- inventários → `/workspace/inventarios`.
+- política de 24 horas entre cópias válidas;
+- retenção configurada;
+- cálculo de saúde da proteção;
+- cobertura atual do banco;
+- limitação conhecida de anexos;
+- histórico e evidência persistidos;
+- hold de #75/#121.
 
-O mapping de alertas foi separado em `dashboard-navigation.ts`, mantendo cálculo de KPI/read model desacoplado da decisão de rota da apresentação. O contrato possui teste próprio.
+Nenhum scheduling, Storage/R2/S3, restore real, secret, fixture ou Production foi tocado.
 
-### Linguagem e estados
+### Estoque, Financeiro e Caixa
 
-A Visão geral e as subseções tocadas deixaram de expor na experiência normal nomes como campos/tabelas de persistência quando não havia valor operacional. Loading, erro e vazio foram reconciliados com o design system sem ocultar falhas como ausência de dados.
+Foram simplificados helper texts e mensagens que narravam implementação (`fluxo autoritativo`, `eventos persistidos`, `backend`, `já implementado`, etc.).
+
+As ressalvas funcionais continuam explícitas:
+
+- seleção automática de lote não é apresentada como FEFO homologado;
+- regras de custeio não foram redefinidas;
+- diferenças financeiras continuam sem classificação automática;
+- estorno preserva histórico;
+- vigência de taxas e cálculo de fechamento de Caixa permanecem intactos.
 
 ## Boundaries e segurança preservados
 
-A consolidação do Dashboard não criou ou alterou:
+O PR #165 não criou ou alterou:
 
 - schema;
 - migration;
@@ -98,23 +102,35 @@ A consolidação do Dashboard não criou ou alterou:
 - regra de autorização;
 - regra crítica de Estoque, Compras, Financeiro ou Caixa.
 
-Queries, RLS/grants e boundaries dos módulos continuam sendo a fonte autoritativa. Q-022 permanece aberta; papel técnico não deve ser reinterpretado como cargo de negócio.
+Queries, RPCs, RLS/grants e boundaries dos módulos continuam sendo a fonte autoritativa. Nenhum PENDING foi resolvido por copy.
 
-## Limite de homologação visual
+## Homologação visual
 
-**Não houve homologação em browser real nesta execução.**
+**Ainda não existe homologação real completa das jornadas em desktop/tablet/mobile.**
 
-Build e CI comprovam integridade técnica, mas não substituem homologação visual desktop/tablet/mobile. Não foi feito deploy Vercel manual apenas para produzir essa evidência.
+CI e build comprovam integridade técnica, mas não substituem uso em browser. Não foi feito deploy Vercel manual apenas para produzir evidência.
 
-## Próxima slice oficial: limpeza de linguagem/resíduos de engenharia
+## Próxima slice oficial: homologação UX real
 
-**A próxima área da Fase 51 é a limpeza de linguagem e resíduos de engenharia da experiência normal.**
+A etapa 13 da Issue #142 passa a ser a frente ativa:
 
-O objetivo é revisar as jornadas já consolidadas e remover do que o operador vê termos técnicos desnecessários, IDs internos, nomes de provider, campos/tabelas/RPCs, referências de fase/implementação e mensagens herdadas que ainda exponham detalhes de engenharia.
+> **executar homologação real de UX em desktop/tablet/mobile por jornadas completas.**
 
-Essa slice não deve refatorar domínio, alterar regra de negócio ou reabrir Administração, Cadastros, Estoque, Compras, Financeiro, Caixa ou Dashboard sem evidência concreta. Corrigir somente linguagem, apresentação e pequenos resíduos de UX que não mudem contrato funcional.
+A homologação deve testar o produto existente, não redesenhar preventivamente telas. Bugs ou gaps observados devem ser registrados com evidência e corrigidos de forma localizada.
 
-Débito documental conhecido a reconciliar nessa etapa: `docs/product/workspace-information-architecture.md` ainda contém no mapa de rotas a descrição pré-consolidação de Caixa. As rotas reais integradas do PR #161 prevalecem.
+Prioridades:
+
+- entrada/login/recuperação e seleção de organização;
+- navegação desktop e drawer mobile;
+- Visão geral;
+- Administração;
+- Cadastros;
+- Estoque;
+- Compras;
+- Financeiro;
+- Caixa.
+
+Usar ambiente seguro já existente ou execução local isolada. **Não disparar deploy Vercel manual/rotineiro e não criar fixture em Production para homologação.** Se não houver sessão/credencial de teste aprovada para uma jornada autenticada, registrar o bloqueio em vez de inventar acesso.
 
 ## Ordem oficial de fechamento do produto
 
@@ -128,13 +144,15 @@ Débito documental conhecido a reconciliar nessa etapa: `docs/product/workspace-
 8. ~~Financeiro~~ — PR #159;
 9. ~~Caixa~~ — PR #161;
 10. ~~Dashboard~~ — PR #163;
-11. **limpeza de linguagem/resíduos de engenharia** — próxima;
-12. homologação UX em jornadas desktop/tablet/mobile;
+11. ~~limpeza de linguagem/resíduos de engenharia~~ — PR #165;
+12. **homologação UX em jornadas desktop/tablet/mobile** — próxima;
 13. reconciliação funcional final;
 14. PENDINGs necessários;
 15. dados representativos;
 16. migração/cutover;
 17. `REQ-PLAT-005` final.
+
+A numeração documental acima segue o encadeamento operacional usado nos handoffs; na Issue #142 a homologação corresponde ao item macro 13 porque a issue separa arquitetura da informação e navegação em itens distintos.
 
 ## PENDING permanece sem inferência
 
@@ -154,7 +172,5 @@ Q-022 também permanece aberta; não reinterpretar papéis técnicos como cargos
 ## #75/#121 — TOTALMENTE ON HOLD
 
 Não investigar scheduling, não disparar workflows manualmente para prova, não criar fixtures Production, não alterar Storage/R2/S3/retention/secrets/variables e não retomar restore nesta fase.
-
-Execuções agendadas do workflow de Storage podem existir no histórico; isso não revoga o hold e não deve ser usado como motivo para retomar #121.
 
 `REQ-PLAT-005` será retomado no production-readiness final, salvo decisão explícita do operador.
