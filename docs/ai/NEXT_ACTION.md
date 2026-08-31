@@ -4,116 +4,138 @@
 
 **Fase 51 / Issue #142 — consolidação de produto, arquitetura de informação e UX — continua como frente ativa.**
 
-A slice de limpeza de linguagem/resíduos de engenharia foi concluída pelo PR #165.
+A homologação UX real foi iniciada e permanece **EM ANDAMENTO**.
 
-Baseline funcional para a próxima execução:
+Baseline atual:
 
-- PR #165 — merged;
-- merge funcional `602c840788026ce6b520d0c441b672b48063476e`;
-- CI do PR #165 #569: success;
-- Business Transactions Integration #256: success;
-- Inventory Count Integration #269: success;
-- CI pós-merge #570 / run `33398505368`: success;
+- `main=044cb2099c1285d298040fdc2f12260fbaa2ca3f`;
+- PR #167 — correções dos primeiros achados públicos de UX — merged;
+- CI do PR #167 #575 / run `33402272680`: success;
+- CI pós-merge #576 / run `33402440077`: success;
 - lint, typecheck, unit tests, production build e banco/migrations/RLS: success;
 - Issue #142 aberta e ativa;
 - #75/#121 **TOTALMENTE ON HOLD**.
 
 Não refazer Administração, Cadastros, Estoque, Compras, Financeiro, Caixa, Dashboard ou limpeza de linguagem sem bug/gap concreto.
 
-## Bloqueio de ambiente já comprovado
+## Evidência já produzida
 
-Preflight somente leitura do projeto Vercel `sistema-lojasaph` em 2026-08-31 mostrou que o deployment Production mais recente disponível corresponde ao commit:
+A matriz está em `docs/qa/fase51-ux-homologation.md`.
 
-- `0329ec389521f32e6378429c81b3f444a7b6898a` — `docs: reconciliar handoff após Financeiro (#160)`.
+Sobre o deployment automático `READY` que representava `main=3f99f5c79f05dd6ea494814f924c1cbb2f60fc0a`, foram exercitados com segurança:
 
-Esse deployment é anterior a:
+- `/` sem sessão;
+- `/login`;
+- `/workspace` sem sessão;
+- `/recuperar-senha`;
+- `/sem-acesso`;
+- `/auth/atualizar-senha` sem sessão/token válido.
 
-- Caixa — PR #161;
-- Dashboard — PR #163;
-- limpeza de linguagem — PR #165.
+Foram encontrados e corrigidos pelo PR #167:
 
-Portanto, **o domínio Production atual não representa o baseline funcional corrente e não pode ser usado para certificar a homologação desta etapa**.
+- `UX-51-001` — link de retorno da recuperação sem target mínimo de toque;
+- `UX-51-002` — erro geral da recuperação fora do contrato acessível `FeedbackMessage`/`role="alert"`;
+- `UX-51-003` — links de ação em `/sem-acesso` sem target mínimo e feedback geral fora do padrão compartilhado.
 
-Nenhum deploy foi disparado durante o preflight. Não criar/promover deployment manual para contornar esse bloqueio.
+Nenhuma regra de autenticação, sessão, autorização, banco ou negócio foi alterada.
+
+## Estado do ambiente
+
+O antigo bloqueio de deployment defasado em `0329ec...` não vale mais: a integração GitHub/Vercel publicou automaticamente `3f99f5c...`, que já incluía Caixa #161, Dashboard #163 e limpeza #165.
+
+Após o merge do PR #167, **ainda não havia deployment automático observado para `044cb209...` na última consulta desta execução**.
+
+Isso não autoriza criar ou promover deployment manual. Reconsultar a integração na próxima execução e usar somente deployment automático que represente exatamente o `main` corrente.
+
+### Bloqueios que ainda impedem encerrar a homologação
+
+- o acesso Vercel disponível permite inspeção de HTML/redirects, mas não um browser gráfico controlável por viewport/foco/teclado;
+- o runtime local possui Chromium/Playwright, mas não consegue acessar hosts externos nem obter o checkout do repositório;
+- não há integração adicional de browser disponível nesta sessão;
+- não há sessão/credencial de teste aprovada no contexto atual para jornadas autenticadas;
+- Production não pode receber usuários, fixtures ou dados artificiais de prova.
 
 ## NEXT_ACTION objetiva
 
-### Executar a próxima slice da Issue #142: **homologação real de UX em desktop/tablet/mobile por jornadas completas**
+### **Continuar a homologação real de UX em desktop/tablet/mobile e fechar a matriz somente com evidência real**
 
-O objetivo é validar o produto existente em browser, identificar problemas concretos de usabilidade/responsividade/navegação e corrigir somente o que for comprovado.
-
-Esta etapa é de **homologação e correção orientada por evidência**, não de redesign preventivo.
+Esta etapa continua sendo de homologação e correção orientada por evidência. **Não promover reconciliação funcional ainda.**
 
 Documentos de autoridade:
 
+- `docs/qa/fase51-ux-homologation.md`;
 - `docs/product/product-completion-ux-roadmap.md`;
 - `docs/product/workspace-information-architecture.md`;
 - `docs/product/design-system.md`;
 - `docs/qa/definition-of-done.md`;
 - `docs/product/requirements.md`;
-- `docs/product/open-questions.md`;
-- documentação/ADRs dos módulos afetados.
+- `docs/product/open-questions.md`.
 
-## 1. Reconciliar estado real antes de testar
+## 1. Reconciliar antes de testar
 
-No início da execução:
+No início da próxima execução:
 
 1. confirmar `main`, Issue #142, PRs, branches e CI reais;
-2. reler os documentos de autoridade;
-3. não usar o deployment Production atual para certificar as slices pós-#160;
-4. identificar qual ambiente seguro **e atual** será usado para browser testing;
-5. preferir execução local isolada do código corrente quando ela puder ser configurada sem copiar secrets para Git/docs e sem usar Production como backend de laboratório;
-6. verificar se o ambiente escolhido representa o código atual de forma suficiente para a homologação;
-7. **não disparar deploy Vercel manual/rotineiro** apenas para gerar ambiente de teste;
-8. **não usar Production como laboratório** e não criar fixtures/dados artificiais em Production;
-9. confirmar se existe sessão/credencial de teste aprovada para jornadas autenticadas;
-10. se não houver backend/credencial de teste seguro para o código atual, registrar `bloqueio de ambiente` para as jornadas autenticadas e não inventar credenciais nem contornar autenticação.
+2. confirmar o estado do PR #167 e CI #576;
+3. consultar deployments Vercel somente leitura;
+4. identificar o deployment automático que corresponda exatamente ao `main` corrente;
+5. **não disparar deploy Vercel manual/rotineiro**;
+6. se `044cb209...` ou um commit posterior de `main` já estiver `READY`, revalidar primeiro `/recuperar-senha` e `/sem-acesso` para fechar UX-51-001/002/003 no ambiente hospedado;
+7. se o deployment exato ainda não existir, registrar o bloqueio; não testar uma versão anterior como se fosse a atual.
 
-A ausência de ambiente atual não autoriza homologar sobre a versão antiga nem declarar a slice concluída. Ainda assim, pode-se validar de forma localizada superfícies do código atual que sejam executáveis com segurança em ambiente isolado.
+## 2. Browser e sessão
 
-## 2. Matriz mínima de viewports
+Para certificar a matriz desktop/tablet/mobile é obrigatório usar browser real com controle de viewport e interação.
 
-Validar no mínimo três classes:
+Antes das jornadas autenticadas:
+
+- confirmar que existe sessão/credencial de teste aprovada;
+- não usar credencial inventada;
+- não afrouxar autenticação/RLS para testar;
+- não criar usuário ou fixture em Production;
+- não executar ações destrutivas sobre dados reais apenas para gerar evidência.
+
+Se browser ou sessão continuarem indisponíveis, registrar `bloqueio de ambiente` e manter a slice aberta. Não substituir por CI, CSS ou inspeção estática.
+
+## 3. Matriz mínima de viewports
+
+Quando o browser estiver disponível, registrar dimensões efetivamente usadas para pelo menos:
 
 - **desktop** — largura típica de notebook/desktop;
-- **tablet** — largura intermediária que force adaptação real de layout;
+- **tablet** — largura intermediária que force adaptação de layout;
 - **mobile** — largura de telefone com navegação por drawer.
 
-Registrar dimensões efetivamente usadas na evidência.
+Para cada jornada registrar resultado por viewport em `docs/qa/fase51-ux-homologation.md`.
 
-## 3. Jornadas prioritárias
-
-A homologação deve percorrer tarefas completas, não apenas abrir páginas.
+## 4. Jornadas prioritárias remanescentes
 
 ### Entrada e contexto
 
-- `/` → roteamento correto por estado de sessão;
-- login;
-- recuperação de senha;
-- seleção/troca de organização quando aplicável;
+- revalidar recuperação e acesso indisponível após PR #167;
+- login interativo somente com credencial aprovada;
+- seleção/troca de organização;
 - logout;
-- estados de acesso indisponível plausíveis.
+- convite/definição de senha somente quando existir token de teste legítimo.
 
 ### Navegação e Visão geral
 
 - sidebar desktop;
-- drawer mobile, abertura/fechamento/foco;
+- drawer mobile, abertura/fechamento/foco/teclado;
 - estado ativo de área/subárea;
-- Visão geral;
-- filtros de Unidade, Setor, horizonte e período quando disponíveis;
+- Visão geral e filtros;
 - links de alertas/cards para jornadas específicas.
 
 ### Administração
 
-- Estrutura: leitura, adicionar/editar onde permitido e comportamento responsivo dos formulários;
-- Usuários e permissões: leitura, convite/alteração/vínculo quando houver ambiente seguro para isso;
-- Proteção dos dados: leitura e responsividade, sem retomar #75/#121.
+- Estrutura;
+- Usuários e permissões;
+- Proteção dos dados somente leitura, sem retomar #75/#121.
 
 ### Cadastros
 
-- Produtos: lista → novo/detalhe/edição;
-- Fornecedores: lista → novo/detalhe/edição e condições comerciais;
-- Funcionários: lista → novo/detalhe/edição.
+- Produtos;
+- Fornecedores;
+- Funcionários.
 
 ### Estoque
 
@@ -130,133 +152,85 @@ A homologação deve percorrer tarefas completas, não apenas abrir páginas.
 ### Compras
 
 - visão/lista;
-- novo pedido;
-- detalhe;
-- emissão/cancelamento quando seguro;
-- recebimento parcial/total quando seguro;
-- recebimentos e histórico.
+- criação/detalhe somente em ambiente/dados seguros;
+- recebimento/histórico;
+- emissão/cancelamento apenas quando a ação for segura e aprovada.
 
 ### Financeiro
 
 - visão/lista;
-- novo documento;
-- detalhe;
-- anexos quando seguro;
-- pagamento;
-- estorno/cancelamento quando seguro;
-- vencimentos e histórico de pagamentos.
+- documento/detalhe;
+- vencimentos/histórico;
+- pagamento/estorno/cancelamento somente quando houver dados de teste aprovados.
 
 ### Caixa
 
-- visão do Caixa;
-- lista de sessões;
-- abertura de sessão quando seguro;
-- detalhe da sessão;
-- totais por meio, entrada/sangria e fechamento quando seguro;
-- configuração de caixas, meios e regras conforme permissão.
+- visão;
+- sessões;
+- abertura/detalhe/fechamento somente quando seguro;
+- configuração conforme permissão.
 
-## 4. O que observar em cada jornada
+## 5. O que observar
 
-Registrar evidência objetiva para:
+Para cada jornada/viewport verificar:
 
-- hierarquia visual e clareza da tarefa principal;
+- hierarquia e clareza da tarefa;
 - navegação `lista → detalhe → ação → retorno`;
-- links quebrados ou rota antiga;
-- estado ativo incorreto na navegação;
-- overflow horizontal inesperado;
-- texto truncado sem alternativa;
-- tabelas inadequadas em mobile;
-- formulários que não cabem ou perdem contexto;
-- drawer/dialog com problema de foco, fechamento ou teclado;
-- labels, helper text e mensagens ambíguas;
-- botões inacessíveis/encobertos;
-- loading, empty, erro e sucesso inconsistentes;
-- ações exibidas em estado/permissão inadequados;
-- inconsistência relevante entre desktop, tablet e mobile;
-- qualquer resíduo técnico ainda exposto ao operador.
+- rota ativa e links quebrados;
+- overflow/truncamento/tabelas em telas menores;
+- drawer/dialog/foco/teclado;
+- touch targets;
+- labels, helper text e feedback;
+- loading/empty/error/success;
+- ações inadequadas ao estado/permissão;
+- inconsistência desktop/tablet/mobile;
+- qualquer resíduo técnico ainda visível.
 
-## 5. Evidência e classificação dos achados
+## 6. Tratamento dos achados
 
-Para cada problema real registrar:
+Cada achado deve conter:
 
-- jornada/rota;
+- rota/jornada;
 - viewport;
-- passos para reproduzir;
-- resultado observado;
-- resultado esperado segundo IA/design system/requirements;
-- evidência visual ou descrição verificável;
-- classificação: `bug`, `gap de UX`, `acessibilidade`, `responsividade` ou `bloqueio de ambiente`;
-- impacto/prioridade suficiente para decidir se corrige nesta slice.
+- passos de reprodução;
+- observado versus esperado;
+- evidência verificável;
+- classificação (`bug`, `gap de UX`, `acessibilidade`, `responsividade` ou `bloqueio de ambiente`);
+- status da correção/revalidação.
 
-Não abrir correção com base apenas em preferência estética.
+Corrigir somente o que for comprovado. Se o problema tocar domínio, autorização, schema ou regra crítica, reconciliar requirements/ADRs antes de mudar comportamento.
 
-## 6. Correções permitidas
+## 7. Validação técnica após correções
 
-Pode corrigir, quando comprovado pela homologação:
-
-- CSS/layout/responsividade;
-- uso incorreto de primitives do design system;
-- navegação/link/estado ativo;
-- hierarquia, copy e feedback;
-- foco/teclado/aria;
-- disposição de tabela/card/formulário;
-- bug de UI que não altere regra de negócio;
-- regressão funcional real encontrada durante a jornada, desde que a correção preserve o contrato documentado.
-
-Se um achado indicar problema de domínio, autorização, banco ou regra crítica, parar a correção local e reconciliar requirements/ADRs antes de mudar comportamento.
-
-## 7. O que não fazer
-
-Não usar homologação para:
-
-- redesign amplo sem evidência;
-- criar KPI, threshold, SLA, score, meta ou janela nova;
-- redefinir semântica de Organization/Unit/Setor;
-- alterar custeio, FEFO, cardinalidade de pagamentos, consumo de funcionário ou integração de vendas;
-- reinterpretar Q-022;
-- resolver requisitos PENDING por conveniência;
-- criar migrations cosméticas;
-- afrouxar RLS/permissões para conseguir testar;
-- criar usuário/dado artificial em Production;
-- usar o deployment antigo como se representasse o código atual;
-- retomar #75/#121;
-- fazer deploy Vercel manual/rotineiro.
-
-## 8. Validação técnica após correções
-
-Se a homologação gerar mudanças de código, manter verdes:
+Manter verdes, quando houver código alterado:
 
 - `npm run lint`;
 - `npm run typecheck`;
 - `npm run test`;
 - `npm run build`;
 - CI PostgreSQL/RLS aplicável;
-- integrações de banco quando realmente afetadas.
+- integrações de banco somente quando afetadas.
 
-Para mudança somente documental de evidência, não inventar gates funcionais desnecessários, mas manter PR/CI conforme o workflow do repositório.
+Não disparar workflow adicional apenas para “ter evidência” se o workflow normal já cobre a mudança.
 
-## 9. Critérios de aceite
+## 8. Critério de aceite para encerrar homologação
 
-A slice só pode ser encerrada quando:
+A homologação só pode ser encerrada quando:
 
-- uma matriz representativa de jornadas tiver sido executada em desktop/tablet/mobile ou cada bloqueio estiver explicitamente documentado;
-- o ambiente usado estiver identificado e comprovadamente adequado ao código observado;
-- nenhuma evidência do deployment antigo tiver sido usada para certificar comportamento pós-#160;
-- achados reais estiverem registrados com evidência;
-- problemas relevantes e corrigíveis desta slice tiverem sido tratados e validados novamente;
-- nenhuma regra de negócio tiver sido inventada para “resolver UX”;
+- a matriz representativa tiver evidência real em desktop/tablet/mobile, ou cada item impossibilitado tiver bloqueio externo explicitamente aceito pelo operador;
+- os achados relevantes estiverem corrigidos e revalidados;
+- o deployment/ambiente observado corresponder ao código certificado;
+- jornadas autenticadas tiverem sido percorridas com sessão aprovada, sem dados artificiais em Production;
 - Q-022 e PENDINGs permanecerem intactos;
 - #75/#121 permanecerem on hold;
 - gates aplicáveis estiverem verdes;
-- `CURRENT_STATE`, `HANDOFF` e `NEXT_ACTION` forem reconciliados.
+- `CURRENT_STATE`, `HANDOFF`, `NEXT_ACTION` e a evidência QA estiverem reconciliados.
 
 ## Depois da homologação UX
 
-Somente após encerrar esta slice, promover:
+Somente então promover:
 
 > **reconciliação funcional final usando critério de usabilidade, não apenas existência técnica.**
-
-A reconciliação deve confrontar requirements, jornadas homologadas e comportamento real antes de decidir quais PENDINGs são necessários para operação/cutover.
 
 ## Ordem macro
 
@@ -271,7 +245,7 @@ A reconciliação deve confrontar requirements, jornadas homologadas e comportam
 9. ~~Caixa~~ — PR #161;
 10. ~~Dashboard~~ — PR #163;
 11. ~~limpeza de linguagem/resíduos de engenharia~~ — PR #165;
-12. **homologação UX real** — próxima;
+12. **homologação UX real — em andamento**;
 13. reconciliação funcional;
 14. PENDINGs necessários;
 15. dados representativos;
@@ -280,4 +254,4 @@ A reconciliação deve confrontar requirements, jornadas homologadas e comportam
 
 ## #75/#121 permanecem ON HOLD
 
-Não investigar scheduling, Storage/R2/S3, restore drills, secrets/variables, Production fixtures ou evidência de proteção durante esta slice. Execuções agendadas eventualmente presentes no histórico não revogam o hold. O hold só termina por decisão explícita ou no production-readiness final.
+Não investigar scheduling, Storage/R2/S3, restore drills, secrets/variables, Production fixtures ou evidência de proteção durante esta slice. O hold só termina por decisão explícita ou no production-readiness final.
