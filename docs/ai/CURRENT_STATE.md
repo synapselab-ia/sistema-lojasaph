@@ -6,15 +6,16 @@
 
 **Fase 51 / Issue #142 — consolidação de produto, arquitetura de informação e UX — permanece ativa.**
 
-Baseline funcional após a consolidação de Caixa:
+Baseline funcional após a consolidação do Dashboard / Visão geral:
 
-- `main=7e841b77daae8eb7afc13cc39812dd93b948dd32` — merge do PR #161;
-- PR #161 — `feat: consolidar jornada de Caixa` — **merged**;
-- CI pós-merge da `main` #561 / run `33387966611`: **success**;
+- `main=395a2cd578b47c2b98ac449f50c1d4e3a094627d` — merge do PR #163;
+- PR #163 — `feat: consolidar Visão geral do Dashboard` — **merged**;
+- CI pós-merge da `main` #566 / run `33392864692`: **success**;
 - lint, typecheck, unit tests, production build e job de banco/migrations/RLS: **success**;
-- no head final do PR #161, CI #560 / run `33387774581`: **success**;
-- Business Transactions Integration #253 / run `33387774423`: **success**, incluindo ciclo de vida de Caixa e permissões escopadas;
-- Inventory Count Integration #266 / run `33387774526`: **success**;
+- no head final do PR #163, CI #565 / run `33392616909`: **success**;
+- Business Transactions Integration #255 / run `33392616971`: **success**;
+- Inventory Count Integration #268 / run `33392616820`: **success**;
+- o CI #564 falhou apenas no typecheck por duas guards de `snapshot`; a correção foi feita no mesmo PR antes do merge e todos os gates posteriores ficaram verdes;
 - Issue #142 continua aberta e ativa;
 - #75 e #121 continuam abertas e **TOTALMENTE ON HOLD**;
 - nenhum deploy Vercel manual/rotineiro foi feito.
@@ -29,98 +30,75 @@ Baseline funcional após a consolidação de Caixa:
 6. Estoque: posição + jornadas operacionais consolidadas — PR #155;
 7. Compras: pedidos + recebimentos + histórico consolidados — PR #157;
 8. Financeiro: documentos + parcelas + pagamentos consolidados — PR #159;
-9. Caixa: sessões + fechamento + configuração consolidados — PR #161.
+9. Caixa: sessões + fechamento + configuração consolidados — PR #161;
+10. Dashboard / Visão geral — PR #163.
 
-## Caixa consolidado
+Não refazer essas slices sem bug ou gap concreto.
 
-A área de Caixa deixou de concentrar configuração, abertura, totais, movimentos, fechamento, cancelamento e histórico em uma única página.
+## Dashboard consolidado
 
-### Visão da área
+`/workspace` permanece um painel **somente leitura** sobre os read models existentes. O PR #163 não criou nova fronteira transacional nem alterou a semântica dos dados.
 
-`/workspace/caixa` agora apresenta:
+### Hierarquia e controles
 
-- sessões abertas;
-- sessões fechadas visíveis;
-- caixas ativos;
-- quantidade de fechamentos com divergência registrada;
-- atalhos para Sessões e Configuração;
-- sessões recentes com acesso ao detalhe estável.
+A Visão geral agora organiza a experiência em:
 
-### Sessões
+- contexto da organização e data de negócio;
+- filtros de Unidade, Setor, horizonte de alertas e período gerencial explícito;
+- fila `Precisa de atenção` antes dos indicadores informativos;
+- resumo financeiro;
+- visão de Estoque;
+- visão de Compras e fornecedores;
+- sinais de operação atual de Caixa e Compras.
 
-`/workspace/caixa/sessoes` passou a ser a lista principal:
+Os controles e estados tocados reutilizam `PageHeader`, `Panel`, `FormField`, `Select`, `Input`, `Button`, `FeedbackMessage` e `EmptyState` do design system existente.
 
-- busca por caixa, código, unidade, data, situação ou observação;
-- filtro por status;
-- fundo inicial, contado e divergência quando persistidos;
-- tabela desktop e cards mobile;
-- URL estável para cada sessão.
+### Semântica de filtros preservada
 
-`/workspace/caixa/sessoes/nova` concentra a abertura com:
+O inventário de `SupabaseDashboardQuery`, `buildDashboardSummary`, overview queries e testes confirmou e a UI continua respeitando:
 
-- caixa físico;
-- data de negócio explícita;
-- sequência;
-- fundo inicial;
-- observação opcional.
+- `Organization` continua sendo a fronteira global autorizada pelo banco/RLS;
+- Unidade e Setor só filtram dados quando existe vínculo explícito;
+- Caixa permanece em escopo de Unidade, mesmo quando um Setor está selecionado;
+- métricas temporais de Caixa usam a data de negócio;
+- o período gerencial explícito não é tratado como sinônimo do horizonte relativo;
+- indicadores de estado atual, como caixas abertos, pedidos pendentes e estoque mínimo, não viram métricas históricas apenas porque um período foi selecionado;
+- timezone da organização continua definindo a data de negócio;
+- Financeiro, Estoque e Compras só recebem filtro setorial onde o contrato existente o suporta.
 
-`/workspace/caixa/sessoes/[id]` apresenta:
+Nenhum KPI, threshold, SLA, score, meta, tendência, comparação ou janela nova foi inventado.
 
-- caixa, unidade, data de negócio, sequência e status;
-- fundo inicial e valores finais persistidos;
-- totais por meio com bruto, taxa, líquido, impacto na gaveta e regra aplicada quando registrada;
-- entradas, sangrias e histórico de movimentos;
-- composição informativa dos insumos da gaveta;
-- fechamento explícito com valor contado;
-- cancelamento por diálogo, sem `window.prompt()`.
+### Navegação consolidada
 
-Sessão inexistente ou inacessível usa o mesmo estado seguro, sem confirmar a existência fora do escopo.
+Alertas e cards agora preferem a jornada mais específica já existente quando os dados possuem contexto suficiente, incluindo:
 
-### Configuração
+- Financeiro → `/workspace/financeiro/contas` ou `/workspace/financeiro/vencimentos`;
+- Caixa → `/workspace/caixa/sessoes`;
+- Compras → `/workspace/compras/pedidos` e `/workspace/compras/recebimentos`;
+- Estoque mínimo → `/workspace/estoque/minimos`;
+- lotes/validades → `/workspace/estoque/lotes`;
+- transferências → `/workspace/transferencias`;
+- inventários → `/workspace/inventarios`.
 
-`/workspace/caixa/configuracao` separa da operação diária:
+O mapping de alertas foi separado em `dashboard-navigation.ts`, mantendo cálculo de KPI/read model desacoplado da decisão de rota da apresentação. O contrato possui teste próprio.
 
-- caixas físicos por unidade;
-- meios de pagamento e indicação explícita de impacto na gaveta;
-- regras de taxa versionadas por vigência.
+### Linguagem e estados
 
-A UI apenas reflete as permissões `manageCashRegisters`/`manageCashConfig`; autorização real permanece nos boundaries existentes.
-
-### Regra de fechamento preservada
-
-Nenhuma regra de fechamento foi movida para React.
-
-O backend continua calculando e persistindo, no fechamento:
-
-`expected_cash_amount = opening_float + bruto dos meios com affects_cash_drawer + cash_in - cash_out`
-
-`cash_difference = counted_cash_amount - expected_cash_amount`
-
-`employee_consumption` continua fora do esperado.
-
-A tela de detalhe mostra os componentes persistidos para explicar a composição, mas deixa claro que o valor esperado autoritativo só é calculado/persistido pelo backend no fechamento.
-
-### PENDINGs de Caixa preservados
-
-- `REQ-CASH-007` — Consumo Funcionários — permanece PENDING. A nova UX **não oferece criação de novo movimento desse tipo**; registros legados/existentes podem aparecer no histórico sem ganhar semântica nova.
-- `REQ-CASH-008` — integração com vendas/POS — permanece PENDING. Totais por meio continuam consolidados/manual-operacionais conforme o contrato atual; nenhuma venda individual foi inventada.
+A Visão geral e as subseções tocadas deixaram de expor na experiência normal nomes como campos/tabelas de persistência quando não havia valor operacional. Loading, erro e vazio foram reconciliados com o design system sem ocultar falhas como ausência de dados.
 
 ## Boundaries e segurança preservados
 
-Nenhum schema, migration, RPC, grant ou policy/RLS foi criado ou alterado para esta consolidação.
+A consolidação do Dashboard não criou ou alterou:
 
-Continuam autoritativos:
+- schema;
+- migration;
+- RPC;
+- grant;
+- policy/RLS;
+- regra de autorização;
+- regra crítica de Estoque, Compras, Financeiro ou Caixa.
 
-- `create_cash_register`;
-- `create_payment_method`;
-- `create_fee_rule`;
-- `open_cash_session`;
-- `set_cash_payment_total`;
-- `record_cash_movement`;
-- `close_cash_session`;
-- `cancel_cash_session`;
-- RLS/grants e permissões escopadas existentes;
-- atomicidade/idempotência e auditoria dos commands.
+Queries, RLS/grants e boundaries dos módulos continuam sendo a fonte autoritativa. Q-022 permanece aberta; papel técnico não deve ser reinterpretado como cargo de negócio.
 
 ## Limite de homologação visual
 
@@ -128,13 +106,15 @@ Continuam autoritativos:
 
 Build e CI comprovam integridade técnica, mas não substituem homologação visual desktop/tablet/mobile. Não foi feito deploy Vercel manual apenas para produzir essa evidência.
 
-## Próxima slice oficial: Dashboard
+## Próxima slice oficial: limpeza de linguagem/resíduos de engenharia
 
-**A próxima área da Fase 51 é Dashboard / Visão geral. Não refazer Cadastros, Estoque, Compras, Financeiro ou Caixa sem bug/gap concreto.**
+**A próxima área da Fase 51 é a limpeza de linguagem e resíduos de engenharia da experiência normal.**
 
-Inventário preliminar confirmou que `/workspace` já possui um dashboard funcional e somente leitura, porém a página ainda concentra diretamente filtros, período, KPIs, fila de atenção e seções de múltiplos módulos em um componente grande, com controles visuais anteriores ao design system consolidado.
+O objetivo é revisar as jornadas já consolidadas e remover do que o operador vê termos técnicos desnecessários, IDs internos, nomes de provider, campos/tabelas/RPCs, referências de fase/implementação e mensagens herdadas que ainda exponham detalhes de engenharia.
 
-Já existem boundaries dedicados em `src/modules/dashboard` para query, summary e seções de Estoque/Compras. A próxima slice deve consolidar a experiência da Visão geral sobre esses dados existentes, revisar linguagem/hierarquia/filtros e alinhar navegação para as jornadas recém-consolidadas, sem inventar KPI ou regra de negócio.
+Essa slice não deve refatorar domínio, alterar regra de negócio ou reabrir Administração, Cadastros, Estoque, Compras, Financeiro, Caixa ou Dashboard sem evidência concreta. Corrigir somente linguagem, apresentação e pequenos resíduos de UX que não mudem contrato funcional.
+
+Débito documental conhecido a reconciliar nessa etapa: `docs/product/workspace-information-architecture.md` ainda contém no mapa de rotas a descrição pré-consolidação de Caixa. As rotas reais integradas do PR #161 prevalecem.
 
 ## Ordem oficial de fechamento do produto
 
@@ -147,8 +127,8 @@ Já existem boundaries dedicados em `src/modules/dashboard` para query, summary 
 7. ~~Compras~~ — PR #157;
 8. ~~Financeiro~~ — PR #159;
 9. ~~Caixa~~ — PR #161;
-10. **Dashboard** — próxima;
-11. limpeza de linguagem/resíduos de engenharia;
+10. ~~Dashboard~~ — PR #163;
+11. **limpeza de linguagem/resíduos de engenharia** — próxima;
 12. homologação UX em jornadas desktop/tablet/mobile;
 13. reconciliação funcional final;
 14. PENDINGs necessários;
