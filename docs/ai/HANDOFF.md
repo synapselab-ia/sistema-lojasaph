@@ -4,22 +4,16 @@
 
 **Fase 51 / Issue #142 continua ativa.**
 
-A slice das telas auxiliares de autenticação/contexto foi fechada no PR #171 sem reimplementar auth, sessão, autorização ou RLS.
+As slices de consolidação até o PR #171 estão integradas. A frente atual é a homologação UX real em desktop/tablet/mobile.
 
-Baseline anterior à slice:
+Baseline corrente:
 
-- `main=fad41dbe672d41e1fd6277e57f1f894d647a8ef2` — merge do PR #170;
-- CI pós-merge #583 / run `33425164783`: **success**;
+- `main=64e1c0d242c3abfb7ee374ebc43850156d75089b` — merge do PR #171;
+- CI pós-merge #586 / run `33426777989`: **success**;
 - Issue #142 aberta;
+- nenhum PR aberto no início desta execução;
 - #75/#121 **TOTALMENTE ON HOLD**;
 - nenhum deploy Vercel manual/rotineiro deve ser feito para evidência.
-
-Validação do primeiro head do PR #171 (`25109c0054933fe714d299d67b4067305a0372ea`):
-
-- CI #584 / run `33426151982`: **success**;
-- lint, typecheck, unit tests e production build: success;
-- database/migrations/RLS e isolamento por Organization: success;
-- integrações adicionais de banco disparadas pelo PR: success.
 
 ## Não refazer
 
@@ -27,57 +21,82 @@ Já consolidados: #145, #147, #149, #151, #153, #155, #157, #159, #161, #163, #1
 
 Não reabrir por preferência estética; corrigir somente bug/gap comprovado.
 
-## O que o PR #171 fechou
+## Deployment corrente confirmado
 
-Rotas reconciliadas:
+A integração Git da Vercel já publicou automaticamente a versão exata da `main`:
 
-- `/auth/atualizar-senha`;
-- `/auth/invite`;
-- `/bootstrap`;
-- `/workspace/selecionar-organizacao`.
+- deployment `dpl_J6qwwqUihCKqfTMhmbjSxcLSA3gr`;
+- `READY`;
+- target `production`;
+- source `git`;
+- `githubCommitSha=64e1c0d242c3abfb7ee374ebc43850156d75089b`;
+- alias canônico `sistema-lojasaph.vercel.app` sem erro.
 
-Implementado:
+Não houve deploy manual.
 
-- primitives compartilhados onde aplicável;
-- feedback de erro com anúncio acessível;
-- estados informativos/carregamento anunciáveis;
-- `SubmitButton` compartilhado com `useFormStatus` e bloqueio de submit duplicado;
-- touch targets/CTAs coerentes;
-- teste `src/app/auxiliary-auth-context-contract.test.ts` preservando actions, redirects e handoffs.
+## Evidência pública reconciliada nesta execução
 
-Preservado sem mudança:
+No deployment corrente, via resposta HTTP/HTML real:
 
-- `updatePasswordAction` e sanitização de `next`;
-- parser/handoff do convite e POST `/auth/invite/session`;
-- `bootstrapOwnerAction` / `inviteBootstrapOwnerAction` e seus estados;
-- redirects de seleção de organização para login, sem acesso, workspace e troca válida;
-- contratos de sessão/token, papéis, escopos, backend e RLS.
+- `/` sem sessão resolve para Login;
+- `/workspace` sem sessão resolve para Login com `next=/workspace` e alerta de sessão expirada;
+- UX-51-001 foi revalidado: `Voltar ao login` em `/recuperar-senha` possui `min-h-11`;
+- UX-51-002 foi revalidado: erro em `/recuperar-senha` usa `role="alert"`;
+- UX-51-003 foi revalidado: `/sem-acesso` usa ações com `min-h-11` e erro com `role="alert"`;
+- `/auth/atualizar-senha` sem sessão válida retorna ao Login com alerta de link expirado;
+- `/auth/invite` expõe no estado inicial hospedado `aria-busy`, `role="status"` e `aria-live`;
+- `/bootstrap` reflete o estado real atual de configuração inicial desabilitada e mantém CTA coerente;
+- `/workspace/selecionar-organizacao` sem sessão preserva `next=/workspace/selecionar-organizacao`.
 
-### Evidência que NÃO foi fabricada
+A matriz oficial foi atualizada em `docs/qa/fase51-ux-homologation.md`.
 
-Não há, nesta execução, sessão/token legítimo nem browser gráfico adequado para certificar as jornadas reais dependentes de autenticação. Não criar usuário, convite, fixture ou dado artificial em Production apenas para fechar a matriz.
+## Evidência que continua ausente
+
+A homologação **não está encerrada**.
+
+Nesta sessão não existe browser gráfico operável exposto para controlar viewport, foco, teclado, drawer, overflow ou screenshots. A capacidade de browser automatizado foi investigada, mas o executável correspondente não está disponível no runtime e não existe outro conector de browser nesta sessão.
+
+Também não há sessão/credencial legítima aprovada nem token legítimo para convite/recuperação.
+
+Portanto permanecem bloqueados:
+
+- certificação desktop/tablet/mobile;
+- foco/teclado/drawer/overflow em browser;
+- login autenticado real;
+- seleção/troca de organização e logout autenticado;
+- Visão geral;
+- Administração;
+- Cadastros;
+- Estoque;
+- Compras;
+- Financeiro;
+- Caixa;
+- convite válido → sessão → nova senha;
+- estados de bootstrap que não existam naturalmente no ambiente.
+
+Não criar usuário, convite, fixture ou dado artificial em Production para produzir prova.
 
 ## NEXT_ACTION imediata
 
-### Concluir homologação UX desktop/tablet/mobile
+### Concluir homologação UX desktop/tablet/mobile quando houver evidência adequada
 
 Usar `docs/qa/fase51-ux-homologation.md` como matriz executável.
 
 No próximo chat:
 
-1. ler governança + `product-completion-ux-roadmap.md` + `final-product-gap-audit.md`;
-2. confirmar `main`, Issue #142, PRs/branches/CI e estado do deployment automático real;
-3. não disparar deploy Vercel manual;
-4. verificar se existe browser gráfico operável sobre a versão corrente e sessão/credencial legítima aprovada;
-5. revalidar primeiro os achados públicos UX-51-001/002/003 na versão corrente quando o deployment automático permitir;
-6. executar desktop/tablet/mobile por jornada, registrando dimensões e evidências reais;
-7. cobrir Entrada/contexto, Visão geral, Administração, Cadastros, Estoque, Compras, Financeiro e Caixa;
-8. validar foco/teclado, drawer mobile, touch targets, overflow, loading/empty/error/success, formulários/tabelas densos e `lista → detalhe → ação → retorno`;
-9. executar convite/nova senha/bootstrap/troca de organização somente com token/sessão legítimos; não contornar auth;
-10. corrigir apenas achados concretos e manter CI verde;
-11. atualizar a matriz QA e, quando houver evidência representativa suficiente, promover a reconciliação funcional final.
+1. reler governança e confirmar `main`, Issue #142, PRs/branches/CI;
+2. confirmar que o deployment automático ainda corresponde à `main`; não disparar deploy manual;
+3. **não repetir mecanicamente a revalidação HTTP/HTML já concluída** se o deployment não mudou;
+4. verificar se existe browser gráfico operável;
+5. verificar se existe sessão/credencial legítima aprovada e, quando necessário, token legítimo;
+6. com browser, registrar dimensões e executar desktop/tablet/mobile por jornada;
+7. com sessão legítima, cobrir Entrada/contexto, Visão geral, Administração, Cadastros, Estoque, Compras, Financeiro e Caixa;
+8. validar foco/teclado, drawer, touch targets, overflow, loading/empty/error/success, tabelas/formulários densos e `lista → detalhe → ação → retorno`;
+9. executar convite/nova senha/bootstrap/troca de organização somente em estados legítimos;
+10. corrigir apenas achados concretos e revalidar no mesmo tipo de evidência;
+11. promover reconciliação funcional final somente quando a matriz tiver evidência representativa suficiente ou quando bloqueios externos forem explicitamente aceitos pelo operador.
 
-CI/CSS/HTML estático não substituem homologação de browser.
+CI/CSS/HTML estático ou hospedado não substituem homologação de browser.
 
 ## Depois da homologação UX
 
