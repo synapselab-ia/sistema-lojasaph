@@ -6,23 +6,25 @@
 
 Baseline funcional para a próxima execução:
 
-- `main=7e841b77daae8eb7afc13cc39812dd93b948dd32` — merge do PR #161;
-- PR #161 — Caixa consolidado — merged;
-- CI pós-merge #561 / run `33387966611`: success;
+- `main=395a2cd578b47c2b98ac449f50c1d4e3a094627d` — merge do PR #163;
+- PR #163 — Dashboard / Visão geral consolidado — merged;
+- CI pós-merge #566 / run `33392864692`: success;
 - lint, typecheck, unit tests, production build e banco/migrations/RLS: success;
-- CI #560 / run `33387774581`: success no head final do PR;
-- Business Transactions Integration #253 / run `33387774423`: success, incluindo lifecycle de Caixa e permissões escopadas;
-- Inventory Count Integration #266 / run `33387774526`: success;
+- CI #565 / run `33392616909`: success no head final do PR;
+- Business Transactions Integration #255 / run `33392616971`: success;
+- Inventory Count Integration #268 / run `33392616820`: success;
 - Issue #142 aberta e ativa;
 - #75/#121 **TOTALMENTE ON HOLD**.
 
-Não refazer Cadastros, Estoque, Compras, Financeiro ou Caixa sem bug/gap concreto.
+Não refazer Administração, Cadastros, Estoque, Compras, Financeiro, Caixa ou Dashboard sem bug/gap concreto.
 
 ## NEXT_ACTION objetiva
 
-### Executar a próxima slice da Issue #142: **Dashboard / Visão geral**
+### Executar a próxima slice da Issue #142: **limpeza de linguagem/resíduos de engenharia da experiência normal**
 
-O objetivo é consolidar `/workspace` como painel operacional coerente, legível e responsivo sobre os read models já existentes, preservando exatamente a semântica de escopos, filtros, datas, KPIs e alertas. O Dashboard continua **somente leitura** e nunca vira uma nova fronteira transacional.
+O objetivo é remover da experiência cotidiana detalhes técnicos que ainda vazam para o operador, sem alterar domínio, queries, persistência, autorização, rotas consolidadas ou regras de negócio.
+
+Essa slice é de **produto/linguagem/apresentação**, não uma autorização para refatoração arquitetural ampla.
 
 Documentos de autoridade:
 
@@ -30,145 +32,101 @@ Documentos de autoridade:
 - `docs/product/workspace-information-architecture.md`;
 - `docs/product/design-system.md`;
 - `docs/qa/definition-of-done.md`;
-- `docs/product/open-questions.md`;
 - `docs/product/requirements.md`;
-- documentação/ADRs do Dashboard e dos módulos cujos dados aparecem no painel.
+- `docs/product/open-questions.md`;
+- documentação/ADRs dos módulos afetados.
 
-### 1. Reconciliar e inventariar antes de editar
+## 1. Reconciliar e inventariar antes de editar
 
 No início da próxima execução:
 
 1. confirmar `main`, Issue #142, PRs, branches e CI reais;
 2. reler os documentos de autoridade;
-3. inventariar integralmente `src/app/workspace/(operacao)/page.tsx`;
-4. inventariar `SupabaseDashboardQuery`, seus testes e todas as tabelas/views/queries usadas;
-5. inventariar `buildDashboardSummary` e testes de summary;
-6. inventariar as queries/seções específicas de Estoque e Compras em `src/modules/dashboard`;
-7. localizar todos os KPIs, itens da fila de atenção e respectivos destinos;
-8. provar a semântica de Unidade, Setor, horizonte relativo e período gerencial explícito;
-9. provar timezone/data de negócio e quais métricas representam estado atual versus eventos/obrigações por data;
-10. mapear quais métricas aceitam escopo de Setor e quais permanecem apenas em Unidade/Organization;
-11. identificar controles manuais/linguagem técnica e padrões anteriores ao design system;
-12. definir hierarquia e responsabilidades do painel antes do código.
+3. fazer busca ampla no código de UI por strings e padrões técnicos potencialmente visíveis;
+4. confirmar cada ocorrência em contexto antes de alterar;
+5. percorrer shell/Visão geral/Administração/Cadastros/Estoque/Compras/Financeiro/Caixa, sem assumir que uma busca textual isolada prova um problema;
+6. separar UI normal de testes, logs, comentários, documentação técnica, mensagens de desenvolvimento e código interno legítimo;
+7. registrar uma lista concreta de resíduos antes de começar as correções.
 
-Inventário preliminar já comprovado:
+## 2. O que procurar
 
-- `/workspace` já possui Dashboard funcional, somente leitura e integrado aos módulos persistentes;
-- a página atual concentra filtros, período, fila de atenção, cartões financeiros, sinais operacionais e seções de Estoque/Compras em um componente grande;
-- `SupabaseDashboardQuery` já existe com testes;
-- `buildDashboardSummary` já concentra derivações de apresentação;
-- queries e componentes específicos de overview de Compras e Estoque já existem;
-- o painel diferencia **estado atual**, **horizonte relativo** e **período explícito**;
-- Caixa é escopado por Unidade e usa `business_date` quando a métrica é temporal;
-- Financeiro, Compras e Estoque só usam Setor quando existe vínculo setorial explícito;
-- parte dos filtros/controles ainda usa estilos manuais e deve ser reconciliada com `src/components/ui`.
+Priorizar texto que chega ao usuário sem necessidade operacional, por exemplo:
 
-Não criar schema/RPC/view novo para resolver layout. Reaproveitar primeiro os read models e boundaries existentes.
+- UUID ou ID interno exposto como informação principal;
+- nomes de tabela, view, RPC, migration, schema ou policy;
+- `RLS`, provider, adapter, gateway, read model, fixture ou outros termos de implementação;
+- nomes crus de campos de banco/API como `stock_location_id`, `business_date`, `occurred_at`, `unit_price` e equivalentes quando houver linguagem operacional melhor;
+- nomes internos de status/tipos quando já existe rótulo de negócio;
+- referências a branch, PR, fase, seed, ambiente técnico ou artefato de engenharia na experiência normal;
+- mensagens de erro que revelem detalhes de infraestrutura sem ajudar o operador;
+- helper text com código/backticks apenas para explicar implementação;
+- textos inconsistentes com a arquitetura de informação já aprovada;
+- rótulos genéricos que ainda apontem para páginas antigas quando houver jornada consolidada específica.
 
-### 2. Escopo funcional da consolidação
+Nem toda ocorrência técnica no repositório é um bug de UX. Só alterar o que realmente integra a experiência normal ou um estado de erro plausivelmente exibido ao usuário.
 
-Organizar o painel conforme dados já suportados:
+## 3. Escopo da correção
 
-- cabeçalho/contexto da organização;
-- filtros operacionais claros de Unidade/Setor quando aplicáveis;
-- horizonte relativo de alertas onde o contrato já usa esse conceito;
-- período gerencial explícito onde a métrica possui data de negócio/vencimento comprovada;
-- fila prioritária de atenção com links para a jornada correta;
-- resumo financeiro;
-- sinais de Caixa e Compras;
-- visão de Estoque e Compras já suportada pelos overview queries;
-- estados loading, erro e vazio;
-- links para rotas consolidadas, preferindo o destino mais específico e útil.
+Pode incluir:
 
-O objetivo é melhorar hierarquia, compreensão e navegação, não adicionar novos indicadores.
+- títulos, labels, descrições e helper text;
+- mensagens de loading, vazio, erro, sucesso e confirmação;
+- labels de status e ações;
+- tooltips/aria-labels quando aplicável;
+- pequenos ajustes de hierarquia textual;
+- links claramente antigos ou genéricos quando a rota consolidada equivalente já existe;
+- documentação de arquitetura da informação que esteja objetivamente defasada em relação às rotas reais.
 
-### 3. Preservar semântica dos dados
+Débito documental já conhecido:
 
-Não mover regra crítica para componentes React e não alterar silenciosamente o significado de indicadores.
+- `docs/product/workspace-information-architecture.md` ainda descreve no mapa de rotas o Caixa como se configuração/operação compartilhassem a página pré-PR #161. Corrigir a linha e registrar as rotas consolidadas reais sem reabrir a slice funcional de Caixa.
 
-Preservar, conforme os contracts existentes:
+## 4. O que não fazer
 
-- RLS e escopos de Organization/Unit/Sector;
-- timezone e data de negócio;
-- diferença entre estado atual e métricas por período;
-- diferença entre horizonte relativo e intervalo explícito;
-- status financeiro já derivados pelos read models existentes;
-- Caixa em escopo de Unidade quando não existe relação setorial real;
-- métricas de Estoque/Compras/Financeiro filtradas por Setor somente quando há vínculo explícito;
-- saldo, divergência, quantidade pendente, vencimento e demais valores conforme as fontes persistentes existentes.
+Não usar essa slice para:
 
-Se um KPI parecer ambíguo, provar o contrato em query/summary/testes antes de mudar rótulo ou comportamento.
+- trocar schema, migration, RPC, RLS, grant ou regra de autorização por estética;
+- renomear campo persistente apenas para combinar com copy;
+- mover regra crítica para React;
+- reescrever journeys já consolidadas;
+- criar novo KPI, threshold, janela, SLA, score, meta ou comparação;
+- alterar cálculo financeiro, saldo, custo, divergência ou status;
+- mudar semântica de Unit/Setor/Organization;
+- resolver `REQ-CASH-007`, `REQ-CASH-008`, `REQ-FIN-004`, `REQ-EXP-004`, `REQ-STK-010` ou qualquer outro PENDING;
+- reinterpretar Q-022;
+- criar migrations cosméticas;
+- tocar Production para prova;
+- retomar #75/#121;
+- fazer deploy Vercel manual/rotineiro.
 
-### 4. KPIs e alertas
+## 5. Princípios de copy
 
-Não inventar regra de negócio para tornar o Dashboard mais “completo”.
+Preferir linguagem de operação:
 
-Em especial, não criar sem requisito comprovado:
+- dizer o que ocorreu, o que falta ou o que a pessoa pode fazer;
+- usar nomes canônicos das áreas e entidades do produto;
+- explicar limitações reais sem narrar arquitetura interna;
+- manter termos técnicos somente quando eles forem parte necessária da tarefa do usuário;
+- não esconder erro real atrás de mensagem vaga, mas traduzir o detalhe técnico para contexto acionável;
+- não substituir uma regra desconhecida por uma frase que pareça decisão de negócio.
 
-- novos thresholds de estoque;
-- nova janela de validade;
-- novo SLA de compras;
-- alerta financeiro por quantidade arbitrária de dias;
-- meta/tendência/comparação percentual;
-- regra de divergência de caixa;
-- faturamento/vendas;
-- consumo de funcionários como receita/despesa;
-- ranking ou score de fornecedor/produto/unidade.
+## 6. Design system e acessibilidade
 
-Cada alerta deve ser rastreável a uma fonte real e levar a uma jornada operacional existente.
+Se a correção tocar estados ou superfícies já consolidados:
 
-### 5. Arquitetura de informação e UX
+- reutilizar `FeedbackMessage`, `EmptyState`, `StatusBadge`, `Dialog`, `PageHeader`, `Panel`, `FormField` e demais primitives existentes quando aplicável;
+- preservar labels, foco e operação por teclado;
+- não criar componente genérico sem repetição comprovada;
+- evitar regressão mobile apenas para ajustar copy.
 
-Usar linguagem operacional, não nomes de tabela, view, RPC, RLS ou detalhes de infraestrutura.
+## 7. Testes e validação
 
-Preferir:
+Adicionar/ajustar testes somente quando o contrato tocado justificar, por exemplo:
 
-- `PageHeader`, `Panel`, `FormField`, `Select`, `Input`, `Button`, `EmptyState`, `FeedbackMessage`, `StatusBadge` e outros primitives já consolidados;
-- hierarquia clara entre “precisa de atenção” e indicadores informativos;
-- filtros apresentados com explicação curta somente onde a semântica não for óbvia;
-- ações que navegam para Estoque, Compras, Financeiro ou Caixa em vez de duplicar transações no Dashboard;
-- mobile deliberado, sem depender de grids/tabelas largas ou controles espremidos;
-- feedback de atualização/carregamento que não faça o usuário perder contexto.
-
-Não criar abstração genérica sem repetição comprovada.
-
-### 6. Rotas de destino
-
-Revisar links do Dashboard após as consolidações da Fase 51.
-
-Sempre que o contexto permitir, preferir destinos específicos como:
-
-- Estoque → posição ou jornada correspondente;
-- Compras → pedidos/recebimentos conforme o sinal;
-- Financeiro → contas/vencimentos conforme o indicador;
-- Caixa → sessões ou sessão apropriada quando houver contexto suficiente.
-
-Não inventar deep link quando os dados não carregarem identidade suficiente para um destino seguro.
-
-### 7. Autorização
-
-Q-022 continua aberta.
-
-Portanto:
-
-- Dashboard só mostra o que as queries/RLS autorizam;
-- não ampliar escopo por conveniência de filtro;
-- não reinterpretar papéis técnicos como cargos;
-- não usar UI como fronteira de segurança;
-- não inferir acesso Organization-wide a partir de papel escopado.
-
-### 8. Testes e validação
-
-Adicionar/ajustar testes somente nos contratos tocados, especialmente para:
-
-- summary/derivações puras;
-- semântica de Unidade/Setor;
-- horizonte versus período explícito;
-- estado atual versus métricas temporais;
-- timezone/data de negócio quando relevante;
-- destinos de alertas/KPIs alterados;
-- loading/erro/empty;
-- responsividade por estrutura/contrato quando tecnicamente possível.
+- mapping de label/status puro;
+- destino de navegação alterado;
+- mensagem importante derivada por função reutilizável;
+- regressão de UI coberta por teste já existente.
 
 Manter verdes:
 
@@ -179,48 +137,30 @@ Manter verdes:
 - CI PostgreSQL/RLS aplicável;
 - integrações de banco somente quando realmente afetadas.
 
-Se browser real permitido estiver disponível, validar Dashboard em desktop e mobile. Se não estiver, registrar a limitação; **não fazer deploy Vercel manual apenas para homologação**.
+Se browser real permitido estiver disponível, validar pelo menos uma amostra representativa das áreas tocadas em desktop e mobile. Se não estiver, registrar a limitação; **não fazer deploy Vercel manual apenas para homologação**.
 
-### 9. Guardrails desta execução
-
-Não:
-
-- reabrir áreas já consolidadas sem evidência concreta;
-- adicionar transações no Dashboard;
-- inventar KPI/threshold/janela/regra;
-- resolver `REQ-CASH-007`, `REQ-CASH-008`, `REQ-FIN-004` ou outros PENDINGs;
-- mudar Q-022/política de autorização;
-- criar migration cosmética;
-- tocar Production para prova;
-- retomar #75/#121;
-- fazer deploy Vercel manual/rotineiro.
-
-## Critérios de aceite para Dashboard
+## 8. Critérios de aceite
 
 A slice só pode ser encerrada quando:
 
-- `/workspace` comunica prioridade operacional com hierarquia clara;
-- filtros de Unidade/Setor/horizonte/período continuam semanticamente corretos;
-- horizonte e período não são apresentados como equivalentes;
-- cada KPI/alerta possui origem e significado comprovados;
-- links levam às jornadas consolidadas apropriadas;
-- Dashboard continua somente leitura;
-- design system é reutilizado nos controles/superfícies tocados;
-- mobile possui estrutura deliberada;
-- loading/erro/empty e atualização são compreensíveis;
-- RLS/escopos continuam a fronteira real;
-- nenhum PENDING é resolvido por conveniência visual;
-- lint, typecheck, testes, build e gates aplicáveis estão verdes;
-- ausência de browser/homologação visual é registrada honestamente se persistir;
-- `CURRENT_STATE`, `HANDOFF` e `NEXT_ACTION` são reconciliados.
+- os resíduos técnicos inventariados e realmente visíveis tiverem sido corrigidos ou justificados;
+- nenhum ID/termo interno desnecessário permanecer nos fluxos tocados;
+- mensagens de erro/empty/loading tocadas estiverem em linguagem operacional;
+- nenhuma regra de negócio tiver sido alterada por copy;
+- rotas e boundaries existentes permanecerem autoritativos;
+- o mapa de rotas de Caixa na IA estiver reconciliado com o PR #161;
+- Q-022 e PENDINGs permanecerem intactos;
+- lint, typecheck, testes, build e gates aplicáveis estiverem verdes;
+- ausência de browser real estiver registrada honestamente se persistir;
+- `CURRENT_STATE`, `HANDOFF` e `NEXT_ACTION` forem reconciliados.
 
-## Depois do Dashboard
+## Depois da limpeza de linguagem
 
-Somente após a integração da consolidação do Dashboard, promover:
+Somente após integrar essa slice, promover:
 
-> **limpeza de linguagem/resíduos de engenharia da experiência normal**
+> **homologação UX em jornadas reais desktop/tablet/mobile**
 
-Não saltar diretamente para homologação UX real.
+A homologação deve observar as journeys consolidadas como produto, não apenas screenshots isoladas. Não saltar para reconciliação funcional final antes dela.
 
 ## Ordem macro
 
@@ -233,8 +173,8 @@ Não saltar diretamente para homologação UX real.
 7. ~~Compras~~ — PR #157;
 8. ~~Financeiro~~ — PR #159;
 9. ~~Caixa~~ — PR #161;
-10. **Dashboard** — próxima;
-11. limpeza de linguagem;
+10. ~~Dashboard~~ — PR #163;
+11. **limpeza de linguagem/resíduos de engenharia** — próxima;
 12. homologação UX real;
 13. reconciliação funcional;
 14. PENDINGs necessários;
@@ -244,4 +184,4 @@ Não saltar diretamente para homologação UX real.
 
 ## #75/#121 permanecem ON HOLD
 
-Não investigar scheduling, Storage/R2/S3, restore drills, secrets/variables, Production fixtures ou evidência de proteção durante a consolidação funcional. Execuções agendadas eventualmente presentes no histórico não revogam o hold. O hold só termina por decisão explícita ou no production-readiness final.
+Não investigar scheduling, Storage/R2/S3, restore drills, secrets/variables, Production fixtures ou evidência de proteção durante esta slice. Execuções agendadas eventualmente presentes no histórico não revogam o hold. O hold só termina por decisão explícita ou no production-readiness final.
