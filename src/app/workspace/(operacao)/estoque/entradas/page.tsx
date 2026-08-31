@@ -49,7 +49,7 @@ export default function StockEntriesPage() {
       <PageHeader
         eyebrow="Estoque · Entradas"
         title="Registrar entrada"
-        description="Informe o produto, o local de destino e a quantidade recebida. Lote e validade continuam opcionais conforme o cadastro e as validações já existentes."
+        description="Informe o produto, o local de destino e a quantidade recebida. Preencha lote e validade quando essas informações estiverem disponíveis ou forem necessárias para o produto."
       />
 
       {feedback && <FeedbackMessage tone={feedback.tone}>{feedback.text}</FeedbackMessage>}
@@ -90,16 +90,16 @@ export default function StockEntriesPage() {
               <FormField id="entry-quantity" label="Quantidade" required>
                 {(props) => <Input {...props} required inputMode="decimal" value={entry.quantity} onChange={(event) => setEntry({ ...entry, quantity: event.target.value })} />}
               </FormField>
-              <FormField id="entry-unit-cost" label="Custo unitário (R$)" required hint="O valor segue a regra de custo já implementada; esta tela não altera a política de custeio.">
+              <FormField id="entry-unit-cost" label="Custo unitário (R$)" required hint="Informe o custo unitário correspondente a esta entrada.">
                 {(props) => <Input {...props} required inputMode="decimal" value={entry.unitCost} onChange={(event) => setEntry({ ...entry, unitCost: event.target.value })} />}
               </FormField>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <FormField id="entry-batch" label="Lote" hint="Opcional quando não for exigido pelas regras do produto.">
+              <FormField id="entry-batch" label="Lote" hint="Opcional quando o produto não exigir controle por lote.">
                 {(props) => <Input {...props} value={entry.batchCode} onChange={(event) => setEntry({ ...entry, batchCode: event.target.value })} />}
               </FormField>
-              <FormField id="entry-expiration" label="Validade" hint="Não define política de prioridade de saída.">
+              <FormField id="entry-expiration" label="Validade" hint="Informe a validade quando aplicável ao produto.">
                 {(props) => <Input {...props} type="date" value={entry.expirationDate} onChange={(event) => setEntry({ ...entry, expirationDate: event.target.value })} />}
               </FormField>
             </div>
