@@ -6,22 +6,18 @@
 
 **Fase 51 / Issue #142 — consolidação de produto, arquitetura de informação e UX — permanece ativa.**
 
-A slice de **limpeza de linguagem/resíduos de engenharia da experiência normal** foi integrada pelo PR #165.
+A etapa em andamento é **homologação UX real em jornadas desktop/tablet/mobile**. A homologação não está concluída: nesta execução foi possível validar de forma segura as superfícies públicas do deployment atual, corrigir três gaps concretos e integrar essas correções, mas ainda não existe evidência gráfica por viewport nem execução das jornadas autenticadas.
 
-Baseline funcional comprovado:
+Baseline funcional atual:
 
-- PR #165 — `refactor: limpar linguagem técnica da experiência normal` — **merged**;
-- merge funcional: `602c840788026ce6b520d0c441b672b48063476e`;
-- CI do head do PR #165 #569: **success**;
-- Business Transactions Integration #256: **success**;
-- Inventory Count Integration #269: **success**;
-- CI pós-merge da `main` #570 / run `33398505368`: **success**;
+- `main=044cb2099c1285d298040fdc2f12260fbaa2ca3f` — merge do PR #167;
+- PR #167 — `fix: corrigir achados públicos da homologação UX` — **merged**;
+- CI do head do PR #167 #575 / run `33402272680`: **success**;
+- CI pós-merge da `main` #576 / run `33402440077`: **success**;
 - lint, typecheck, unit tests, production build e job de banco/migrations/RLS: **success**;
 - Issue #142 continua aberta e ativa;
 - #75 e #121 continuam abertas e **TOTALMENTE ON HOLD**;
 - nenhum deploy Vercel manual/rotineiro foi feito.
-
-A documentação pode receber commits posteriores sem mudança de runtime; `602c840...` é o baseline funcional da slice #165.
 
 ## Slices da Fase 51 já integradas
 
@@ -39,98 +35,78 @@ A documentação pode receber commits posteriores sem mudança de runtime; `602c
 
 Não refazer essas slices sem bug ou gap concreto.
 
-## O que a limpeza de linguagem entregou
+## Homologação UX — progresso real
 
-A experiência normal deixou de expor detalhes de implementação sem valor operacional, mantendo os contratos funcionais existentes.
+A evidência detalhada está em `docs/qa/fase51-ux-homologation.md`.
 
-### Entrada, autenticação e contexto
+### Ambiente observado
 
-Foram removidas ou traduzidas referências visíveis a:
+A integração GitHub/Vercel criou automaticamente um deployment `READY` para o `main=3f99f5c79f05dd6ea494814f924c1cbb2f60fc0a` (merge documental do PR #166):
 
-- `Workspace persistente`;
-- Supabase/RLS;
-- cookie `httpOnly`;
-- `membership`;
-- backend/provider;
-- Auth/runbook/allowlist em textos voltados ao operador.
+- deployment: `dpl_2VGNVfvL6LmJjYVwD5TDiF9CMoCa`;
+- alias canônico: `sistema-lojasaph.vercel.app`;
+- source: Git integration;
+- nenhum deploy manual foi disparado.
 
-Os mesmos controles internos de sessão, autorização e seleção de organização permanecem ativos.
+Esse deployment já continha Caixa #161, Dashboard #163 e limpeza #165 e, portanto, removeu o antigo bloqueio de versão hospedada defasada.
 
-### Administração e papéis
+Após o merge do PR #167, foi consultada novamente a integração Vercel. **Ainda não havia novo deployment automático observado para `044cb209...` na última consulta desta execução.** Não disparar deployment manual para contornar isso; apenas reconsultar o estado na próxima execução.
 
-A tela de Usuários e permissões continua permitindo atribuir os perfis técnicos existentes, mas a experiência deixa explícito que **perfil do sistema não equivale automaticamente a cargo real**.
+### Superfícies públicas exercitadas
 
-Q-022 permanece aberta. Fora da tarefa administrativa de permissões, códigos técnicos de papel deixaram de ser exibidos como informação operacional comum.
+Sobre o deployment exato `3f99f5c...`, a consulta ao HTML realmente servido confirmou:
 
-### Proteção dos dados
+- `/` sem sessão resolve para o Login atual, sem landing técnica;
+- `/login` usa linguagem operacional, feedback acessível e links com target de toque;
+- `/workspace` sem sessão retorna ao Login preservando `next=/workspace` e informa `Sessão expirada. Entre novamente.` com `role="alert"`;
+- `/auth/atualizar-senha` sem sessão/token válido retorna ao Login com erro operacional anunciado como alerta;
+- `/recuperar-senha` e `/sem-acesso` estavam funcionais, mas revelaram gaps objetivos de acessibilidade/consistência corrigidos pelo PR #167.
 
-A tela foi traduzida para linguagem operacional: banco de dados, prazo entre cópias, integridade, retenção, anexos e teste de restauração.
+Nenhum formulário mutável foi submetido em Production e nenhum e-mail de recuperação foi disparado como prova.
 
-A alteração foi apenas de apresentação. Permanecem iguais:
+### Achados corrigidos pelo PR #167
 
-- política de 24 horas entre cópias válidas;
-- retenção configurada;
-- cálculo de saúde da proteção;
-- cobertura atual do banco;
-- limitação conhecida de anexos;
-- histórico e evidência persistidos;
-- hold de #75/#121.
+- `UX-51-001`: `Voltar ao login` em `/recuperar-senha` não possuía target mínimo de toque para âncora;
+- `UX-51-002`: erro geral da recuperação não usava o contrato `FeedbackMessage`/`role="alert"` já adotado no Login;
+- `UX-51-003`: links de ação de `/sem-acesso` não possuíam target mínimo de toque e o feedback geral estava fora do padrão compartilhado.
 
-Nenhum scheduling, Storage/R2/S3, restore real, secret, fixture ou Production foi tocado.
+Correções integradas:
 
-### Estoque, Financeiro e Caixa
+- `/recuperar-senha` reutiliza `Panel`, `FeedbackMessage`, `FormField`, `Input` e `Button` e preserva a mesma action/regra de autenticação;
+- link de retorno recebeu `min-h-11`;
+- `/sem-acesso` reutiliza `Panel`, `FeedbackMessage` e `Button`; links primários receberam `min-h-11`;
+- `responsive-contract.test.ts` cobre os contratos públicos de touch target e anúncio de erro.
 
-Foram simplificados helper texts e mensagens que narravam implementação (`fluxo autoritativo`, `eventos persistidos`, `backend`, `já implementado`, etc.).
+Nenhuma lógica de autenticação, sessão, autorização, bootstrap, schema, migration, RPC, grant ou RLS mudou.
 
-As ressalvas funcionais continuam explícitas:
+## Limite atual da homologação
 
-- seleção automática de lote não é apresentada como FEFO homologado;
-- regras de custeio não foram redefinidas;
-- diferenças financeiras continuam sem classificação automática;
-- estorno preserva histórico;
-- vigência de taxas e cálculo de fechamento de Caixa permanecem intactos.
+**Ainda não existe homologação gráfica real por desktop/tablet/mobile nem execução das jornadas autenticadas.**
 
-## Boundaries e segurança preservados
+Bloqueios comprovados nesta execução:
 
-O PR #165 não criou ou alterou:
+1. o acesso conectado à Vercel permite observar HTML/redirects reais, mas não oferece controle gráfico de viewport, foco, teclado, drawer ou screenshots;
+2. o runtime local possui Chromium/Playwright, porém não consegue resolver hosts externos nem obter o checkout do repositório, portanto não consegue executar o código atual localmente;
+3. não há nesta conversa sessão/credencial de teste aprovada para percorrer as áreas autenticadas;
+4. Production não será usada para criar usuários, fixtures ou dados artificiais de homologação.
 
-- schema;
-- migration;
-- RPC;
-- grant;
-- policy/RLS;
-- regra de autorização;
-- regra crítica de Estoque, Compras, Financeiro ou Caixa.
+CI/build e inspeção de HTML **não** substituem a evidência exigida pelo Definition of Done.
 
-Queries, RPCs, RLS/grants e boundaries dos módulos continuam sendo a fonte autoritativa. Nenhum PENDING foi resolvido por copy.
+## Próxima ação oficial
 
-## Homologação visual
+A próxima execução deve **continuar a mesma homologação UX**, não promover a reconciliação funcional ainda.
 
-**Ainda não existe homologação real completa das jornadas em desktop/tablet/mobile.**
+Prioridade imediata:
 
-CI e build comprovam integridade técnica, mas não substituem uso em browser. Não foi feito deploy Vercel manual apenas para produzir evidência.
+1. reconciliar o estado real do `main`, Issue #142, PRs/CI e deployment automático;
+2. verificar se a integração GitHub/Vercel já publicou automaticamente `044cb209...` ou um `main` posterior; não disparar deploy manual;
+3. quando o deployment atual estiver disponível, revalidar `/recuperar-senha` e `/sem-acesso` no HTML servido;
+4. se houver browser real com controle de viewport e sessão/credencial de teste aprovada, executar a matriz desktop/tablet/mobile de `docs/qa/fase51-ux-homologation.md`;
+5. se esses recursos continuarem indisponíveis, manter os itens como `bloqueio de ambiente`; não declarar homologação concluída e não inventar acesso.
 
-## Próxima slice oficial: homologação UX real
+Somente após a matriz representativa ser realmente executada e os achados corrigidos/revalidados promover:
 
-A etapa 13 da Issue #142 passa a ser a frente ativa:
-
-> **executar homologação real de UX em desktop/tablet/mobile por jornadas completas.**
-
-A homologação deve testar o produto existente, não redesenhar preventivamente telas. Bugs ou gaps observados devem ser registrados com evidência e corrigidos de forma localizada.
-
-Prioridades:
-
-- entrada/login/recuperação e seleção de organização;
-- navegação desktop e drawer mobile;
-- Visão geral;
-- Administração;
-- Cadastros;
-- Estoque;
-- Compras;
-- Financeiro;
-- Caixa.
-
-Usar ambiente seguro já existente ou execução local isolada. **Não disparar deploy Vercel manual/rotineiro e não criar fixture em Production para homologação.** Se não houver sessão/credencial de teste aprovada para uma jornada autenticada, registrar o bloqueio em vez de inventar acesso.
+> **reconciliação funcional final usando critério de usabilidade.**
 
 ## Ordem oficial de fechamento do produto
 
@@ -145,14 +121,12 @@ Usar ambiente seguro já existente ou execução local isolada. **Não disparar 
 9. ~~Caixa~~ — PR #161;
 10. ~~Dashboard~~ — PR #163;
 11. ~~limpeza de linguagem/resíduos de engenharia~~ — PR #165;
-12. **homologação UX em jornadas desktop/tablet/mobile** — próxima;
+12. **homologação UX em jornadas desktop/tablet/mobile — em andamento**;
 13. reconciliação funcional final;
 14. PENDINGs necessários;
 15. dados representativos;
 16. migração/cutover;
 17. `REQ-PLAT-005` final.
-
-A numeração documental acima segue o encadeamento operacional usado nos handoffs; na Issue #142 a homologação corresponde ao item macro 13 porque a issue separa arquitetura da informação e navegação em itens distintos.
 
 ## PENDING permanece sem inferência
 

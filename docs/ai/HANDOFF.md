@@ -2,23 +2,18 @@
 
 ## Estado de transição
 
-**Fase 51 / Issue #142 continua ativa. A slice de limpeza de linguagem/resíduos de engenharia foi integrada; a próxima slice é homologação UX real em desktop/tablet/mobile.**
+**Fase 51 / Issue #142 continua ativa. A homologação UX real foi iniciada, encontrou três gaps públicos concretos e o PR #167 os corrigiu. A homologação completa ainda não está encerrada.**
 
-Baseline funcional:
+Baseline funcional atual:
 
-- PR #165 — `refactor: limpar linguagem técnica da experiência normal` — merged;
-- merge funcional `602c840788026ce6b520d0c441b672b48063476e`;
-- CI do PR #165 #569: success;
-- Business Transactions Integration #256: success;
-- Inventory Count Integration #269: success;
-- CI pós-merge #570 / run `33398505368`: success;
+- `main=044cb2099c1285d298040fdc2f12260fbaa2ca3f`;
+- PR #167 — `fix: corrigir achados públicos da homologação UX` — merged;
+- CI do head do PR #167 #575 / run `33402272680`: success;
+- CI pós-merge #576 / run `33402440077`: success;
 - lint, typecheck, unit tests, production build e banco/migrations/RLS: success;
 - Issue #142 permanece aberta;
-- nenhum PR concorrente estava aberto na reconciliação de 2026-08-31;
 - #75/#121 permanecem **TOTALMENTE ON HOLD**;
 - nenhum deploy Vercel manual/rotineiro foi feito.
-
-`602c840...` é o baseline funcional. Commits posteriores podem ser exclusivamente documentais.
 
 ## Não refazer
 
@@ -38,156 +33,127 @@ Slices já integradas:
 
 Não reabrir essas áreas por preferência estética. Corrigir somente bugs ou gaps comprovados durante a homologação.
 
-## O que o PR #165 entregou
+## O que foi homologado nesta execução
 
-### Shell, autenticação e contexto
+A evidência detalhada está em `docs/qa/fase51-ux-homologation.md`.
 
-A experiência normal deixou de expor termos de infraestrutura e implementação como:
+### Deployment observado
 
-- `Workspace persistente`;
-- Supabase/RLS;
-- cookie `httpOnly`;
-- `membership`;
-- backend/provider;
-- Auth/runbook/allowlist em mensagens voltadas ao operador.
+A consulta somente leitura da Vercel encontrou um deployment `READY` criado automaticamente pela integração GitHub para:
 
-A lógica interna de sessão, seleção de organização e autorização não mudou.
+- commit `3f99f5c79f05dd6ea494814f924c1cbb2f60fc0a` — merge do PR #166;
+- deployment `dpl_2VGNVfvL6LmJjYVwD5TDiF9CMoCa`;
+- alias `sistema-lojasaph.vercel.app`;
+- source `git`.
 
-### Administração
+Esse commit já contém Caixa #161, Dashboard #163 e limpeza #165. Portanto o antigo bloqueio documental que dizia que Production estava parada em `0329ec...` ficou obsoleto.
 
-Usuários e permissões continuam usando os perfis técnicos existentes. A UI reforça que esses perfis **não equivalem automaticamente a cargos reais**.
+Após o merge do PR #167, foi consultada novamente a lista de deployments. **Ainda não havia deployment automático observado para `main=044cb209...` na última consulta desta execução.** Não criar deployment manual para contornar isso; apenas reconciliar novamente no próximo chat.
 
-Q-022 permanece aberta e não foi reinterpretada.
+### Superfícies públicas observadas com segurança
 
-### Proteção dos dados
+No deployment exato `3f99f5c...` foram consultados os HTMLs realmente servidos para:
 
-A tela passou a falar em banco de dados, cópia válida, prazo entre cópias, retenção, anexos e restauração em vez de RLS/PostgreSQL/RPO/provider/Production.
+- `/` sem sessão;
+- `/login`;
+- `/workspace` sem sessão;
+- `/recuperar-senha`;
+- `/sem-acesso`;
+- `/auth/atualizar-senha` sem sessão/token válido.
 
-Não houve mudança de política. Permanecem iguais os cálculos, os estados de saúde, a retenção, a cobertura e a limitação de anexos.
+Comprovado:
 
-#75/#121 continuam totalmente on hold.
+- `/` leva ao Login atual e não reintroduziu landing técnica;
+- `/workspace` sem sessão volta ao Login preservando o destino e comunica sessão expirada com alerta;
+- link de atualização de senha inválido/expirado falha de forma segura e operacional;
+- nenhum formulário mutável foi submetido em Production;
+- nenhum usuário/dado artificial foi criado para prova.
 
-### Estoque, Financeiro e Caixa
+## Achados UX corrigidos pelo PR #167
 
-Helper texts e feedbacks deixaram de narrar detalhes como `fluxo autoritativo`, `eventos persistidos`, `backend` ou `já implementado`.
+### UX-51-001 — retorno da recuperação sem target mínimo
 
-Foram preservados:
+`/recuperar-senha` exibia `Voltar ao login` como âncora sem `min-h-11`. A regra global de 44px cobre controles de formulário, não links.
 
-- seleção automática de lotes sem promessa de FEFO;
-- ausência de nova política de custeio;
-- diferenças financeiras sem classificação inferida;
-- estorno auditável;
-- regras de Caixa, vigência de taxas e fechamento.
+Correção integrada: link de retorno agora usa `inline-flex min-h-11 items-center`.
 
-### Segurança e contratos
+### UX-51-002 — erro geral da recuperação fora do contrato compartilhado
 
-Nenhum schema, migration, RPC, grant, RLS, autorização ou boundary transacional foi alterado pelo PR #165.
+O erro geral era um `<p>` estilizado sem `role="alert"`, enquanto o Login já usava `FeedbackMessage`.
 
-## Validação do PR #165
+Correção integrada: recuperação reutiliza `Panel`, `FeedbackMessage`, `FormField`, `Input` e `Button`, preservando a mesma action e regras de autenticação.
+
+### UX-51-003 — ações de `/sem-acesso` pequenas em touch
+
+Os links `Entrar` e `Configurar acesso inicial` não possuíam altura mínima. O feedback de erro também não reutilizava o padrão compartilhado.
+
+Correção integrada: links com `min-h-11`, erro com `FeedbackMessage role="alert"`, botão de saída com `Button`.
+
+### Cobertura
+
+`src/app/responsive-contract.test.ts` passou a cobrir os contratos públicos de touch target e anúncio de erro.
+
+## Validação do PR #167
 
 Head final:
 
-- CI #569: success;
+- CI #575 / run `33402272680`: success;
 - lint: success;
 - typecheck: success;
 - unit tests: success;
 - production build: success;
-- banco/migrations/RLS: success;
-- Business Transactions Integration #256: success;
-- Inventory Count Integration #269: success.
+- banco/migrations/RLS: success.
 
 Após o merge:
 
-- CI #570 / run `33398505368`: success;
+- CI #576 / run `33402440077`: success;
 - jobs `validate` e `database`: success.
 
-## Limite atual
+Nenhum schema, migration, RPC, grant, RLS, autorização, sessão ou boundary de negócio foi alterado.
 
-**Ainda não houve homologação real completa em browser das jornadas desktop/tablet/mobile.**
+## Limite atual — não declarar homologação concluída
 
-Não usar CI/build como substituto dessa evidência. Também não fazer deploy Vercel manual apenas para homologar.
+**Ainda faltam browser gráfico real e jornadas autenticadas.**
 
-### Preflight Vercel já realizado
+Bloqueios comprovados:
 
-Consulta somente leitura ao projeto Vercel `sistema-lojasaph` em 2026-08-31 confirmou:
+1. a integração Vercel disponível nesta sessão permite HTML/redirect real, mas não controla viewport, foco, teclado, drawer ou screenshots;
+2. o runtime local possui Chromium/Playwright, porém não consegue resolver hosts externos nem baixar o checkout do GitHub, logo não consegue executar o app atual localmente;
+3. não foi encontrada integração adicional de browser disponível para esta sessão;
+4. não há sessão/credencial de teste aprovada no contexto atual;
+5. Production não deve receber usuários, fixtures ou dados artificiais de homologação.
 
-- o projeto está conectado ao repositório `synapselab-ia/sistema-lojasaph`;
-- o deployment Production mais recente disponível está `READY`;
-- esse deployment corresponde ao commit **`0329ec389521f32e6378429c81b3f444a7b6898a`**, mensagem `docs: reconciliar handoff após Financeiro (#160)`;
-- portanto ele é **anterior** às slices de Caixa #161, Dashboard #163 e limpeza de linguagem #165.
+Não substituir esses bloqueios por inspeção estática, CI ou screenshots fabricados.
 
-Conclusão: **`sistema-lojasaph.vercel.app` não representa o baseline funcional atual e não pode ser usado para certificar a homologação da Fase 51 atual.**
+## Próxima ação — continuar homologação UX
 
-Nenhum deployment foi criado ou promovido durante esse preflight. Não disparar deploy manual para contornar o bloqueio. A próxima execução deve preferir uma execução local isolada do código atual, caso consiga prover um backend/credencial de teste aprovado sem usar Production; caso contrário, registrar as jornadas autenticadas como bloqueadas por ambiente.
+O próximo chat deve **continuar a homologação UX real**, não iniciar a reconciliação funcional ainda.
 
-## Próxima ação: homologação UX real
+### Primeiro reconciliar
 
-O próximo chat deve executar a slice de **homologação real de UX em jornadas completas**, conforme a etapa seguinte da Issue #142.
+1. confirmar `main`, Issue #142, PRs/branches e CI reais;
+2. confirmar que PR #167 continua merged e que CI #576 está verde;
+3. consultar o deployment automático atual da Vercel;
+4. se `044cb209...` ou um `main` posterior estiver `READY`, revalidar `/recuperar-senha` e `/sem-acesso` no HTML servido;
+5. não fazer deploy manual se o automático não existir.
 
-### Objetivo
+### Para completar a matriz
 
-Validar a aplicação existente como produto em tamanhos de tela e jornadas reais, encontrando regressões ou gaps concretos antes da reconciliação funcional final.
+Quando existir um browser real e uma sessão/credencial de teste aprovada:
 
-### Preparação obrigatória
+- executar desktop, tablet e mobile com dimensões registradas;
+- testar navegação principal/sidebar/drawer/foco/teclado;
+- percorrer Visão geral, Administração, Cadastros, Estoque, Compras, Financeiro e Caixa;
+- usar somente operações de leitura ou dados de teste explicitamente aprovados;
+- registrar cada achado em `docs/qa/fase51-ux-homologation.md`;
+- corrigir apenas problemas comprovados;
+- revalidar os achados corrigidos no mesmo viewport/jornada.
 
-1. reconciliar `main`, Issue #142, PRs, branches e CI reais;
-2. reler `NEXT_ACTION.md`, roadmap, IA, design system e Definition of Done;
-3. não usar o deployment Production atual para certificar as slices pós-#160, pois ele está comprovadamente defasado;
-4. identificar um ambiente seguro que represente o código atual;
-5. não disparar deploy Vercel manual/rotineiro para criar esse ambiente;
-6. não usar Production como laboratório e não criar fixtures nela;
-7. confirmar se existe sessão/credencial de teste aprovada para jornadas autenticadas; se não existir, registrar o bloqueio e homologar apenas o que for seguro/acessível, sem inventar credenciais.
-
-### Jornadas prioritárias
-
-Cobrir, com evidência de browser quando possível:
-
-1. entrada → login → recuperação de senha;
-2. seleção/troca de organização e navegação principal;
-3. Visão geral e filtros;
-4. Administração → Estrutura e Usuários/permissões;
-5. Cadastros → Produtos, Fornecedores e Funcionários;
-6. Estoque → posição, entrada, retirada, baixa, devolução, transferência, inventário, lotes e mínimos;
-7. Compras → lista, criação, detalhe, recebimento e histórico;
-8. Financeiro → lista, criação, detalhe, pagamento, vencimentos e histórico;
-9. Caixa → visão, sessões, abertura/detalhe/fechamento e configuração.
-
-### Viewports
-
-Validar pelo menos:
-
-- desktop;
-- tablet;
-- mobile.
-
-Não limitar a revisão a screenshots estáticos. Navegar, abrir drawers/dialogs, preencher formulários seguros, usar filtros e percorrer estados de loading/empty/error quando reproduzíveis sem adulterar dados reais.
-
-### O que observar
-
-- hierarquia e clareza da tarefa;
-- navegação ativa e retorno entre lista/detalhe/ação;
-- overflow, truncamento e tabelas em telas menores;
-- drawer mobile e foco/teclado;
-- labels, helper text e mensagens;
-- ações indisponíveis conforme permissão/estado;
-- diálogos destrutivos;
-- formulários e validações;
-- inconsistência entre desktop e mobile;
-- resíduos técnicos ainda visíveis;
-- links quebrados ou rotas antigas.
-
-### Como tratar achados
-
-- registrar evidência concreta por jornada/viewport;
-- classificar como bug, gap de UX ou bloqueio de ambiente;
-- corrigir somente o que for comprovado;
-- não usar homologação para inventar regra de negócio;
-- manter Q-022 e PENDINGs intactos;
-- se houver código alterado, passar lint, typecheck, testes, build e gates aplicáveis antes do merge.
+Se browser/sessão continuarem indisponíveis, registrar `bloqueio de ambiente` e manter a homologação aberta. Não inventar credenciais, não afrouxar RLS e não usar Production como laboratório.
 
 ## Depois da homologação UX
 
-Somente após registrar/corrigir os achados e reconciliar a documentação, promover:
+Somente quando a matriz representativa estiver realmente executada e os achados relevantes corrigidos/revalidados, promover:
 
 > **reconciliação funcional final usando critério de usabilidade, não apenas existência técnica.**
 
@@ -204,7 +170,7 @@ Somente após registrar/corrigir os achados e reconciliar a documentação, prom
 9. ~~Caixa~~ — PR #161;
 10. ~~Dashboard~~ — PR #163;
 11. ~~limpeza de linguagem/resíduos de engenharia~~ — PR #165;
-12. **homologação UX real** — próxima;
+12. **homologação UX real — em andamento**;
 13. reconciliação funcional;
 14. PENDINGs necessários;
 15. dados representativos;
@@ -213,4 +179,4 @@ Somente após registrar/corrigir os achados e reconciliar a documentação, prom
 
 ## Guardrails permanentes
 
-GitHub é fonte de verdade; RLS é boundary; nenhum secret em browser/Git/docs; Production não recebe fixture para prova; nenhum deploy Vercel rotineiro; Q-022 e requisitos PENDING permanecem sem inferência; #75/#121 permanecem ON HOLD até production-readiness final ou decisão explícita.
+GitHub é fonte de verdade; RLS é boundary; nenhum secret em browser/Git/docs; Production não recebe fixture para prova; nenhum deploy Vercel manual/rotineiro; Q-022 e requisitos PENDING permanecem sem inferência; #75/#121 permanecem ON HOLD até production-readiness final ou decisão explícita.

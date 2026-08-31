@@ -1,81 +1,114 @@
 # Fase 51 — Homologação UX real
 
-Status: **EM ANDAMENTO — evidência pública executada; jornadas autenticadas e validação visual por viewport ainda bloqueadas**  
+Status: **EM ANDAMENTO — primeira rodada pública corrigida; jornadas autenticadas e validação gráfica por viewport ainda bloqueadas**  
 Data: **2026-08-31**  
 Issue: **#142**
 
-## Baseline observado
+## Baseline e validação técnica
 
-- GitHub `main`: `3f99f5c79f05dd6ea494814f924c1cbb2f60fc0a`;
-- CI pós-merge #574 / run `33399818968`: `success`;
+Baseline após a primeira rodada de correções:
+
+- GitHub `main`: `044cb2099c1285d298040fdc2f12260fbaa2ca3f`;
+- PR #167 — `fix: corrigir achados públicos da homologação UX` — merged;
+- CI do PR #167 #575 / run `33402272680`: `success`;
+- CI pós-merge #576 / run `33402440077`: `success`;
+- lint, typecheck, unit tests, production build e banco/migrations/RLS: `success`.
+
+Nenhum schema, migration, RPC, grant, RLS, regra de autorização ou regra de negócio foi alterado.
+
+## Ambiente hospedado observado
+
+A primeira rodada de evidência pública foi executada sobre:
+
 - deployment Vercel: `dpl_2VGNVfvL6LmJjYVwD5TDiF9CMoCa`;
-- deployment state: `READY`;
-- source: integração GitHub, `githubCommitSha=3f99f5c79f05dd6ea494814f924c1cbb2f60fc0a`;
+- state: `READY`;
+- source: integração GitHub;
+- `githubCommitSha=3f99f5c79f05dd6ea494814f924c1cbb2f60fc0a`;
 - alias canônico observado: `sistema-lojasaph.vercel.app`.
 
-O deployment foi criado automaticamente pela integração Git após o merge do PR #166. **Nenhum deploy manual foi solicitado ou disparado para esta homologação.**
+Esse commit já continha Caixa #161, Dashboard #163 e limpeza #165 e representava corretamente o produto antes das correções do PR #167.
+
+O deployment foi criado automaticamente pela integração Git. **Nenhum deploy manual foi solicitado ou disparado para esta homologação.**
+
+Após o merge do PR #167, a lista de deployments foi consultada novamente e ainda não havia, na última consulta desta execução, deployment automático observado para `044cb209...`.
+
+Consequência: as correções do PR #167 estão integradas e tecnicamente verdes, mas **a revalidação hospedada de UX-51-001/002/003 permanece pendente até a integração automática disponibilizar o `main` corrente**. Não criar deployment manual para acelerar essa evidência.
 
 ## Limites da evidência desta execução
 
-A ferramenta conectada à Vercel permite consultar o HTML efetivamente servido pelo deployment atual, inclusive redirects resolvidos pelo Next.js. Ela não fornece nesta sessão um navegador gráfico com viewport, foco, teclado, drawer ou screenshots.
+O acesso conectado à Vercel permite consultar o HTML efetivamente servido pelo deployment, inclusive redirects resolvidos pelo Next.js. Ele não fornece nesta sessão um browser gráfico com controle de viewport, foco, teclado, drawer ou screenshots.
 
-O runtime de shell disponível também não resolve DNS externo e não possui `agent-browser` instalado, portanto não foi possível substituir essa limitação por browser local.
+Foi investigada uma alternativa local:
 
-Não existe nesta sessão uma credencial/sessão de teste aprovada para o Sistema Lojasaph. Consequentemente:
+- Chromium está instalado;
+- Playwright está instalado;
+- porém o runtime local não resolve hosts externos e não consegue obter o checkout do GitHub nem carregar o domínio Vercel;
+- não foi encontrada integração adicional de browser disponível nesta sessão.
+
+Também não existe no contexto atual uma credencial/sessão de teste aprovada para o Sistema Lojasaph.
+
+Consequentemente:
 
 - nenhuma autenticação foi contornada;
 - nenhum usuário/dado artificial foi criado em Production;
-- nenhuma operação de escrita foi usada como prova;
+- nenhuma operação mutável foi usada como prova;
 - nenhum e-mail de recuperação foi disparado;
-- nenhuma jornada autenticada foi declarada homologada.
+- nenhuma jornada autenticada foi declarada homologada;
+- nenhuma viewport foi declarada aprovada apenas por CSS/HTML.
 
-## Evidência pública executada
+## Evidência pública executada — deployment `3f99f5c...`
 
-| Jornada/rota | Resultado observado no deployment atual | Classificação |
+| Jornada/rota | Resultado observado no deployment | Estado |
 | --- | --- | --- |
-| `/` sem sessão | resposta atual resolve para `/login`; não existe landing técnica intermediária | aprovado no limite HTTP/HTML |
-| `/login` | formulário de e-mail/senha em linguagem operacional; feedback usa `role="alert"`; links possuem `min-h-11` | aprovado no limite HTTP/HTML |
+| `/` sem sessão | resolve para `/login`; não existe landing técnica intermediária | aprovado no limite HTTP/HTML |
+| `/login` | formulário operacional; feedback usa `role="alert"`; links possuem `min-h-11` | aprovado no limite HTTP/HTML |
 | `/workspace` sem sessão | resolve para `/login?next=/workspace` com `Sessão expirada. Entre novamente.` em `role="alert"` | aprovado no limite HTTP/HTML |
-| `/recuperar-senha` | formulário e copy corretos; foram encontrados gaps de consistência/acessibilidade descritos abaixo | correção necessária |
-| `/sem-acesso` sem sessão | estado seguro e copy operacional; foram encontrados gaps de touch target/feedback descritos abaixo | correção necessária |
-| `/auth/atualizar-senha` sem sessão válida | resolve para Login com `O link de autenticação expirou. Solicite um novo.` anunciado como alerta | aprovado no limite HTTP/HTML |
+| `/recuperar-senha` | fluxo/copy corretos; revelou UX-51-001 e UX-51-002 | corrigido no PR #167; revalidação hospedada pendente |
+| `/sem-acesso` sem sessão | estado seguro/copy operacional; revelou UX-51-003 | corrigido no PR #167; revalidação hospedada pendente |
+| `/auth/atualizar-senha` sem sessão válida | retorna ao Login com `O link de autenticação expirou. Solicite um novo.` anunciado como alerta | aprovado no limite HTTP/HTML |
 
 ## Achados concretos
 
 ### UX-51-001 — target de toque do retorno da recuperação
 
 - rota: `/recuperar-senha`;
-- evidência: o link `Voltar ao login` era `inline-block` sem `min-h-11`;
+- evidência original: `Voltar ao login` era `inline-block` sem `min-h-11`;
 - contexto: a proteção global de `44px` cobre `button/input/select/textarea`, não âncoras;
-- esperado: controles de navegação relevantes continuam utilizáveis em touch, conforme design system/DoD;
+- esperado: navegação relevante permanece utilizável em touch conforme design system/DoD;
 - classificação: `acessibilidade` / `responsividade`;
-- correção: aplicada em `fix/51-public-auth-ux-homologation` com `inline-flex min-h-11 items-center`.
+- correção: **integrada pelo PR #167** com `inline-flex min-h-11 items-center`;
+- CI: verde;
+- revalidação no deployment pós-correção: **pendente de deployment automático do `main` corrente**.
 
 ### UX-51-002 — feedback de erro inconsistente na recuperação
 
 - rota: `/recuperar-senha`;
-- evidência: erro geral era um `<p>` estilizado sem `role="alert"`, enquanto Login já usa `FeedbackMessage tone="danger" role="alert"`;
-- esperado: erro geral da jornada usa o contrato de feedback do design system e semântica de anúncio apropriada;
+- evidência original: erro geral era `<p>` estilizado sem `role="alert"`, enquanto Login usa `FeedbackMessage tone="danger" role="alert"`;
+- esperado: erro geral usa o contrato de feedback do design system e semântica de anúncio apropriada;
 - classificação: `acessibilidade` / `gap de UX`;
-- correção: aplicada usando `FeedbackMessage`; a página também passa a reutilizar `Panel`, `FormField`, `Input` e `Button` sem alterar a action ou regra de autenticação.
+- correção: **integrada pelo PR #167** com `FeedbackMessage`; a página também reutiliza `Panel`, `FormField`, `Input` e `Button` sem mudar action ou regra de autenticação;
+- CI: verde;
+- revalidação no deployment pós-correção: **pendente**.
 
 ### UX-51-003 — ações por link pequenas em acesso indisponível
 
 - rota: `/sem-acesso`;
-- evidência: links `Entrar` e `Configurar acesso inicial` usavam apenas `px-4 py-2`, sem altura mínima e fora da regra global para controles de formulário;
+- evidência original: links `Entrar` e `Configurar acesso inicial` usavam apenas `px-4 py-2`, sem altura mínima e fora da regra global de controles de formulário;
 - esperado: ações primárias por toque possuem target mínimo consistente;
 - classificação: `acessibilidade` / `responsividade`;
-- correção: aplicada com `inline-flex min-h-11`; erro geral passa a `FeedbackMessage role="alert"` e o botão de saída reutiliza `Button`.
+- correção: **integrada pelo PR #167** com `inline-flex min-h-11`; erro geral passa a `FeedbackMessage role="alert"` e saída reutiliza `Button`;
+- CI: verde;
+- revalidação no deployment pós-correção: **pendente**.
 
-## O que foi deliberadamente descartado como falso positivo
+## Falso positivo descartado
 
-Os campos e botões de formulário em `/recuperar-senha` não foram classificados como touch target insuficiente: `globals.css` já aplica `min-height: 44px` a `button` e inputs em `(pointer: coarse)`. A correção não duplica essa regra.
+Os campos e botões de formulário em `/recuperar-senha` não foram classificados como touch target insuficiente: `globals.css` já aplica `min-height: 44px` a `button` e inputs em `(pointer: coarse)`. A correção não duplicou essa regra.
 
 ## Matriz de viewports
 
 | Área | Desktop | Tablet | Mobile | Estado |
 | --- | --- | --- | --- | --- |
-| Entrada/Login/Recuperação | bloqueado para inspeção gráfica | bloqueado para inspeção gráfica | bloqueado para inspeção gráfica | HTML atual validado; browser gráfico indisponível |
+| Entrada/Login/Recuperação | bloqueado para inspeção gráfica | bloqueado para inspeção gráfica | bloqueado para inspeção gráfica | HTML real parcialmente validado; browser gráfico indisponível |
 | Navegação/Visão geral | bloqueado | bloqueado | bloqueado | requer sessão autenticada + browser |
 | Administração | bloqueado | bloqueado | bloqueado | requer sessão autenticada + browser |
 | Cadastros | bloqueado | bloqueado | bloqueado | requer sessão autenticada + browser |
@@ -84,12 +117,13 @@ Os campos e botões de formulário em `/recuperar-senha` não foram classificado
 | Financeiro | bloqueado | bloqueado | bloqueado | requer sessão autenticada + browser |
 | Caixa | bloqueado | bloqueado | bloqueado | requer sessão autenticada + browser |
 
-**Esta tabela não certifica responsividade.** Ela registra explicitamente a ausência de evidência que o Definition of Done exige.
+**Esta tabela não certifica responsividade.** Ela registra explicitamente a ausência de evidência exigida pelo Definition of Done.
 
 ## Jornadas autenticadas bloqueadas
 
 Permanecem sem execução real nesta sessão:
 
+- login com conta real de teste;
 - seleção/troca de organização e logout autenticado;
 - sidebar desktop e drawer mobile;
 - Visão geral e filtros;
@@ -99,15 +133,22 @@ Permanecem sem execução real nesta sessão:
 - Compras;
 - Financeiro;
 - Caixa;
-- convite válido e definição de nova senha após token válido.
+- convite válido e definição de nova senha após token legítimo.
 
-Motivo: não há sessão/credencial de teste aprovada nesta execução. Production não será usada para criar fixtures ou dados de prova.
+Motivo: não há sessão/credencial de teste aprovada e não existe browser gráfico operável sobre o código atual nesta execução. Production não será usada para criar fixtures ou dados de prova.
 
-## Critério para continuar
+## Próxima rodada
 
-A homologação da Fase 51 **não está encerrada**. A próxima execução deve continuar esta mesma matriz quando existir:
+A homologação da Fase 51 **não está encerrada**.
 
-1. browser real com controle de viewport/foco/teclado; e
-2. sessão/credencial aprovada que permita percorrer as jornadas autenticadas sem criar dados artificiais em Production.
+Na próxima execução:
 
-Até lá, somente superfícies públicas e estados seguros podem ser validados; CI/build e inspeção de HTML não substituem a homologação real desktop/tablet/mobile.
+1. confirmar `main`, CI e deployment automático corrente;
+2. se o deployment exato de `044cb209...` ou de um `main` posterior estiver `READY`, revalidar `/recuperar-senha` e `/sem-acesso` e atualizar UX-51-001/002/003;
+3. não disparar deploy manual caso ele não exista;
+4. quando houver browser real, registrar dimensões e executar desktop/tablet/mobile;
+5. quando houver sessão/credencial aprovada, percorrer as jornadas autenticadas sem criar dados artificiais em Production;
+6. registrar e corrigir somente achados concretos;
+7. não promover reconciliação funcional até a matriz representativa estar realmente homologada ou os bloqueios externos serem explicitamente aceitos pelo operador.
+
+CI/build, leitura de código e inspeção de HTML continuam sendo evidências auxiliares; não substituem homologação de jornada em browser.
