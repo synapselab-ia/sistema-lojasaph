@@ -1,4 +1,4 @@
-import { DashboardAttentionItem } from "./dashboard-summary";
+import type { DashboardAttentionItem } from "./dashboard-summary";
 
 const attentionDestinations: Readonly<Record<string, string>> = Object.freeze({
   "finance-overdue": "/workspace/financeiro/vencimentos",
