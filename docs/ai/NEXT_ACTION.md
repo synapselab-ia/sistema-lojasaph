@@ -4,27 +4,45 @@
 
 **Fase 51 / Issue #142 — consolidação de produto, arquitetura de informação e UX — continua como frente ativa.**
 
+A slice de limpeza de linguagem/resíduos de engenharia foi concluída pelo PR #165.
+
 Baseline funcional para a próxima execução:
 
-- `main=395a2cd578b47c2b98ac449f50c1d4e3a094627d` — merge do PR #163;
-- PR #163 — Dashboard / Visão geral consolidado — merged;
-- CI pós-merge #566 / run `33392864692`: success;
+- PR #165 — merged;
+- merge funcional `602c840788026ce6b520d0c441b672b48063476e`;
+- CI do PR #165 #569: success;
+- Business Transactions Integration #256: success;
+- Inventory Count Integration #269: success;
+- CI pós-merge #570 / run `33398505368`: success;
 - lint, typecheck, unit tests, production build e banco/migrations/RLS: success;
-- CI #565 / run `33392616909`: success no head final do PR;
-- Business Transactions Integration #255 / run `33392616971`: success;
-- Inventory Count Integration #268 / run `33392616820`: success;
 - Issue #142 aberta e ativa;
 - #75/#121 **TOTALMENTE ON HOLD**.
 
-Não refazer Administração, Cadastros, Estoque, Compras, Financeiro, Caixa ou Dashboard sem bug/gap concreto.
+Não refazer Administração, Cadastros, Estoque, Compras, Financeiro, Caixa, Dashboard ou limpeza de linguagem sem bug/gap concreto.
+
+## Bloqueio de ambiente já comprovado
+
+Preflight somente leitura do projeto Vercel `sistema-lojasaph` em 2026-08-31 mostrou que o deployment Production mais recente disponível corresponde ao commit:
+
+- `0329ec389521f32e6378429c81b3f444a7b6898a` — `docs: reconciliar handoff após Financeiro (#160)`.
+
+Esse deployment é anterior a:
+
+- Caixa — PR #161;
+- Dashboard — PR #163;
+- limpeza de linguagem — PR #165.
+
+Portanto, **o domínio Production atual não representa o baseline funcional corrente e não pode ser usado para certificar a homologação desta etapa**.
+
+Nenhum deploy foi disparado durante o preflight. Não criar/promover deployment manual para contornar esse bloqueio.
 
 ## NEXT_ACTION objetiva
 
-### Executar a próxima slice da Issue #142: **limpeza de linguagem/resíduos de engenharia da experiência normal**
+### Executar a próxima slice da Issue #142: **homologação real de UX em desktop/tablet/mobile por jornadas completas**
 
-O objetivo é remover da experiência cotidiana detalhes técnicos que ainda vazam para o operador, sem alterar domínio, queries, persistência, autorização, rotas consolidadas ou regras de negócio.
+O objetivo é validar o produto existente em browser, identificar problemas concretos de usabilidade/responsividade/navegação e corrigir somente o que for comprovado.
 
-Essa slice é de **produto/linguagem/apresentação**, não uma autorização para refatoração arquitetural ampla.
+Esta etapa é de **homologação e correção orientada por evidência**, não de redesign preventivo.
 
 Documentos de autoridade:
 
@@ -36,131 +54,209 @@ Documentos de autoridade:
 - `docs/product/open-questions.md`;
 - documentação/ADRs dos módulos afetados.
 
-## 1. Reconciliar e inventariar antes de editar
+## 1. Reconciliar estado real antes de testar
 
-No início da próxima execução:
+No início da execução:
 
 1. confirmar `main`, Issue #142, PRs, branches e CI reais;
 2. reler os documentos de autoridade;
-3. fazer busca ampla no código de UI por strings e padrões técnicos potencialmente visíveis;
-4. confirmar cada ocorrência em contexto antes de alterar;
-5. percorrer shell/Visão geral/Administração/Cadastros/Estoque/Compras/Financeiro/Caixa, sem assumir que uma busca textual isolada prova um problema;
-6. separar UI normal de testes, logs, comentários, documentação técnica, mensagens de desenvolvimento e código interno legítimo;
-7. registrar uma lista concreta de resíduos antes de começar as correções.
+3. não usar o deployment Production atual para certificar as slices pós-#160;
+4. identificar qual ambiente seguro **e atual** será usado para browser testing;
+5. preferir execução local isolada do código corrente quando ela puder ser configurada sem copiar secrets para Git/docs e sem usar Production como backend de laboratório;
+6. verificar se o ambiente escolhido representa o código atual de forma suficiente para a homologação;
+7. **não disparar deploy Vercel manual/rotineiro** apenas para gerar ambiente de teste;
+8. **não usar Production como laboratório** e não criar fixtures/dados artificiais em Production;
+9. confirmar se existe sessão/credencial de teste aprovada para jornadas autenticadas;
+10. se não houver backend/credencial de teste seguro para o código atual, registrar `bloqueio de ambiente` para as jornadas autenticadas e não inventar credenciais nem contornar autenticação.
 
-## 2. O que procurar
+A ausência de ambiente atual não autoriza homologar sobre a versão antiga nem declarar a slice concluída. Ainda assim, pode-se validar de forma localizada superfícies do código atual que sejam executáveis com segurança em ambiente isolado.
 
-Priorizar texto que chega ao usuário sem necessidade operacional, por exemplo:
+## 2. Matriz mínima de viewports
 
-- UUID ou ID interno exposto como informação principal;
-- nomes de tabela, view, RPC, migration, schema ou policy;
-- `RLS`, provider, adapter, gateway, read model, fixture ou outros termos de implementação;
-- nomes crus de campos de banco/API como `stock_location_id`, `business_date`, `occurred_at`, `unit_price` e equivalentes quando houver linguagem operacional melhor;
-- nomes internos de status/tipos quando já existe rótulo de negócio;
-- referências a branch, PR, fase, seed, ambiente técnico ou artefato de engenharia na experiência normal;
-- mensagens de erro que revelem detalhes de infraestrutura sem ajudar o operador;
-- helper text com código/backticks apenas para explicar implementação;
-- textos inconsistentes com a arquitetura de informação já aprovada;
-- rótulos genéricos que ainda apontem para páginas antigas quando houver jornada consolidada específica.
+Validar no mínimo três classes:
 
-Nem toda ocorrência técnica no repositório é um bug de UX. Só alterar o que realmente integra a experiência normal ou um estado de erro plausivelmente exibido ao usuário.
+- **desktop** — largura típica de notebook/desktop;
+- **tablet** — largura intermediária que force adaptação real de layout;
+- **mobile** — largura de telefone com navegação por drawer.
 
-## 3. Escopo da correção
+Registrar dimensões efetivamente usadas na evidência.
 
-Pode incluir:
+## 3. Jornadas prioritárias
 
-- títulos, labels, descrições e helper text;
-- mensagens de loading, vazio, erro, sucesso e confirmação;
-- labels de status e ações;
-- tooltips/aria-labels quando aplicável;
-- pequenos ajustes de hierarquia textual;
-- links claramente antigos ou genéricos quando a rota consolidada equivalente já existe;
-- documentação de arquitetura da informação que esteja objetivamente defasada em relação às rotas reais.
+A homologação deve percorrer tarefas completas, não apenas abrir páginas.
 
-Débito documental já conhecido:
+### Entrada e contexto
 
-- `docs/product/workspace-information-architecture.md` ainda descreve no mapa de rotas o Caixa como se configuração/operação compartilhassem a página pré-PR #161. Corrigir a linha e registrar as rotas consolidadas reais sem reabrir a slice funcional de Caixa.
+- `/` → roteamento correto por estado de sessão;
+- login;
+- recuperação de senha;
+- seleção/troca de organização quando aplicável;
+- logout;
+- estados de acesso indisponível plausíveis.
 
-## 4. O que não fazer
+### Navegação e Visão geral
 
-Não usar essa slice para:
+- sidebar desktop;
+- drawer mobile, abertura/fechamento/foco;
+- estado ativo de área/subárea;
+- Visão geral;
+- filtros de Unidade, Setor, horizonte e período quando disponíveis;
+- links de alertas/cards para jornadas específicas.
 
-- trocar schema, migration, RPC, RLS, grant ou regra de autorização por estética;
-- renomear campo persistente apenas para combinar com copy;
-- mover regra crítica para React;
-- reescrever journeys já consolidadas;
-- criar novo KPI, threshold, janela, SLA, score, meta ou comparação;
-- alterar cálculo financeiro, saldo, custo, divergência ou status;
-- mudar semântica de Unit/Setor/Organization;
-- resolver `REQ-CASH-007`, `REQ-CASH-008`, `REQ-FIN-004`, `REQ-EXP-004`, `REQ-STK-010` ou qualquer outro PENDING;
+### Administração
+
+- Estrutura: leitura, adicionar/editar onde permitido e comportamento responsivo dos formulários;
+- Usuários e permissões: leitura, convite/alteração/vínculo quando houver ambiente seguro para isso;
+- Proteção dos dados: leitura e responsividade, sem retomar #75/#121.
+
+### Cadastros
+
+- Produtos: lista → novo/detalhe/edição;
+- Fornecedores: lista → novo/detalhe/edição e condições comerciais;
+- Funcionários: lista → novo/detalhe/edição.
+
+### Estoque
+
+- posição e filtros;
+- entradas;
+- retiradas;
+- baixas/perdas;
+- devoluções;
+- transferências;
+- inventários;
+- lotes/validades;
+- estoque mínimo.
+
+### Compras
+
+- visão/lista;
+- novo pedido;
+- detalhe;
+- emissão/cancelamento quando seguro;
+- recebimento parcial/total quando seguro;
+- recebimentos e histórico.
+
+### Financeiro
+
+- visão/lista;
+- novo documento;
+- detalhe;
+- anexos quando seguro;
+- pagamento;
+- estorno/cancelamento quando seguro;
+- vencimentos e histórico de pagamentos.
+
+### Caixa
+
+- visão do Caixa;
+- lista de sessões;
+- abertura de sessão quando seguro;
+- detalhe da sessão;
+- totais por meio, entrada/sangria e fechamento quando seguro;
+- configuração de caixas, meios e regras conforme permissão.
+
+## 4. O que observar em cada jornada
+
+Registrar evidência objetiva para:
+
+- hierarquia visual e clareza da tarefa principal;
+- navegação `lista → detalhe → ação → retorno`;
+- links quebrados ou rota antiga;
+- estado ativo incorreto na navegação;
+- overflow horizontal inesperado;
+- texto truncado sem alternativa;
+- tabelas inadequadas em mobile;
+- formulários que não cabem ou perdem contexto;
+- drawer/dialog com problema de foco, fechamento ou teclado;
+- labels, helper text e mensagens ambíguas;
+- botões inacessíveis/encobertos;
+- loading, empty, erro e sucesso inconsistentes;
+- ações exibidas em estado/permissão inadequados;
+- inconsistência relevante entre desktop, tablet e mobile;
+- qualquer resíduo técnico ainda exposto ao operador.
+
+## 5. Evidência e classificação dos achados
+
+Para cada problema real registrar:
+
+- jornada/rota;
+- viewport;
+- passos para reproduzir;
+- resultado observado;
+- resultado esperado segundo IA/design system/requirements;
+- evidência visual ou descrição verificável;
+- classificação: `bug`, `gap de UX`, `acessibilidade`, `responsividade` ou `bloqueio de ambiente`;
+- impacto/prioridade suficiente para decidir se corrige nesta slice.
+
+Não abrir correção com base apenas em preferência estética.
+
+## 6. Correções permitidas
+
+Pode corrigir, quando comprovado pela homologação:
+
+- CSS/layout/responsividade;
+- uso incorreto de primitives do design system;
+- navegação/link/estado ativo;
+- hierarquia, copy e feedback;
+- foco/teclado/aria;
+- disposição de tabela/card/formulário;
+- bug de UI que não altere regra de negócio;
+- regressão funcional real encontrada durante a jornada, desde que a correção preserve o contrato documentado.
+
+Se um achado indicar problema de domínio, autorização, banco ou regra crítica, parar a correção local e reconciliar requirements/ADRs antes de mudar comportamento.
+
+## 7. O que não fazer
+
+Não usar homologação para:
+
+- redesign amplo sem evidência;
+- criar KPI, threshold, SLA, score, meta ou janela nova;
+- redefinir semântica de Organization/Unit/Setor;
+- alterar custeio, FEFO, cardinalidade de pagamentos, consumo de funcionário ou integração de vendas;
 - reinterpretar Q-022;
+- resolver requisitos PENDING por conveniência;
 - criar migrations cosméticas;
-- tocar Production para prova;
+- afrouxar RLS/permissões para conseguir testar;
+- criar usuário/dado artificial em Production;
+- usar o deployment antigo como se representasse o código atual;
 - retomar #75/#121;
 - fazer deploy Vercel manual/rotineiro.
 
-## 5. Princípios de copy
+## 8. Validação técnica após correções
 
-Preferir linguagem de operação:
-
-- dizer o que ocorreu, o que falta ou o que a pessoa pode fazer;
-- usar nomes canônicos das áreas e entidades do produto;
-- explicar limitações reais sem narrar arquitetura interna;
-- manter termos técnicos somente quando eles forem parte necessária da tarefa do usuário;
-- não esconder erro real atrás de mensagem vaga, mas traduzir o detalhe técnico para contexto acionável;
-- não substituir uma regra desconhecida por uma frase que pareça decisão de negócio.
-
-## 6. Design system e acessibilidade
-
-Se a correção tocar estados ou superfícies já consolidados:
-
-- reutilizar `FeedbackMessage`, `EmptyState`, `StatusBadge`, `Dialog`, `PageHeader`, `Panel`, `FormField` e demais primitives existentes quando aplicável;
-- preservar labels, foco e operação por teclado;
-- não criar componente genérico sem repetição comprovada;
-- evitar regressão mobile apenas para ajustar copy.
-
-## 7. Testes e validação
-
-Adicionar/ajustar testes somente quando o contrato tocado justificar, por exemplo:
-
-- mapping de label/status puro;
-- destino de navegação alterado;
-- mensagem importante derivada por função reutilizável;
-- regressão de UI coberta por teste já existente.
-
-Manter verdes:
+Se a homologação gerar mudanças de código, manter verdes:
 
 - `npm run lint`;
 - `npm run typecheck`;
 - `npm run test`;
 - `npm run build`;
 - CI PostgreSQL/RLS aplicável;
-- integrações de banco somente quando realmente afetadas.
+- integrações de banco quando realmente afetadas.
 
-Se browser real permitido estiver disponível, validar pelo menos uma amostra representativa das áreas tocadas em desktop e mobile. Se não estiver, registrar a limitação; **não fazer deploy Vercel manual apenas para homologação**.
+Para mudança somente documental de evidência, não inventar gates funcionais desnecessários, mas manter PR/CI conforme o workflow do repositório.
 
-## 8. Critérios de aceite
+## 9. Critérios de aceite
 
 A slice só pode ser encerrada quando:
 
-- os resíduos técnicos inventariados e realmente visíveis tiverem sido corrigidos ou justificados;
-- nenhum ID/termo interno desnecessário permanecer nos fluxos tocados;
-- mensagens de erro/empty/loading tocadas estiverem em linguagem operacional;
-- nenhuma regra de negócio tiver sido alterada por copy;
-- rotas e boundaries existentes permanecerem autoritativos;
-- o mapa de rotas de Caixa na IA estiver reconciliado com o PR #161;
+- uma matriz representativa de jornadas tiver sido executada em desktop/tablet/mobile ou cada bloqueio estiver explicitamente documentado;
+- o ambiente usado estiver identificado e comprovadamente adequado ao código observado;
+- nenhuma evidência do deployment antigo tiver sido usada para certificar comportamento pós-#160;
+- achados reais estiverem registrados com evidência;
+- problemas relevantes e corrigíveis desta slice tiverem sido tratados e validados novamente;
+- nenhuma regra de negócio tiver sido inventada para “resolver UX”;
 - Q-022 e PENDINGs permanecerem intactos;
-- lint, typecheck, testes, build e gates aplicáveis estiverem verdes;
-- ausência de browser real estiver registrada honestamente se persistir;
+- #75/#121 permanecerem on hold;
+- gates aplicáveis estiverem verdes;
 - `CURRENT_STATE`, `HANDOFF` e `NEXT_ACTION` forem reconciliados.
 
-## Depois da limpeza de linguagem
+## Depois da homologação UX
 
-Somente após integrar essa slice, promover:
+Somente após encerrar esta slice, promover:
 
-> **homologação UX em jornadas reais desktop/tablet/mobile**
+> **reconciliação funcional final usando critério de usabilidade, não apenas existência técnica.**
 
-A homologação deve observar as journeys consolidadas como produto, não apenas screenshots isoladas. Não saltar para reconciliação funcional final antes dela.
+A reconciliação deve confrontar requirements, jornadas homologadas e comportamento real antes de decidir quais PENDINGs são necessários para operação/cutover.
 
 ## Ordem macro
 
@@ -174,8 +270,8 @@ A homologação deve observar as journeys consolidadas como produto, não apenas
 8. ~~Financeiro~~ — PR #159;
 9. ~~Caixa~~ — PR #161;
 10. ~~Dashboard~~ — PR #163;
-11. **limpeza de linguagem/resíduos de engenharia** — próxima;
-12. homologação UX real;
+11. ~~limpeza de linguagem/resíduos de engenharia~~ — PR #165;
+12. **homologação UX real** — próxima;
 13. reconciliação funcional;
 14. PENDINGs necessários;
 15. dados representativos;
