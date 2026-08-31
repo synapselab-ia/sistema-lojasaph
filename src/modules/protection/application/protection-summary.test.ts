@@ -89,7 +89,7 @@ describe("protection status policy", () => {
     ], NOW);
 
     expect(overview.health).toBe("critical");
-    expect(overview.headline).toBe("Cópia válida fora do RPO");
+    expect(overview.headline).toBe("Cópia válida fora do prazo");
   });
 
   it("marks a long-running execution without any valid copy as critical after the RPO", () => {
