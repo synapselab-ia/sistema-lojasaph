@@ -50,7 +50,7 @@ function statusLabel(run: ProtectionRun): string {
 }
 
 function typeLabel(run: ProtectionRun): string {
-  if (run.protectionType === "automatic_database") return "Backup PostgreSQL";
+  if (run.protectionType === "automatic_database") return "Backup do banco de dados";
   if (run.protectionType === "automatic_storage") return "Backup de anexos";
   if (run.protectionType === "restore_drill") return "Teste de restauração";
   return "Exportação manual";
@@ -95,7 +95,7 @@ export default async function DataProtectionPage() {
         title="Estado da proteção"
         description={(
           <p>
-            Visão somente leitura da evidência registrada pela automação para {organization.name}. O status abaixo vem da fonte autoritativa protegida por RLS, não do horário do agendamento.
+            Visão somente leitura do histórico de proteção registrado para {organization.name}. O estado abaixo considera apenas execuções efetivamente registradas.
           </p>
         )}
       />
@@ -103,7 +103,7 @@ export default async function DataProtectionPage() {
       <Panel tone={healthTone} aria-live="polite">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide">Proteção PostgreSQL</p>
+            <p className="text-xs font-semibold uppercase tracking-wide">Proteção do banco de dados</p>
             <h2 className="mt-1 text-xl font-semibold">{overview.headline}</h2>
             <p className="mt-2 max-w-3xl text-sm leading-6 opacity-80">{overview.detail}</p>
           </div>
@@ -114,13 +114,13 @@ export default async function DataProtectionPage() {
       {!latestRun && (
         <EmptyState
           title="Histórico ainda vazio"
-          description="Ainda não existe uma execução autoritativa registrada para esta organização. O histórico começa com a automação integrada; backups anteriores não são inseridos manualmente apenas para preencher esta tela."
+          description="Ainda não existe uma execução de proteção registrada para esta organização. O histórico começa com a proteção automática atual; cópias anteriores não são inseridas manualmente apenas para preencher esta tela."
         />
       )}
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         <Panel as="article">
-          <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Última execução PostgreSQL</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Última proteção do banco</p>
           <p className="mt-2 text-lg font-semibold text-neutral-950">{latestRun ? statusLabel(latestRun) : "Sem execução"}</p>
           <p className="mt-1 text-sm text-neutral-600">Início: {formatDateTime(latestRun?.startedAt ?? null, snapshot.timeZone)}</p>
           <p className="mt-1 text-sm text-neutral-600">Fim: {formatDateTime(latestRun?.finishedAt ?? null, snapshot.timeZone)}</p>
@@ -134,45 +134,45 @@ export default async function DataProtectionPage() {
         </Panel>
 
         <Panel as="article">
-          <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Janela do RPO</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Prazo entre cópias</p>
           <p className="mt-2 text-lg font-semibold text-neutral-950">{PROTECTION_RPO_HOURS} horas</p>
           <p className="mt-1 text-sm text-neutral-600">Prazo da cópia atual: {formatDateTime(overview.rpoDeadline, snapshot.timeZone)}</p>
           <p className="mt-1 text-sm text-neutral-600">Atraso não bloqueia automaticamente a operação do sistema.</p>
         </Panel>
 
         <Panel as="article">
-          <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Destino lógico</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Destino da cópia</p>
           <p className="mt-2 text-lg font-semibold text-neutral-950">{logicalDestination(latestRun)}</p>
-          <p className="mt-1 text-sm leading-6 text-neutral-600">Detalhes físicos e credenciais do armazenamento não são expostos nesta interface.</p>
+          <p className="mt-1 text-sm leading-6 text-neutral-600">O destino é apresentado de forma resumida para proteger detalhes de infraestrutura e credenciais.</p>
         </Panel>
 
         <Panel as="article">
           <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Retenção</p>
           <p className="mt-2 text-lg font-semibold text-neutral-950">{PROTECTION_RETENTION_DAYS} dias</p>
-          <p className="mt-1 text-sm leading-6 text-neutral-600">Política operacional aplicada ao destino externo de recuperação.</p>
+          <p className="mt-1 text-sm leading-6 text-neutral-600">Período de retenção aplicado às cópias externas de recuperação.</p>
         </Panel>
 
         <Panel as="article">
           <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Teste de restauração</p>
-          <p className="mt-2 text-lg font-semibold text-neutral-950">{restoreDrill ? statusLabel(restoreDrill) : "Sem registro autoritativo"}</p>
+          <p className="mt-2 text-lg font-semibold text-neutral-950">{restoreDrill ? statusLabel(restoreDrill) : "Sem registro"}</p>
           <p className="mt-1 text-sm text-neutral-600">Última execução: {formatDateTime(restoreDrill?.startedAt ?? null, snapshot.timeZone)}</p>
-          <p className="mt-1 text-sm leading-6 text-neutral-600">Política: teste mensal em ambiente isolado, nunca sobre Production.</p>
+          <p className="mt-1 text-sm leading-6 text-neutral-600">Política: teste mensal em ambiente isolado, nunca sobre o ambiente de produção.</p>
         </Panel>
       </section>
 
       <section className="grid gap-4 lg:grid-cols-2">
         <Panel as="article" tone="success">
           <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Cobertura atual</p>
-          <h2 className="mt-1 text-lg font-semibold text-emerald-950">PostgreSQL</h2>
+          <h2 className="mt-1 text-lg font-semibold text-emerald-950">Banco de dados</h2>
           <p className="mt-2 text-sm leading-6 text-emerald-900">
-            A trilha automática cobre o backup lógico do banco e registra sua evidência operacional nesta fonte autoritativa.
+            A proteção automática cobre a cópia do banco de dados e registra o histórico de execução apresentado nesta tela.
           </p>
         </Panel>
         <Panel as="article" tone="attention">
           <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Cobertura pendente</p>
-          <h2 className="mt-1 text-lg font-semibold text-amber-950">Anexos e Supabase Storage</h2>
+          <h2 className="mt-1 text-lg font-semibold text-amber-950">Anexos</h2>
           <p className="mt-2 text-sm leading-6 text-amber-900">
-            Os arquivos binários de anexos ainda não fazem parte desta proteção. Por isso, esta tela não declara backup completo da plataforma.
+            Os arquivos de anexos ainda não fazem parte desta proteção. Por isso, esta tela não declara proteção completa de todos os dados da aplicação.
           </p>
         </Panel>
       </section>
@@ -180,11 +180,11 @@ export default async function DataProtectionPage() {
       <Panel padding="none" className="overflow-hidden">
         <div className="border-b border-neutral-200 px-5 py-4">
           <h2 className="font-semibold text-neutral-950">Histórico recente</h2>
-          <p className="mt-1 text-sm text-neutral-600">Somente execuções visíveis para a organização atual pela RLS.</p>
+          <p className="mt-1 text-sm text-neutral-600">Somente execuções disponíveis para a organização atual conforme seu acesso.</p>
         </div>
 
         {overview.recentRuns.length === 0 ? (
-          <p className="px-5 py-8 text-sm text-neutral-600">Nenhuma execução autoritativa registrada ainda.</p>
+          <p className="px-5 py-8 text-sm text-neutral-600">Nenhuma execução de proteção registrada ainda.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full text-left text-sm">

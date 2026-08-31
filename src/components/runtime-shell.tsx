@@ -95,20 +95,20 @@ function ShellSidebarContent({
       <Link href="/" onClick={onNavigate} className="inline-flex min-h-11 items-center text-lg font-semibold tracking-tight">
         Sistema Lojasaph
       </Link>
-      <p className="mt-1 text-xs font-medium text-emerald-700">Workspace persistente</p>
+      <p className="mt-1 text-xs font-medium text-emerald-700">Gestão operacional</p>
 
       <div className="mt-4 min-w-0 rounded-xl bg-neutral-100 p-3">
         <p className="text-xs text-neutral-500">Organização</p>
         <p className="mt-1 break-words text-sm font-semibold">{organizationName}</p>
-        <p className="mt-1 break-words text-xs text-neutral-500">Perfis: {roles.join(", ")}</p>
+        <p className="mt-1 break-words text-xs text-neutral-500">
+          {roles.length > 1
+            ? "Seu acesso reúne mais de um perfil configurado."
+            : "Seu acesso segue o perfil configurado para esta organização."}
+        </p>
       </div>
 
       <div className="mt-5">
         <WorkspaceNavigation pathname={pathname} onNavigate={onNavigate} />
-      </div>
-
-      <div className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs leading-5 text-emerald-900">
-        Estoque, compras, contas a pagar, caixa e cadastros administrativos usam Supabase + RLS.
       </div>
 
       <div className="mt-5 flex flex-col gap-2">

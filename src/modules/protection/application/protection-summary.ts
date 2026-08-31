@@ -83,8 +83,8 @@ export function buildProtectionOverview(
   if (!latestDatabaseRun) {
     return {
       health: "attention",
-      headline: "Histórico autoritativo ainda não iniciado",
-      detail: "Nenhuma execução PostgreSQL foi registrada pela automação autoritativa para esta organização.",
+      headline: "Histórico de proteção ainda não iniciado",
+      detail: "Nenhuma execução de proteção do banco de dados foi registrada para esta organização.",
       latestDatabaseRun,
       latestValidDatabaseRun,
       rpoDeadline,
@@ -97,7 +97,7 @@ export function buildProtectionOverview(
     return {
       health: "critical",
       headline: "Falha de proteção registrada",
-      detail: "A execução PostgreSQL mais recente terminou com falha e requer atenção operacional.",
+      detail: "A proteção mais recente do banco de dados terminou com falha e requer atenção.",
       latestDatabaseRun,
       latestValidDatabaseRun,
       rpoDeadline,
@@ -109,8 +109,8 @@ export function buildProtectionOverview(
   if (validCopyTimestamp !== null && validCopyTimestamp + PROTECTION_RPO_MS <= nowTimestamp) {
     return {
       health: "critical",
-      headline: "Cópia válida fora do RPO",
-      detail: `A última cópia PostgreSQL válida ultrapassou a política de ${PROTECTION_RPO_HOURS} horas.`,
+      headline: "Cópia válida fora do prazo",
+      detail: `A última cópia válida do banco de dados ultrapassou o prazo de ${PROTECTION_RPO_HOURS} horas.`,
       latestDatabaseRun,
       latestValidDatabaseRun,
       rpoDeadline,
@@ -125,10 +125,10 @@ export function buildProtectionOverview(
 
     return {
       health: beyondRpo ? "critical" : "attention",
-      headline: beyondRpo ? "Sem cópia válida dentro do RPO" : "Proteção em observação",
+      headline: beyondRpo ? "Sem cópia válida dentro do prazo" : "Proteção em observação",
       detail: beyondRpo
-        ? `Ainda não há cópia PostgreSQL válida registrada dentro da política de ${PROTECTION_RPO_HOURS} horas.`
-        : "A automação já possui execução autoritativa, mas ainda não há uma cópia PostgreSQL válida concluída.",
+        ? `Ainda não há cópia válida do banco de dados registrada dentro do prazo de ${PROTECTION_RPO_HOURS} horas.`
+        : "Já existe uma execução de proteção registrada, mas ainda não há uma cópia válida concluída.",
       latestDatabaseRun,
       latestValidDatabaseRun,
       rpoDeadline,
@@ -141,7 +141,7 @@ export function buildProtectionOverview(
     return {
       health: "attention",
       headline: "Proteção em andamento",
-      detail: "Existe uma cópia válida dentro do RPO, mas uma nova execução PostgreSQL ainda está em andamento.",
+      detail: "Existe uma cópia válida dentro do prazo, mas uma nova proteção do banco de dados ainda está em andamento.",
       latestDatabaseRun,
       latestValidDatabaseRun,
       rpoDeadline,
@@ -153,8 +153,8 @@ export function buildProtectionOverview(
   if (isValidDatabaseCopy(latestDatabaseRun)) {
     return {
       health: "healthy",
-      headline: "Proteção PostgreSQL dentro da política",
-      detail: `A execução mais recente foi concluída com integridade verificada e a cópia válida está dentro do RPO de ${PROTECTION_RPO_HOURS} horas.`,
+      headline: "Proteção do banco de dados dentro da política",
+      detail: `A execução mais recente foi concluída com integridade verificada e a cópia válida está dentro do prazo de ${PROTECTION_RPO_HOURS} horas.`,
       latestDatabaseRun,
       latestValidDatabaseRun,
       rpoDeadline,
@@ -166,7 +166,7 @@ export function buildProtectionOverview(
   return {
     health: "critical",
     headline: "Evidência de proteção inconsistente",
-    detail: "A execução PostgreSQL mais recente não contém evidência suficiente para declarar a proteção saudável.",
+    detail: "A proteção mais recente do banco de dados não contém informações suficientes para declarar a situação como saudável.",
     latestDatabaseRun,
     latestValidDatabaseRun,
     rpoDeadline,

@@ -25,7 +25,7 @@ export default function RuntimeCashPage() {
       <PageHeader
         eyebrow="Caixa"
         title="Visão do caixa"
-        description="Acompanhe sessões, fechamento e configuração sem misturar a operação diária com cadastros. O esperado, contado e a divergência continuam calculados e persistidos pelo fluxo autoritativo de fechamento."
+        description="Acompanhe sessões, fechamento e configuração sem misturar a operação diária com cadastros. O valor esperado, o contado e a divergência são definidos no fechamento da sessão."
         actions={workspace.permissions.operateCash ? (
           <Link href="/workspace/caixa/sessoes/nova" className="inline-flex min-h-11 items-center rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white">Abrir sessão</Link>
         ) : undefined}
@@ -47,20 +47,20 @@ export default function RuntimeCashPage() {
         </Link>
         <Link href="/workspace/caixa/configuracao" className={shortcutClass}>
           <h2 className="font-semibold">Configuração</h2>
-          <p className="mt-2 text-sm leading-6 text-neutral-600">Gerencie caixas físicos, meios de pagamento e regras de taxa versionadas conforme suas permissões.</p>
+          <p className="mt-2 text-sm leading-6 text-neutral-600">Gerencie caixas físicos, meios de pagamento e regras de taxa conforme suas permissões.</p>
         </Link>
       </section>
 
       <Panel as="section">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div><h2 className="text-lg font-semibold">Sessões recentes</h2><p className="mt-1 text-sm text-neutral-500">Últimas sessões disponíveis no seu escopo.</p></div>
+          <div><h2 className="text-lg font-semibold">Sessões recentes</h2><p className="mt-1 text-sm text-neutral-500">Últimas sessões disponíveis no seu acesso.</p></div>
           <Link href="/workspace/caixa/sessoes" className="text-sm font-semibold text-neutral-700 underline-offset-4 hover:underline">Ver todas</Link>
         </div>
 
         {loading && state.sessions.length === 0 ? (
           <p className="mt-5 text-sm text-neutral-500">Carregando sessões...</p>
         ) : recentSessions.length === 0 ? (
-          <div className="mt-5"><EmptyState title="Nenhuma sessão registrada" description="As sessões abertas ou encerradas no seu escopo aparecerão aqui." action={workspace.permissions.operateCash ? <Link href="/workspace/caixa/sessoes/nova" className="font-semibold underline">Abrir primeira sessão</Link> : undefined} /></div>
+          <div className="mt-5"><EmptyState title="Nenhuma sessão registrada" description="As sessões abertas ou encerradas disponíveis para você aparecerão aqui." action={workspace.permissions.operateCash ? <Link href="/workspace/caixa/sessoes/nova" className="font-semibold underline">Abrir primeira sessão</Link> : undefined} /></div>
         ) : (
           <div className="mt-5 grid gap-3 lg:grid-cols-2">
             {recentSessions.map((session) => {

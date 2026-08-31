@@ -84,7 +84,7 @@ export default function RuntimeTransfersPage() {
                 {(props) => <Input {...props} required inputMode="decimal" value={dispatch.quantity} onChange={(event) => setDispatch({ ...dispatch, quantity: event.target.value })} />}
               </FormField>
               {(selectedItem?.trackBatch || selectedItem?.trackExpiration) && (
-                <FormField id="transfer-batch" label="Lote preferido" hint="Opcional. Sem escolha, permanece a seleção automática já implementada.">
+                <FormField id="transfer-batch" label="Lote preferido" hint="Opcional. Se não escolher, o sistema usa a seleção automática disponível.">
                   {(props) => <Select {...props} value={dispatch.preferredBatchId} onChange={(event) => setDispatch({ ...dispatch, preferredBatchId: event.target.value })}><option value="">Seleção automática</option>{dispatchBatches.map((batch) => <option key={batch.id} value={batch.id}>{batch.batchCode || "Lote sem código"} · {batch.expirationDate ? `validade ${batch.expirationDate}` : "sem validade registrada"} · saldo {batch.remainingQuantity.toDecimal()}</option>)}</Select>}
                 </FormField>
               )}

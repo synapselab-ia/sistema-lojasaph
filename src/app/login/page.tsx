@@ -25,11 +25,11 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
       <Panel className="w-full sm:p-8">
         <p className="text-sm font-semibold uppercase tracking-[0.16em] text-neutral-500">Sistema Lojasaph</p>
         <h1 className="mt-2 text-3xl font-semibold tracking-tight">Entrar</h1>
-        <p className="mt-2 text-sm leading-6 text-neutral-600">Acesso operacional protegido por sessão e permissões da organização.</p>
+        <p className="mt-2 text-sm leading-6 text-neutral-600">Use sua conta autorizada para acessar as áreas disponíveis da organização.</p>
 
         {!operational && (
           <FeedbackMessage tone="attention" className="mt-5">
-            Este ambiente está isolado do backend operacional. Login e mutações permanecem desabilitados até existir um backend próprio aprovado.
+            O acesso operacional não está disponível neste ambiente.
           </FeedbackMessage>
         )}
         {error && <FeedbackMessage tone="danger" className="mt-5" role="alert">{error}</FeedbackMessage>}
@@ -60,7 +60,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
                 />
               )}
             </FormField>
-            <Button type="submit" variant="primary" block>Entrar no workspace</Button>
+            <Button type="submit" variant="primary" block>Entrar no sistema</Button>
           </form>
         )}
 

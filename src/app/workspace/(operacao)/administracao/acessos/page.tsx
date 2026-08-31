@@ -102,7 +102,7 @@ export default async function AdministrationAccessPage({ searchParams }: AccessP
         <PageHeader
           eyebrow="Administração"
           title="Usuários e permissões"
-          description="A gestão de acesso à organização é restrita a proprietários e administradores com escopo sobre toda a organização."
+          description="A gestão de acesso à organização é restrita a perfis administrativos com permissão sobre toda a organização."
         />
         {error && <FeedbackMessage tone="danger">{error}</FeedbackMessage>}
         <Panel tone="attention">
@@ -135,20 +135,20 @@ export default async function AdministrationAccessPage({ searchParams }: AccessP
       <PageHeader
         eyebrow="Administração"
         title="Usuários e permissões"
-        description="Convide pessoas por e-mail, atribua os perfis e escopos já existentes e, quando corresponder à mesma pessoa, vincule a identidade de acesso a um funcionário operacional cadastrado."
+        description="Convide pessoas por e-mail, atribua os perfis e áreas de atuação disponíveis e, quando corresponder à mesma pessoa, vincule a conta de acesso a um funcionário cadastrado."
       />
 
       {error && <FeedbackMessage tone="danger">{error}</FeedbackMessage>}
       {message && <FeedbackMessage tone="success">{message}</FeedbackMessage>}
 
       <FeedbackMessage tone="attention">
-        Os perfis disponíveis representam as permissões técnicas atuais do sistema. A associação definitiva entre esses perfis e os cargos reais da operação ainda precisa de homologação; não atribua acesso apenas pelo nome do cargo.
+        Os perfis disponíveis agrupam permissões do sistema. Eles não representam automaticamente os cargos reais da operação; valide a necessidade de acesso antes de atribuir um perfil.
       </FeedbackMessage>
 
       <Panel>
         <h2 className="text-lg font-semibold text-neutral-950">Convidar ou adicionar acesso</h2>
         <p className="mt-1 text-sm leading-6 text-neutral-600">
-          Se o e-mail ainda não possuir identidade no sistema, será enviado um convite para definição de senha. Se já existir, o novo acesso é associado sem reenviar convite automaticamente.
+          Se o e-mail ainda não possuir uma conta de acesso, será enviado um convite para definição de senha. Se a conta já existir, o novo acesso é associado sem reenviar convite automaticamente.
         </p>
         <form action={inviteOrganizationAccessAction} className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1.4fr)_auto] lg:items-end">
           <FormField id="invite-access-email" label="E-mail" required>
@@ -163,7 +163,7 @@ export default async function AdministrationAccessPage({ searchParams }: AccessP
               </Select>
             )}
           </FormField>
-          <FormField id="invite-access-scope" label="Escopo" required>
+          <FormField id="invite-access-scope" label="Área de atuação" required>
             {(props) => (
               <Select {...props} name="scope" defaultValue="organization" required>
                 {scopes.map((scope) => <option key={scope.value} value={scope.value}>{scope.label}</option>)}
@@ -177,13 +177,13 @@ export default async function AdministrationAccessPage({ searchParams }: AccessP
       <section className="space-y-3">
         <div>
           <h2 className="text-lg font-semibold text-neutral-950">Acessos cadastrados</h2>
-          <p className="mt-1 text-sm text-neutral-600">Uma pessoa pode possuir mais de um acesso quando precisa atuar em perfis ou escopos diferentes.</p>
+          <p className="mt-1 text-sm text-neutral-600">Uma pessoa pode possuir mais de um acesso quando precisa atuar com perfis ou áreas de atuação diferentes.</p>
         </div>
 
         {accesses.length === 0 ? (
           <EmptyState
             title="Nenhum acesso cadastrado"
-            description="Convide a primeira pessoa autorizada ou adicione um perfil a uma identidade existente."
+            description="Convide a primeira pessoa autorizada ou adicione um perfil a uma conta existente."
           />
         ) : (
           <div className="grid gap-4 xl:grid-cols-2">
@@ -201,12 +201,12 @@ export default async function AdministrationAccessPage({ searchParams }: AccessP
                     <div className="min-w-0">
                       <p className="break-all font-semibold text-neutral-950">{access.email}</p>
                       <p className="mt-1 text-sm text-neutral-600">
-                        {access.employeeName ? `Funcionário vinculado: ${access.employeeName}` : "Sem funcionário operacional vinculado"}
+                        {access.employeeName ? `Funcionário vinculado: ${access.employeeName}` : "Sem funcionário vinculado"}
                       </p>
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <StatusBadge tone={access.emailConfirmed ? "success" : "attention"}>
-                        {access.emailConfirmed ? "Identidade confirmada" : "Convite pendente"}
+                        {access.emailConfirmed ? "Conta confirmada" : "Convite pendente"}
                       </StatusBadge>
                       <StatusBadge tone={access.active ? "success" : "neutral"}>
                         {access.active ? "Acesso ativo" : "Acesso inativo"}
@@ -220,7 +220,7 @@ export default async function AdministrationAccessPage({ searchParams }: AccessP
                       <dd className="mt-1 font-medium text-neutral-900">{administrationRoleLabels[access.role]}</dd>
                     </div>
                     <div>
-                      <dt className="text-xs text-neutral-500">Escopo</dt>
+                      <dt className="text-xs text-neutral-500">Área de atuação</dt>
                       <dd className="mt-1 font-medium text-neutral-900">{accessScopeLabel(access, structure)}</dd>
                     </div>
                   </dl>
@@ -232,8 +232,8 @@ export default async function AdministrationAccessPage({ searchParams }: AccessP
                         <input type="hidden" name="membershipId" value={access.membershipId} />
                         <FormField
                           id={`access-${access.membershipId}-employee`}
-                          label="Funcionário operacional"
-                          hint="O vínculo identifica a mesma pessoa. Ele não concede, remove nem amplia permissões."
+                          label="Funcionário"
+                          hint="O vínculo indica que a conta e o cadastro representam a mesma pessoa. Ele não altera permissões."
                         >
                           {(props) => (
                             <Select {...props} name="employeeId" defaultValue={access.employeeId ?? ""}>
@@ -266,13 +266,13 @@ export default async function AdministrationAccessPage({ searchParams }: AccessP
                       </FormField>
                       <FormField
                         id={`access-${access.membershipId}-scope`}
-                        label="Escopo"
-                        hint={!availableScope ? "O escopo atual não está mais visível nesta estrutura; selecione um destino válido antes de salvar." : undefined}
+                        label="Área de atuação"
+                        hint={!availableScope ? "A área atual não está mais visível nesta estrutura; selecione uma opção válida antes de salvar." : undefined}
                         required
                       >
                         {(props) => (
                           <Select {...props} name="scope" defaultValue={availableScope ? currentScope : ""} required>
-                            {!availableScope && <option value="" disabled>Selecione um escopo visível</option>}
+                            {!availableScope && <option value="" disabled>Selecione uma área disponível</option>}
                             {scopes.map((scope) => <option key={scope.value} value={scope.value}>{scope.label}</option>)}
                           </Select>
                         )}

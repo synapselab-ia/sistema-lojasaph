@@ -48,12 +48,12 @@ function configuredInviteReadiness(): string | undefined {
 
 function organizationErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message === "BOOTSTRAP_ORGANIZATION_NOT_AVAILABLE") {
-    return "A organização configurada para bootstrap não existe ou está inativa.";
+    return "A organização definida para a configuração inicial não existe ou está inativa.";
   }
   if (error instanceof Error && error.message === "BOOTSTRAP_ORGANIZATION_AMBIGUOUS") {
-    return "Defina LOJASAPH_BOOTSTRAP_ORGANIZATION_ID quando houver zero ou mais de uma organização ativa.";
+    return "A configuração inicial precisa indicar qual organização será usada.";
   }
-  return "Não foi possível verificar a organização do bootstrap.";
+  return "Não foi possível verificar a organização da configuração inicial.";
 }
 
 async function resolveBootstrapOrganization(admin: SupabaseClient): Promise<string> {
@@ -187,19 +187,19 @@ export async function getBootstrapStatus(): Promise<BootstrapStatus> {
 export async function inviteBootstrapOwnerAction() {
   const runtime = getRuntimeAccessSummary();
   if (runtime.supabaseAccess !== "allowed" || runtime.adminAccess !== "allowed") {
-    redirect(urlWithMessage("/bootstrap", "error", "Bootstrap administrativo não está habilitado neste ambiente."));
+    redirect(urlWithMessage("/bootstrap", "error", "A configuração inicial não está habilitada neste ambiente."));
   }
 
   const expectedEmail = configuredOwnerEmail();
   if (!expectedEmail) {
-    redirect(urlWithMessage("/bootstrap", "error", "Bootstrap não está habilitado neste ambiente."));
+    redirect(urlWithMessage("/bootstrap", "error", "A configuração inicial não está habilitada neste ambiente."));
   }
 
   let admin: SupabaseClient;
   try {
     admin = createServerAdminSupabaseClient();
   } catch {
-    redirect(urlWithMessage("/bootstrap", "error", "Credencial administrativa do bootstrap não está disponível."));
+    redirect(urlWithMessage("/bootstrap", "error", "A configuração inicial não está pronta neste ambiente."));
   }
 
   let organizationId: string;
@@ -213,25 +213,25 @@ export async function inviteBootstrapOwnerAction() {
   try {
     owners = await readActiveOwners(admin, organizationId);
   } catch {
-    redirect(urlWithMessage("/bootstrap", "error", "Não foi possível verificar o owner atual."));
+    redirect(urlWithMessage("/bootstrap", "error", "Não foi possível verificar o acesso administrativo existente."));
   }
 
   if (owners.length > 0) {
-    redirect(urlWithMessage("/bootstrap", "error", "A organização já possui owner ativo. O bootstrap inicial está encerrado."));
+    redirect(urlWithMessage("/bootstrap", "error", "A organização já possui acesso administrativo inicial ativo. A configuração inicial está encerrada."));
   }
 
   let identityState: BootstrapIdentityState;
   try {
     identityState = await readBootstrapIdentityState(admin, expectedEmail);
   } catch {
-    redirect(urlWithMessage("/bootstrap", "error", "Não foi possível verificar a identidade Auth autorizada. O convite não foi enviado."));
+    redirect(urlWithMessage("/bootstrap", "error", "Não foi possível verificar a conta autorizada. O convite não foi enviado."));
   }
 
   if (identityState === "pending") {
     redirect(urlWithMessage(
       "/bootstrap",
       "message",
-      "A identidade autorizada já possui convite pendente. Use o link recebido ou siga o runbook para reemissão controlada.",
+      "O endereço autorizado já possui convite pendente. Use o link recebido; um novo envio precisa ser feito de forma controlada.",
     ));
   }
 
@@ -239,7 +239,7 @@ export async function inviteBootstrapOwnerAction() {
     redirect(urlWithMessage(
       "/bootstrap",
       "message",
-      "A identidade autorizada já existe. Entre com essa conta para concluir o vínculo owner.",
+      "A conta autorizada já existe. Entre com essa conta para concluir o acesso inicial.",
     ));
   }
 
@@ -247,7 +247,7 @@ export async function inviteBootstrapOwnerAction() {
     redirect(urlWithMessage(
       "/bootstrap",
       "error",
-      "O convite permanece bloqueado até redirect e entrega de e-mail serem confirmados no ambiente.",
+      "O convite permanece bloqueado até as configurações de endereço e entrega de e-mail estarem prontas.",
     ));
   }
 
@@ -256,7 +256,7 @@ export async function inviteBootstrapOwnerAction() {
     redirect(urlWithMessage(
       "/bootstrap",
       "error",
-      "A URL pública segura da aplicação não está configurada para o convite.",
+      "O endereço público seguro da aplicação não está configurado para o convite.",
     ));
   }
 
@@ -267,26 +267,26 @@ export async function inviteBootstrapOwnerAction() {
     redirect(urlWithMessage(
       "/bootstrap",
       "error",
-      "Não foi possível enviar o convite inicial. Nenhum membership foi criado.",
+      "Não foi possível enviar o convite inicial. Nenhum acesso foi criado.",
     ));
   }
 
   redirect(urlWithMessage(
     "/bootstrap",
     "message",
-    "Convite inicial enviado ao endereço autorizado no ambiente. Nenhum membership foi criado ainda.",
+    "Convite inicial enviado ao endereço autorizado. O acesso à organização será concluído depois que a conta for confirmada.",
   ));
 }
 
 export async function bootstrapOwnerAction() {
   const runtime = getRuntimeAccessSummary();
   if (runtime.supabaseAccess !== "allowed" || runtime.adminAccess !== "allowed") {
-    redirect(urlWithMessage("/bootstrap", "error", "Bootstrap administrativo não está habilitado neste ambiente."));
+    redirect(urlWithMessage("/bootstrap", "error", "A configuração inicial não está habilitada neste ambiente."));
   }
 
   const expectedEmail = configuredOwnerEmail();
   if (!expectedEmail) {
-    redirect(urlWithMessage("/bootstrap", "error", "Bootstrap não está habilitado neste ambiente."));
+    redirect(urlWithMessage("/bootstrap", "error", "A configuração inicial não está habilitada neste ambiente."));
   }
 
   const userClient = await createServerSupabaseClient();
@@ -297,14 +297,14 @@ export async function bootstrapOwnerAction() {
     redirect("/login?next=/bootstrap");
   }
   if (email !== expectedEmail) {
-    redirect(urlWithMessage("/sem-acesso", "error", "Este usuário não está autorizado para o bootstrap inicial."));
+    redirect(urlWithMessage("/sem-acesso", "error", "Esta conta não está autorizada para a configuração inicial."));
   }
 
   let admin: SupabaseClient;
   try {
     admin = createServerAdminSupabaseClient();
   } catch {
-    redirect(urlWithMessage("/bootstrap", "error", "Credencial administrativa do bootstrap não está disponível."));
+    redirect(urlWithMessage("/bootstrap", "error", "A configuração inicial não está pronta neste ambiente."));
   }
 
   let organizationId: string;
@@ -318,12 +318,12 @@ export async function bootstrapOwnerAction() {
   try {
     owners = await readActiveOwners(admin, organizationId);
   } catch {
-    redirect(urlWithMessage("/bootstrap", "error", "Não foi possível verificar o owner atual."));
+    redirect(urlWithMessage("/bootstrap", "error", "Não foi possível verificar o acesso administrativo existente."));
   }
 
   const existingForUser = owners.find((owner) => owner.user_id === user.id);
   if (!existingForUser && owners.length > 0) {
-    redirect(urlWithMessage("/sem-acesso", "error", "A organização já possui owner ativo. O bootstrap inicial está encerrado."));
+    redirect(urlWithMessage("/sem-acesso", "error", "A organização já possui acesso administrativo inicial ativo. A configuração inicial está encerrada."));
   }
 
   let membershipId = existingForUser?.id;
@@ -334,7 +334,7 @@ export async function bootstrapOwnerAction() {
       .select("id")
       .single();
     if (membershipError || !membership) {
-      redirect(urlWithMessage("/bootstrap", "error", "Não foi possível criar o vínculo owner inicial."));
+      redirect(urlWithMessage("/bootstrap", "error", "Não foi possível concluir o acesso administrativo inicial."));
     }
     membershipId = membership.id as string;
 
@@ -350,7 +350,7 @@ export async function bootstrapOwnerAction() {
 
     if (auditError) {
       await admin.from("organization_memberships").delete().eq("id", membershipId);
-      redirect(urlWithMessage("/bootstrap", "error", "O bootstrap foi revertido porque a auditoria não pôde ser registrada."));
+      redirect(urlWithMessage("/bootstrap", "error", "A configuração inicial foi revertida porque o registro de auditoria não pôde ser concluído."));
     }
   }
 
