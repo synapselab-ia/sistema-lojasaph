@@ -6,13 +6,14 @@
 
 **Fase 51 / Issue #142 — consolidação de produto, arquitetura de informação e UX — permanece ativa.**
 
-O núcleo operacional está consolidado, mas o sistema **ainda não deve ser considerado 100% concluído**. A auditoria de gaps em `docs/product/final-product-gap-audit.md` continua como inventário da fila final; este arquivo registra quais itens dessa fila já foram executados.
+O núcleo operacional está consolidado, mas o sistema **ainda não deve ser considerado 100% concluído**. A auditoria de gaps em `docs/product/final-product-gap-audit.md` continua como inventário da fila final.
 
-Baseline antes da slice atual:
+Baseline corrente:
 
-- `main=fad41dbe672d41e1fd6277e57f1f894d647a8ef2` — merge do PR #170;
-- CI pós-merge #583 / run `33425164783`: **success**;
+- `main=64e1c0d242c3abfb7ee374ebc43850156d75089b` — merge do PR #171;
+- CI pós-merge #586 / run `33426777989`: **success**;
 - Issue #142 aberta e ativa;
+- nenhum PR aberto no início desta slice;
 - #75/#121 abertas e **TOTALMENTE ON HOLD**;
 - nenhum deploy Vercel manual/rotineiro deve ser feito para evidência.
 
@@ -37,45 +38,49 @@ Baseline antes da slice atual:
 
 Não refazer essas slices sem bug/gap concreto.
 
-## Telas auxiliares de autenticação/contexto — fechadas no PR #171
+## Homologação UX — evidência hospedada corrente
 
-Foram reconciliadas, sem alterar os contratos de autenticação, sessão, autorização ou RLS:
+O deployment automático atual corresponde exatamente à `main`:
 
-- `/auth/atualizar-senha`;
-- `/auth/invite`;
-- `/bootstrap`;
-- `/workspace/selecionar-organizacao`.
+- Vercel deployment `dpl_J6qwwqUihCKqfTMhmbjSxcLSA3gr`;
+- state `READY`;
+- target `production`;
+- source `git`;
+- `githubCommitSha=64e1c0d242c3abfb7ee374ebc43850156d75089b`;
+- alias canônico `sistema-lojasaph.vercel.app` sem erro.
 
-Mudanças de produto:
+Nenhum deploy manual foi disparado.
 
-- `Panel`, `FeedbackMessage`, `FormField`, `Input`, `PageHeader` e estilos de `Button` reutilizados quando aplicável;
-- erros relevantes usam anúncio acessível (`role="alert"`);
-- estados informativos/carregamento usam semântica anunciável quando aplicável;
-- novo `SubmitButton` compartilhado usa `useFormStatus` para bloquear ação duplicada e comunicar estado pendente;
-- links e CTAs seguem touch target mínimo do design system;
-- redirects 0/1/múltiplas organizações, parser/handoff de convite, bootstrap actions e `updatePasswordAction` foram preservados.
+A versão hospedada corrente foi revalidada no limite HTTP/HTML real:
 
-Teste de contrato: `src/app/auxiliary-auth-context-contract.test.ts`.
+- `/` sem sessão → Login, sem landing técnica;
+- `/workspace` sem sessão → Login com `next=/workspace` e alerta de sessão expirada;
+- `/recuperar-senha` → UX-51-001/002 confirmados corrigidos no deployment corrente (`min-h-11` no retorno e erro com `role="alert"`);
+- `/sem-acesso` → UX-51-003 confirmado corrigido (`min-h-11` nas ações e erro com `role="alert"`);
+- `/auth/atualizar-senha` sem sessão válida → Login com alerta de link expirado;
+- `/auth/invite` → estado inicial hospedado usa `aria-busy`, `role="status"` e `aria-live`;
+- `/bootstrap` → estado real atual informa configuração inicial desabilitada e mantém CTA coerente;
+- `/workspace/selecionar-organizacao` sem sessão → Login preservando o `next` canônico.
 
-Validação do primeiro head do PR #171 (`25109c0054933fe714d299d67b4067305a0372ea`):
+A matriz detalhada está em `docs/qa/fase51-ux-homologation.md`.
 
-- CI #584 / run `33426151982`: **success**;
-- lint: success;
-- typecheck: success;
-- unit tests: success;
-- production build: success;
-- database/migrations/RLS/auth Organization isolation: success;
-- workflows adicionais de integração de inventário/negócio: success na mesma baseline.
+## Bloqueios restantes da homologação
 
-Nenhum schema, migration, RPC, grant, RLS, papel, escopo ou regra de negócio foi alterado.
+A homologação completa **não está encerrada**.
 
-### Limite de evidência
+Nesta sessão:
 
-Não foi fabricada sessão, convite, usuário ou dado em Production para homologar fluxos dependentes de token/contexto real. A validação real de convite, definição de senha, bootstrap aplicável e troca de organização deve ocorrer na homologação UX completa quando houver sessão/token legítimos e browser operável.
+- não há browser gráfico operável exposto para certificar viewport, foco, teclado, drawer, overflow ou screenshots;
+- não há sessão/credencial legítima aprovada nem token legítimo para jornadas autenticadas/convite/recuperação;
+- nenhum usuário, convite, fixture ou dado artificial foi criado em Production para fabricar evidência.
 
-## Próxima slice obrigatória — homologação UX completa
+Portanto desktop/tablet/mobile e as áreas autenticadas continuam sem certificação real. CI, CSS e HTML hospedado são evidências auxiliares e não substituem browser.
 
-Executar `docs/qa/fase51-ux-homologation.md` em **desktop, tablet e mobile**, com browser real e ambiente/sessão seguros.
+A revalidação pública HTTP/HTML da `main` corrente está concluída e não deve ser repetida por inércia sem mudança de deployment ou novo achado.
+
+## Próxima slice obrigatória — concluir homologação UX real
+
+Usar `docs/qa/fase51-ux-homologation.md` como matriz executável quando houver as pré-condições de evidência.
 
 Jornadas mínimas:
 
@@ -88,11 +93,9 @@ Jornadas mínimas:
 - Financeiro;
 - Caixa.
 
-Para cada jornada, validar navegação, foco/teclado, drawer mobile, touch targets, overflow, tabelas/formulários densos, loading/empty/error/success e linguagem operacional.
+Para cada jornada, validar em desktop/tablet/mobile: navegação, foco/teclado, drawer, touch targets, overflow, tabelas/formulários densos, loading/empty/error/success, linguagem operacional e `lista → detalhe → ação → retorno` quando aplicável.
 
-CI/build/CSS/HTML são evidências auxiliares e **não substituem browser real**.
-
-Production não recebe fixtures, usuários artificiais ou ações destrutivas apenas para gerar prova.
+Não promover para reconciliação funcional final até existir evidência representativa suficiente ou aceitação explícita do operador para adiar bloqueios externos.
 
 ## Depois da homologação UX
 
