@@ -1,0 +1,144 @@
+name: Production Migration Reconcile
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/production-migration-reconcile.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-migration-reconcile
+  cancel-in-progress: false
+
+env:
+  SUPABASE_CLI_VERSION: "2.111.0"
+  SUPABASE_PROJECT_REF: fhbvwyttikrbeaanatlr
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SUPABASE_DB_URL: ${{ secrets.PRODUCTION_SUPABASE_DB_URL }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Validate Production target
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${SUPABASE_DB_URL:-}" ]]; then
+            echo "::error::PRODUCTION_SUPABASE_DB_URL is not configured."
+            exit 1
+          fi
+
+          if [[ "${SUPABASE_DB_URL}" != *".pooler.supabase.com:5432/"* ]]; then
+            echo "::error::Production migration reconciliation requires the Supabase Session pooler on port 5432."
+            exit 1
+          fi
+
+          if [[ "${SUPABASE_DB_URL}" != *"${SUPABASE_PROJECT_REF}"* ]]; then
+            echo "::error::Production database URL does not identify the expected Supabase project."
+            exit 1
+          fi
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@3c2f5e2ae34c34e428e8e206e2c4d21fa2d20fbf # v2.1.1
+        with:
+          version: ${{ env.SUPABASE_CLI_VERSION }}
+
+      - name: Verify exact pending migration allowlist
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          expected=(
+            "20260828130500_administration_access_management.sql"
+            "20260828132500_administration_employee_identity.sql"
+          )
+
+          for migration in "${expected[@]}"; do
+            if [[ ! -f "supabase/migrations/${migration}" ]]; then
+              echo "::error::Expected migration is missing from the checked-out main branch: ${migration}"
+              exit 1
+            fi
+          done
+
+          dry_run="${RUNNER_TEMP}/production-migration-dry-run.txt"
+          supabase db push \
+            --dry-run \
+            --db-url "${SUPABASE_DB_URL}" \
+            --yes 2>&1 | tee "${dry_run}"
+
+          mapfile -t pending < <(
+            grep -Eo '[0-9]{14}_[[:alnum:]_.-]+\.sql' "${dry_run}" \
+              | sort -u \
+              || true
+          )
+
+          if (( ${#pending[@]} == 0 )); then
+            echo "No pending migrations were reported; Production is already reconciled."
+            exit 0
+          fi
+
+          for migration in "${pending[@]}"; do
+            allowed=false
+            for candidate in "${expected[@]}"; do
+              if [[ "${migration}" == "${candidate}" ]]; then
+                allowed=true
+                break
+              fi
+            done
+
+            if [[ "${allowed}" != true ]]; then
+              echo "::error::Unexpected pending migration detected: ${migration}"
+              exit 1
+            fi
+          done
+
+          echo "Approved pending migration set:"
+          printf '  - %s\n' "${pending[@]}"
+
+      - name: Apply approved versioned migrations
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase db push \
+            --db-url "${SUPABASE_DB_URL}" \
+            --yes
+
+      - name: Verify no local migration remains pending
+        shell: bash
+        run: |
+          set -euo pipefail
+          verification="${RUNNER_TEMP}/production-migration-post-push.txt"
+          supabase db push \
+            --dry-run \
+            --db-url "${SUPABASE_DB_URL}" \
+            --yes 2>&1 | tee "${verification}"
+
+          if grep -Eq '[0-9]{14}_[[:alnum:]_.-]+\.sql' "${verification}"; then
+            echo "::error::At least one local migration remains pending after reconciliation."
+            exit 1
+          fi
+
+      - name: Record reconciliation summary
+        shell: bash
+        run: |
+          {
+            echo "## Production migration reconciliation"
+            echo
+            echo "- Project: \`${SUPABASE_PROJECT_REF}\`"
+            echo "- Allowed migrations: \`20260828130500\`, \`20260828132500\`"
+            echo "- Mechanism: version-preserving \`supabase db push\`"
+            echo "- Seed data: not applied"
+            echo "- Production reset/repair: not used"
+          } >> "${GITHUB_STEP_SUMMARY}"
