@@ -107,6 +107,19 @@ Após o merge:
 
 Não usar CI/build como substituto dessa evidência. Também não fazer deploy Vercel manual apenas para homologar.
 
+### Preflight Vercel já realizado
+
+Consulta somente leitura ao projeto Vercel `sistema-lojasaph` em 2026-08-31 confirmou:
+
+- o projeto está conectado ao repositório `synapselab-ia/sistema-lojasaph`;
+- o deployment Production mais recente disponível está `READY`;
+- esse deployment corresponde ao commit **`0329ec389521f32e6378429c81b3f444a7b6898a`**, mensagem `docs: reconciliar handoff após Financeiro (#160)`;
+- portanto ele é **anterior** às slices de Caixa #161, Dashboard #163 e limpeza de linguagem #165.
+
+Conclusão: **`sistema-lojasaph.vercel.app` não representa o baseline funcional atual e não pode ser usado para certificar a homologação da Fase 51 atual.**
+
+Nenhum deployment foi criado ou promovido durante esse preflight. Não disparar deploy manual para contornar o bloqueio. A próxima execução deve preferir uma execução local isolada do código atual, caso consiga prover um backend/credencial de teste aprovado sem usar Production; caso contrário, registrar as jornadas autenticadas como bloqueadas por ambiente.
+
 ## Próxima ação: homologação UX real
 
 O próximo chat deve executar a slice de **homologação real de UX em jornadas completas**, conforme a etapa seguinte da Issue #142.
@@ -119,10 +132,11 @@ Validar a aplicação existente como produto em tamanhos de tela e jornadas reai
 
 1. reconciliar `main`, Issue #142, PRs, branches e CI reais;
 2. reler `NEXT_ACTION.md`, roadmap, IA, design system e Definition of Done;
-3. identificar um ambiente seguro já existente que represente adequadamente o sistema;
-4. não disparar deploy Vercel manual/rotineiro para criar esse ambiente;
-5. não usar Production como laboratório e não criar fixtures nela;
-6. confirmar se existe sessão/credencial de teste aprovada para jornadas autenticadas; se não existir, registrar o bloqueio e homologar apenas o que for seguro/acessível, sem inventar credenciais.
+3. não usar o deployment Production atual para certificar as slices pós-#160, pois ele está comprovadamente defasado;
+4. identificar um ambiente seguro que represente o código atual;
+5. não disparar deploy Vercel manual/rotineiro para criar esse ambiente;
+6. não usar Production como laboratório e não criar fixtures nela;
+7. confirmar se existe sessão/credencial de teste aprovada para jornadas autenticadas; se não existir, registrar o bloqueio e homologar apenas o que for seguro/acessível, sem inventar credenciais.
 
 ### Jornadas prioritárias
 
