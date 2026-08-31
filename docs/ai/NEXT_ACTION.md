@@ -6,23 +6,23 @@
 
 Baseline funcional para a próxima execução:
 
-- `main=692e2fb1ed12085148a04f22c540863b0d699994` — merge do PR #159;
-- PR #159 — Financeiro consolidado — merged;
-- CI pós-merge #557 / run `33205617449`: success;
-- lint, typecheck, tests, production build e banco/migrations/RLS: success;
-- CI #556 / run `33205483532`: success no head final do PR;
-- Business Transactions Integration #252 / run `33205483531`: success no head final do PR;
-- Inventory Count Integration #265 / run `33205483505`: success no head final do PR;
+- `main=7e841b77daae8eb7afc13cc39812dd93b948dd32` — merge do PR #161;
+- PR #161 — Caixa consolidado — merged;
+- CI pós-merge #561 / run `33387966611`: success;
+- lint, typecheck, unit tests, production build e banco/migrations/RLS: success;
+- CI #560 / run `33387774581`: success no head final do PR;
+- Business Transactions Integration #253 / run `33387774423`: success, incluindo lifecycle de Caixa e permissões escopadas;
+- Inventory Count Integration #266 / run `33387774526`: success;
 - Issue #142 aberta e ativa;
 - #75/#121 **TOTALMENTE ON HOLD**.
 
-Não refazer Cadastros, Estoque, Compras ou Financeiro sem bug/gap concreto.
+Não refazer Cadastros, Estoque, Compras, Financeiro ou Caixa sem bug/gap concreto.
 
 ## NEXT_ACTION objetiva
 
-### Executar a próxima slice da Issue #142: **Caixa**
+### Executar a próxima slice da Issue #142: **Dashboard / Visão geral**
 
-O objetivo é consolidar configuração, sessões, totais por meio de pagamento, movimentos, fechamento e histórico como uma experiência operacional coerente, sem alterar silenciosamente cálculo de esperado/contado/divergência, taxas, escopos, autorização ou requisitos PENDING.
+O objetivo é consolidar `/workspace` como painel operacional coerente, legível e responsivo sobre os read models já existentes, preservando exatamente a semântica de escopos, filtros, datas, KPIs e alertas. O Dashboard continua **somente leitura** e nunca vira uma nova fronteira transacional.
 
 Documentos de autoridade:
 
@@ -32,7 +32,7 @@ Documentos de autoridade:
 - `docs/qa/definition-of-done.md`;
 - `docs/product/open-questions.md`;
 - `docs/product/requirements.md`;
-- migration/RLS/ADRs e testes de Caixa já existentes.
+- documentação/ADRs do Dashboard e dos módulos cujos dados aparecem no painel.
 
 ### 1. Reconciliar e inventariar antes de editar
 
@@ -40,114 +40,110 @@ No início da próxima execução:
 
 1. confirmar `main`, Issue #142, PRs, branches e CI reais;
 2. reler os documentos de autoridade;
-3. inventariar rotas, página, domínio, gateway, RPCs, tabelas, RLS/grants, permissões e testes de Caixa;
-4. localizar cadastro de caixa, meios de pagamento e regras de taxa;
-5. localizar abertura, totais por meio, movimentos, fechamento, cancelamento e histórico de sessão;
-6. provar como `expected_cash_amount`, `counted_cash_amount` e `cash_difference` são calculados/persistidos;
-7. provar como `affects_cash_drawer`, fundo inicial e movimentos entram no esperado;
-8. mapear escopo real por Organization/Unit/Register e permissões de configuração/operação;
-9. identificar megapágina, linguagem técnica e interações provisórias como `window.prompt()`;
-10. definir o contrato de navegação e responsabilidade das páginas antes do código.
+3. inventariar integralmente `src/app/workspace/(operacao)/page.tsx`;
+4. inventariar `SupabaseDashboardQuery`, seus testes e todas as tabelas/views/queries usadas;
+5. inventariar `buildDashboardSummary` e testes de summary;
+6. inventariar as queries/seções específicas de Estoque e Compras em `src/modules/dashboard`;
+7. localizar todos os KPIs, itens da fila de atenção e respectivos destinos;
+8. provar a semântica de Unidade, Setor, horizonte relativo e período gerencial explícito;
+9. provar timezone/data de negócio e quais métricas representam estado atual versus eventos/obrigações por data;
+10. mapear quais métricas aceitam escopo de Setor e quais permanecem apenas em Unidade/Organization;
+11. identificar controles manuais/linguagem técnica e padrões anteriores ao design system;
+12. definir hierarquia e responsabilidades do painel antes do código.
 
 Inventário preliminar já comprovado:
 
-- `/workspace/caixa/page.tsx` ainda concentra toda a área;
-- `SupabaseCashGateway` já possui commands idempotentes para configuração e operação;
-- a migration base é `20260818135623_cash_sessions_flow.sql`, com escopos/permissões endurecidos posteriormente;
-- cancelamento de sessão ainda usa `window.prompt()`;
-- sessões usam `business_date`, sequência e fundo inicial explícitos;
-- totais por meio preservam bruto, taxa, líquido e regra de taxa quando aplicada;
-- movimentos persistem tipo, valor, horário, motivo e responsável;
-- fechamento persiste esperado, contado e divergência;
-- `REQ-CASH-007` e `REQ-CASH-008` continuam PENDING.
+- `/workspace` já possui Dashboard funcional, somente leitura e integrado aos módulos persistentes;
+- a página atual concentra filtros, período, fila de atenção, cartões financeiros, sinais operacionais e seções de Estoque/Compras em um componente grande;
+- `SupabaseDashboardQuery` já existe com testes;
+- `buildDashboardSummary` já concentra derivações de apresentação;
+- queries e componentes específicos de overview de Compras e Estoque já existem;
+- o painel diferencia **estado atual**, **horizonte relativo** e **período explícito**;
+- Caixa é escopado por Unidade e usa `business_date` quando a métrica é temporal;
+- Financeiro, Compras e Estoque só usam Setor quando existe vínculo setorial explícito;
+- parte dos filtros/controles ainda usa estilos manuais e deve ser reconciliada com `src/components/ui`.
 
-Não criar schema/RPC novo para resolver layout. Reaproveitar primeiro os boundaries existentes.
+Não criar schema/RPC/view novo para resolver layout. Reaproveitar primeiro os read models e boundaries existentes.
 
-### 2. Escopo funcional da consolidação de Caixa
+### 2. Escopo funcional da consolidação
 
-Organizar conforme o comportamento já suportado:
+Organizar o painel conforme dados já suportados:
 
-- visão da área com sessões abertas e atenção operacional;
-- configuração de caixas físicos por unidade;
-- configuração de meios de pagamento;
-- regras de taxa versionadas;
-- abertura de sessão com data de negócio, sequência e fundo inicial;
-- lista/histórico de sessões;
-- detalhe estável da sessão quando a entidade persistente justificar URL própria;
-- totais por meio de pagamento;
-- movimentos de entrada e saída já suportados;
-- valor esperado, contado e divergência;
-- fechamento;
-- cancelamento conforme regra existente.
+- cabeçalho/contexto da organização;
+- filtros operacionais claros de Unidade/Setor quando aplicáveis;
+- horizonte relativo de alertas onde o contrato já usa esse conceito;
+- período gerencial explícito onde a métrica possui data de negócio/vencimento comprovada;
+- fila prioritária de atenção com links para a jornada correta;
+- resumo financeiro;
+- sinais de Caixa e Compras;
+- visão de Estoque e Compras já suportada pelos overview queries;
+- estados loading, erro e vazio;
+- links para rotas consolidadas, preferindo o destino mais específico e útil.
 
-Preferir separar **configuração → sessões → detalhe/ação → histórico** em vez de manter tudo na mesma página.
+O objetivo é melhorar hierarquia, compreensão e navegação, não adicionar novos indicadores.
 
-### 3. Preservar invariantes de domínio
+### 3. Preservar semântica dos dados
 
-Não mover regra crítica para componentes React.
+Não mover regra crítica para componentes React e não alterar silenciosamente o significado de indicadores.
 
-Preservar nos boundaries atuais, entre outras regras comprovadas pelo código/testes:
+Preservar, conforme os contracts existentes:
 
-- caixa físico pertence à unidade/organização válidas;
-- sessão possui data de negócio explícita e sequência `>= 1`;
-- combinação caixa + data + sequência permanece única;
-- fundo inicial é não negativo e separado dos totais por meio;
-- somente sessão aberta aceita alterações operacionais suportadas;
-- total por meio registra bruto, taxa e líquido conforme contrato persistente;
-- taxa é configurável/versionada e não deve ser hardcoded na UI;
-- regra de taxa, quando indicada, precisa ser válida para meio/data conforme backend;
-- `affects_cash_drawer` continua vindo da configuração do meio;
-- movimentos aceitos continuam restritos aos tipos e validações persistentes;
-- fechamento recebe valor contado não negativo e preserva esperado/contado/divergência;
-- cancelamento mantém registro e auditoria, sem exclusão física;
-- idempotência dos commands existentes;
-- RLS/grants/RPCs permanecem a fronteira real de autorização.
+- RLS e escopos de Organization/Unit/Sector;
+- timezone e data de negócio;
+- diferença entre estado atual e métricas por período;
+- diferença entre horizonte relativo e intervalo explícito;
+- status financeiro já derivados pelos read models existentes;
+- Caixa em escopo de Unidade quando não existe relação setorial real;
+- métricas de Estoque/Compras/Financeiro filtradas por Setor somente quando há vínculo explícito;
+- saldo, divergência, quantidade pendente, vencimento e demais valores conforme as fontes persistentes existentes.
 
-Se surgir gap, provar com código/teste antes de criar migration/RPC.
+Se um KPI parecer ambíguo, provar o contrato em query/summary/testes antes de mudar rótulo ou comportamento.
 
-### 4. Arquitetura de informação e UX
+### 4. KPIs e alertas
 
-Usar linguagem operacional de caixa, não nomes de tabela/RPC/RLS.
+Não inventar regra de negócio para tornar o Dashboard mais “completo”.
+
+Em especial, não criar sem requisito comprovado:
+
+- novos thresholds de estoque;
+- nova janela de validade;
+- novo SLA de compras;
+- alerta financeiro por quantidade arbitrária de dias;
+- meta/tendência/comparação percentual;
+- regra de divergência de caixa;
+- faturamento/vendas;
+- consumo de funcionários como receita/despesa;
+- ranking ou score de fornecedor/produto/unidade.
+
+Cada alerta deve ser rastreável a uma fonte real e levar a uma jornada operacional existente.
+
+### 5. Arquitetura de informação e UX
+
+Usar linguagem operacional, não nomes de tabela, view, RPC, RLS ou detalhes de infraestrutura.
 
 Preferir:
 
-- raiz orientada a sessões abertas, últimas sessões e tarefas principais;
-- configuração administrativa separada da operação diária quando suportado;
-- lista de sessões pesquisável/filtrável somente quando os dados justificarem;
-- URL estável para sessão persistente;
-- abertura em fluxo próprio;
-- totais e movimentos no contexto da sessão;
-- fechamento como ação explícita com esperado, contado e divergência compreensíveis;
-- cancelamento em diálogo explícito, sem `window.prompt()`;
-- histórico legível sem expor IDs técnicos;
-- estados loading/empty/read-only/not-found e feedback claros;
-- estratégia mobile deliberada, sem depender apenas de tabela larga;
-- reutilização de `src/components/ui` e padrões já provados.
+- `PageHeader`, `Panel`, `FormField`, `Select`, `Input`, `Button`, `EmptyState`, `FeedbackMessage`, `StatusBadge` e outros primitives já consolidados;
+- hierarquia clara entre “precisa de atenção” e indicadores informativos;
+- filtros apresentados com explicação curta somente onde a semântica não for óbvia;
+- ações que navegam para Estoque, Compras, Financeiro ou Caixa em vez de duplicar transações no Dashboard;
+- mobile deliberado, sem depender de grids/tabelas largas ou controles espremidos;
+- feedback de atualização/carregamento que não faça o usuário perder contexto.
 
 Não criar abstração genérica sem repetição comprovada.
 
-### 5. Configuração de caixa, meios e taxas
+### 6. Rotas de destino
 
-Não duplicar regra de configuração dentro da sessão.
+Revisar links do Dashboard após as consolidações da Fase 51.
 
-- caixas físicos continuam vinculados a unidade;
-- meios mantêm código, nome, tipo e `affects_cash_drawer` conforme configuração atual;
-- taxa percentual/fixa permanece versionada por vigência;
-- não inventar bandeira/adquirente/parcelamento ou outra dimensão de taxa sem decisão real;
-- Q-011/Q-012 permanecem referência de dúvidas abertas quando aplicável;
-- mudanças de configuração crítica continuam auditáveis pelos boundaries existentes.
+Sempre que o contexto permitir, preferir destinos específicos como:
 
-### 6. Requisitos/PENDINGs
+- Estoque → posição ou jornada correspondente;
+- Compras → pedidos/recebimentos conforme o sinal;
+- Financeiro → contas/vencimentos conforme o indicador;
+- Caixa → sessões ou sessão apropriada quando houver contexto suficiente.
 
-Não resolver regra de negócio por conveniência de UX.
-
-Em especial:
-
-- `REQ-CASH-007` — consumo de funcionários — continua PENDING por Q-009;
-- não transformar `employee_consumption` em faturamento, venda, benefício, desconto em folha ou consumo gratuito sem decisão explícita;
-- `REQ-CASH-008` — integração com vendas — continua PENDING por Q-007;
-- não criar vendas individuais, POS/PDV, importação automática de vendas ou nova integração nesta slice;
-- demais PENDINGs permanecem inalterados.
+Não inventar deep link quando os dados não carregarem identidade suficiente para um destino seguro.
 
 ### 7. Autorização
 
@@ -155,27 +151,24 @@ Q-022 continua aberta.
 
 Portanto:
 
-- não renomear papéis técnicos como cargos de negócio;
-- não ampliar ações por conveniência de UI;
-- mapear separadamente permissões de configuração de caixa, configuração financeira e operação quando já existirem;
-- manter enforcement no server/domain/banco;
-- UI apenas reflete disponibilidade e nunca se torna fronteira de segurança;
+- Dashboard só mostra o que as queries/RLS autorizam;
+- não ampliar escopo por conveniência de filtro;
+- não reinterpretar papéis técnicos como cargos;
+- não usar UI como fronteira de segurança;
 - não inferir acesso Organization-wide a partir de papel escopado.
 
 ### 8. Testes e validação
 
 Adicionar/ajustar testes somente nos contratos tocados, especialmente para:
 
-- filtros/visões puras quando introduzidos;
-- estados seguros de sessão inexistente/inacessível;
-- abertura com data/caixa/sequence/fundo válidos;
-- total por meio e taxa;
-- movimentos em sessão aberta;
-- esperado/contado/divergência no fechamento;
-- cancelamento sem exclusão;
-- idempotência/duplicidade;
-- autorização/isolamento por escopo;
-- responsividade por estrutura/contrato quando possível.
+- summary/derivações puras;
+- semântica de Unidade/Setor;
+- horizonte versus período explícito;
+- estado atual versus métricas temporais;
+- timezone/data de negócio quando relevante;
+- destinos de alertas/KPIs alterados;
+- loading/erro/empty;
+- responsividade por estrutura/contrato quando tecnicamente possível.
 
 Manter verdes:
 
@@ -184,51 +177,50 @@ Manter verdes:
 - `npm run test`;
 - `npm run build`;
 - CI PostgreSQL/RLS aplicável;
-- Business Transactions Integration quando Caixa estiver coberto/afetado;
-- demais integrações somente quando realmente afetadas.
+- integrações de banco somente quando realmente afetadas.
 
-Se browser real permitido estiver disponível, validar jornadas críticas em desktop e mobile. Se não estiver, registrar a limitação; **não fazer deploy Vercel manual apenas para homologação**.
+Se browser real permitido estiver disponível, validar Dashboard em desktop e mobile. Se não estiver, registrar a limitação; **não fazer deploy Vercel manual apenas para homologação**.
 
 ### 9. Guardrails desta execução
 
 Não:
 
 - reabrir áreas já consolidadas sem evidência concreta;
-- redesenhar Dashboard;
-- resolver Q-007/Q-009 ou `REQ-CASH-007/008`;
-- criar integração POS/PDV/vendas;
+- adicionar transações no Dashboard;
+- inventar KPI/threshold/janela/regra;
+- resolver `REQ-CASH-007`, `REQ-CASH-008`, `REQ-FIN-004` ou outros PENDINGs;
 - mudar Q-022/política de autorização;
-- fazer migração cosmética em massa;
+- criar migration cosmética;
 - tocar Production para prova;
 - retomar #75/#121;
 - fazer deploy Vercel manual/rotineiro.
 
-## Critérios de aceite para Caixa
+## Critérios de aceite para Dashboard
 
 A slice só pode ser encerrada quando:
 
-- configuração e operação diária deixam de competir na mesma megapágina;
-- sessões possuem jornada coerente e navegável;
-- sessão persistente possui contexto/URL estável quando aplicável;
-- abertura, totais, movimentos e fechamento têm responsabilidades claras;
-- esperado, contado e divergência ficam compreensíveis sem recalcular regra crítica em React;
-- cancelamento não depende de `window.prompt()`;
-- histórico preserva sessões e movimentos auditáveis;
-- mobile não depende apenas de overflow horizontal;
-- estados loading/empty/error/read-only/not-found e feedback são tratados;
-- permissões/RLS continuam a fronteira real;
-- `REQ-CASH-007/008` e demais PENDINGs permanecem sem inferência;
-- lint, typecheck, testes, build, banco/RLS e integrações aplicáveis estão verdes;
+- `/workspace` comunica prioridade operacional com hierarquia clara;
+- filtros de Unidade/Setor/horizonte/período continuam semanticamente corretos;
+- horizonte e período não são apresentados como equivalentes;
+- cada KPI/alerta possui origem e significado comprovados;
+- links levam às jornadas consolidadas apropriadas;
+- Dashboard continua somente leitura;
+- design system é reutilizado nos controles/superfícies tocados;
+- mobile possui estrutura deliberada;
+- loading/erro/empty e atualização são compreensíveis;
+- RLS/escopos continuam a fronteira real;
+- nenhum PENDING é resolvido por conveniência visual;
+- lint, typecheck, testes, build e gates aplicáveis estão verdes;
 - ausência de browser/homologação visual é registrada honestamente se persistir;
 - `CURRENT_STATE`, `HANDOFF` e `NEXT_ACTION` são reconciliados.
 
-## Depois de Caixa
+## Depois do Dashboard
 
-Somente após a integração da consolidação de Caixa, promover:
+Somente após a integração da consolidação do Dashboard, promover:
 
-> **Dashboard**
+> **limpeza de linguagem/resíduos de engenharia da experiência normal**
 
-Não saltar diretamente para limpeza/homologação.
+Não saltar diretamente para homologação UX real.
 
 ## Ordem macro
 
@@ -240,8 +232,8 @@ Não saltar diretamente para limpeza/homologação.
 6. ~~Estoque~~ — PR #155;
 7. ~~Compras~~ — PR #157;
 8. ~~Financeiro~~ — PR #159;
-9. **Caixa** — próxima;
-10. Dashboard;
+9. ~~Caixa~~ — PR #161;
+10. **Dashboard** — próxima;
 11. limpeza de linguagem;
 12. homologação UX real;
 13. reconciliação funcional;
@@ -252,4 +244,4 @@ Não saltar diretamente para limpeza/homologação.
 
 ## #75/#121 permanecem ON HOLD
 
-Não investigar scheduling, Storage/R2/S3, restore drills, secrets/variables, Production fixtures ou evidência de proteção durante a consolidação funcional. O hold só termina por decisão explícita ou no production-readiness final.
+Não investigar scheduling, Storage/R2/S3, restore drills, secrets/variables, Production fixtures ou evidência de proteção durante a consolidação funcional. Execuções agendadas eventualmente presentes no histórico não revogam o hold. O hold só termina por decisão explícita ou no production-readiness final.
