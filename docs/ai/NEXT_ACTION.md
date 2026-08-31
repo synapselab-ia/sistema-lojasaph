@@ -4,28 +4,31 @@
 
 **Fase 51 / Issue #142 continua ativa.**
 
-A slice de telas auxiliares de autenticação/contexto foi fechada no PR #171. Os fluxos preservam seus contratos de auth/sessão/autorização/RLS e agora usam os padrões compartilhados de feedback, controles, touch targets e submit pendente.
+As slices de consolidação até o PR #171 estão integradas. A frente atual continua sendo a homologação UX real em desktop, tablet e mobile.
 
-Baseline anterior ao PR #171:
+Baseline corrente:
 
-- `main=fad41dbe672d41e1fd6277e57f1f894d647a8ef2` — merge do PR #170;
-- CI pós-merge #583 / run `33425164783`: **success**;
+- `main=64e1c0d242c3abfb7ee374ebc43850156d75089b` — merge do PR #171;
+- CI pós-merge #586 / run `33426777989`: **success**;
 - Issue #142 aberta;
 - #75/#121 **TOTALMENTE ON HOLD**.
 
-Validação do primeiro head do PR #171:
+Deployment automático corrente:
 
-- `25109c0054933fe714d299d67b4067305a0372ea`;
-- CI #584 / run `33426151982`: **success**;
-- lint, typecheck, unit tests, production build e banco/RLS: success.
+- `dpl_J6qwwqUihCKqfTMhmbjSxcLSA3gr`;
+- `READY`, target `production`, source `git`;
+- `githubCommitSha=64e1c0d242c3abfb7ee374ebc43850156d75089b`;
+- alias canônico `sistema-lojasaph.vercel.app`.
+
+A revalidação HTTP/HTML pública da versão corrente já foi executada e está registrada em `docs/qa/fase51-ux-homologation.md`. UX-51-001/002/003 estão confirmados como corrigidos no deployment atual nesse nível de evidência.
 
 ## NEXT_ACTION objetiva
 
-### **Concluir homologação UX real em desktop, tablet e mobile**
+### **Concluir a homologação UX real com browser gráfico e sessão legítima**
 
 Usar `docs/qa/fase51-ux-homologation.md` como matriz e evidência oficial.
 
-Esta é a próxima slice executável.
+Esta continua sendo a próxima slice obrigatória. **Não promover para reconciliação funcional final apenas porque o deployment e o HTML público estão corretos.**
 
 ## 1. Reconciliar o estado real antes de testar
 
@@ -34,48 +37,51 @@ No começo da execução:
 1. ler `AGENTS.md`, `docs/00-START-HERE.md`, `CURRENT_STATE.md`, `HANDOFF.md` e este arquivo;
 2. ler `docs/product/product-completion-ux-roadmap.md`, `docs/product/final-product-gap-audit.md` e `docs/qa/fase51-ux-homologation.md`;
 3. confirmar `main`, Issue #142, PRs, branches e CI reais;
-4. consultar somente o deployment **automático** correspondente ao `main` corrente quando útil;
+4. confirmar somente o deployment **automático** correspondente ao `main` corrente quando útil;
 5. não disparar deploy Vercel manual/rotineiro para fabricar evidência;
-6. não refazer slices já integradas.
+6. não refazer slices já integradas;
+7. se o deployment não mudou, não repetir por inércia as mesmas verificações HTTP/HTML já registradas.
 
-## 2. Pré-condições de evidência
+## 2. Gate de evidência agora pendente
 
-Antes de declarar uma jornada aprovada, exigir evidência apropriada:
+A próxima evidência incremental exige:
 
-- browser gráfico operável para viewport/foco/teclado/drawer/overflow;
+- browser gráfico operável para viewport, foco, teclado, drawer, overflow e inspeção visual;
 - sessão/credencial legítima e aprovada para jornadas autenticadas;
 - token legítimo para convite/recuperação/nova senha quando necessário;
 - ambiente seguro para operações mutáveis.
 
-Se uma pré-condição não existir:
+Se uma dessas pré-condições não existir:
 
 - registrar o bloqueio objetivamente na matriz;
-- executar apenas a evidência válida disponível;
+- executar apenas evidência nova e válida disponível;
 - **não** contornar auth;
 - **não** criar usuário, convite, fixture ou dado artificial em Production;
-- **não** promover HTML/CSS/CI a prova de browser real.
+- **não** promover HTML/CSS/CI a prova de browser real;
+- **não** gerar nova atividade documental apenas repetindo o mesmo bloqueio sem evidência nova.
 
-## 3. Revalidar achados públicos anteriores
+## 3. Evidência pública já concluída na versão corrente
 
-A matriz atual registra UX-51-001/002/003 como corrigidos tecnicamente, mas com revalidação hospedada pendente.
+Não precisa ser refeita enquanto o deployment não mudar:
 
-Quando a versão corrente estiver disponível automaticamente:
+- `/` sem sessão → Login;
+- `/workspace` sem sessão → Login com `next=/workspace` e alerta de sessão expirada;
+- `/recuperar-senha` → UX-51-001/002 revalidados em HTTP/HTML;
+- `/sem-acesso` → UX-51-003 revalidado em HTTP/HTML;
+- `/auth/atualizar-senha` sem sessão válida → Login com alerta adequado;
+- `/auth/invite` → estado inicial hospedado com semântica de loading/status;
+- `/bootstrap` → estado real atual sem bootstrap artificial;
+- `/workspace/selecionar-organizacao` sem sessão → Login preservando `next`.
 
-- `/recuperar-senha`: target de toque e feedback acessível;
-- `/sem-acesso`: links/ações e feedback acessível;
-- confirmar que `/` e `/workspace` sem sessão continuam encaminhando corretamente.
+## 4. Matriz de viewports a executar
 
-Registrar commit/deployment observado e resultado real. Não disparar deploy manual.
-
-## 4. Matriz de viewports
-
-Executar as jornadas representativas em:
+Com browser gráfico real, usar e registrar dimensões representativas para:
 
 - desktop;
 - tablet;
 - mobile.
 
-Registrar dimensões usadas e, por jornada, verificar:
+Por jornada, verificar:
 
 - navegação e hierarquia;
 - foco visível e ordem por teclado;
@@ -88,7 +94,7 @@ Registrar dimensões usadas e, por jornada, verificar:
 - linguagem de negócio sem resíduos de engenharia;
 - retorno coerente no padrão `lista → detalhe → ação → retorno` quando aplicável.
 
-## 5. Jornadas mínimas
+## 5. Jornadas mínimas autenticadas
 
 ### Entrada/contexto
 
@@ -167,7 +173,7 @@ Registrar dimensões usadas e, por jornada, verificar:
 Para cada problema real:
 
 1. registrar rota, viewport, estado e passos;
-2. classificar impacto (navegação, acessibilidade, responsividade, feedback, linguagem ou fluxo);
+2. classificar impacto: navegação, acessibilidade, responsividade, feedback, linguagem ou fluxo;
 3. aplicar a menor correção consistente com os padrões existentes;
 4. não alterar regra de negócio/auth/RLS para resolver estética;
 5. adicionar teste de contrato/regressão quando útil;
@@ -182,7 +188,6 @@ A homologação só termina quando:
 
 - a matriz `docs/qa/fase51-ux-homologation.md` contém evidência representativa de desktop/tablet/mobile para as áreas críticas;
 - jornadas autenticadas necessárias foram percorridas com sessão legítima, ou qualquer limitação externa restante foi explicitamente aceita pelo operador como bloqueio/adiação;
-- UX-51-001/002/003 foram revalidados na versão corrente quando possível;
 - achados concretos foram corrigidos e revalidados;
 - não há gap P0/P1 de UX conhecido sem tratamento;
 - CI permanece verde;
