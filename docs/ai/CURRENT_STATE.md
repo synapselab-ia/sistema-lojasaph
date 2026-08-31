@@ -1,20 +1,20 @@
 # Current State — Sistema Lojasaph
 
-Última atualização: 2026-08-28
+Última atualização: 2026-08-31
 
 ## Estado atual
 
 **Fase 51 / Issue #142 — consolidação de produto, arquitetura de informação e UX — permanece ativa.**
 
-Baseline funcional após a consolidação de Financeiro:
+Baseline funcional após a consolidação de Caixa:
 
-- `main=692e2fb1ed12085148a04f22c540863b0d699994` — merge do PR #159;
-- PR #159 — `feat: consolidar jornada de Financeiro` — **merged**;
-- CI pós-merge da `main` #557 / run `33205617449`: **success**;
-- lint, typecheck, unit tests, production build e banco/migrations/RLS: **success**;
-- no head final do PR #159, CI #556 / run `33205483532`: **success**;
-- no head final do PR #159, Business Transactions Integration #252 / run `33205483531`: **success**;
-- no head final do PR #159, Inventory Count Integration #265 / run `33205483505`: **success**;
+- `main=7e841b77daae8eb7afc13cc39812dd93b948dd32` — merge do PR #161;
+- PR #161 — `feat: consolidar jornada de Caixa` — **merged**;
+- CI pós-merge da `main` #561 / run `33387966611`: **success**;
+- lint, typecheck, unit tests, production build e job de banco/migrations/RLS: **success**;
+- no head final do PR #161, CI #560 / run `33387774581`: **success**;
+- Business Transactions Integration #253 / run `33387774423`: **success**, incluindo ciclo de vida de Caixa e permissões escopadas;
+- Inventory Count Integration #266 / run `33387774526`: **success**;
 - Issue #142 continua aberta e ativa;
 - #75 e #121 continuam abertas e **TOTALMENTE ON HOLD**;
 - nenhum deploy Vercel manual/rotineiro foi feito.
@@ -25,92 +25,102 @@ Baseline funcional após a consolidação de Financeiro:
 2. arquitetura da informação + navegação desktop/mobile — PR #147;
 3. design system mínimo + padrões reutilizáveis — PR #149;
 4. Administração: Estrutura + Usuários/Permissões — PR #151;
-5. reconciliação/handoff de Cadastros — PR #152;
-6. Cadastros: Produtos, Fornecedores e Funcionários — PR #153;
-7. Estoque: posição + jornadas operacionais consolidadas — PR #155;
-8. Compras: pedidos + recebimentos + histórico consolidados — PR #157;
-9. Financeiro: contas, vencimentos, pagamentos e documento estável — PR #159.
+5. Cadastros: Produtos, Fornecedores e Funcionários — PR #153;
+6. Estoque: posição + jornadas operacionais consolidadas — PR #155;
+7. Compras: pedidos + recebimentos + histórico consolidados — PR #157;
+8. Financeiro: documentos + parcelas + pagamentos consolidados — PR #159;
+9. Caixa: sessões + fechamento + configuração consolidados — PR #161.
 
-## Financeiro consolidado
+## Caixa consolidado
 
-A área de Financeiro deixou de concentrar visão, criação de documento/parcelas, pagamentos, estornos, cancelamento, anexos e histórico em uma única página.
+A área de Caixa deixou de concentrar configuração, abertura, totais, movimentos, fechamento, cancelamento e histórico em uma única página.
 
 ### Visão da área
 
-`/workspace/financeiro` agora apresenta:
+`/workspace/caixa` agora apresenta:
 
-- total nominal;
-- pago líquido;
-- saldo positivo em aberto;
-- quantidade de parcelas vencidas;
-- parcelas vencidas ou vencendo hoje que exigem atenção;
-- atalhos para Contas a pagar, Vencimentos e Pagamentos;
-- exportação CSV já existente para perfis autorizados.
+- sessões abertas;
+- sessões fechadas visíveis;
+- caixas ativos;
+- quantidade de fechamentos com divergência registrada;
+- atalhos para Sessões e Configuração;
+- sessões recentes com acesso ao detalhe estável.
 
-Nenhuma janela arbitrária de “próximos N dias” foi criada.
+### Sessões
 
-### Contas a pagar e documento estável
+`/workspace/caixa/sessoes` passou a ser a lista principal:
 
-`/workspace/financeiro/contas` passou a ser a lista principal:
-
-- busca por fornecedor, unidade, número, tipo, série ou observação;
-- filtro por situação derivada;
-- nominal, saldo/diferença e próximo vencimento em aberto;
+- busca por caixa, código, unidade, data, situação ou observação;
+- filtro por status;
+- fundo inicial, contado e divergência quando persistidos;
 - tabela desktop e cards mobile;
-- URL estável para cada documento.
+- URL estável para cada sessão.
 
-`/workspace/financeiro/contas/nova` concentra a criação de documento e parcelas usando o mesmo command/RPC idempotente existente.
+`/workspace/caixa/sessoes/nova` concentra a abertura com:
 
-`/workspace/financeiro/contas/[id]` apresenta:
+- caixa físico;
+- data de negócio explícita;
+- sequência;
+- fundo inicial;
+- observação opcional.
 
-- fornecedor, unidade e setor;
-- identificação documental;
-- nominal, pago líquido e saldo/diferença;
-- parcelas, vencimentos, status e referências;
-- anexos privados pelo boundary já existente;
-- histórico de pagamentos e estornos;
-- ações contextuais de pagamento, estorno e cancelamento.
+`/workspace/caixa/sessoes/[id]` apresenta:
 
-Documento inexistente ou inacessível usa estado seguro, sem confirmar existência fora do escopo.
+- caixa, unidade, data de negócio, sequência e status;
+- fundo inicial e valores finais persistidos;
+- totais por meio com bruto, taxa, líquido, impacto na gaveta e regra aplicada quando registrada;
+- entradas, sangrias e histórico de movimentos;
+- composição informativa dos insumos da gaveta;
+- fechamento explícito com valor contado;
+- cancelamento por diálogo, sem `window.prompt()`.
 
-### Pagamento, estorno e cancelamento
+Sessão inexistente ou inacessível usa o mesmo estado seguro, sem confirmar a existência fora do escopo.
 
-`/workspace/financeiro/contas/[id]/pagar` registra pagamento no contexto explícito do documento/parcela e continua chamando o mesmo `record_installment_payment` pelo gateway existente.
+### Configuração
 
-A UI deliberadamente não inventa limite `valor pago <= nominal/saldo`, pois o contrato persistente atual preserva diferenças e `REQ-FIN-004`/Q-014/Q-015 permanecem sem decisão adicional.
+`/workspace/caixa/configuracao` separa da operação diária:
 
-Estorno e cancelamento deixaram de usar `window.prompt()`:
+- caixas físicos por unidade;
+- meios de pagamento e indicação explícita de impacto na gaveta;
+- regras de taxa versionadas por vigência.
 
-- estorno usa diálogo explícito com motivo opcional e continua criando evento reverso sem apagar o pagamento original;
-- pagamento já estornado não oferece nova ação de estorno na UI e continua protegido pelo banco;
-- cancelamento usa diálogo explícito com motivo opcional;
-- documento com pagamento líquido continua exigindo estorno antes do cancelamento conforme o RPC existente.
+A UI apenas reflete as permissões `manageCashRegisters`/`manageCashConfig`; autorização real permanece nos boundaries existentes.
 
-### Vencimentos e pagamentos
+### Regra de fechamento preservada
 
-- `/workspace/financeiro/vencimentos` consulta parcelas pelos status persistentes/derivados: vencida, vence hoje, a vencer, paga e cancelada;
-- `/workspace/financeiro/pagamentos` consulta pagamentos e estornos como eventos separados, com contexto de documento/parcela quando disponível;
-- ambas possuem tabela desktop e alternativa mobile própria.
+Nenhuma regra de fechamento foi movida para React.
 
-## Boundaries e regras preservados
+O backend continua calculando e persistindo, no fechamento:
+
+`expected_cash_amount = opening_float + bruto dos meios com affects_cash_drawer + cash_in - cash_out`
+
+`cash_difference = counted_cash_amount - expected_cash_amount`
+
+`employee_consumption` continua fora do esperado.
+
+A tela de detalhe mostra os componentes persistidos para explicar a composição, mas deixa claro que o valor esperado autoritativo só é calculado/persistido pelo backend no fechamento.
+
+### PENDINGs de Caixa preservados
+
+- `REQ-CASH-007` — Consumo Funcionários — permanece PENDING. A nova UX **não oferece criação de novo movimento desse tipo**; registros legados/existentes podem aparecer no histórico sem ganhar semântica nova.
+- `REQ-CASH-008` — integração com vendas/POS — permanece PENDING. Totais por meio continuam consolidados/manual-operacionais conforme o contrato atual; nenhuma venda individual foi inventada.
+
+## Boundaries e segurança preservados
 
 Nenhum schema, migration, RPC, grant ou policy/RLS foi criado ou alterado para esta consolidação.
 
 Continuam autoritativos:
 
-- `create_payable_document`;
-- `record_installment_payment`;
-- `reverse_installment_payment`;
-- `cancel_payable_document`;
-- `SupabaseFinanceGateway` e o registry idempotente existente;
-- RLS/grants e escopos por Organization/Unit/Sector;
-- status/saldo derivados dos registros persistidos;
-- anexos privados e autorização server-side existente;
-- exportação CSV pelo gateway próprio.
-
-A consolidação adicionou somente uma consulta read-only dedicada ao detalhe para não depender do limite da visão geral; ela continua sujeita ao mesmo RLS.
-
-A UI não decidiu cardinalidade final de pagamentos, não classificou diferenças financeiras e não alterou Storage.
+- `create_cash_register`;
+- `create_payment_method`;
+- `create_fee_rule`;
+- `open_cash_session`;
+- `set_cash_payment_total`;
+- `record_cash_movement`;
+- `close_cash_session`;
+- `cancel_cash_session`;
+- RLS/grants e permissões escopadas existentes;
+- atomicidade/idempotência e auditoria dos commands.
 
 ## Limite de homologação visual
 
@@ -118,24 +128,13 @@ A UI não decidiu cardinalidade final de pagamentos, não classificou diferença
 
 Build e CI comprovam integridade técnica, mas não substituem homologação visual desktop/tablet/mobile. Não foi feito deploy Vercel manual apenas para produzir essa evidência.
 
-## Próxima slice oficial: Caixa
+## Próxima slice oficial: Dashboard
 
-**A próxima área da Fase 51 é Caixa. Não refazer Cadastros, Estoque, Compras ou Financeiro sem bug/gap concreto.**
+**A próxima área da Fase 51 é Dashboard / Visão geral. Não refazer Cadastros, Estoque, Compras, Financeiro ou Caixa sem bug/gap concreto.**
 
-Inventário preliminar já confirmado na `main`:
+Inventário preliminar confirmou que `/workspace` já possui um dashboard funcional e somente leitura, porém a página ainda concentra diretamente filtros, período, KPIs, fila de atenção e seções de múltiplos módulos em um componente grande, com controles visuais anteriores ao design system consolidado.
 
-- `/workspace/caixa` ainda é uma única página que mistura configuração e operação;
-- `SupabaseCashGateway` já contém commands idempotentes para criar caixa, meio de pagamento, regra de taxa, abrir sessão, registrar totais, registrar movimento, fechar e cancelar sessão;
-- a página atual mistura cadastro de caixas, meios/taxas, abertura de sessão, totais por meio, movimentos, fechamento/cancelamento e histórico;
-- cancelamento de sessão ainda usa `window.prompt()`;
-- sessões possuem data de negócio e sequência explícitas;
-- totais por meio preservam bruto, taxa e líquido;
-- fechamento preserva esperado, contado e divergência;
-- `REQ-CASH-007` (consumo de funcionários) e `REQ-CASH-008` (integração com vendas) continuam PENDING e não podem ser resolvidos pela reorganização de UX.
-
-A próxima execução deve inventariar também migration/RLS/permissões de Caixa antes de editar e preferir separar **configuração → sessões → detalhe/fechamento → histórico** conforme os boundaries realmente suportados.
-
-Não criar migration/RPC para resolver layout antes de provar gap real.
+Já existem boundaries dedicados em `src/modules/dashboard` para query, summary e seções de Estoque/Compras. A próxima slice deve consolidar a experiência da Visão geral sobre esses dados existentes, revisar linguagem/hierarquia/filtros e alinhar navegação para as jornadas recém-consolidadas, sem inventar KPI ou regra de negócio.
 
 ## Ordem oficial de fechamento do produto
 
@@ -147,8 +146,8 @@ Não criar migration/RPC para resolver layout antes de provar gap real.
 6. ~~Estoque~~ — PR #155;
 7. ~~Compras~~ — PR #157;
 8. ~~Financeiro~~ — PR #159;
-9. **Caixa** — próxima;
-10. Dashboard;
+9. ~~Caixa~~ — PR #161;
+10. **Dashboard** — próxima;
 11. limpeza de linguagem/resíduos de engenharia;
 12. homologação UX em jornadas desktop/tablet/mobile;
 13. reconciliação funcional final;
@@ -159,7 +158,7 @@ Não criar migration/RPC para resolver layout antes de provar gap real.
 
 ## PENDING permanece sem inferência
 
-Continuam PENDING até decisão real de negócio, entre outros:
+Continuam PENDING até decisão real de negócio:
 
 - `REQ-ITEM-004` — produto de venda/POS;
 - `REQ-ITEM-005` — ficha técnica/receita;
@@ -175,5 +174,7 @@ Q-022 também permanece aberta; não reinterpretar papéis técnicos como cargos
 ## #75/#121 — TOTALMENTE ON HOLD
 
 Não investigar scheduling, não disparar workflows manualmente para prova, não criar fixtures Production, não alterar Storage/R2/S3/retention/secrets/variables e não retomar restore nesta fase.
+
+Execuções agendadas do workflow de Storage podem existir no histórico; isso não revoga o hold e não deve ser usado como motivo para retomar #121.
 
 `REQ-PLAT-005` será retomado no production-readiness final, salvo decisão explícita do operador.
