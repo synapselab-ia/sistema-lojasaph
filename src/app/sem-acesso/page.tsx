@@ -22,13 +22,13 @@ export default async function NoAccessPage({ searchParams }: NoAccessPageProps) 
         <h1 className="mt-2 text-3xl font-semibold tracking-tight">Acesso operacional indisponível</h1>
         <p className="mt-3 text-sm leading-6 text-neutral-600">
           {context.authenticated
-            ? "Sua sessão é válida, mas não existe um vínculo ativo com uma organização acessível. Um administrador precisa criar ou reativar seu membership."
+            ? "Sua sessão é válida, mas não há um acesso ativo a uma organização disponível. Um administrador precisa criar ou reativar seu acesso."
             : "Sua sessão não está ativa. Entre novamente para continuar."}
         </p>
         {error && <p className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{error}</p>}
         <div className="mt-6 flex flex-wrap gap-3">
           {!context.authenticated && <Link href="/login" className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white">Entrar</Link>}
-          {context.authenticated && bootstrap.eligible && <Link href="/bootstrap" className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white">Configurar primeiro owner</Link>}
+          {context.authenticated && bootstrap.eligible && <Link href="/bootstrap" className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white">Configurar acesso inicial</Link>}
           <form action="/auth/signout" method="post"><button type="submit" className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium">Encerrar sessão</button></form>
         </div>
       </section>
