@@ -20,6 +20,22 @@ Baseline funcional para a próxima execução:
 
 Não refazer Administração, Cadastros, Estoque, Compras, Financeiro, Caixa, Dashboard ou limpeza de linguagem sem bug/gap concreto.
 
+## Bloqueio de ambiente já comprovado
+
+Preflight somente leitura do projeto Vercel `sistema-lojasaph` em 2026-08-31 mostrou que o deployment Production mais recente disponível corresponde ao commit:
+
+- `0329ec389521f32e6378429c81b3f444a7b6898a` — `docs: reconciliar handoff após Financeiro (#160)`.
+
+Esse deployment é anterior a:
+
+- Caixa — PR #161;
+- Dashboard — PR #163;
+- limpeza de linguagem — PR #165.
+
+Portanto, **o domínio Production atual não representa o baseline funcional corrente e não pode ser usado para certificar a homologação desta etapa**.
+
+Nenhum deploy foi disparado durante o preflight. Não criar/promover deployment manual para contornar esse bloqueio.
+
 ## NEXT_ACTION objetiva
 
 ### Executar a próxima slice da Issue #142: **homologação real de UX em desktop/tablet/mobile por jornadas completas**
@@ -44,14 +60,16 @@ No início da execução:
 
 1. confirmar `main`, Issue #142, PRs, branches e CI reais;
 2. reler os documentos de autoridade;
-3. identificar qual ambiente seguro existente será usado para browser testing;
-4. verificar se esse ambiente representa o código atual de forma suficiente para a homologação;
-5. **não disparar deploy Vercel manual/rotineiro** apenas para gerar ambiente de teste;
-6. **não usar Production como laboratório** e não criar fixtures/dados artificiais em Production;
-7. confirmar se existe sessão/credencial de teste aprovada para jornadas autenticadas;
-8. se não houver acesso autenticado seguro, registrar o bloqueio e não inventar credenciais nem contornar autenticação.
+3. não usar o deployment Production atual para certificar as slices pós-#160;
+4. identificar qual ambiente seguro **e atual** será usado para browser testing;
+5. preferir execução local isolada do código corrente quando ela puder ser configurada sem copiar secrets para Git/docs e sem usar Production como backend de laboratório;
+6. verificar se o ambiente escolhido representa o código atual de forma suficiente para a homologação;
+7. **não disparar deploy Vercel manual/rotineiro** apenas para gerar ambiente de teste;
+8. **não usar Production como laboratório** e não criar fixtures/dados artificiais em Production;
+9. confirmar se existe sessão/credencial de teste aprovada para jornadas autenticadas;
+10. se não houver backend/credencial de teste seguro para o código atual, registrar `bloqueio de ambiente` para as jornadas autenticadas e não inventar credenciais nem contornar autenticação.
 
-Pode ser usado ambiente já publicado, preview existente ou execução local isolada, desde que não viole os guardrails e seja possível saber qual código/dados estão sendo observados.
+A ausência de ambiente atual não autoriza homologar sobre a versão antiga nem declarar a slice concluída. Ainda assim, pode-se validar de forma localizada superfícies do código atual que sejam executáveis com segurança em ambiente isolado.
 
 ## 2. Matriz mínima de viewports
 
@@ -200,6 +218,7 @@ Não usar homologação para:
 - criar migrations cosméticas;
 - afrouxar RLS/permissões para conseguir testar;
 - criar usuário/dado artificial em Production;
+- usar o deployment antigo como se representasse o código atual;
 - retomar #75/#121;
 - fazer deploy Vercel manual/rotineiro.
 
@@ -221,6 +240,8 @@ Para mudança somente documental de evidência, não inventar gates funcionais d
 A slice só pode ser encerrada quando:
 
 - uma matriz representativa de jornadas tiver sido executada em desktop/tablet/mobile ou cada bloqueio estiver explicitamente documentado;
+- o ambiente usado estiver identificado e comprovadamente adequado ao código observado;
+- nenhuma evidência do deployment antigo tiver sido usada para certificar comportamento pós-#160;
 - achados reais estiverem registrados com evidência;
 - problemas relevantes e corrigíveis desta slice tiverem sido tratados e validados novamente;
 - nenhuma regra de negócio tiver sido inventada para “resolver UX”;
