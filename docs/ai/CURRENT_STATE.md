@@ -2,139 +2,137 @@
 
 Última atualização: 2026-08-31
 
-## Estado atual
+## Regra de baseline
 
-**Fase 51 / Issue #142 — consolidação de produto, arquitetura de informação e UX — permanece ativa.**
+**Não usar este arquivo como fonte do SHA corrente de `main`.** O primeiro passo de toda execução continua sendo consultar GitHub para `main`, PRs, Issues, branches e CI reais. Isso evita que um merge puramente documental torne o próprio handoff obsoleto.
 
-O núcleo operacional está consolidado, mas o sistema **ainda não deve ser considerado 100% concluído**. `docs/product/final-product-gap-audit.md` continua como inventário da fila final.
+Os SHAs abaixo são **âncoras de evidência/runtime**, não uma alegação de HEAD atual do repositório.
 
-Baseline real corrente:
+## Estado do produto
 
-- `main=01da4646d8e2ae6c533bc81d66afb2fb9d60ec5c` — merge do PR #172;
-- PR #172 — `docs: reconciliar evidência hospedada da homologação UX` — merged;
-- CI pós-merge #588 / run `33427974722`: **success**;
-- Issue #142 aberta e ativa;
-- nenhum PR aberto no início desta slice;
-- #75/#121 abertas e **TOTALMENTE ON HOLD**;
-- nenhum deploy Vercel manual/rotineiro deve ser feito para evidência.
+**Fase 51 / Issue #142 permanece ativa.**
 
-## Slices da Fase 51 já integradas/concluídas
+O núcleo operacional está consolidado, mas o produto ainda não deve ser declarado 100% concluído. `docs/product/final-product-gap-audit.md` continua como inventário da fila final.
 
-1. remoção da entrada técnica — PR #145;
-2. arquitetura da informação + navegação desktop/mobile — PR #147;
-3. design system mínimo + padrões reutilizáveis — PR #149;
-4. Administração: Estrutura + Usuários/Permissões — PR #151;
-5. Cadastros: Produtos, Fornecedores e Funcionários — PR #153;
-6. Estoque consolidado — PR #155;
-7. Compras consolidado — PR #157;
-8. Financeiro consolidado — PR #159;
-9. Caixa consolidado — PR #161;
-10. Dashboard / Visão geral — PR #163;
-11. limpeza de linguagem/resíduos de engenharia — PR #165;
-12. primeira rodada pública de homologação UX e correções — PR #167;
-13. reconciliação documental da homologação — PR #168;
-14. auditoria final de gaps e fila de fechamento — PR #169;
-15. neutralização do runtime legado `/cadastros/*` — PR #170;
-16. fechamento das telas auxiliares de autenticação/contexto — PR #171;
-17. reconciliação da evidência hospedada pública — PR #172.
+Estado verificado nesta rodada:
+
+- PR #173 — `docs: reconciliar baseline e evidência gráfica pública da Fase 51` — merged;
+- merge #173: `a3ae77a4e43da8e5c13ede27b65a4bc3653f383c`;
+- CI do PR #173 #589 / run `33430536367`: **success**;
+- CI pós-merge #590 / run `33430695863`: **success**;
+- Issue #142 continua aberta;
+- #75/#121 continuam **TOTALMENTE ON HOLD**;
+- nenhum deploy Vercel manual foi disparado.
+
+## Slices da Fase 51 integradas
+
+#145, #147, #149, #151, #153, #155, #157, #159, #161, #163, #165, #167, #168, #169, #170, #171, #172 e #173.
 
 Não refazer essas slices sem bug/gap concreto.
 
-## Runtime hospedado corrente
+## Runtime hospedado de aplicação
 
-O último deployment automático de aplicação continua sendo:
+O último deployment automático de aplicação observado continua sendo:
 
-- Vercel deployment `dpl_J6qwwqUihCKqfTMhmbjSxcLSA3gr`;
-- state `READY`;
-- target `production`;
-- source `git`;
+- `dpl_J6qwwqUihCKqfTMhmbjSxcLSA3gr`;
+- `READY`, target `production`, source `git`;
 - runtime `githubCommitSha=64e1c0d242c3abfb7ee374ebc43850156d75089b` — merge do PR #171;
 - alias canônico `sistema-lojasaph.vercel.app`.
 
-Não existe deployment posterior para `01da4646...`, o que é coerente com o PR #172 ter alterado somente documentação. O código de aplicação servido permanece o mesmo já revalidado no PR #172. **Nenhum deploy manual foi disparado.**
+PRs #172 e #173 foram documentais; não introduziram novo runtime de aplicação. Portanto não existe motivo para deploy manual apenas para alinhar SHA documental e deployment.
 
-A evidência HTTP/HTML já registrada para `/`, `/workspace`, `/recuperar-senha`, `/sem-acesso`, `/auth/atualizar-senha`, `/auth/invite`, `/bootstrap` e `/workspace/selecionar-organizacao` continua válida para esse runtime e não deve ser repetida por inércia.
+A evidência HTTP/HTML já registrada para as superfícies públicas continua válida enquanto esse runtime não mudar.
 
-## Nova evidência gráfica limitada — superfícies públicas
+## Evidência pública já obtida
 
-Foi encontrada capacidade local adicional:
+### HTTP/HTML hospedado
 
-- Chromium `144.0.7559.96` instalado;
-- Python Playwright `1.57.0` instalado e capaz de lançar Chromium;
-- porém o runtime local continua **sem saída de rede/DNS** para GitHub/Vercel e não consegue navegar o site hospedado diretamente;
-- não existe outro conector de browser live exposto nesta sessão.
+Cobertos no runtime automático:
 
-Para não confundir ausência de rede com ausência total de evidência gráfica, foi executada uma inspeção estática controlada usando:
+- `/` sem sessão;
+- `/workspace` sem sessão;
+- `/recuperar-senha`;
+- `/sem-acesso`;
+- `/auth/atualizar-senha` sem sessão válida;
+- estado inicial de `/auth/invite`;
+- estado real corrente de `/bootstrap`;
+- `/workspace/selecionar-organizacao` sem sessão.
 
-1. SSR HTML real obtido do deployment automático via integração Vercel;
-2. CSS real servido pelo mesmo deployment;
-3. renderização local em Chromium/Playwright, sem alterar o conteúdo funcional;
-4. viewports `1440x900` (desktop), `768x1024` (tablet/touch) e `390x844` (mobile/touch).
+UX-51-001, UX-51-002 e UX-51-003 permanecem tratados/revalidados nesse nível de evidência.
 
-Superfícies verificadas:
+### Snapshot gráfico estático
 
-- `/login`;
-- `/recuperar-senha?error=Teste`;
-- `/sem-acesso?error=Teste`.
+Capacidade descoberta:
 
-Resultados nas nove combinações página × viewport:
+- Chromium `144.0.7559.96`;
+- Python Playwright `1.57.0`;
+- Chromium headless lança corretamente;
+- container sem saída de rede/DNS para GitHub/Vercel;
+- nenhum browser live conectado disponível.
 
-- nenhum overflow horizontal;
-- cards/conteúdo permaneceram contidos e legíveis na inspeção visual;
-- em tablet/mobile, todos os controles e CTAs medidos ficaram com altura mínima de **44 px**;
-- os alerts esperados permaneceram presentes;
-- a sequência de Tab percorreu os controles na ordem do DOM no harness.
+Foi renderizado localmente o SSR HTML + CSS reais obtidos pela integração Vercel para:
 
-**Limite de evidência:** essa renderização não é uma sessão live do Next.js. Ela não certifica hidratação/JavaScript, navegação, server actions, redirects client-side, sessão, autenticação, mutações, drawer autenticado nem comportamento após ações. A aparência de foco não será usada como gate aprovado apenas por esse harness estático.
+- Login;
+- Recuperação com erro;
+- Acesso indisponível com erro.
+
+Viewports:
+
+- desktop `1440x900`;
+- tablet/touch `768x1024`;
+- mobile/touch `390x844`.
+
+Resultados:
+
+- sem overflow horizontal nas 9 combinações;
+- layout visualmente contido;
+- em tablet/mobile, controles/CTAs medidos com altura mínima de 44 px;
+- alerts esperados presentes;
+- Tab percorreu a ordem DOM no harness.
+
+**Esse snapshot não é browser live.** Não certifica hidratação/JS, navegação Next, server actions, sessão, mutações, drawer autenticado nem foco completo no runtime live.
 
 A matriz detalhada está em `docs/qa/fase51-ux-homologation.md`.
 
-## Bloqueios restantes da homologação
+## Bloqueios restantes
 
-A homologação completa **não está encerrada**.
+A homologação UX completa ainda exige:
 
-Ainda faltam:
+- browser live capaz de abrir e interagir com o deployment;
+- sessão/credencial legítima aprovada;
+- token legítimo quando convite/recuperação/nova senha forem necessários;
+- ambiente/estado seguro para operações mutáveis.
 
-- browser live operável contra o deployment para navegação/interação real;
-- sessão/credencial legítima aprovada para jornadas autenticadas;
-- token legítimo para convite/recuperação/nova senha quando necessário;
-- ambiente seguro para operações mutáveis representativas.
+Enquanto isso permanecer indisponível, Visão geral, Administração, Cadastros, Estoque, Compras, Financeiro, Caixa e fluxos autenticados/contextuais não podem ser declarados homologados em desktop/tablet/mobile.
 
-Portanto Visão geral, Administração, Cadastros, Estoque, Compras, Financeiro, Caixa e os fluxos autenticados de contexto continuam sem certificação real de desktop/tablet/mobile.
-
-Não promover para reconciliação funcional final até existir evidência representativa suficiente ou aceitação explícita do operador para adiar os bloqueios externos.
+Não promover para reconciliação funcional final até existir evidência live representativa suficiente ou aceitação explícita do operador para adiar limitação externa.
 
 ## Depois da homologação UX
 
-Executar reconciliação funcional final usando o gate:
+Executar reconciliação funcional requisito por requisito usando o gate:
 
 > Uma pessoa autorizada consegue executar corretamente a necessidade operacional pela aplicação sem conhecimento de implementação, IDs técnicos ou procedimento externo não documentado?
 
-## PENDINGs e negócio
+## PENDINGs e Q-022
 
-Continuam sem inferência:
+Não resolver por inferência:
 
-- `REQ-ITEM-004` — produto de venda/POS;
-- `REQ-ITEM-005` — ficha técnica/receita/BOM;
-- `REQ-STK-007` — empréstimo;
-- `REQ-STK-010` — custeio;
-- `REQ-EXP-004` — FEFO;
-- `REQ-FIN-004` — pagamento parcial/múltiplo;
-- `REQ-CASH-007` — consumo de funcionários;
-- `REQ-CASH-008` — integração com vendas/POS.
-
-Q-022 permanece aberta e deve ser resolvida antes da configuração definitiva de perfis reais no go-live.
+- `REQ-ITEM-004`;
+- `REQ-ITEM-005`;
+- `REQ-STK-007`;
+- `REQ-STK-010`;
+- `REQ-EXP-004`;
+- `REQ-FIN-004`;
+- `REQ-CASH-007`;
+- `REQ-CASH-008`;
+- Q-022.
 
 ## Ordem oficial de fechamento
 
-1. ~~entrada técnica / IA / design system / áreas principais / linguagem~~ — #145 a #165;
-2. ~~primeiros achados públicos de UX~~ — #167;
-3. ~~runtime legado `/cadastros/*`~~ — #170;
-4. ~~telas auxiliares de autenticação/contexto~~ — #171;
-5. ~~reconciliação da evidência hospedada pública~~ — #172;
-6. **concluir homologação UX live desktop/tablet/mobile**;
-7. **reconciliação funcional final**;
-8. **PENDINGs necessários + Q-022**;
-9. **dados representativos e homologação operacional**;
-10. **migração/cutover**;
-11. **`REQ-PLAT-005` / #75/#121 e production-readiness final**.
+1. consolidação estrutural/UX já integrada;
+2. **homologação UX live desktop/tablet/mobile**;
+3. reconciliação funcional final;
+4. PENDINGs necessários + Q-022;
+5. dados representativos/homologação operacional;
+6. migração/cutover;
+7. #75/#121 / `REQ-PLAT-005` como production-readiness final.
