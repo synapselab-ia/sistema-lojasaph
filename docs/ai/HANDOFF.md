@@ -4,76 +4,80 @@
 
 **Fase 51 / Issue #142 continua ativa.**
 
-O sistema possui núcleo operacional consolidado, mas ainda há gaps obrigatórios antes de chamá-lo de `100%`. A fonte de verdade é `docs/product/final-product-gap-audit.md`.
+A slice das telas auxiliares de autenticação/contexto foi fechada no PR #171 sem reimplementar auth, sessão, autorização ou RLS.
 
-Baseline anterior à slice atual:
+Baseline anterior à slice:
 
-- `main=6f0c0cfcd0e969335cd4d23ddefd1a2ef17dad11` — merge do PR #169;
-- CI #580 / run `33424103707`: **success**;
+- `main=fad41dbe672d41e1fd6277e57f1f894d647a8ef2` — merge do PR #170;
+- CI pós-merge #583 / run `33425164783`: **success**;
 - Issue #142 aberta;
 - #75/#121 **TOTALMENTE ON HOLD**;
 - nenhum deploy Vercel manual/rotineiro deve ser feito para evidência.
 
+Validação do primeiro head do PR #171 (`25109c0054933fe714d299d67b4067305a0372ea`):
+
+- CI #584 / run `33426151982`: **success**;
+- lint, typecheck, unit tests e production build: success;
+- database/migrations/RLS e isolamento por Organization: success;
+- integrações adicionais de banco disparadas pelo PR: success.
+
 ## Não refazer
 
-Já integrados: #145, #147, #149, #151, #153, #155, #157, #159, #161, #163, #165, #167, #168 e #169.
+Já consolidados: #145, #147, #149, #151, #153, #155, #157, #159, #161, #163, #165, #167, #168, #169, #170 e #171.
 
-PR #170 fecha o P0 do runtime legado `/cadastros/*`. Não reabrir essas slices por preferência estética; corrigir somente gaps comprovados.
+Não reabrir por preferência estética; corrigir somente bug/gap comprovado.
 
-## P0 fechado — runtime legado `/cadastros/*`
+## O que o PR #171 fechou
 
-A árvore antiga foi mantida apenas como camada de compatibilidade de URL, sem experiência demo própria.
+Rotas reconciliadas:
 
-Mapeamento:
+- `/auth/atualizar-senha`;
+- `/auth/invite`;
+- `/bootstrap`;
+- `/workspace/selecionar-organizacao`.
 
-- `/cadastros` → `/workspace`;
-- `/cadastros/estrutura` → `/workspace/administracao/estrutura`;
-- `/cadastros/produtos` → `/workspace/produtos`;
-- `/cadastros/fornecedores` → `/workspace/fornecedores`;
-- `/cadastros/estoque` → `/workspace/estoque`;
-- `/cadastros/inventarios` → `/workspace/inventarios`;
-- `/cadastros/validades` → `/workspace/estoque/lotes`.
+Implementado:
 
-O layout legado não usa mais `DemoWorkspaceProvider` nem `AdminShell`. Um teste de contrato trava os redirects e garante que a navegação canônica não referencie `/cadastros`.
+- primitives compartilhados onde aplicável;
+- feedback de erro com anúncio acessível;
+- estados informativos/carregamento anunciáveis;
+- `SubmitButton` compartilhado com `useFormStatus` e bloqueio de submit duplicado;
+- touch targets/CTAs coerentes;
+- teste `src/app/auxiliary-auth-context-contract.test.ts` preservando actions, redirects e handoffs.
 
-Nenhum schema, migration, RPC, grant, RLS, perfil, regra de estoque/financeiro/caixa/compras ou PENDING foi alterado.
+Preservado sem mudança:
+
+- `updatePasswordAction` e sanitização de `next`;
+- parser/handoff do convite e POST `/auth/invite/session`;
+- `bootstrapOwnerAction` / `inviteBootstrapOwnerAction` e seus estados;
+- redirects de seleção de organização para login, sem acesso, workspace e troca válida;
+- contratos de sessão/token, papéis, escopos, backend e RLS.
+
+### Evidência que NÃO foi fabricada
+
+Não há, nesta execução, sessão/token legítimo nem browser gráfico adequado para certificar as jornadas reais dependentes de autenticação. Não criar usuário, convite, fixture ou dado artificial em Production apenas para fechar a matriz.
 
 ## NEXT_ACTION imediata
 
-### Fechar telas auxiliares de autenticação/contexto
+### Concluir homologação UX desktop/tablet/mobile
+
+Usar `docs/qa/fase51-ux-homologation.md` como matriz executável.
 
 No próximo chat:
 
-1. ler `AGENTS.md`, `00-START-HERE.md`, `CURRENT_STATE.md`, `HANDOFF.md`, `NEXT_ACTION.md` e `docs/product/final-product-gap-audit.md`;
-2. confirmar `main`, Issue #142, PRs/branches/CI reais;
-3. inspecionar `/auth/atualizar-senha`, `/auth/invite`, `/bootstrap` e `/workspace/selecionar-organizacao`;
-4. comparar essas telas com os primitives/padrões compartilhados já consolidados;
-5. corrigir somente gaps concretos de consistência, feedback acessível, loading/error/success, foco/teclado e touch targets;
-6. preservar contratos de auth, sessão, autorização e RLS;
-7. adicionar/ajustar testes de contrato quando aplicável;
-8. manter CI verde;
-9. reconciliar documentação e promover a homologação UX completa como próxima slice.
+1. ler governança + `product-completion-ux-roadmap.md` + `final-product-gap-audit.md`;
+2. confirmar `main`, Issue #142, PRs/branches/CI e estado do deployment automático real;
+3. não disparar deploy Vercel manual;
+4. verificar se existe browser gráfico operável sobre a versão corrente e sessão/credencial legítima aprovada;
+5. revalidar primeiro os achados públicos UX-51-001/002/003 na versão corrente quando o deployment automático permitir;
+6. executar desktop/tablet/mobile por jornada, registrando dimensões e evidências reais;
+7. cobrir Entrada/contexto, Visão geral, Administração, Cadastros, Estoque, Compras, Financeiro e Caixa;
+8. validar foco/teclado, drawer mobile, touch targets, overflow, loading/empty/error/success, formulários/tabelas densos e `lista → detalhe → ação → retorno`;
+9. executar convite/nova senha/bootstrap/troca de organização somente com token/sessão legítimos; não contornar auth;
+10. corrigir apenas achados concretos e manter CI verde;
+11. atualizar a matriz QA e, quando houver evidência representativa suficiente, promover a reconciliação funcional final.
 
-Não fazer deploy Vercel manual para provar a slice.
-
-## Depois — homologação UX completa
-
-Continuar a matriz de `docs/qa/fase51-ux-homologation.md` em desktop/tablet/mobile, usando browser real e sessão/ambiente seguro.
-
-Jornadas mínimas:
-
-- Entrada/contexto;
-- Visão geral;
-- Administração;
-- Cadastros;
-- Estoque;
-- Compras;
-- Financeiro;
-- Caixa.
-
-CI/CSS/HTML estático não substituem evidência de viewport, drawer, foco, teclado, overflow, touch e fluxos interativos.
-
-Production não deve receber fixtures, usuários artificiais ou ações destrutivas para prova.
+CI/CSS/HTML estático não substituem homologação de browser.
 
 ## Depois da homologação UX
 
@@ -81,9 +85,9 @@ Executar reconciliação funcional final com o gate:
 
 > Uma pessoa autorizada consegue executar corretamente a necessidade operacional pela aplicação sem conhecimento de implementação, IDs técnicos ou procedimento externo não documentado?
 
-Revisar MUST e SHOULD aplicáveis, não apenas existência de backend/telas.
+Revisar MUST e SHOULD aplicáveis.
 
-## PENDINGs que continuam sem decisão por inferência
+## PENDINGs sem decisão por inferência
 
 - `REQ-ITEM-004` — produto de venda/POS;
 - `REQ-ITEM-005` — ficha técnica/receita/BOM;
@@ -96,29 +100,29 @@ Revisar MUST e SHOULD aplicáveis, não apenas existência de backend/telas.
 
 Q-022 permanece aberta: mapear perfis reais antes do go-live, sem equiparar automaticamente papéis técnicos a cargos.
 
-## Fechamento operacional depois dos PENDINGs
+## Fechamento operacional posterior
 
-1. ambiente seguro com dados representativos;
-2. homologação com operação real;
-3. preparação de estrutura/usuários/perfis/configurações;
-4. congelamento das fontes;
+1. dados representativos em ambiente seguro;
+2. homologação operacional;
+3. estrutura/usuários/perfis/configurações reais;
+4. congelamento de fontes;
 5. dry-run/importação rastreável;
 6. tratamento de inconsistências;
 7. importação final;
 8. reconciliação de saldos/totais/amostras;
 9. cutover;
-10. encerramento/transição das planilhas.
+10. transição/encerramento das planilhas.
 
 ## Production-readiness final
 
-Somente depois retomar #75/#121 e fechar backup PostgreSQL, Storage/binários quando aplicável, destino off-site, integridade/retenção, restore/drill, observabilidade/gates e `REQ-PLAT-005`.
+Somente depois retomar #75/#121 e fechar backup PostgreSQL, Storage/binários, destino off-site, integridade/retenção, restore/drill, observabilidade/gates e `REQ-PLAT-005`.
 
 #75/#121 permanecem **TOTALMENTE ON HOLD** até essa etapa ou decisão explícita.
 
 ## Ordem final oficial
 
 1. ~~runtime legado `/cadastros/*`~~ — PR #170;
-2. **telas auxiliares de autenticação/contexto**;
+2. ~~telas auxiliares de autenticação/contexto~~ — PR #171;
 3. **homologação UX desktop/tablet/mobile**;
 4. **reconciliação funcional final**;
 5. **PENDINGs necessários + Q-022**;
@@ -128,4 +132,4 @@ Somente depois retomar #75/#121 e fechar backup PostgreSQL, Storage/binários qu
 
 ## Guardrails permanentes
 
-GitHub é fonte de verdade; RLS/backend são boundaries; nenhum secret no Git/docs/browser; Production não recebe fixture para prova; nenhum deploy Vercel manual/rotineiro; PENDINGs não são resolvidos por inferência; #75/#121 continuam on hold até o final.
+GitHub é fonte de verdade; backend/RLS são boundaries; nenhum secret no Git/docs/browser; Production não recebe fixture para prova; nenhum deploy Vercel manual/rotineiro; PENDINGs não são resolvidos por inferência; #75/#121 continuam on hold até o final.

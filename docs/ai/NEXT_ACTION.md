@@ -4,150 +4,225 @@
 
 **Fase 51 / Issue #142 continua ativa.**
 
-O P0 do runtime legado `/cadastros/*` foi neutralizado no PR #170. As URLs antigas permanecem apenas como redirects para o `/workspace`, sem `DemoWorkspaceProvider`, `AdminShell` ou UI concorrente de fixtures.
+A slice de telas auxiliares de autenticação/contexto foi fechada no PR #171. Os fluxos preservam seus contratos de auth/sessão/autorização/RLS e agora usam os padrões compartilhados de feedback, controles, touch targets e submit pendente.
 
-Fonte de verdade da fila final:
+Baseline anterior ao PR #171:
 
-- `docs/product/final-product-gap-audit.md`.
-
-Baseline anterior ao PR #170:
-
-- `main=6f0c0cfcd0e969335cd4d23ddefd1a2ef17dad11`;
-- CI #580 / run `33424103707`: **success**;
+- `main=fad41dbe672d41e1fd6277e57f1f894d647a8ef2` — merge do PR #170;
+- CI pós-merge #583 / run `33425164783`: **success**;
 - Issue #142 aberta;
 - #75/#121 **TOTALMENTE ON HOLD**.
 
+Validação do primeiro head do PR #171:
+
+- `25109c0054933fe714d299d67b4067305a0372ea`;
+- CI #584 / run `33426151982`: **success**;
+- lint, typecheck, unit tests, production build e banco/RLS: success.
+
 ## NEXT_ACTION objetiva
 
-### **Fechar telas auxiliares de autenticação/contexto sem reimplementar auth/RLS**
+### **Concluir homologação UX real em desktop, tablet e mobile**
+
+Usar `docs/qa/fase51-ux-homologation.md` como matriz e evidência oficial.
 
 Esta é a próxima slice executável.
 
-Rotas prioritárias:
-
-- `/auth/atualizar-senha`;
-- `/auth/invite`;
-- `/bootstrap`;
-- `/workspace/selecionar-organizacao`.
-
-## 1. Reconciliar estado real antes de mudar
+## 1. Reconciliar o estado real antes de testar
 
 No começo da execução:
 
-1. ler `AGENTS.md`;
-2. ler `docs/00-START-HERE.md`;
-3. ler `docs/ai/CURRENT_STATE.md`;
-4. ler `docs/ai/HANDOFF.md`;
-5. ler este `NEXT_ACTION.md`;
-6. ler `docs/product/final-product-gap-audit.md`;
-7. confirmar `main`, Issue #142, PRs, branches e CI reais;
-8. não refazer slices já integradas.
+1. ler `AGENTS.md`, `docs/00-START-HERE.md`, `CURRENT_STATE.md`, `HANDOFF.md` e este arquivo;
+2. ler `docs/product/product-completion-ux-roadmap.md`, `docs/product/final-product-gap-audit.md` e `docs/qa/fase51-ux-homologation.md`;
+3. confirmar `main`, Issue #142, PRs, branches e CI reais;
+4. consultar somente o deployment **automático** correspondente ao `main` corrente quando útil;
+5. não disparar deploy Vercel manual/rotineiro para fabricar evidência;
+6. não refazer slices já integradas.
 
-## 2. Inspecionar as quatro jornadas auxiliares
+## 2. Pré-condições de evidência
 
-Para cada rota:
+Antes de declarar uma jornada aprovada, exigir evidência apropriada:
 
-- identificar o estado real de carregamento, sucesso, erro e ausência de contexto/token;
-- conferir consistência com `PageHeader`, `Panel`, `FormField`, `Input`, `Select`, `Button`, `FeedbackMessage`, `EmptyState` e demais primitives existentes quando aplicáveis;
-- revisar foco, teclado, `aria-*`, mensagens anunciáveis e touch targets;
-- verificar navegação/retorno/CTA sem expor detalhes técnicos ao usuário;
-- manter a semântica atual de sessão, convite, bootstrap e seleção de organização.
+- browser gráfico operável para viewport/foco/teclado/drawer/overflow;
+- sessão/credencial legítima e aprovada para jornadas autenticadas;
+- token legítimo para convite/recuperação/nova senha quando necessário;
+- ambiente seguro para operações mutáveis.
 
-Não fazer redesign amplo: corrigir gaps concretos.
+Se uma pré-condição não existir:
 
-## 3. Guardrails da slice
+- registrar o bloqueio objetivamente na matriz;
+- executar apenas a evidência válida disponível;
+- **não** contornar auth;
+- **não** criar usuário, convite, fixture ou dado artificial em Production;
+- **não** promover HTML/CSS/CI a prova de browser real.
 
-Não alterar por estética:
+## 3. Revalidar achados públicos anteriores
 
-- schema/migrations;
-- RPCs;
-- grants/RLS;
-- modelo de autorização/perfis;
-- contratos de sessão/token;
-- Q-022;
-- requisitos PENDING;
-- regras de estoque, compras, financeiro ou caixa.
+A matriz atual registra UX-51-001/002/003 como corrigidos tecnicamente, mas com revalidação hospedada pendente.
 
-Se surgir um bug real de segurança/autorização, documentar a causa e aplicar a menor correção segura, sem expandir escopo silenciosamente.
+Quando a versão corrente estiver disponível automaticamente:
 
-Não fazer deploy Vercel manual/rotineiro para prova.
+- `/recuperar-senha`: target de toque e feedback acessível;
+- `/sem-acesso`: links/ações e feedback acessível;
+- confirmar que `/` e `/workspace` sem sessão continuam encaminhando corretamente.
 
-## 4. Testes obrigatórios
+Registrar commit/deployment observado e resultado real. Não disparar deploy manual.
 
-Adicionar ou atualizar testes que comprovem, quando aplicável:
+## 4. Matriz de viewports
 
-- feedback de erro/sucesso acessível;
-- controles e CTAs reutilizam padrões compartilhados;
-- estados sem token/contexto não quebram a navegação;
-- links internos apontam para rotas canônicas;
-- não há regressão do contrato atual de auth/contexto.
+Executar as jornadas representativas em:
 
-Manter verdes:
+- desktop;
+- tablet;
+- mobile.
 
-- `npm run lint`;
-- `npm run typecheck`;
-- `npm run test`;
-- `npm run build`;
-- CI de banco/RLS normal do repositório.
+Registrar dimensões usadas e, por jornada, verificar:
 
-## 5. Critério de aceite desta slice
+- navegação e hierarquia;
+- foco visível e ordem por teclado;
+- drawer/menu mobile;
+- touch targets;
+- overflow horizontal/vertical;
+- legibilidade de tabelas e formulários densos;
+- loading, empty, error e success;
+- feedback após ações;
+- linguagem de negócio sem resíduos de engenharia;
+- retorno coerente no padrão `lista → detalhe → ação → retorno` quando aplicável.
 
-A slice termina quando:
+## 5. Jornadas mínimas
 
-- as quatro rotas estiverem inventariadas e reconciliadas com o padrão atual;
-- gaps concretos de acessibilidade/feedback/responsividade estiverem corrigidos;
-- nenhuma regra de auth/RLS tiver sido reescrita sem necessidade;
-- testes relevantes estiverem verdes;
-- CI estiver verde;
-- documentação/handoff refletirem o estado real.
+### Entrada/contexto
 
-## 6. Próxima slice após esta
+- login;
+- recuperação de senha;
+- definição de nova senha;
+- convite;
+- bootstrap quando aplicável;
+- 0/1/múltiplas organizações e troca de contexto;
+- logout;
+- sessão expirada/acesso negado.
+
+### Visão geral
+
+- filtros;
+- cards/alertas;
+- links para jornadas;
+- estados vazios/erro/loading.
+
+### Administração
+
+- Estrutura;
+- Usuários/Permissões;
+- Proteção dos dados somente dentro do estado real permitido enquanto #75/#121 estão on hold.
+
+### Cadastros
+
+- Produtos;
+- Fornecedores;
+- Funcionários.
+
+### Estoque
+
+- posição/filtros;
+- entradas;
+- retiradas/baixas/perdas;
+- devoluções;
+- transferências;
+- inventários;
+- lotes/validades;
+- estoque mínimo.
+
+### Compras
+
+- lista;
+- novo pedido;
+- detalhe;
+- emissão/cancelamento quando seguro;
+- recebimento parcial/total;
+- histórico.
+
+### Financeiro
+
+- lista;
+- novo documento;
+- detalhe;
+- vencimentos;
+- pagamento;
+- estorno/cancelamento quando seguro;
+- anexos;
+- histórico.
+
+### Caixa
+
+- visão;
+- lista de sessões;
+- abertura;
+- detalhe;
+- movimentos;
+- contagem/fechamento;
+- cancelamento quando seguro;
+- configuração conforme permissão.
+
+## 6. Regra para achados
+
+Para cada problema real:
+
+1. registrar rota, viewport, estado e passos;
+2. classificar impacto (navegação, acessibilidade, responsividade, feedback, linguagem ou fluxo);
+3. aplicar a menor correção consistente com os padrões existentes;
+4. não alterar regra de negócio/auth/RLS para resolver estética;
+5. adicionar teste de contrato/regressão quando útil;
+6. manter CI verde;
+7. revalidar a jornada corrigida no mesmo tipo de evidência que revelou o problema.
+
+Não criar redesign amplo sem achado concreto.
+
+## 7. Critério de aceite desta slice
+
+A homologação só termina quando:
+
+- a matriz `docs/qa/fase51-ux-homologation.md` contém evidência representativa de desktop/tablet/mobile para as áreas críticas;
+- jornadas autenticadas necessárias foram percorridas com sessão legítima, ou qualquer limitação externa restante foi explicitamente aceita pelo operador como bloqueio/adiação;
+- UX-51-001/002/003 foram revalidados na versão corrente quando possível;
+- achados concretos foram corrigidos e revalidados;
+- não há gap P0/P1 de UX conhecido sem tratamento;
+- CI permanece verde;
+- documentação/handoff reflete o estado real.
+
+## 8. Próxima slice após a homologação
 
 Promover imediatamente:
 
-### **Concluir homologação UX desktop/tablet/mobile**
+### **Reconciliação funcional final requisito por requisito**
 
-Usar `docs/qa/fase51-ux-homologation.md` e browser real com sessão/ambiente seguro.
+Gate:
 
-Percorrer:
+> Uma pessoa autorizada consegue executar corretamente a necessidade operacional pela aplicação sem conhecimento de implementação, IDs técnicos ou procedimento externo não documentado?
 
-- Entrada/contexto;
-- Visão geral;
-- Administração;
-- Cadastros;
-- Estoque;
-- Compras;
-- Financeiro;
-- Caixa.
+Classificar MUST e SHOULD aplicáveis como utilizável/homologado, gap de produto, dependente de PENDING, migração/cutover ou formalmente adiado.
 
-CI, build, CSS e inspeção estática não substituem evidência real de viewport, drawer, foco, teclado, overflow, touch e fluxos interativos.
+## 9. Guardrails permanentes
 
-## 7. Ordem completa depois desta slice
+Não resolver por inferência:
+
+- `REQ-ITEM-004`;
+- `REQ-ITEM-005`;
+- `REQ-STK-007`;
+- `REQ-STK-010`;
+- `REQ-EXP-004`;
+- `REQ-FIN-004`;
+- `REQ-CASH-007`;
+- `REQ-CASH-008`;
+- Q-022.
+
+#75/#121 permanecem **TOTALMENTE ON HOLD**. Não investigar scheduling, Storage/R2/S3, restore drills, secrets/variables ou Production fixtures nesta slice.
+
+## Ordem final
 
 1. ~~runtime legado `/cadastros/*`~~ — PR #170;
-2. **telas auxiliares de autenticação/contexto — NEXT_ACTION atual**;
-3. **homologação UX desktop/tablet/mobile**;
-4. **reconciliação funcional final** usando critério de usabilidade;
-5. **resolver/adiar formalmente PENDINGs necessários + Q-022**;
-6. **homologar com dados representativos**;
-7. **migração/cutover real**;
-8. **retomar #75/#121 e fechar production-readiness / `REQ-PLAT-005`**.
-
-## PENDINGs que continuam sem inferência
-
-- `REQ-ITEM-004` — produto de venda/POS;
-- `REQ-ITEM-005` — ficha técnica/receita/BOM;
-- `REQ-STK-007` — empréstimo;
-- `REQ-STK-010` — custeio;
-- `REQ-EXP-004` — FEFO;
-- `REQ-FIN-004` — pagamento parcial/múltiplo;
-- `REQ-CASH-007` — consumo de funcionários;
-- `REQ-CASH-008` — integração com vendas/POS.
-
-Q-022 permanece aberta.
-
-## #75/#121 permanecem ON HOLD
-
-Não investigar scheduling, Storage/R2/S3, restore drills, secrets/variables, Production fixtures ou evidência de proteção nesta slice.
-
-O hold termina apenas por decisão explícita ou no production-readiness final.
+2. ~~telas auxiliares de autenticação/contexto~~ — PR #171;
+3. **homologação UX desktop/tablet/mobile — NEXT_ACTION atual**;
+4. **reconciliação funcional final**;
+5. **PENDINGs necessários + Q-022**;
+6. **dados representativos/homologação operacional**;
+7. **migração/cutover**;
+8. **#75/#121 / production-readiness**.

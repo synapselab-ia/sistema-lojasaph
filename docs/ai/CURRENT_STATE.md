@@ -6,17 +6,17 @@
 
 **Fase 51 / Issue #142 — consolidação de produto, arquitetura de informação e UX — permanece ativa.**
 
-O núcleo operacional está consolidado, mas o sistema **ainda não deve ser considerado 100% concluído**. A fila final continua em `docs/product/final-product-gap-audit.md`.
+O núcleo operacional está consolidado, mas o sistema **ainda não deve ser considerado 100% concluído**. A auditoria de gaps em `docs/product/final-product-gap-audit.md` continua como inventário da fila final; este arquivo registra quais itens dessa fila já foram executados.
 
-Baseline anterior a esta slice:
+Baseline antes da slice atual:
 
-- `main=6f0c0cfcd0e969335cd4d23ddefd1a2ef17dad11` — merge do PR #169;
-- CI #580 / run `33424103707`: **success**;
+- `main=fad41dbe672d41e1fd6277e57f1f894d647a8ef2` — merge do PR #170;
+- CI pós-merge #583 / run `33425164783`: **success**;
 - Issue #142 aberta e ativa;
 - #75/#121 abertas e **TOTALMENTE ON HOLD**;
 - nenhum deploy Vercel manual/rotineiro deve ser feito para evidência.
 
-## Slices da Fase 51 já integradas
+## Slices da Fase 51 já integradas/concluídas
 
 1. remoção da entrada técnica — PR #145;
 2. arquitetura da informação + navegação desktop/mobile — PR #147;
@@ -32,48 +32,54 @@ Baseline anterior a esta slice:
 12. primeira rodada pública de homologação UX e correções — PR #167;
 13. reconciliação documental da homologação — PR #168;
 14. auditoria final de gaps e fila de fechamento — PR #169;
-15. neutralização do runtime legado `/cadastros/*` — PR #170.
+15. neutralização do runtime legado `/cadastros/*` — PR #170;
+16. fechamento das telas auxiliares de autenticação/contexto — PR #171.
 
 Não refazer essas slices sem bug/gap concreto.
 
-## P0 `/cadastros/*` — resolvido
+## Telas auxiliares de autenticação/contexto — fechadas no PR #171
 
-A árvore antiga de demonstração foi inventariada e neutralizada sem alterar domínio, persistência ou autorização.
-
-Mapeamento de compatibilidade:
-
-- `/cadastros` → `/workspace`;
-- `/cadastros/estrutura` → `/workspace/administracao/estrutura`;
-- `/cadastros/produtos` → `/workspace/produtos`;
-- `/cadastros/fornecedores` → `/workspace/fornecedores`;
-- `/cadastros/estoque` → `/workspace/estoque`;
-- `/cadastros/inventarios` → `/workspace/inventarios`;
-- `/cadastros/validades` → `/workspace/estoque/lotes`.
-
-As páginas antigas não montam mais `DemoWorkspaceProvider`/`AdminShell` nem expõem UI de fixtures. `src/app/cadastros/legacy-routes.test.ts` protege os redirects e impede `/cadastros` na navegação canônica.
-
-## Próxima slice obrigatória — telas auxiliares de autenticação/contexto
-
-Revisar e fechar os fluxos periféricos:
+Foram reconciliadas, sem alterar os contratos de autenticação, sessão, autorização ou RLS:
 
 - `/auth/atualizar-senha`;
 - `/auth/invite`;
 - `/bootstrap`;
 - `/workspace/selecionar-organizacao`.
 
-Objetivo:
+Mudanças de produto:
 
-- reutilizar primitives compartilhados quando aplicável;
-- padronizar feedback acessível, loading/error/success e ações;
-- validar foco, teclado e touch targets;
-- homologar o fluxo real quando houver token/sessão legítimos;
-- **não** reimplementar auth, RLS ou regras de autorização por estética.
+- `Panel`, `FeedbackMessage`, `FormField`, `Input`, `PageHeader` e estilos de `Button` reutilizados quando aplicável;
+- erros relevantes usam anúncio acessível (`role="alert"`);
+- estados informativos/carregamento usam semântica anunciável quando aplicável;
+- novo `SubmitButton` compartilhado usa `useFormStatus` para bloquear ação duplicada e comunicar estado pendente;
+- links e CTAs seguem touch target mínimo do design system;
+- redirects 0/1/múltiplas organizações, parser/handoff de convite, bootstrap actions e `updatePasswordAction` foram preservados.
 
-## Homologação UX continua obrigatória
+Teste de contrato: `src/app/auxiliary-auth-context-contract.test.ts`.
 
-A homologação completa desktop/tablet/mobile **não está encerrada**. Depois das telas auxiliares, percorrer com browser real e sessão/ambiente seguro:
+Validação do primeiro head do PR #171 (`25109c0054933fe714d299d67b4067305a0372ea`):
 
-- Entrada/contexto;
+- CI #584 / run `33426151982`: **success**;
+- lint: success;
+- typecheck: success;
+- unit tests: success;
+- production build: success;
+- database/migrations/RLS/auth Organization isolation: success;
+- workflows adicionais de integração de inventário/negócio: success na mesma baseline.
+
+Nenhum schema, migration, RPC, grant, RLS, papel, escopo ou regra de negócio foi alterado.
+
+### Limite de evidência
+
+Não foi fabricada sessão, convite, usuário ou dado em Production para homologar fluxos dependentes de token/contexto real. A validação real de convite, definição de senha, bootstrap aplicável e troca de organização deve ocorrer na homologação UX completa quando houver sessão/token legítimos e browser operável.
+
+## Próxima slice obrigatória — homologação UX completa
+
+Executar `docs/qa/fase51-ux-homologation.md` em **desktop, tablet e mobile**, com browser real e ambiente/sessão seguros.
+
+Jornadas mínimas:
+
+- Entrada/contexto: login, recuperação, nova senha, convite, bootstrap quando aplicável, seleção/troca de organização, logout e acesso negado;
 - Visão geral;
 - Administração;
 - Cadastros;
@@ -82,17 +88,19 @@ A homologação completa desktop/tablet/mobile **não está encerrada**. Depois 
 - Financeiro;
 - Caixa.
 
-A evidência continua em `docs/qa/fase51-ux-homologation.md`. CI, build, CSS e inspeção estática não substituem a evidência de jornada exigida pelo Definition of Done.
+Para cada jornada, validar navegação, foco/teclado, drawer mobile, touch targets, overflow, tabelas/formulários densos, loading/empty/error/success e linguagem operacional.
+
+CI/build/CSS/HTML são evidências auxiliares e **não substituem browser real**.
+
+Production não recebe fixtures, usuários artificiais ou ações destrutivas apenas para gerar prova.
 
 ## Depois da homologação UX
 
-Executar reconciliação funcional final usando critério de usabilidade, requisito por requisito.
-
-Pergunta de fechamento:
+Executar reconciliação funcional final usando o gate:
 
 > Uma pessoa autorizada consegue executar corretamente a necessidade operacional pela aplicação sem conhecimento de implementação, IDs técnicos ou procedimento externo não documentado?
 
-Revisar também requisitos `SHOULD` relevantes para a implantação real, não apenas MUST/PENDING.
+Revisar MUST e SHOULD relevantes à implantação real.
 
 ## PENDINGs e negócio
 
@@ -121,22 +129,13 @@ Antes de Production real:
 6. reconciliar saldos/totais/amostras;
 7. aprovar cutover e encerrar/transicionar as planilhas.
 
-Production não recebe fixtures artificiais apenas para prova.
-
 ## #75/#121 — production-readiness final
 
 Permanecem **TOTALMENTE ON HOLD** até o fechamento funcional/negócio/cutover, salvo decisão explícita do operador.
 
-Somente no fim:
+Somente no fim retomar backup PostgreSQL real, Storage/binários, destino off-site, integridade/retenção, restore/drill, observabilidade/gates e `REQ-PLAT-005`.
 
-- comprovar backup PostgreSQL automático real;
-- proteger Storage/binários quando aplicável;
-- comprovar destino off-site, integridade e retenção;
-- executar restore/drill isolado;
-- reconciliar observabilidade/gates finais;
-- fechar `REQ-PLAT-005`.
-
-## Ordem oficial de fechamento atualizada
+## Ordem oficial de fechamento
 
 1. ~~entrada técnica~~ — PR #145;
 2. ~~arquitetura da informação/navegação~~ — PR #147;
@@ -151,7 +150,7 @@ Somente no fim:
 11. ~~limpeza de linguagem/resíduos de engenharia~~ — PR #165;
 12. ~~primeiros achados públicos de UX~~ — PR #167;
 13. ~~runtime legado `/cadastros/*`~~ — PR #170;
-14. **fechar telas auxiliares de autenticação/contexto**;
+14. ~~telas auxiliares de autenticação/contexto~~ — PR #171;
 15. **concluir homologação UX desktop/tablet/mobile**;
 16. **reconciliação funcional final**;
 17. **PENDINGs necessários + Q-022**;
