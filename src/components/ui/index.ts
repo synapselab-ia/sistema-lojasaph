@@ -9,5 +9,6 @@ export { PageHeader } from "./page-header";
 export { Panel } from "./panel";
 export type { PanelProps } from "./panel";
 export { StatusBadge } from "./status-badge";
-export type { StatusBadgeProps } from "./status-badge";
+export { SubmitButton } from "./submit-button";
+export type { SubmitButtonProps } from "./submit-button";
 export type { ButtonSize, ButtonVariant, PanelPadding, SemanticTone } from "./styles";
