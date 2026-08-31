@@ -65,7 +65,7 @@ export default function CashConfigurationPage() {
 
   async function createFeeRule(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    await run("fee", () => gateway.createFeeRule({ organizationId: workspace.organizationId, paymentMethodId: feeMethodId as EntityId, validFrom, validTo: validTo || undefined, percentFee, fixedFee, label: feeLabel || undefined }), "Regra de taxa versionada com sucesso.");
+    await run("fee", () => gateway.createFeeRule({ organizationId: workspace.organizationId, paymentMethodId: feeMethodId as EntityId, validFrom, validTo: validTo || undefined, percentFee, fixedFee, label: feeLabel || undefined }), "Regra de taxa salva com sucesso.");
     setPercentFee("0");
     setFixedFee("0");
     setFeeLabel("");
@@ -73,11 +73,11 @@ export default function CashConfigurationPage() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-8">
-      <PageHeader eyebrow="Caixa" title="Configuração" description="Caixas físicos, meios de pagamento e taxas ficam separados da operação diária. Alterações continuam submetidas às permissões e validações do backend." />
+      <PageHeader eyebrow="Caixa" title="Configuração" description="Caixas físicos, meios de pagamento e taxas ficam separados da operação diária. Alterações respeitam as permissões e validações do sistema." />
 
       {error && <FeedbackMessage tone="danger" role="alert">{error}</FeedbackMessage>}
       {message && <FeedbackMessage tone={message.tone}>{message.text}</FeedbackMessage>}
-      {!canConfigureRegisters && !canConfigureMethods && <FeedbackMessage tone="info">Você pode consultar a configuração disponível no seu escopo, mas não possui permissão para alterá-la.</FeedbackMessage>}
+      {!canConfigureRegisters && !canConfigureMethods && <FeedbackMessage tone="info">Você pode consultar a configuração disponível no seu acesso, mas não possui permissão para alterá-la.</FeedbackMessage>}
 
       <div className="grid gap-6 xl:grid-cols-3">
         <Panel as="section" className="space-y-5">
@@ -103,7 +103,7 @@ export default function CashConfigurationPage() {
         </Panel>
 
         <Panel as="section" className="space-y-5">
-          <div><h2 className="text-lg font-semibold">Regras de taxa</h2><p className="mt-1 text-sm text-neutral-600">Taxas são versionadas por vigência; não ficam fixas na tela.</p></div>
+          <div><h2 className="text-lg font-semibold">Regras de taxa</h2><p className="mt-1 text-sm text-neutral-600">As taxas respeitam a vigência informada e podem mudar ao longo do tempo.</p></div>
           {canConfigureMethods && <form onSubmit={createFeeRule} className="space-y-4 border-b border-neutral-200 pb-5">
             <FormField id="cash-config-fee-method" label="Meio de pagamento">{(field) => <Select {...field} required value={feeMethodId} onChange={(event) => setFeeMethodId(event.target.value)}><option value="">Selecione</option>{state.paymentMethods.filter((method) => method.status === "active").map((method) => <option key={method.id} value={method.id}>{method.name}</option>)}</Select>}</FormField>
             <div className="grid gap-3 sm:grid-cols-2"><FormField id="cash-config-fee-from" label="Vigência inicial">{(field) => <Input {...field} required type="date" value={validFrom} onChange={(event) => setValidFrom(event.target.value)} />}</FormField><FormField id="cash-config-fee-to" label="Vigência final (opcional)">{(field) => <Input {...field} type="date" value={validTo} onChange={(event) => setValidTo(event.target.value)} />}</FormField></div>
@@ -111,7 +111,7 @@ export default function CashConfigurationPage() {
             <FormField id="cash-config-fee-label" label="Rótulo (opcional)">{(field) => <Input {...field} value={feeLabel} onChange={(event) => setFeeLabel(event.target.value)} placeholder="Ex.: crédito padrão" />}</FormField>
             <Button type="submit" variant="primary" loading={saving === "fee"} disabled={saving !== null}>Salvar regra</Button>
           </form>}
-          {state.feeRules.length === 0 ? <EmptyState title="Nenhuma regra de taxa" description="Regras versionadas aparecerão aqui quando forem necessárias." /> : <div className="space-y-3">{state.feeRules.map((rule) => { const method = methodById.get(rule.paymentMethodId); return <div key={rule.id} className="rounded-xl border border-neutral-200 p-3"><div className="flex items-start justify-between gap-2"><div><p className="font-medium">{rule.label ?? method?.name ?? "Regra de taxa"}</p><p className="mt-1 text-xs text-neutral-500">{method?.name ?? "Meio indisponível"} · {rule.percentFee}% + {moneyLabel(rule.fixedFee)}</p><p className="mt-1 text-xs text-neutral-500">Desde {dateLabel(rule.validFrom)}{rule.validTo ? ` até ${dateLabel(rule.validTo)}` : " · sem data final"}</p></div><StatusBadge tone={rule.status === "active" ? "success" : "neutral"}>{rule.status === "active" ? "Ativa" : "Inativa"}</StatusBadge></div></div>; })}</div>}
+          {state.feeRules.length === 0 ? <EmptyState title="Nenhuma regra de taxa" description="Regras cadastradas aparecerão aqui quando forem necessárias." /> : <div className="space-y-3">{state.feeRules.map((rule) => { const method = methodById.get(rule.paymentMethodId); return <div key={rule.id} className="rounded-xl border border-neutral-200 p-3"><div className="flex items-start justify-between gap-2"><div><p className="font-medium">{rule.label ?? method?.name ?? "Regra de taxa"}</p><p className="mt-1 text-xs text-neutral-500">{method?.name ?? "Meio indisponível"} · {rule.percentFee}% + {moneyLabel(rule.fixedFee)}</p><p className="mt-1 text-xs text-neutral-500">Desde {dateLabel(rule.validFrom)}{rule.validTo ? ` até ${dateLabel(rule.validTo)}` : " · sem data final"}</p></div><StatusBadge tone={rule.status === "active" ? "success" : "neutral"}>{rule.status === "active" ? "Ativa" : "Inativa"}</StatusBadge></div></div>; })}</div>}
         </Panel>
       </div>
     </div>
