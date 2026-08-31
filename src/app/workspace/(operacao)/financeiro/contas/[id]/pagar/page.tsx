@@ -74,7 +74,7 @@ export default function FinancePaymentPage() {
       setPaidAt("");
       setPaymentReference("");
       setNotes("");
-      setMessage({ tone: "success", text: "Pagamento registrado como evento financeiro. O saldo e o status foram recalculados pelos dados persistidos." });
+      setMessage({ tone: "success", text: "Pagamento registrado. O saldo e a situação da parcela foram atualizados." });
     } catch (cause) {
       setMessage({ tone: "danger", text: workspace.errorMessage(cause) });
     } finally {
@@ -89,7 +89,7 @@ export default function FinancePaymentPage() {
   if (!detail) {
     return (
       <div className="mx-auto max-w-4xl space-y-6">
-        <PageHeader eyebrow="Financeiro · Pagamento" title="Documento não encontrado" description="O documento pode não existir ou não estar disponível no seu escopo atual." />
+        <PageHeader eyebrow="Financeiro · Pagamento" title="Documento não encontrado" description="O documento pode não existir ou não estar disponível no seu acesso atual." />
         {message && <FeedbackMessage tone={message.tone}>{message.text}</FeedbackMessage>}
         <EmptyState title="Não foi possível registrar o pagamento" description="Volte para as contas a pagar e abra um documento disponível." action={<Link href="/workspace/financeiro/contas" className={buttonClasses()}>Voltar para contas</Link>} />
       </div>
@@ -114,7 +114,7 @@ export default function FinancePaymentPage() {
 
       <Panel as="section">
         <h2 className="text-lg font-semibold">Parcela</h2>
-        <p className="mt-1 text-sm leading-6 text-neutral-600">Escolha a parcela que receberá o evento. O sistema preserva diferenças entre valor nominal e valor pago sem classificá-las automaticamente.</p>
+        <p className="mt-1 text-sm leading-6 text-neutral-600">Escolha a parcela que receberá o pagamento. O sistema preserva diferenças entre valor nominal e valor pago sem classificá-las automaticamente.</p>
         <div className="mt-5">
           <FormField id="payment-installment" label="Parcela" required>
             {(field) => (
@@ -145,7 +145,7 @@ export default function FinancePaymentPage() {
           <FormField id="payment-date" label="Data e hora" required>
             {(field) => <Input {...field} required disabled={unavailable} type="datetime-local" value={paidAt} onChange={(event) => setPaidAt(event.target.value)} />}
           </FormField>
-          <FormField id="payment-reference" label="Referência do pagamento" hint="Opcional. É a referência do evento executado, separada da instrução cadastrada na parcela.">
+          <FormField id="payment-reference" label="Referência do pagamento" hint="Opcional. Identifica o pagamento realizado e permanece separada da instrução cadastrada na parcela.">
             {(field) => <Input {...field} disabled={unavailable} value={paymentReference} onChange={(event) => setPaymentReference(event.target.value)} />}
           </FormField>
           <FormField id="payment-notes" label="Observação">
