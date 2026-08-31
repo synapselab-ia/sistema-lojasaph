@@ -2,78 +2,99 @@
 
 ## Como ler este handoff
 
-**Sempre consultar o GitHub para obter o HEAD real de `main` e o CI mais recente.** Este arquivo não fixa `main=<sha>` como estado eterno, porque merges puramente documentais tornariam essa linha obsoleta imediatamente.
-
-SHAs e runs registrados aqui são âncoras de evidência concluída.
+**Sempre consultar o GitHub para obter o HEAD real de `main` e o CI mais recente.** SHAs/runs abaixo são âncoras de evidência concluída, não estado eterno do repositório.
 
 ## Estado de transição
 
 **Fase 51 / Issue #142 continua ativa.**
 
-A consolidação de produto/UX até o PR #173 está integrada. A frente atual continua sendo a homologação UX live em desktop/tablet/mobile.
+A consolidação estrutural/UX e o incidente de drift de migrations Production estão tratados. A frente atual volta a ser a homologação UX **live** em desktop/tablet/mobile.
 
-Última evidência documental integrada nesta rodada:
+Não refazer por inércia: #145, #147, #149, #151, #153, #155, #157, #159, #161, #163, #165, #167, #168, #169, #170, #171, #172, #173, #174 e #175.
 
-- PR #173 merged em `a3ae77a4e43da8e5c13ede27b65a4bc3653f383c`;
-- CI PR #589 / run `33430536367`: **success**;
-- CI pós-merge #590 / run `33430695863`: **success**;
-- Issue #142 aberta;
-- #75/#121 **TOTALMENTE ON HOLD**;
-- nenhum deploy Vercel manual realizado.
-
-## Não refazer
-
-Slices integradas: #145, #147, #149, #151, #153, #155, #157, #159, #161, #163, #165, #167, #168, #169, #170, #171, #172 e #173.
-
-Não reabrir por preferência estética; somente por bug/gap comprovado.
+#75/#121 permanecem **TOTALMENTE ON HOLD**.
 
 ## Runtime de aplicação observado
 
-Último deployment automático de aplicação:
+Último deployment automático de aplicação observado:
 
 - `dpl_J6qwwqUihCKqfTMhmbjSxcLSA3gr`;
 - `READY`, production, source Git;
 - runtime SHA `64e1c0d242c3abfb7ee374ebc43850156d75089b` (#171);
 - alias `sistema-lojasaph.vercel.app`.
 
-#172 e #173 foram documentais. Não fazer deploy manual para transformar um SHA documental em runtime se o código de aplicação não mudou.
+PRs documentais/operacionais posteriores não exigem deploy Vercel manual. Nenhum deploy manual foi feito.
 
-## Evidência pública concluída
+## Evidência UX já concluída
 
-HTTP/HTML do runtime automático já cobre entrada/redirects públicos e UX-51-001/002/003.
+HTTP/HTML público e snapshot gráfico estático já estão registrados em `docs/qa/fase51-ux-homologation.md`.
 
-Além disso, foi produzido snapshot gráfico estático usando SSR HTML + CSS reais do deployment e Chromium/Playwright local em:
+Resumo:
 
-- `1440x900` desktop;
-- `768x1024` tablet/touch;
-- `390x844` mobile/touch.
+- UX-51-001/002/003 tratados;
+- Login, Recuperação com erro e Acesso indisponível renderizados em `1440x900`, `768x1024` touch e `390x844` touch/mobile;
+- sem overflow horizontal nas combinações verificadas;
+- controles/CTAs touch medidos com pelo menos 44 px.
 
-Superfícies: Login, Recuperação com erro e Acesso indisponível com erro.
+Não repetir se o runtime de aplicação não mudou.
 
-Resultado: sem overflow horizontal; layouts contidos; controles/CTAs touch com pelo menos 44 px; alerts presentes.
+Limite: snapshot estático não certifica JS/hidratação, sessão, navegação Next, server actions, mutações, drawer autenticado ou foco completo live.
 
-Limite: container sem rede/DNS externa. O snapshot **não é navegação live** e não certifica JS/hidratação, server actions, auth/sessão, mutações, drawer ou foco completo.
+## Incidente Production — drift de migrations — FECHADO
 
-Detalhes: `docs/qa/fase51-ux-homologation.md`.
+Durante a busca por evidência real da Fase 51, a telemetria Production mostrou `/workspace/administracao/acessos` falhando com `ADMINISTRATION_QUERY_ERROR` porque o PostgREST não encontrava `public.admin_list_organization_access(...)`.
 
-## Bloqueio real restante
+Causa provada:
 
-Ainda faltam as pré-condições para a parte decisiva da NEXT_ACTION:
+- Production estava em `20260827195802`;
+- Git tinha exatamente duas migrations posteriores:
+  - `20260828130500_administration_access_management.sql`;
+  - `20260828132500_administration_employee_identity.sql`.
+
+Correção:
+
+- PR #175 mergeado em `e7ff15366fec29728308dde8506397f4d68d2c39`;
+- CI PR #593 / run `33436348276`: **success**;
+- workflow one-shot `Production Migration Reconcile` #1 / run `33436481787`: **success**;
+- CI pós-merge #594 / run `33436481833`: **success**;
+- migrations aplicadas via `supabase db push`, preservando versions Git;
+- allowlist fechada para exatamente as duas migrations;
+- sem seed/reset/repair/DDL ad hoc;
+- workflow temporário removido após a execução.
+
+Production agora registra as duas versions e possui os quatro RPCs administrativos esperados. Grants/trigger foram verificados read-only e o acesso direto de `authenticated` a INSERT/UPDATE de `organization_memberships` continua negado.
+
+**Não declarar a rota Administração homologada live:** o backend foi corrigido, mas não houve browser live/sessão legítima nesta sessão para percorrer a UI.
+
+## Regra de prevenção de recorrência
+
+Quando Production disser que uma função/tabela mergeada não existe:
+
+1. comparar migrations Git com histórico remoto antes de alterar código;
+2. identificar exatamente as versions pendentes;
+3. usar migrations versionadas e mecanismo que preserve as versions (`supabase db push` quando aplicável);
+4. falhar fechado em drift inesperado;
+5. não usar `migration repair`, edição manual de history, seed ou reset como atalho.
+
+Ver `docs/qa/database-migrations.md`.
+
+## Bloqueio restante da NEXT_ACTION
+
+Ainda faltam:
 
 - browser live conectado ao deployment;
 - sessão/credencial legítima aprovada;
 - token legítimo quando necessário;
-- estado/ambiente seguro para mutações.
+- ambiente/estado seguro para mutações.
 
 Sem isso, não declarar homologados:
 
 - login/logout real;
 - seleção/troca de organização;
 - convite → sessão → nova senha;
-- bootstrap em estados legítimos adicionais;
 - sidebar/drawer;
 - Visão geral;
-- Administração;
+- Administração, incluindo `/workspace/administracao/acessos`;
 - Cadastros;
 - Estoque;
 - Compras;
@@ -87,20 +108,22 @@ Não fabricar usuário, convite, fixture ou dado em Production.
 
 ### Concluir homologação UX live desktop/tablet/mobile quando as pré-condições existirem
 
-Próxima execução:
+Na próxima execução:
 
 1. reler governança/handoff;
 2. consultar `main`, Issue #142, PRs, branches e CI reais;
-3. observar somente deployment automático;
-4. se o runtime não mudou, não repetir HTTP/HTML ou snapshot público já documentados;
-5. verificar se surgiu browser live operável;
-6. usar somente credencial/sessão/token legítimos;
-7. percorrer Entrada/contexto, Visão geral, Administração, Cadastros, Estoque, Compras, Financeiro e Caixa;
-8. validar foco/teclado, drawer, touch targets, overflow, estados loading/empty/error/success, tabelas/formulários densos e `lista → detalhe → ação → retorno`;
-9. mutar somente em estado seguro;
-10. corrigir apenas achados concretos e revalidar;
-11. promover reconciliação funcional apenas após evidência live representativa ou aceitação explícita de bloqueio externo.
+3. fazer checagem **read-only** de paridade de migrations Production ↔ Git; não reaplicar #175 sem drift novo;
+4. observar somente deployment automático;
+5. se o runtime não mudou, não repetir HTTP/HTML ou snapshot público;
+6. verificar se surgiu browser live operável;
+7. usar somente credencial/sessão/token legítimos;
+8. percorrer Entrada/contexto, Visão geral, Administração, Cadastros, Estoque, Compras, Financeiro e Caixa;
+9. em Administração, revalidar explicitamente `/workspace/administracao/acessos` após a correção backend;
+10. validar foco/teclado, drawer, touch targets, overflow, loading/empty/error/success, tabelas/formulários densos e `lista → detalhe → ação → retorno`;
+11. mutar somente em estado seguro;
+12. corrigir apenas achados concretos e revalidar no mesmo tipo de evidência;
+13. promover reconciliação funcional apenas após evidência live representativa ou aceitação explícita do bloqueio externo.
 
 ## Guardrails
 
-GitHub é fonte de verdade; backend/RLS são boundaries; nenhum secret no Git/docs/browser; nenhum deploy manual/rotineiro; PENDINGs e Q-022 sem inferência; #75/#121 permanecem **TOTALMENTE ON HOLD**.
+GitHub é fonte de verdade; backend/RLS são boundaries; nenhum secret em Git/docs/browser; nenhum deploy Vercel manual/rotineiro; PENDINGs e Q-022 sem inferência; #75/#121 continuam **TOTALMENTE ON HOLD**.
