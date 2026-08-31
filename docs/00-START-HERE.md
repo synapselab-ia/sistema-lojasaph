@@ -19,7 +19,12 @@ O GitHub é a fonte oficial do projeto. Chats são sessões temporárias de trab
 7. documentação do módulo em trabalho
 8. ADRs relacionados em `docs/decisions/`
 
-Quando a frente ativa for a Fase 51 / consolidação de produto, também é obrigatória a leitura de `docs/product/product-completion-ux-roadmap.md` antes de alterar UI, navegação ou jornadas.
+Quando a frente ativa for a Fase 51 / consolidação de produto, também é obrigatória a leitura de:
+
+- `docs/product/product-completion-ux-roadmap.md` — régua de conclusão do produto;
+- `docs/product/final-product-gap-audit.md` — fila final de gaps descoberta após a consolidação das áreas principais.
+
+Ler esses documentos antes de alterar UI, navegação, jornadas ou promover o sistema para uma etapa posterior do fechamento.
 
 ## Escopo macro
 
@@ -45,6 +50,7 @@ O sistema deverá evoluir para cobrir:
 - Avaliar conclusão de produto pela capacidade de executar jornadas reais, não apenas pela existência de schema/backend/tela mínima.
 - Organizar navegação e telas pelo modelo mental da operação, não pela decomposição interna do código.
 - Evitar expor ao usuário normal IDs internos, nomes de provider, RLS, migrations, fases e outros detalhes de engenharia sem necessidade operacional.
+- Rotas/demo/fixtures de engenharia não podem permanecer como superfície concorrente do produto final.
 - Evitar complexidade prematura, mantendo arquitetura profissional.
 - PostgreSQL é o modelo físico relacional; Supabase é o provedor hospedado inicial preferido e revisável conforme `ADR-006`.
 - Migrations versionadas no GitHub, RLS e adapters preservam a independência do domínio em relação ao provedor.
@@ -61,6 +67,7 @@ Consulte `docs/architecture/overview.md`, `docs/architecture/persistence.md` e `
 - `docs/ai/HANDOFF.md`: contexto necessário entre sessões.
 - `docs/ai/NEXT_ACTION.md`: o que executar agora.
 - `docs/product/product-completion-ux-roadmap.md`: régua e ordem da consolidação de produto/UX iniciada após a Fase 50.
+- `docs/product/final-product-gap-audit.md`: inventário atual do que ainda falta para conclusão funcional, negócio, go-live e production-readiness.
 
 Um novo chat deve partir desses arquivos, conferir o estado real do GitHub e executar a próxima ação documentada.
 
