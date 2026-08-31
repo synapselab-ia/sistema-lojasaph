@@ -2,17 +2,17 @@
 
 ## Estado de transição
 
-**Fase 51 / Issue #142 continua ativa. A slice de Caixa está integrada; a próxima slice é Dashboard / Visão geral.**
+**Fase 51 / Issue #142 continua ativa. A slice de Dashboard / Visão geral está integrada; a próxima slice é limpeza de linguagem/resíduos de engenharia da experiência normal.**
 
-Baseline funcional ao final de Caixa:
+Baseline funcional atual:
 
-- `main=7e841b77daae8eb7afc13cc39812dd93b948dd32` — merge do PR #161;
-- PR #161 — `feat: consolidar jornada de Caixa` — merged;
-- CI pós-merge #561 / run `33387966611`: success;
+- `main=395a2cd578b47c2b98ac449f50c1d4e3a094627d` — merge do PR #163;
+- PR #163 — `feat: consolidar Visão geral do Dashboard` — merged;
+- CI pós-merge #566 / run `33392864692`: success;
 - lint, typecheck, unit tests, production build e banco/migrations/RLS: success;
-- CI #560 / run `33387774581`: success no head final do PR;
-- Business Transactions Integration #253 / run `33387774423`: success, incluindo ciclo de vida de Caixa e permissões escopadas;
-- Inventory Count Integration #266 / run `33387774526`: success;
+- CI #565 / run `33392616909`: success no head final do PR;
+- Business Transactions Integration #255 / run `33392616971`: success;
+- Inventory Count Integration #268 / run `33392616820`: success;
 - Issue #142 permanece aberta;
 - #75/#121 permanecem **TOTALMENTE ON HOLD**;
 - nenhum deploy Vercel manual/rotineiro foi feito.
@@ -29,127 +29,156 @@ Slices já integradas:
 - PR #155 — Estoque consolidado;
 - PR #157 — Compras consolidado;
 - PR #159 — Financeiro consolidado;
-- PR #161 — Caixa consolidado.
+- PR #161 — Caixa consolidado;
+- PR #163 — Dashboard / Visão geral consolidado.
 
 Não reabrir essas áreas sem bug ou gap concreto.
 
-## O que o PR #161 entregou
+## O que o PR #163 entregou
 
-### Estrutura da área
+### Visão geral e hierarquia
 
-Caixa agora possui visão principal e destinos subordinados:
+`/workspace` continua somente leitura, mas agora apresenta uma hierarquia operacional explícita:
 
-- `/workspace/caixa` — visão da área e sessões recentes;
-- `/workspace/caixa/sessoes` — lista pesquisável/filtrável;
-- `/workspace/caixa/sessoes/nova` — abertura dedicada;
-- `/workspace/caixa/sessoes/[id]` — detalhe estável, operação e fechamento;
-- `/workspace/caixa/configuracao` — caixas físicos, meios de pagamento e regras de taxa.
+1. contexto da organização e data de negócio;
+2. filtros;
+3. `Precisa de atenção`;
+4. resumo financeiro;
+5. Estoque;
+6. Compras e fornecedores;
+7. operação atual de Caixa e Compras.
 
-A antiga megapágina deixou de concentrar configuração, abertura, totais, movimentos, fechamento, cancelamento e histórico.
+A página deixou de depender dos controles visuais antigos e passou a reutilizar o design system consolidado para cabeçalho, filtros, botões, painéis, feedback e empty states.
 
-### Sessão e fechamento
+### Semântica comprovada e preservada
 
-O detalhe estável apresenta:
+Antes da edição foram inventariados integralmente:
 
-- caixa, unidade, data de negócio, sequência e status;
-- fundo inicial;
-- totais por meio com bruto, taxa, líquido, impacto na gaveta e regra aplicada quando existente;
-- entradas, sangrias e movimentos já registrados;
-- fechamento com valor contado;
-- esperado, contado e divergência persistidos em sessão encerrada;
-- cancelamento por `Dialog`, sem `window.prompt()`.
+- `src/app/workspace/(operacao)/page.tsx`;
+- `SupabaseDashboardQuery` e seus contratos;
+- `buildDashboardSummary` e testes;
+- overview queries de Estoque e Compras;
+- componentes `StockOverviewSection` e `PurchaseOverviewSection`;
+- requirements/open questions, roadmap, IA, design system e DoD.
 
-Sessão inexistente ou inacessível usa estado seguro e não confirma registro fora do escopo.
+Permanece comprovado:
 
-### Regra autoritativa preservada
+- horizonte relativo e período explícito possuem semânticas diferentes;
+- período só limita métricas com data operacional comprovada;
+- indicadores de estado atual não se tornam históricos por seleção de período;
+- Caixa permanece no escopo de Unidade mesmo com Setor selecionado;
+- métricas temporais de Caixa usam data de negócio;
+- timezone da organização continua determinando a data de negócio;
+- Estoque, Compras e Financeiro só recebem Setor onde existe vínculo setorial explícito;
+- histórico de preços de fornecedor permanece no escopo da organização quando não existe vínculo local comprovado.
 
-Nenhuma regra crítica foi transferida para React.
+Nenhum KPI, threshold, SLA, janela, score, meta, tendência ou regra de negócio nova foi criado.
 
-No fechamento, o backend continua calculando:
+### Destinos de navegação
 
-`expected_cash_amount = opening_float + bruto dos meios com affects_cash_drawer + cash_in - cash_out`
+A apresentação agora envia sinais para rotas consolidadas específicas sempre que o contexto permite:
 
-`cash_difference = counted_cash_amount - expected_cash_amount`
+- Financeiro → contas/vencimentos;
+- Caixa → sessões;
+- Compras → pedidos/recebimentos;
+- Estoque mínimo → política de mínimos;
+- validade → lotes;
+- transferências → jornada de transferências;
+- inventários → jornada de inventários.
 
-A UI pode mostrar os componentes persistidos para explicar a composição, mas não substitui esse cálculo autoritativo.
+`src/modules/dashboard/application/dashboard-navigation.ts` contém apenas o mapping de apresentação dos alertas. Cálculo de KPI e derivação continuam em `dashboard-summary`, evitando acoplamento de read model a rotas. O mapping possui teste próprio.
 
-### PENDINGs preservados
+### Linguagem e estados
 
-- `REQ-CASH-007` — Consumo Funcionários — continua PENDING. A nova UX não oferece criação de novos movimentos `employee_consumption`; registros existentes podem continuar aparecendo como histórico, sem ganhar semântica nova.
-- `REQ-CASH-008` — integração com vendas/POS — continua PENDING. O módulo permanece baseado em totais consolidados por meio de pagamento; nenhuma venda individual foi criada.
+Foram removidos dos trechos tocados nomes de campos/tabelas e detalhes de persistência que apareciam como texto normal ao operador. Loading, erro, empty e atualização ganharam tratamento compatível com o design system existente.
 
 ### Segurança e contratos
 
 - nenhum schema/migration/RPC/RLS novo;
-- todos os commands existentes foram preservados;
-- `manageCashRegisters`, `manageCashConfig` e `operateCash` apenas orientam disponibilidade de UI;
-- RLS/grants/RPCs continuam sendo a fronteira real de autorização;
-- idempotência, atomicidade e auditoria permanecem nos boundaries existentes.
+- nenhuma regra crítica foi movida para React;
+- Dashboard permanece somente leitura;
+- RLS/grants/queries existentes continuam sendo a fronteira real;
+- Q-022 continua aberta;
+- nenhum PENDING foi resolvido.
+
+## Validação do PR #163
+
+O primeiro CI do PR, #564, encontrou duas referências de `snapshot` que o TypeScript considerava possivelmente nulas. A guard foi tornada explícita antes do merge.
+
+Head final:
+
+- CI #565: success;
+- lint: success;
+- typecheck: success;
+- unit tests: success;
+- production build: success;
+- banco/migrations/RLS: success;
+- Business Transactions Integration #255: success;
+- Inventory Count Integration #268: success.
+
+Após o merge, CI #566 na `main`: success.
 
 ## Homologação visual
 
 **Não houve browser real disponível nesta execução.**
 
-Não declarar Caixa homologado visualmente em desktop/tablet/mobile apenas por build/CI. Também não fazer deploy manual na Vercel apenas para criar essa evidência.
+Não declarar Dashboard homologado visualmente em desktop/tablet/mobile apenas por build/CI. Também não fazer deploy manual na Vercel apenas para criar essa evidência.
 
-## Observação documental
+## Próxima ação: limpeza de linguagem/resíduos de engenharia
 
-`docs/product/workspace-information-architecture.md` ainda contém, no mapa de rotas, uma frase antiga dizendo que Caixa compartilha a página pré-consolidação. Essa frase é anterior ao PR #161 e não deve prevalecer sobre as rotas reais integradas acima. A correção dessa linha pode entrar na próxima reconciliação documental/limpeza de linguagem sem reabrir a slice funcional de Caixa.
+O próximo chat deve executar a slice de **limpeza de linguagem/resíduos de engenharia da experiência normal**, sem reimplementar as jornadas já consolidadas.
 
-## Próxima ação: Dashboard / Visão geral
+### Objetivo
 
-O próximo chat deve consolidar **Dashboard / Visão geral**, sem refazer Caixa.
+Percorrer as áreas que o usuário realmente vê e remover detalhes técnicos sem valor operacional, mantendo exatamente a regra e os boundaries existentes.
 
-Inventário preliminar já comprovado na `main`:
+Priorizar ocorrências visíveis como:
 
-- `/workspace` já é um dashboard funcional e somente leitura;
-- a página atual concentra diretamente filtros de Unidade/Setor, horizonte, período explícito, fila de atenção, KPIs financeiros, sinais de Caixa/Compras e seções de Estoque/Compras;
-- parte dos controles ainda usa estilos manuais anteriores ao design system consolidado;
-- `SupabaseDashboardQuery` e testes já existem;
-- `buildDashboardSummary`/application summary já existem;
-- queries/seções específicas de Estoque e Compras já existem em `src/modules/dashboard`;
-- o dashboard diferencia estado atual, horizonte relativo e período gerencial explícito;
-- Caixa continua em escopo de Unidade e usa `business_date` quando a métrica é temporal;
-- Financeiro, Compras e Estoque só devem usar Setor onde há vínculo setorial explícito no contrato existente.
+- UUID/IDs internos exibidos sem necessidade;
+- nomes de tabela, view, RPC, migration, RLS ou provider;
+- nomes crus de campos de banco/API;
+- termos de implementação como read model, adapter, gateway, schema, branch, PR, fase ou fixture quando apareçam na UI normal;
+- códigos internos de status/tipo quando já existe linguagem operacional;
+- mensagens de erro herdadas que exponham infraestrutura;
+- textos com crases/código em helper text apenas para explicar implementação;
+- rótulos incoerentes com a arquitetura de informação aprovada.
 
-### Passos obrigatórios para Dashboard
+### Passos obrigatórios
 
 1. reconciliar `main`, Issue #142, PRs, branches e CI reais;
-2. reler `NEXT_ACTION.md`, roadmap, IA, design system, DoD, requisitos/open questions e documentação do Dashboard;
-3. inventariar integralmente `/workspace`, `SupabaseDashboardQuery`, summary, overview queries/sections e testes antes de editar;
-4. mapear cada KPI/alerta para sua fonte persistente e rota de destino;
-5. provar a semântica dos filtros Unidade/Setor, horizonte e período explícito;
-6. provar timezone/data de negócio e quais métricas são estado atual versus métricas por data;
-7. alinhar links às jornadas consolidadas de Estoque, Compras, Financeiro e Caixa;
-8. reutilizar o design system em filtros, feedback, cards/painéis e estados;
-9. manter Dashboard somente leitura;
-10. definir estratégia mobile deliberada;
-11. não criar KPI, threshold, SLA, janela, comparação ou regra de negócio sem contrato já existente;
-12. manter lint, typecheck, tests, build e banco/RLS verdes;
-13. registrar ausência de browser real se continuar indisponível.
+2. reler `NEXT_ACTION.md`, roadmap, IA, design system e DoD;
+3. fazer busca ampla no código de UI por resíduos técnicos, mas confirmar cada ocorrência em contexto antes de editar;
+4. percorrer shell/Visão geral/Administração/Cadastros/Estoque/Compras/Financeiro/Caixa;
+5. distinguir texto de UI real de documentação, testes, logs de desenvolvimento e código interno legítimo;
+6. alterar somente linguagem/apresentação ou pequenos resíduos de UX que não mudem regra funcional;
+7. preservar URLs estáveis e rotas consolidadas, salvo link realmente incorreto;
+8. não mudar query, domínio, RPC, RLS ou contrato de dados apenas para “simplificar” texto;
+9. corrigir o débito documental conhecido do mapa de rotas de Caixa em `workspace-information-architecture.md`;
+10. manter design system e acessibilidade existentes;
+11. validar lint, typecheck, testes, build e gates aplicáveis;
+12. registrar ausência de browser real se persistir.
 
-## Guardrails do Dashboard
+### Guardrails
 
-Não usar a consolidação para:
+Não usar a limpeza para:
 
-- adicionar transações diretamente no painel;
-- recalcular status financeiro em React;
-- inventar alerta de validade, estoque, vencimento ou divergência;
-- aplicar Setor a métricas que só possuem escopo de Unidade/Organization;
-- tratar horizonte relativo e período explícito como a mesma semântica;
-- resolver PENDINGs de Estoque, Financeiro ou Caixa;
-- mudar Q-022/política de autorização;
+- refatoração arquitetural ampla;
+- redesign de jornadas já consolidadas;
+- criar nova regra de negócio;
+- renomear campos persistentes por estética;
+- resolver PENDINGs;
+- mudar Q-022;
 - retomar #75/#121;
 - tocar Production para prova;
 - fazer deploy Vercel manual/rotineiro.
 
-## Depois do Dashboard
+## Depois da limpeza de linguagem
 
-Somente após integrar e reconciliar Dashboard, promover:
+Somente após integrar e reconciliar essa slice, promover:
 
-> **limpeza de linguagem/resíduos de engenharia da experiência normal**
+> **homologação UX em jornadas reais desktop/tablet/mobile**
 
-Não saltar diretamente para homologação UX real sem executar essa etapa.
+Não saltar diretamente para reconciliação funcional final.
 
 ## Ordem oficial
 
@@ -162,8 +191,8 @@ Não saltar diretamente para homologação UX real sem executar essa etapa.
 7. ~~Compras~~ — PR #157;
 8. ~~Financeiro~~ — PR #159;
 9. ~~Caixa~~ — PR #161;
-10. **Dashboard** — próxima;
-11. limpeza de linguagem;
+10. ~~Dashboard~~ — PR #163;
+11. **limpeza de linguagem/resíduos de engenharia** — próxima;
 12. homologação UX real;
 13. reconciliação funcional;
 14. PENDINGs necessários;
