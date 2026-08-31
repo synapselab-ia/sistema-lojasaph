@@ -53,7 +53,7 @@ export default function StockWithdrawalsPage() {
       <PageHeader
         eyebrow="Estoque · Retiradas"
         title="Registrar retirada"
-        description="Registre a saída para consumo informando o setor responsável. Quando houver rastreabilidade por lote, você pode indicar um lote preferido sem alterar as regras automáticas existentes."
+        description="Registre a saída para consumo informando o setor responsável. Quando houver controle por lote, você pode indicar um lote preferido ou deixar a seleção automática."
       />
 
       {feedback && <FeedbackMessage tone={feedback.tone}>{feedback.text}</FeedbackMessage>}
@@ -105,7 +105,7 @@ export default function StockWithdrawalsPage() {
             </div>
 
             {(selectedItem?.trackBatch || selectedItem?.trackExpiration) && (
-              <FormField id="withdrawal-batch" label="Lote preferido" hint="Opcional. Se não escolher, permanece a seleção automática já existente; esta tela não define uma nova política de prioridade de lotes.">
+              <FormField id="withdrawal-batch" label="Lote preferido" hint="Opcional. Se não escolher, o sistema fará a seleção automática disponível para a retirada.">
                 {(props) => (
                   <Select {...props} value={withdrawal.preferredBatchId} onChange={(event) => setWithdrawal({ ...withdrawal, preferredBatchId: event.target.value })}>
                     <option value="">Seleção automática</option>
