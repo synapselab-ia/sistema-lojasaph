@@ -1,115 +1,166 @@
 # Fase 51 — Homologação UX real
 
-Status: **EM ANDAMENTO — deployment corrente revalidado; homologação gráfica por viewport e jornadas autenticadas ainda bloqueadas**  
+Status: **EM ANDAMENTO — superfícies públicas possuem evidência HTTP/HTML e snapshot gráfico estático; jornadas live autenticadas ainda bloqueadas**  
 Data: **2026-08-31**  
 Issue: **#142**
 
-## Baseline e validação técnica
+## Baseline técnica real
 
-Baseline corrente:
-
-- GitHub `main`: `64e1c0d242c3abfb7ee374ebc43850156d75089b` — merge do PR #171;
-- PR #171 — `fix: fechar UX auxiliar de autenticação e contexto` — merged;
-- CI pós-merge #586 / run `33426777989`: **success**;
+- GitHub `main`: `01da4646d8e2ae6c533bc81d66afb2fb9d60ec5c` — merge do PR #172;
+- PR #172 — `docs: reconciliar evidência hospedada da homologação UX` — merged;
+- CI pós-merge #588 / run `33427974722`: **success**;
 - lint, typecheck, unit tests, production build e banco/migrations/RLS: **success**.
 
-O PR #171 fechou as telas auxiliares `/auth/atualizar-senha`, `/auth/invite`, `/bootstrap` e `/workspace/selecionar-organizacao` sem alterar schema, migrations, RPCs, grants, RLS, contratos de sessão/token, papéis, escopos ou regras de negócio.
+O PR #172 alterou somente documentação. Nenhum schema, migration, RPC, grant, RLS, contrato de sessão/token, papel, escopo ou regra de negócio foi alterado.
 
-## Deployment automático corrente
+## Runtime hospedado observado
 
-A integração Git disponibilizou automaticamente a versão exata da `main` corrente:
+O último deployment automático de aplicação continua sendo:
 
-- deployment Vercel: `dpl_J6qwwqUihCKqfTMhmbjSxcLSA3gr`;
+- Vercel deployment `dpl_J6qwwqUihCKqfTMhmbjSxcLSA3gr`;
 - state: `READY`;
 - target: `production`;
 - source: `git`;
-- `githubCommitSha=64e1c0d242c3abfb7ee374ebc43850156d75089b`;
-- alias canônico observado: `sistema-lojasaph.vercel.app`;
-- alias sem erro.
+- runtime `githubCommitSha=64e1c0d242c3abfb7ee374ebc43850156d75089b` — merge do PR #171;
+- alias canônico: `sistema-lojasaph.vercel.app`.
+
+Não existe deployment posterior para `01da4646...`; isso é coerente com o merge #172 ter sido documental. O runtime de aplicação não mudou desde a evidência pública anterior.
 
 **Nenhum deploy manual foi solicitado ou disparado para esta homologação.**
 
-O bloqueio antigo de “versão hospedada ainda não correspondente à `main`” está encerrado.
+## Evidência HTTP/HTML já concluída
 
-## Limites da evidência desta execução
+No runtime acima já foram observados:
 
-A sessão atual permite consultar o deployment hospedado e o HTML/redirects realmente servidos, porém **não dispõe de browser gráfico operável** para controlar viewport, foco, teclado, drawer ou screenshots. A alternativa de browser automatizado disponível na documentação do ambiente foi investigada, mas o executável correspondente não está instalado e não existe outro conector de browser exposto nesta sessão.
-
-Também não existe no contexto atual uma sessão/credencial de teste aprovada nem token legítimo de convite/recuperação do Sistema Lojasaph.
-
-Consequentemente:
-
-- nenhuma autenticação foi contornada;
-- nenhum usuário, convite, fixture ou dado artificial foi criado em Production;
-- nenhuma operação mutável foi usada como prova;
-- nenhum e-mail de recuperação foi disparado;
-- nenhuma jornada autenticada foi declarada homologada;
-- nenhuma viewport foi declarada aprovada apenas por HTML/CSS;
-- evidência HTTP/HTML abaixo **não substitui** homologação gráfica de desktop/tablet/mobile.
-
-## Evidência hospedada corrente — `64e1c0d...`
-
-| Jornada/rota | Evidência observada no deployment corrente | Estado |
+| Jornada/rota | Evidência | Estado |
 | --- | --- | --- |
-| `/` sem sessão | resolve para Login; não existe landing técnica intermediária | revalidado em HTTP/HTML |
-| `/workspace` sem sessão | resolve para Login com `next=/workspace` e `Sessão expirada. Entre novamente.` em `role="alert"` | revalidado em HTTP/HTML |
-| `/recuperar-senha` com erro controlado por query | feedback usa `role="alert"`; `Voltar ao login` possui `inline-flex min-h-11` | **UX-51-001/002 revalidados em HTTP/HTML** |
-| `/sem-acesso` com erro controlado por query | feedback usa `role="alert"`; CTA `Entrar` e ação de saída possuem `min-h-11` | **UX-51-003 revalidado em HTTP/HTML** |
-| `/auth/atualizar-senha` sem sessão válida | retorna ao Login com `O link de autenticação expirou. Solicite um novo.` anunciado como alerta | revalidado em HTTP/HTML |
-| `/auth/invite` sem fragmento | estado inicial hospedado usa `aria-busy="true"`, `role="status"` e `aria-live="polite"` | estado inicial revalidado; parser/handoff JS exige browser/token legítimo |
-| `/bootstrap` no estado atual | informa que a configuração inicial não está habilitada; retorno usa CTA com touch target mínimo | estado real atual revalidado; demais estados não foram fabricados |
-| `/workspace/selecionar-organizacao` sem sessão | resolve para Login preservando `next=/workspace/selecionar-organizacao` | revalidado em HTTP/HTML; 0/1/múltiplas organizações exigem sessão legítima |
+| `/` sem sessão | resolve para Login; sem landing técnica | revalidado em HTTP/HTML |
+| `/workspace` sem sessão | Login com `next=/workspace` e alerta de sessão expirada | revalidado em HTTP/HTML |
+| `/recuperar-senha?error=Teste` | `role="alert"`; `Voltar ao login` com `min-h-11` | UX-51-001/002 revalidados |
+| `/sem-acesso?error=Teste` | `role="alert"`; ações com `min-h-11` | UX-51-003 revalidado |
+| `/auth/atualizar-senha` sem sessão válida | Login com alerta de link expirado | revalidado em HTTP/HTML |
+| `/auth/invite` sem fragmento | estado inicial com `aria-busy`, `role="status"`, `aria-live` | estado inicial revalidado |
+| `/bootstrap` | configuração inicial desabilitada no estado real corrente | estado atual revalidado |
+| `/workspace/selecionar-organizacao` sem sessão | Login preservando `next=/workspace/selecionar-organizacao` | revalidado em HTTP/HTML |
+
+Como o runtime hospedado não mudou, essas verificações **não devem ser repetidas por inércia**.
+
+## Capacidade gráfica disponível e seu limite
+
+Foi reavaliado o runtime local e encontrado:
+
+- Chromium `144.0.7559.96` instalado;
+- Python Playwright `1.57.0` instalado;
+- Chromium headless lança e captura screenshots corretamente.
+
+Porém o container não possui saída de rede/DNS para GitHub/Vercel. Portanto ele não consegue abrir o deployment diretamente. Também não há browser interativo conectado exposto nesta sessão.
+
+Para obter evidência gráfica incremental sem fabricar uma sessão live, foi usado o seguinte método:
+
+1. buscar pela integração Vercel o **SSR HTML realmente servido** pelo runtime automático;
+2. buscar pela mesma integração o **CSS realmente servido** pelo bundle;
+3. reconstruir apenas as superfícies SSR públicas observadas em uma página local, mantendo markup e estilos relevantes do deployment;
+4. renderizar em Chromium/Playwright nas viewports definidas abaixo;
+5. medir geometria/overflow/altura dos controles e inspecionar as imagens resultantes.
+
+### Limite metodológico
+
+Esse método é um **snapshot gráfico estático de HTML/CSS hospedados**, não uma navegação live do Next.js.
+
+Ele **não** certifica:
+
+- hidratação ou JavaScript;
+- Next navigation;
+- server actions;
+- redirects client-side;
+- sessão/autenticação;
+- mutações;
+- drawer autenticado;
+- estados produzidos após ações;
+- foco completo no runtime live.
+
+A sequência de Tab foi exercitada no harness e alcançou os controles na ordem do DOM, mas a aparência de foco **não será promovida a gate aprovado** a partir dessa reconstrução estática. Foco/teclado deve ser revalidado no browser live.
+
+## Snapshot gráfico público por viewport
+
+Viewports usadas:
+
+- **desktop:** `1440x900`, contexto sem touch;
+- **tablet:** `768x1024`, contexto touch;
+- **mobile:** `390x844`, contexto touch/mobile.
+
+Superfícies:
+
+- Login;
+- Recuperar senha com feedback de erro;
+- Acesso operacional indisponível com feedback de erro.
+
+### Medições
+
+| Superfície | Viewport | Overflow horizontal | Controles abaixo de 44 px no contexto touch/CTA | Observação visual |
+| --- | --- | --- | --- | --- |
+| Login | 1440x900 | não | nenhum CTA abaixo de 44 px | card centralizado, conteúdo contido |
+| Login | 768x1024 touch | não | nenhum | card centralizado, controles contidos |
+| Login | 390x844 touch | não | nenhum | layout em coluna, conteúdo contido |
+| Recuperação com erro | 1440x900 | não | nenhum CTA abaixo de 44 px | erro e formulário legíveis |
+| Recuperação com erro | 768x1024 touch | não | nenhum | conteúdo contido |
+| Recuperação com erro | 390x844 touch | não | nenhum | conteúdo contido |
+| Acesso indisponível | 1440x900 | não | nenhum | ações e alerta contidos |
+| Acesso indisponível | 768x1024 touch | não | nenhum | ações contidas |
+| Acesso indisponível | 390x844 touch | não | nenhum | ações cabem sem overflow |
+
+Alturas relevantes medidas:
+
+- em tablet/mobile, inputs, buttons e links de ação dessas superfícies ficaram em **44 px ou mais**;
+- em desktop, inputs sem contexto coarse ficaram em aproximadamente 42 px, enquanto buttons/links de ação permaneceram em 44 px; isso é coerente com a regra do design system que eleva controles a 44 px em `(pointer: coarse)`.
+
+Nenhum novo gap visual concreto foi encontrado nessas três superfícies estáticas.
 
 ## Achados concretos anteriores
 
 ### UX-51-001 — target de toque do retorno da recuperação
 
 - rota: `/recuperar-senha`;
-- achado original: `Voltar ao login` não possuía target mínimo consistente;
-- correção: integrada pelo PR #167 com `inline-flex min-h-11 items-center`;
-- revalidação hospedada atual: **confirmada** no deployment `dpl_J6qwwqUihCKqfTMhmbjSxcLSA3gr`;
-- nível de evidência: HTTP/HTML real do deployment corrente, não inspeção gráfica por viewport.
+- correção: integrada pelo PR #167;
+- HTTP/HTML hospedado: confirmado;
+- snapshot gráfico tablet/mobile: sem target abaixo de 44 px;
+- **estado: tratado**.
 
 ### UX-51-002 — feedback de erro inconsistente na recuperação
 
 - rota: `/recuperar-senha`;
-- achado original: erro geral sem `role="alert"` e fora do contrato compartilhado;
-- correção: integrada pelo PR #167 com `FeedbackMessage` e `role="alert"`;
-- revalidação hospedada atual: **confirmada** no deployment corrente;
-- nível de evidência: HTTP/HTML real.
+- correção: `FeedbackMessage` + `role="alert"` pelo PR #167;
+- HTML hospedado e snapshot gráfico de erro: confirmados;
+- **estado: tratado**.
 
 ### UX-51-003 — ações por link pequenas em acesso indisponível
 
 - rota: `/sem-acesso`;
-- achado original: links relevantes sem altura mínima consistente;
 - correção: integrada pelo PR #167;
-- revalidação hospedada atual: **confirmada** no deployment corrente, incluindo `min-h-11` e feedback `role="alert"`;
-- nível de evidência: HTTP/HTML real.
+- HTML hospedado e snapshot gráfico tablet/mobile: ações sem altura inferior a 44 px;
+- **estado: tratado**.
 
-## Falso positivo preservado
-
-Os campos e botões de formulário em `/recuperar-senha` não são classificados como touch target insuficiente: os controles compartilhados já seguem a altura mínima definida pelo design system. Não duplicar regra apenas para gerar evidência.
-
-## Matriz de viewports
+## Matriz da Fase 51
 
 | Área | Desktop | Tablet | Mobile | Estado |
 | --- | --- | --- | --- | --- |
-| Entrada/Login/Recuperação | bloqueado para inspeção gráfica | bloqueado para inspeção gráfica | bloqueado para inspeção gráfica | deployment corrente revalidado em HTTP/HTML; browser gráfico indisponível |
-| Navegação/Visão geral | bloqueado | bloqueado | bloqueado | requer sessão autenticada legítima + browser |
-| Administração | bloqueado | bloqueado | bloqueado | requer sessão autenticada legítima + browser |
-| Cadastros | bloqueado | bloqueado | bloqueado | requer sessão autenticada legítima + browser |
-| Estoque | bloqueado | bloqueado | bloqueado | requer sessão autenticada legítima + browser |
-| Compras | bloqueado | bloqueado | bloqueado | requer sessão autenticada legítima + browser |
-| Financeiro | bloqueado | bloqueado | bloqueado | requer sessão autenticada legítima + browser |
-| Caixa | bloqueado | bloqueado | bloqueado | requer sessão autenticada legítima + browser |
+| Entrada pública: Login/Recuperação/Acesso indisponível | snapshot gráfico estático executado | snapshot gráfico estático executado | snapshot gráfico estático executado | geometria/overflow/touch público cobertos; live JS/foco ainda pendentes |
+| Convite/Nova senha/Bootstrap/Seleção de organização | parcial em HTTP/HTML | parcial em HTTP/HTML | parcial em HTTP/HTML | exige browser live e estados/token/sessão legítimos |
+| Navegação/Visão geral | bloqueado | bloqueado | bloqueado | requer sessão legítima + browser live |
+| Administração | bloqueado | bloqueado | bloqueado | requer sessão legítima + browser live |
+| Cadastros | bloqueado | bloqueado | bloqueado | requer sessão legítima + browser live |
+| Estoque | bloqueado | bloqueado | bloqueado | requer sessão legítima + browser live |
+| Compras | bloqueado | bloqueado | bloqueado | requer sessão legítima + browser live |
+| Financeiro | bloqueado | bloqueado | bloqueado | requer sessão legítima + browser live |
+| Caixa | bloqueado | bloqueado | bloqueado | requer sessão legítima + browser live |
 
-**Esta tabela não certifica responsividade.** Ela registra explicitamente a evidência ainda ausente pelo Definition of Done.
+**Esta tabela não declara a Fase 51 homologada.** O snapshot estático reduz o gap de evidência pública, mas não substitui as jornadas live exigidas pelo Definition of Done.
 
-## Jornadas autenticadas ainda bloqueadas
+## Jornadas live autenticadas ainda bloqueadas
 
 Permanecem sem execução real:
 
-- login com conta real de teste;
+- login com conta legítima;
 - seleção/troca de organização e logout autenticado;
 - sidebar desktop e drawer mobile;
 - Visão geral e filtros;
@@ -120,25 +171,25 @@ Permanecem sem execução real:
 - Financeiro;
 - Caixa;
 - convite válido e definição de nova senha após token legítimo;
-- estados de bootstrap que não existem naturalmente no ambiente corrente.
+- estados de bootstrap que não existam naturalmente no ambiente;
+- operações mutáveis e feedback pós-ação.
 
-Motivo: ausência de browser gráfico operável e de sessão/credencial/token legítimos aprovados. Production não será alterada para criar prova artificial.
+Motivo: ausência de browser live conectado ao deployment e de sessão/credencial/token legítimos aprovados. Production não será alterada para fabricar prova.
 
 ## Estado da homologação
 
-A Fase 51 **não pode ser promovida ainda para reconciliação funcional final** porque o critério de aceite exige evidência representativa em browser para desktop/tablet/mobile e jornadas autenticadas necessárias, salvo aceitação explícita do operador para adiar bloqueios externos.
-
-A revalidação HTTP/HTML pública da versão corrente está concluída. **Não repetir mecanicamente essas mesmas verificações em nova sessão sem mudança de deployment ou novo achado.**
+A Fase 51 **não pode ser promovida ainda para reconciliação funcional final**. O critério de aceite continua exigindo jornadas live representativas em desktop/tablet/mobile e estados autenticados necessários, salvo aceitação explícita do operador para adiar uma limitação externa.
 
 ## Próxima evidência incremental necessária
 
-1. confirmar que a `main`, CI e deployment automático continuam coerentes;
-2. usar browser gráfico real quando a capacidade estiver disponível e registrar dimensões de desktop/tablet/mobile;
-3. usar somente sessão/credencial legítima aprovada para jornadas autenticadas;
-4. percorrer Entrada/contexto, Visão geral, Administração, Cadastros, Estoque, Compras, Financeiro e Caixa;
-5. validar foco/teclado, drawer mobile, touch targets, overflow, tabelas/formulários densos, loading/empty/error/success e `lista → detalhe → ação → retorno`;
-6. executar convite/nova senha/bootstrap/troca de organização somente em estados legítimos;
-7. registrar e corrigir apenas achados concretos;
-8. promover reconciliação funcional somente quando a matriz tiver evidência suficiente ou quando bloqueios externos forem explicitamente aceitos pelo operador.
+1. confirmar estado real de `main`, CI e deployment automático;
+2. não repetir HTTP/HTML nem snapshot estático se o runtime não mudou;
+3. obter browser live operável contra o deployment;
+4. usar somente sessão/credencial legítima aprovada;
+5. percorrer Entrada/contexto, Visão geral, Administração, Cadastros, Estoque, Compras, Financeiro e Caixa;
+6. validar foco/teclado, drawer, touch targets, overflow, tabelas/formulários densos, loading/empty/error/success e `lista → detalhe → ação → retorno`;
+7. executar mutações somente em ambiente/estado seguro;
+8. registrar e corrigir apenas achados concretos;
+9. promover reconciliação funcional somente quando a matriz tiver evidência suficiente ou quando bloqueios externos forem explicitamente aceitos pelo operador.
 
-CI/build e inspeção de HTML permanecem evidências auxiliares; não substituem homologação de jornada em browser.
+CI/build e inspeção estática continuam sendo evidências auxiliares; não substituem homologação live.
