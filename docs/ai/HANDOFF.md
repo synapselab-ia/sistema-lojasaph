@@ -2,17 +2,17 @@
 
 ## Estado de transição
 
-**Fase 51 / Issue #142 continua ativa. A slice de Financeiro está integrada; a próxima slice é Caixa.**
+**Fase 51 / Issue #142 continua ativa. A slice de Caixa está integrada; a próxima slice é Dashboard / Visão geral.**
 
-Baseline funcional ao final de Financeiro:
+Baseline funcional ao final de Caixa:
 
-- `main=692e2fb1ed12085148a04f22c540863b0d699994` — merge do PR #159;
-- PR #159 — `feat: consolidar jornada de Financeiro` — merged;
-- CI pós-merge #557 / run `33205617449`: success;
-- lint, typecheck, tests, production build e banco/migrations/RLS: success;
-- CI #556 / run `33205483532`: success no head final do PR;
-- Business Transactions Integration #252 / run `33205483531`: success no head final do PR;
-- Inventory Count Integration #265 / run `33205483505`: success no head final do PR;
+- `main=7e841b77daae8eb7afc13cc39812dd93b948dd32` — merge do PR #161;
+- PR #161 — `feat: consolidar jornada de Caixa` — merged;
+- CI pós-merge #561 / run `33387966611`: success;
+- lint, typecheck, unit tests, production build e banco/migrations/RLS: success;
+- CI #560 / run `33387774581`: success no head final do PR;
+- Business Transactions Integration #253 / run `33387774423`: success, incluindo ciclo de vida de Caixa e permissões escopadas;
+- Inventory Count Integration #266 / run `33387774526`: success;
 - Issue #142 permanece aberta;
 - #75/#121 permanecem **TOTALMENTE ON HOLD**;
 - nenhum deploy Vercel manual/rotineiro foi feito.
@@ -25,124 +25,131 @@ Slices já integradas:
 - PR #147 — arquitetura da informação + navegação desktop/mobile;
 - PR #149 — design system mínimo;
 - PR #151 — Administração: Estrutura + Usuários/Permissões;
-- PR #152 — reconciliação/handoff de Cadastros;
 - PR #153 — Cadastros: Produtos, Fornecedores e Funcionários;
 - PR #155 — Estoque consolidado;
 - PR #157 — Compras consolidado;
-- PR #159 — Financeiro consolidado.
+- PR #159 — Financeiro consolidado;
+- PR #161 — Caixa consolidado.
 
 Não reabrir essas áreas sem bug ou gap concreto.
 
-## O que o PR #159 entregou
+## O que o PR #161 entregou
 
 ### Estrutura da área
 
-Financeiro agora possui visão principal e destinos subordinados:
+Caixa agora possui visão principal e destinos subordinados:
 
-- `/workspace/financeiro` — indicadores, vencimentos que exigem atenção e atalhos;
-- `/workspace/financeiro/contas` — lista pesquisável/filtrável;
-- `/workspace/financeiro/contas/nova` — criação dedicada de documento e parcelas;
-- `/workspace/financeiro/contas/[id]` — detalhe estável, parcelas, anexos e histórico;
-- `/workspace/financeiro/contas/[id]/pagar` — registro explícito de pagamento;
-- `/workspace/financeiro/vencimentos` — consulta por status derivado;
-- `/workspace/financeiro/pagamentos` — histórico de pagamentos e estornos.
+- `/workspace/caixa` — visão da área e sessões recentes;
+- `/workspace/caixa/sessoes` — lista pesquisável/filtrável;
+- `/workspace/caixa/sessoes/nova` — abertura dedicada;
+- `/workspace/caixa/sessoes/[id]` — detalhe estável, operação e fechamento;
+- `/workspace/caixa/configuracao` — caixas físicos, meios de pagamento e regras de taxa.
 
-### Contratos preservados
+A antiga megapágina deixou de concentrar configuração, abertura, totais, movimentos, fechamento, cancelamento e histórico.
+
+### Sessão e fechamento
+
+O detalhe estável apresenta:
+
+- caixa, unidade, data de negócio, sequência e status;
+- fundo inicial;
+- totais por meio com bruto, taxa, líquido, impacto na gaveta e regra aplicada quando existente;
+- entradas, sangrias e movimentos já registrados;
+- fechamento com valor contado;
+- esperado, contado e divergência persistidos em sessão encerrada;
+- cancelamento por `Dialog`, sem `window.prompt()`.
+
+Sessão inexistente ou inacessível usa estado seguro e não confirma registro fora do escopo.
+
+### Regra autoritativa preservada
+
+Nenhuma regra crítica foi transferida para React.
+
+No fechamento, o backend continua calculando:
+
+`expected_cash_amount = opening_float + bruto dos meios com affects_cash_drawer + cash_in - cash_out`
+
+`cash_difference = counted_cash_amount - expected_cash_amount`
+
+A UI pode mostrar os componentes persistidos para explicar a composição, mas não substitui esse cálculo autoritativo.
+
+### PENDINGs preservados
+
+- `REQ-CASH-007` — Consumo Funcionários — continua PENDING. A nova UX não oferece criação de novos movimentos `employee_consumption`; registros existentes podem continuar aparecendo como histórico, sem ganhar semântica nova.
+- `REQ-CASH-008` — integração com vendas/POS — continua PENDING. O módulo permanece baseado em totais consolidados por meio de pagamento; nenhuma venda individual foi criada.
+
+### Segurança e contratos
 
 - nenhum schema/migration/RPC/RLS novo;
-- criação, pagamento, estorno e cancelamento continuam usando os RPCs existentes;
-- pagamento continua evento auditável e estorno continua evento relacionado, sem apagar histórico;
-- duplo estorno continua bloqueado;
-- cancelamento com pagamento líquido continua bloqueado até os estornos necessários;
-- diferenças entre nominal e pago permanecem explícitas, sem classificação automática;
-- referências/instruções permanecem separadas do pagamento executado;
-- anexos continuam privados no boundary existente;
-- escopos Organization/Unit/Sector, RLS/grants e idempotência permanecem autoritativos;
-- `REQ-FIN-004` continua PENDING.
-
-### UX
-
-- a antiga megapágina deixou de ser a experiência normal;
-- documento persistente ganhou URL própria;
-- criação e pagamento ganharam fluxos dedicados;
-- estorno/cancelamento deixaram de depender de `window.prompt()`;
-- listas/históricos possuem alternativa mobile;
-- documento inexistente/inacessível usa estado seguro;
-- exportação CSV foi preservada.
+- todos os commands existentes foram preservados;
+- `manageCashRegisters`, `manageCashConfig` e `operateCash` apenas orientam disponibilidade de UI;
+- RLS/grants/RPCs continuam sendo a fronteira real de autorização;
+- idempotência, atomicidade e auditoria permanecem nos boundaries existentes.
 
 ## Homologação visual
 
 **Não houve browser real disponível nesta execução.**
 
-Não declarar Financeiro homologado visualmente em desktop/tablet/mobile apenas por build/CI. Também não fazer deploy manual na Vercel apenas para criar essa evidência.
+Não declarar Caixa homologado visualmente em desktop/tablet/mobile apenas por build/CI. Também não fazer deploy manual na Vercel apenas para criar essa evidência.
 
-## Próxima ação: Caixa
+## Observação documental
 
-O próximo chat deve executar a consolidação de **Caixa**, sem refazer Financeiro.
+`docs/product/workspace-information-architecture.md` ainda contém, no mapa de rotas, uma frase antiga dizendo que Caixa compartilha a página pré-consolidação. Essa frase é anterior ao PR #161 e não deve prevalecer sobre as rotas reais integradas acima. A correção dessa linha pode entrar na próxima reconciliação documental/limpeza de linguagem sem reabrir a slice funcional de Caixa.
 
-Inventário preliminar comprovado na `main`:
+## Próxima ação: Dashboard / Visão geral
 
-- `/workspace/caixa/page.tsx` ainda concentra configuração e operação em uma única página;
-- o gateway principal é `src/modules/cash/adapters/supabase-cash-gateway.ts`;
-- a migration-base é `supabase/migrations/20260818135623_cash_sessions_flow.sql`, posteriormente endurecida pelos escopos/permissões;
-- commands idempotentes existentes: `create_cash_register`, `create_payment_method`, `create_fee_rule`, `open_cash_session`, `set_cash_payment_total`, `record_cash_movement`, `close_cash_session`, `cancel_cash_session`;
-- a página atual mistura cadastro de caixa, meios de pagamento, regras de taxa, abertura de sessão, totais, movimentos, fechamento, cancelamento e histórico;
-- cancelamento de sessão ainda usa `window.prompt()`;
-- `REQ-CASH-001..006` já descrevem data/unidade, totais por meio, taxas configuráveis, fundo, movimentos e esperado x contado;
-- `REQ-CASH-007` e `REQ-CASH-008` permanecem PENDING;
-- Q-007 e Q-009 permanecem abertas e impedem inventar venda individual ou semântica final de consumo de funcionários.
+O próximo chat deve consolidar **Dashboard / Visão geral**, sem refazer Caixa.
 
-### Passos obrigatórios
+Inventário preliminar já comprovado na `main`:
+
+- `/workspace` já é um dashboard funcional e somente leitura;
+- a página atual concentra diretamente filtros de Unidade/Setor, horizonte, período explícito, fila de atenção, KPIs financeiros, sinais de Caixa/Compras e seções de Estoque/Compras;
+- parte dos controles ainda usa estilos manuais anteriores ao design system consolidado;
+- `SupabaseDashboardQuery` e testes já existem;
+- `buildDashboardSummary`/application summary já existem;
+- queries/seções específicas de Estoque e Compras já existem em `src/modules/dashboard`;
+- o dashboard diferencia estado atual, horizonte relativo e período gerencial explícito;
+- Caixa continua em escopo de Unidade e usa `business_date` quando a métrica é temporal;
+- Financeiro, Compras e Estoque só devem usar Setor onde há vínculo setorial explícito no contrato existente.
+
+### Passos obrigatórios para Dashboard
 
 1. reconciliar `main`, Issue #142, PRs, branches e CI reais;
-2. reler `NEXT_ACTION.md`, roadmap, IA, design system, DoD, requirements e open questions;
-3. inventariar página, gateway, migration, RLS/grants, permissões e testes de Caixa antes de editar;
-4. provar como esperado, contado e divergência são calculados/persistidos;
-5. provar como totais por meio, taxa e `affects_cash_drawer` entram no esperado;
-6. mapear escopo real por Organization/Unit/Register e permissões de configuração/operação;
-7. separar configuração administrativa de sessão operacional sempre que o comportamento atual suportar;
-8. preferir sessão persistente com URL estável e ações contextuais;
-9. separar abertura, detalhe/operação, fechamento/cancelamento e histórico em responsabilidades claras;
-10. substituir `window.prompt()` por confirmação explícita sem mudar a regra do RPC;
-11. garantir estratégia mobile deliberada e feedback/estados seguros;
-12. manter lint, typecheck, tests, build, banco/RLS e integrações aplicáveis verdes;
-13. registrar ausência de browser real se persistir.
+2. reler `NEXT_ACTION.md`, roadmap, IA, design system, DoD, requisitos/open questions e documentação do Dashboard;
+3. inventariar integralmente `/workspace`, `SupabaseDashboardQuery`, summary, overview queries/sections e testes antes de editar;
+4. mapear cada KPI/alerta para sua fonte persistente e rota de destino;
+5. provar a semântica dos filtros Unidade/Setor, horizonte e período explícito;
+6. provar timezone/data de negócio e quais métricas são estado atual versus métricas por data;
+7. alinhar links às jornadas consolidadas de Estoque, Compras, Financeiro e Caixa;
+8. reutilizar o design system em filtros, feedback, cards/painéis e estados;
+9. manter Dashboard somente leitura;
+10. definir estratégia mobile deliberada;
+11. não criar KPI, threshold, SLA, janela, comparação ou regra de negócio sem contrato já existente;
+12. manter lint, typecheck, tests, build e banco/RLS verdes;
+13. registrar ausência de browser real se continuar indisponível.
 
-## Invariantes para Caixa
+## Guardrails do Dashboard
 
-Não permitir que a reorganização visual altere silenciosamente:
+Não usar a consolidação para:
 
-- data de negócio e unidade/caixa da sessão;
-- sequência da sessão e unicidade já persistida;
-- fundo inicial separado dos totais operacionais;
-- totais por meio com bruto, taxa e líquido;
-- regras de taxa versionadas/configuráveis, sem hardcode na UI;
-- `affects_cash_drawer` conforme configuração existente;
-- movimentos de entrada/saída com valor, data, motivo e responsável conforme boundary atual;
-- sessão aberta como única situação mutável pelas operações suportadas;
-- valor esperado calculado pelo contrato persistente existente;
-- valor contado informado no fechamento;
-- divergência preservada explicitamente;
-- cancelamento sem exclusão física e com auditoria;
-- idempotência dos commands;
-- RLS/grants/RPCs como boundaries reais de autorização.
-
-`REQ-CASH-007` continua PENDING. Não homologar `employee_consumption` como faturamento, venda ao funcionário, desconto ou consumo gratuito apenas porque o tipo existe tecnicamente.
-
-`REQ-CASH-008` continua PENDING. Não criar vendas individuais, POS/PDV ou integração de vendas nesta slice.
-
-## Fora da próxima slice
-
-Não usar Caixa para:
-
-- reabrir áreas já consolidadas sem evidência concreta;
-- redesenhar Dashboard;
-- resolver Q-007/Q-009 ou `REQ-CASH-007/008` por conveniência;
+- adicionar transações diretamente no painel;
+- recalcular status financeiro em React;
+- inventar alerta de validade, estoque, vencimento ou divergência;
+- aplicar Setor a métricas que só possuem escopo de Unidade/Organization;
+- tratar horizonte relativo e período explícito como a mesma semântica;
+- resolver PENDINGs de Estoque, Financeiro ou Caixa;
 - mudar Q-022/política de autorização;
-- criar integração de vendas/POS;
 - retomar #75/#121;
 - tocar Production para prova;
 - fazer deploy Vercel manual/rotineiro.
+
+## Depois do Dashboard
+
+Somente após integrar e reconciliar Dashboard, promover:
+
+> **limpeza de linguagem/resíduos de engenharia da experiência normal**
+
+Não saltar diretamente para homologação UX real sem executar essa etapa.
 
 ## Ordem oficial
 
@@ -154,8 +161,8 @@ Não usar Caixa para:
 6. ~~Estoque~~ — PR #155;
 7. ~~Compras~~ — PR #157;
 8. ~~Financeiro~~ — PR #159;
-9. **Caixa** — próxima;
-10. Dashboard;
+9. ~~Caixa~~ — PR #161;
+10. **Dashboard** — próxima;
 11. limpeza de linguagem;
 12. homologação UX real;
 13. reconciliação funcional;
@@ -166,4 +173,4 @@ Não usar Caixa para:
 
 ## Guardrails permanentes
 
-GitHub é fonte de verdade; RLS é boundary; nenhum secret em browser/Git/docs; Production não recebe fixture para prova; nenhum deploy Vercel rotineiro; #75/#121 permanecem ON HOLD até production-readiness final ou decisão explícita.
+GitHub é fonte de verdade; RLS é boundary; nenhum secret em browser/Git/docs; Production não recebe fixture para prova; nenhum deploy Vercel rotineiro; Q-022 e os requisitos PENDING permanecem sem inferência; #75/#121 permanecem ON HOLD até production-readiness final ou decisão explícita.
