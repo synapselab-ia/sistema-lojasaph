@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const responsiveCss = readFileSync(new URL("./globals.css", import.meta.url), "utf8");
+const recoveryPage = readFileSync(new URL("./recuperar-senha/page.tsx", import.meta.url), "utf8");
+const noAccessPage = readFileSync(new URL("./sem-acesso/page.tsx", import.meta.url), "utf8");
 
 describe("responsive workspace contract", () => {
   it("stacks fixed two- and three-column grids on narrow screens", () => {
@@ -15,5 +17,15 @@ describe("responsive workspace contract", () => {
     expect(responsiveCss).toContain("@media (pointer: coarse)");
     expect(responsiveCss).toContain("min-height: 44px");
     expect(responsiveCss).toContain('input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"])');
+  });
+
+  it("keeps public auth navigation targets touchable and errors announced", () => {
+    expect(recoveryPage).toContain("min-h-11");
+    expect(recoveryPage).toContain('role="alert"');
+    expect(recoveryPage).toContain("FormField");
+    expect(recoveryPage).toContain("FeedbackMessage");
+    expect(noAccessPage).toContain("min-h-11");
+    expect(noAccessPage).toContain('role="alert"');
+    expect(noAccessPage).toContain("FeedbackMessage");
   });
 });
