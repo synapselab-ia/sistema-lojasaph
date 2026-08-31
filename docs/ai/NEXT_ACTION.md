@@ -4,24 +4,31 @@
 
 **Fase 51 / Issue #142 continua ativa.**
 
-A auditoria final de produto mostrou que, antes de ampliar a homologação UX, existe um gap P0 concreto no runtime: a árvore antiga `/cadastros/*` permanece navegável e usa infraestrutura/demo antiga paralela ao workspace oficial.
+O P0 do runtime legado `/cadastros/*` foi neutralizado no PR #170. As URLs antigas permanecem apenas como redirects para o `/workspace`, sem `DemoWorkspaceProvider`, `AdminShell` ou UI concorrente de fixtures.
 
 Fonte de verdade da fila final:
 
 - `docs/product/final-product-gap-audit.md`.
 
-Baseline real antes deste PR documental:
+Baseline anterior ao PR #170:
 
-- `main=75b36db62895bfdb67923afb348c45084e537365`;
-- CI #578 / run `33403368142`: **success**;
+- `main=6f0c0cfcd0e969335cd4d23ddefd1a2ef17dad11`;
+- CI #580 / run `33424103707`: **success**;
 - Issue #142 aberta;
 - #75/#121 **TOTALMENTE ON HOLD**.
 
 ## NEXT_ACTION objetiva
 
-### **Remover/redirectar o runtime legado `/cadastros/*` sem alterar domínio ou regras de negócio**
+### **Fechar telas auxiliares de autenticação/contexto sem reimplementar auth/RLS**
 
 Esta é a próxima slice executável.
+
+Rotas prioritárias:
+
+- `/auth/atualizar-senha`;
+- `/auth/invite`;
+- `/bootstrap`;
+- `/workspace/selecionar-organizacao`.
 
 ## 1. Reconciliar estado real antes de mudar
 
@@ -36,76 +43,44 @@ No começo da execução:
 7. confirmar `main`, Issue #142, PRs, branches e CI reais;
 8. não refazer slices já integradas.
 
-## 2. Inventariar o runtime legado
+## 2. Inspecionar as quatro jornadas auxiliares
 
-Inspecionar toda a árvore:
+Para cada rota:
 
-- `src/app/cadastros`.
+- identificar o estado real de carregamento, sucesso, erro e ausência de contexto/token;
+- conferir consistência com `PageHeader`, `Panel`, `FormField`, `Input`, `Select`, `Button`, `FeedbackMessage`, `EmptyState` e demais primitives existentes quando aplicáveis;
+- revisar foco, teclado, `aria-*`, mensagens anunciáveis e touch targets;
+- verificar navegação/retorno/CTA sem expor detalhes técnicos ao usuário;
+- manter a semântica atual de sessão, convite, bootstrap e seleção de organização.
 
-Já foi comprovado que:
+Não fazer redesign amplo: corrigir gaps concretos.
 
-- `src/app/cadastros/layout.tsx` usa `DemoWorkspaceProvider`;
-- `/cadastros` exibe `Fase 4`, `fixtures` e alterações apenas durante a sessão;
-- existem subrotas legadas de estrutura, produtos, fornecedores, estoque, inventários e validades.
+## 3. Guardrails da slice
 
-Não assumir que a lista acima é exaustiva: inventariar a árvore real antes de remover.
-
-## 3. Mapear para as rotas oficiais
-
-Usar `docs/product/workspace-information-architecture.md` como autoridade.
-
-Mapear cada rota antiga para a rota oficial correspondente em `/workspace` quando existir.
-
-Exemplos conceituais:
-
-- estrutura → Administração/Estrutura;
-- produtos → Cadastros/Produtos;
-- fornecedores → Cadastros/Fornecedores;
-- estoque/validades/inventários → jornadas oficiais de Estoque.
-
-Não criar uma segunda arquitetura paralela.
-
-## 4. Neutralizar as rotas antigas
-
-Para cada rota antiga, escolher a menor solução correta:
-
-- remover a página/árvore quando não houver dependência legítima;
-- ou transformar em redirect seguro para a rota oficial equivalente quando compatibilidade de URL for útil.
-
-Critérios:
-
-- usuário final não deve acessar experiência baseada em `DemoWorkspaceProvider`;
-- não deve aparecer `Fase`, `fixtures`, `demonstração` ou linguagem de desenvolvimento;
-- não deve haver duas telas concorrentes para a mesma tarefa;
-- fixtures podem permanecer apenas se ainda tiverem uso legítimo em testes/engenharia e não forem expostas como produto.
-
-## 5. Guardrails da slice
-
-Não alterar nessa limpeza:
+Não alterar por estética:
 
 - schema/migrations;
 - RPCs;
 - grants/RLS;
-- autorização/perfis;
-- ledger/estoque;
-- regras financeiras;
-- regras de Caixa;
-- semântica de Compras;
+- modelo de autorização/perfis;
+- contratos de sessão/token;
 - Q-022;
-- requisitos PENDING.
+- requisitos PENDING;
+- regras de estoque, compras, financeiro ou caixa.
 
-Não fazer redesign das áreas oficiais já consolidadas.
+Se surgir um bug real de segurança/autorização, documentar a causa e aplicar a menor correção segura, sem expandir escopo silenciosamente.
 
 Não fazer deploy Vercel manual/rotineiro para prova.
 
-## 6. Testes obrigatórios
+## 4. Testes obrigatórios
 
 Adicionar ou atualizar testes que comprovem, quando aplicável:
 
-- rotas antigas não renderizam mais a UI demo;
-- redirects apontam para rotas internas oficiais e estáveis;
-- navegação normal não referencia `/cadastros/*` legado;
-- strings de produto indevidas como `Fase 4`, `fixtures` e CTA de demonstração não reaparecem na experiência normal.
+- feedback de erro/sucesso acessível;
+- controles e CTAs reutilizam padrões compartilhados;
+- estados sem token/contexto não quebram a navegação;
+- links internos apontam para rotas canônicas;
+- não há regressão do contrato atual de auth/contexto.
 
 Manter verdes:
 
@@ -115,46 +90,43 @@ Manter verdes:
 - `npm run build`;
 - CI de banco/RLS normal do repositório.
 
-## 7. Critério de aceite desta slice
+## 5. Critério de aceite desta slice
 
 A slice termina quando:
 
-- toda a árvore `/cadastros/*` estiver inventariada;
-- nenhuma página demo antiga permanecer como superfície concorrente do produto;
-- redirects/removals estiverem documentados e testados;
-- nenhum boundary de negócio ou segurança tiver sido alterado sem necessidade;
+- as quatro rotas estiverem inventariadas e reconciliadas com o padrão atual;
+- gaps concretos de acessibilidade/feedback/responsividade estiverem corrigidos;
+- nenhuma regra de auth/RLS tiver sido reescrita sem necessidade;
+- testes relevantes estiverem verdes;
 - CI estiver verde;
 - documentação/handoff refletirem o estado real.
 
-## 8. Próxima slice após esta
+## 6. Próxima slice após esta
 
 Promover imediatamente:
 
-### **Fechar telas auxiliares de autenticação/contexto**
+### **Concluir homologação UX desktop/tablet/mobile**
 
-Rotas prioritárias:
+Usar `docs/qa/fase51-ux-homologation.md` e browser real com sessão/ambiente seguro.
 
-- `/auth/atualizar-senha`;
-- `/auth/invite`;
-- `/bootstrap`;
-- `/workspace/selecionar-organizacao`.
+Percorrer:
 
-Objetivo:
+- Entrada/contexto;
+- Visão geral;
+- Administração;
+- Cadastros;
+- Estoque;
+- Compras;
+- Financeiro;
+- Caixa.
 
-- reutilizar primitives compartilhados quando aplicável;
-- feedback acessível;
-- foco/teclado;
-- touch targets;
-- loading/error/success coerentes;
-- homologar fluxo real quando houver token/sessão legítimos.
+CI, build, CSS e inspeção estática não substituem evidência real de viewport, drawer, foco, teclado, overflow, touch e fluxos interativos.
 
-Não reimplementar auth/RLS por estética.
+## 7. Ordem completa depois desta slice
 
-## 9. Ordem completa depois da próxima slice
-
-1. **runtime legado `/cadastros/*` — NEXT_ACTION atual**;
-2. **telas auxiliares de autenticação/contexto**;
-3. **homologação UX desktop/tablet/mobile** usando `docs/qa/fase51-ux-homologation.md`;
+1. ~~runtime legado `/cadastros/*`~~ — PR #170;
+2. **telas auxiliares de autenticação/contexto — NEXT_ACTION atual**;
+3. **homologação UX desktop/tablet/mobile**;
 4. **reconciliação funcional final** usando critério de usabilidade;
 5. **resolver/adiar formalmente PENDINGs necessários + Q-022**;
 6. **homologar com dados representativos**;

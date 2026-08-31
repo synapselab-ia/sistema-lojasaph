@@ -4,95 +4,61 @@
 
 **Fase 51 / Issue #142 continua ativa.**
 
-O sistema possui núcleo operacional consolidado, mas a auditoria final de produto mostrou que ainda existem gaps obrigatórios antes de chamá-lo de `100%`.
+O sistema possui núcleo operacional consolidado, mas ainda há gaps obrigatórios antes de chamá-lo de `100%`. A fonte de verdade é `docs/product/final-product-gap-audit.md`.
 
-Fonte de verdade nova:
+Baseline anterior à slice atual:
 
-- `docs/product/final-product-gap-audit.md`.
-
-Baseline real antes deste PR documental:
-
-- `main=75b36db62895bfdb67923afb348c45084e537365` — merge do PR #168;
-- CI #578 / run `33403368142`: **success**;
+- `main=6f0c0cfcd0e969335cd4d23ddefd1a2ef17dad11` — merge do PR #169;
+- CI #580 / run `33424103707`: **success**;
 - Issue #142 aberta;
 - #75/#121 **TOTALMENTE ON HOLD**;
 - nenhum deploy Vercel manual/rotineiro deve ser feito para evidência.
 
 ## Não refazer
 
-Já integrados:
+Já integrados: #145, #147, #149, #151, #153, #155, #157, #159, #161, #163, #165, #167, #168 e #169.
 
-- #145 entrada técnica;
-- #147 arquitetura da informação/navegação;
-- #149 design system mínimo;
-- #151 Administração;
-- #153 Cadastros oficiais;
-- #155 Estoque;
-- #157 Compras;
-- #159 Financeiro;
-- #161 Caixa;
-- #163 Dashboard;
-- #165 limpeza de linguagem;
-- #167 primeiros gaps públicos de UX;
-- #168 reconciliação documental.
+PR #170 fecha o P0 do runtime legado `/cadastros/*`. Não reabrir essas slices por preferência estética; corrigir somente gaps comprovados.
 
-Não reabrir por preferência estética. Corrigir somente gaps comprovados.
+## P0 fechado — runtime legado `/cadastros/*`
 
-## Descoberta nova que muda a próxima ação
+A árvore antiga foi mantida apenas como camada de compatibilidade de URL, sem experiência demo própria.
 
-Existe uma árvore antiga de demonstração ainda navegável sob `src/app/cadastros`.
+Mapeamento:
 
-Comprovado:
+- `/cadastros` → `/workspace`;
+- `/cadastros/estrutura` → `/workspace/administracao/estrutura`;
+- `/cadastros/produtos` → `/workspace/produtos`;
+- `/cadastros/fornecedores` → `/workspace/fornecedores`;
+- `/cadastros/estoque` → `/workspace/estoque`;
+- `/cadastros/inventarios` → `/workspace/inventarios`;
+- `/cadastros/validades` → `/workspace/estoque/lotes`.
 
-- `src/app/cadastros/layout.tsx` usa `DemoWorkspaceProvider`;
-- `/cadastros` ainda fala em `Fase 4`, `fixtures` e alterações só durante a sessão;
-- há subrotas legadas de estrutura, produtos, fornecedores, estoque, inventários e validades;
-- essas rotas são paralelas às rotas oficiais de `/workspace` e não pertencem à IA aprovada.
+O layout legado não usa mais `DemoWorkspaceProvider` nem `AdminShell`. Um teste de contrato trava os redirects e garante que a navegação canônica não referencie `/cadastros`.
 
-Esse é um **gap P0 de produto** e deve ser removido antes de prosseguir com a homologação ampla.
+Nenhum schema, migration, RPC, grant, RLS, perfil, regra de estoque/financeiro/caixa/compras ou PENDING foi alterado.
 
 ## NEXT_ACTION imediata
 
-### Remover/neutralizar o runtime legado `/cadastros/*`
+### Fechar telas auxiliares de autenticação/contexto
 
 No próximo chat:
 
 1. ler `AGENTS.md`, `00-START-HERE.md`, `CURRENT_STATE.md`, `HANDOFF.md`, `NEXT_ACTION.md` e `docs/product/final-product-gap-audit.md`;
 2. confirmar `main`, Issue #142, PRs/branches/CI reais;
-3. inventariar toda a árvore `src/app/cadastros`;
-4. mapear cada rota para o equivalente oficial em `/workspace`;
-5. decidir por rota entre remoção ou redirect seguro;
-6. preservar fixture/demo somente se ainda necessária para testes/engenharia e fora da experiência normal;
-7. garantir que usuário final não veja `Fase`, `fixtures`, `demonstração` ou páginas concorrentes;
-8. adicionar/ajustar testes de contrato de entrada/rotas;
-9. não alterar schema, migration, RPC, grant, RLS, autorização ou regra de negócio;
-10. manter CI verde;
-11. reconciliar documentação e promover a próxima slice.
+3. inspecionar `/auth/atualizar-senha`, `/auth/invite`, `/bootstrap` e `/workspace/selecionar-organizacao`;
+4. comparar essas telas com os primitives/padrões compartilhados já consolidados;
+5. corrigir somente gaps concretos de consistência, feedback acessível, loading/error/success, foco/teclado e touch targets;
+6. preservar contratos de auth, sessão, autorização e RLS;
+7. adicionar/ajustar testes de contrato quando aplicável;
+8. manter CI verde;
+9. reconciliar documentação e promover a homologação UX completa como próxima slice.
 
-Não fazer deploy Vercel manual para provar essa limpeza.
-
-## Slice seguinte — telas auxiliares
-
-Depois do runtime legado:
-
-- `/auth/atualizar-senha`;
-- `/auth/invite`;
-- `/bootstrap`;
-- `/workspace/selecionar-organizacao`.
-
-Objetivo:
-
-- primitives compartilhados quando aplicáveis;
-- feedback acessível e consistente;
-- foco/teclado/touch targets;
-- loading/error/success claros;
-- homologação dos fluxos reais quando houver token/sessão legítimos.
-
-Não reimplementar auth/RLS por estética.
+Não fazer deploy Vercel manual para provar a slice.
 
 ## Depois — homologação UX completa
 
-Só então continuar a matriz de `docs/qa/fase51-ux-homologation.md` em desktop/tablet/mobile.
+Continuar a matriz de `docs/qa/fase51-ux-homologation.md` em desktop/tablet/mobile, usando browser real e sessão/ambiente seguro.
 
 Jornadas mínimas:
 
@@ -105,7 +71,7 @@ Jornadas mínimas:
 - Financeiro;
 - Caixa.
 
-Exigir browser real para certificar viewport, drawer, foco, teclado, overflow, touch e fluxos interativos. CI/CSS/HTML estático não substituem essa evidência.
+CI/CSS/HTML estático não substituem evidência de viewport, drawer, foco, teclado, overflow, touch e fluxos interativos.
 
 Production não deve receber fixtures, usuários artificiais ou ações destrutivas para prova.
 
@@ -130,8 +96,6 @@ Revisar MUST e SHOULD aplicáveis, não apenas existência de backend/telas.
 
 Q-022 permanece aberta: mapear perfis reais antes do go-live, sem equiparar automaticamente papéis técnicos a cargos.
 
-Durante a reconciliação final, revisar `open-questions.md` e migrar/arquivar perguntas já resolvidas por decisões posteriores.
-
 ## Fechamento operacional depois dos PENDINGs
 
 1. ambiente seguro com dados representativos;
@@ -147,21 +111,13 @@ Durante a reconciliação final, revisar `open-questions.md` e migrar/arquivar p
 
 ## Production-readiness final
 
-Somente depois:
-
-- retomar #75/#121;
-- backup PostgreSQL automático real;
-- cobertura de Storage/binários;
-- destino off-site, integridade e retenção;
-- restore/drill isolado;
-- observabilidade/gates finais;
-- fechamento de `REQ-PLAT-005`.
+Somente depois retomar #75/#121 e fechar backup PostgreSQL, Storage/binários quando aplicável, destino off-site, integridade/retenção, restore/drill, observabilidade/gates e `REQ-PLAT-005`.
 
 #75/#121 permanecem **TOTALMENTE ON HOLD** até essa etapa ou decisão explícita.
 
 ## Ordem final oficial
 
-1. **runtime legado `/cadastros/*`**;
+1. ~~runtime legado `/cadastros/*`~~ — PR #170;
 2. **telas auxiliares de autenticação/contexto**;
 3. **homologação UX desktop/tablet/mobile**;
 4. **reconciliação funcional final**;
