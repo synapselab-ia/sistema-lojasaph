@@ -6,17 +6,12 @@
 
 **Fase 51 / Issue #142 — consolidação de produto, arquitetura de informação e UX — permanece ativa.**
 
-O núcleo operacional está consolidado, mas o sistema **ainda não deve ser considerado 100% concluído**. A auditoria final de produto identificou trabalho obrigatório antes de concluir homologação, negócio, migração/cutover e production-readiness.
+O núcleo operacional está consolidado, mas o sistema **ainda não deve ser considerado 100% concluído**. A fila final continua em `docs/product/final-product-gap-audit.md`.
 
-Fonte de verdade da fila final:
+Baseline anterior a esta slice:
 
-- `docs/product/final-product-gap-audit.md`.
-
-Baseline real antes deste PR documental:
-
-- `main=75b36db62895bfdb67923afb348c45084e537365` — merge do PR #168;
-- CI pós-merge #578 / run `33403368142`: **success**;
-- lint, typecheck, unit tests, production build e banco/migrations/RLS: success;
+- `main=6f0c0cfcd0e969335cd4d23ddefd1a2ef17dad11` — merge do PR #169;
+- CI #580 / run `33424103707`: **success**;
 - Issue #142 aberta e ativa;
 - #75/#121 abertas e **TOTALMENTE ON HOLD**;
 - nenhum deploy Vercel manual/rotineiro deve ser feito para evidência.
@@ -35,48 +30,48 @@ Baseline real antes deste PR documental:
 10. Dashboard / Visão geral — PR #163;
 11. limpeza de linguagem/resíduos de engenharia — PR #165;
 12. primeira rodada pública de homologação UX e correções — PR #167;
-13. reconciliação documental da homologação — PR #168.
+13. reconciliação documental da homologação — PR #168;
+14. auditoria final de gaps e fila de fechamento — PR #169;
+15. neutralização do runtime legado `/cadastros/*` — PR #170.
 
 Não refazer essas slices sem bug/gap concreto.
 
-## Novo gap P0 comprovado — runtime legado `/cadastros/*`
+## P0 `/cadastros/*` — resolvido
 
-A auditoria encontrou uma árvore antiga de demonstração ainda presente no runtime, paralela ao workspace oficial:
+A árvore antiga de demonstração foi inventariada e neutralizada sem alterar domínio, persistência ou autorização.
 
-- `src/app/cadastros/layout.tsx` usa `DemoWorkspaceProvider`;
-- `/cadastros` ainda exibe `Fase 4`, `fixtures` e informa que alterações duram apenas durante a sessão;
-- existem subrotas legadas para estrutura, produtos, fornecedores, estoque, inventários e validades.
+Mapeamento de compatibilidade:
 
-Essas rotas **não pertencem à arquitetura de informação aprovada** e não podem permanecer como superfície concorrente de um produto final.
+- `/cadastros` → `/workspace`;
+- `/cadastros/estrutura` → `/workspace/administracao/estrutura`;
+- `/cadastros/produtos` → `/workspace/produtos`;
+- `/cadastros/fornecedores` → `/workspace/fornecedores`;
+- `/cadastros/estoque` → `/workspace/estoque`;
+- `/cadastros/inventarios` → `/workspace/inventarios`;
+- `/cadastros/validades` → `/workspace/estoque/lotes`.
 
-### Próxima slice obrigatória
+As páginas antigas não montam mais `DemoWorkspaceProvider`/`AdminShell` nem expõem UI de fixtures. `src/app/cadastros/legacy-routes.test.ts` protege os redirects e impede `/cadastros` na navegação canônica.
 
-Antes de ampliar a homologação UX:
+## Próxima slice obrigatória — telas auxiliares de autenticação/contexto
 
-1. inventariar toda a árvore `src/app/cadastros`;
-2. mapear equivalentes oficiais em `/workspace`;
-3. remover páginas legadas ou substituí-las por redirects seguros para as rotas oficiais;
-4. preservar fixtures somente se ainda úteis para testes/engenharia, fora da experiência normal;
-5. adicionar/ajustar testes que impeçam reintrodução de `Fase`, `fixtures`, `demonstração` e rotas demo concorrentes;
-6. não alterar domínio, schema, RLS ou regras de negócio nessa limpeza;
-7. manter CI verde.
-
-## Telas auxiliares ainda a fechar
-
-Depois da remoção do runtime legado, revisar e homologar os fluxos periféricos que ainda não estão totalmente no padrão compartilhado:
+Revisar e fechar os fluxos periféricos:
 
 - `/auth/atualizar-senha`;
 - `/auth/invite`;
 - `/bootstrap`;
 - `/workspace/selecionar-organizacao`.
 
-Objetivo: primitives compartilhados quando aplicáveis, feedback acessível, foco/teclado, touch targets e estados loading/error/success consistentes. Não reescrever auth/RLS apenas por estética.
+Objetivo:
+
+- reutilizar primitives compartilhados quando aplicável;
+- padronizar feedback acessível, loading/error/success e ações;
+- validar foco, teclado e touch targets;
+- homologar o fluxo real quando houver token/sessão legítimos;
+- **não** reimplementar auth, RLS ou regras de autorização por estética.
 
 ## Homologação UX continua obrigatória
 
-A homologação completa desktop/tablet/mobile **não está encerrada**.
-
-Ainda é necessário percorrer com browser real e sessão/ambiente seguro:
+A homologação completa desktop/tablet/mobile **não está encerrada**. Depois das telas auxiliares, percorrer com browser real e sessão/ambiente seguro:
 
 - Entrada/contexto;
 - Visão geral;
@@ -87,13 +82,11 @@ Ainda é necessário percorrer com browser real e sessão/ambiente seguro:
 - Financeiro;
 - Caixa.
 
-A evidência deve continuar em `docs/qa/fase51-ux-homologation.md`.
-
-CI, build, CSS e inspeção estática não substituem a evidência de jornada exigida pelo Definition of Done.
+A evidência continua em `docs/qa/fase51-ux-homologation.md`. CI, build, CSS e inspeção estática não substituem a evidência de jornada exigida pelo Definition of Done.
 
 ## Depois da homologação UX
 
-Executar **reconciliação funcional final usando critério de usabilidade**, requisito por requisito.
+Executar reconciliação funcional final usando critério de usabilidade, requisito por requisito.
 
 Pergunta de fechamento:
 
@@ -115,8 +108,6 @@ Continuam sem inferência:
 - `REQ-CASH-008` — integração com vendas/POS.
 
 Q-022 permanece aberta e deve ser resolvida antes de configurar definitivamente quem pode fazer cada ação no go-live.
-
-Revisar `open-questions.md` durante a reconciliação final e migrar/arquivar perguntas que já tenham sido resolvidas por decisões posteriores.
 
 ## Dados, migração e cutover
 
@@ -159,7 +150,7 @@ Somente no fim:
 10. ~~Dashboard~~ — PR #163;
 11. ~~limpeza de linguagem/resíduos de engenharia~~ — PR #165;
 12. ~~primeiros achados públicos de UX~~ — PR #167;
-13. **remover/redirectar runtime legado `/cadastros/*`**;
+13. ~~runtime legado `/cadastros/*`~~ — PR #170;
 14. **fechar telas auxiliares de autenticação/contexto**;
 15. **concluir homologação UX desktop/tablet/mobile**;
 16. **reconciliação funcional final**;
