@@ -37,7 +37,7 @@ async function requireOperationalBackend(path: string): Promise<void> {
     urlWithMessage(
       path,
       "error",
-      "Este ambiente não possui backend operacional isolado habilitado.",
+      "O acesso operacional não está disponível neste ambiente.",
     ),
   );
 }
