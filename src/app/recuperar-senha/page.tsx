@@ -19,11 +19,11 @@ export default async function RecoveryPage({ searchParams }: RecoveryPageProps) 
       <section className="w-full rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm sm:p-8">
         <p className="text-sm font-semibold uppercase tracking-[0.16em] text-neutral-500">Acesso</p>
         <h1 className="mt-2 text-3xl font-semibold tracking-tight">Recuperar senha</h1>
-        <p className="mt-2 text-sm leading-6 text-neutral-600">Informe o e-mail da conta. A resposta é deliberadamente neutra para não revelar quais endereços estão cadastrados.</p>
+        <p className="mt-2 text-sm leading-6 text-neutral-600">Informe o e-mail da conta. Por segurança, a confirmação não informa se o endereço está cadastrado.</p>
 
         {!operational && (
           <p className="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-            Recuperação de senha está desabilitada neste ambiente isolado.
+            A recuperação de senha não está disponível neste ambiente.
           </p>
         )}
         {error && <p className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{error}</p>}
