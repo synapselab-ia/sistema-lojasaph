@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { FeedbackMessage } from "@/components/ui";
 import { EntityId } from "@/domain/common/entity-id";
 import { createBrowserSupabaseClient } from "@/lib/supabase/browser";
 import {
@@ -76,24 +77,24 @@ export function StockOverviewSection(props: StockOverviewSectionProps) {
       label: "Posições com saldo",
       value: overview ? String(overview.balancePositionCount) : "—",
       href: "/workspace/estoque",
-      note: "Estado atual · item + local com saldo diferente de zero",
+      note: "Estado atual · produto e local com saldo diferente de zero",
     },
     {
       label: hasPeriod ? "Movimentações no período" : "Movimentações registradas",
       value: overview ? String(overview.movementCount) : "—",
       href: "/workspace/estoque",
-      note: hasPeriod ? "Por occurred_at no timezone da organização" : "Histórico visível completo",
+      note: hasPeriod ? "Pela data e hora registradas na organização" : "Histórico visível completo",
     },
     {
-      label: hasPeriod ? "Perdas/vencimentos no período" : "Perdas/vencimentos registrados",
+      label: hasPeriod ? "Perdas e vencimentos no período" : "Perdas e vencimentos registrados",
       value: overview ? String(overview.lossMovementCount) : "—",
       href: "/workspace/baixas",
-      note: hasPeriod ? "Movimentos loss/expiration no período" : "Histórico visível completo",
+      note: hasPeriod ? "Baixas por perda ou vencimento registradas no período" : "Histórico visível completo",
     },
     {
       label: "Abaixo do estoque mínimo",
       value: String(props.belowMinimumCount),
-      href: "/workspace/estoque",
+      href: "/workspace/estoque/minimos",
       note: "Estado atual",
     },
     {
@@ -111,40 +112,44 @@ export function StockOverviewSection(props: StockOverviewSectionProps) {
     {
       label: hasPeriod ? "Lotes vencidos no período" : "Lotes vencidos",
       value: String(props.expiredBatchCount),
-      href: "/workspace/estoque",
-      note: "Por expiration_date",
+      href: "/workspace/estoque/lotes",
+      note: "Pela validade registrada no lote",
     },
     {
       label: `Lotes vencendo em até ${props.horizonDays} dias${hasPeriod ? " · no período" : ""}`,
       value: String(props.expiringSoonCount),
-      href: "/workspace/estoque",
-      note: "Horizonte de alerta por expiration_date",
+      href: "/workspace/estoque/lotes",
+      note: "Horizonte de alerta aplicado à validade registrada",
     },
   ];
 
   return (
     <section className="space-y-4">
-      <div className="flex items-end justify-between gap-4">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-xl font-semibold">Estoque</h2>
-          <p className="mt-1 text-sm text-neutral-500">
-            Saldos usam a projeção item + local; movimentações e perdas usam o ledger confirmado. Quantidades de unidades de medida diferentes não são somadas em um saldo total fictício.
+          <h2 className="text-xl font-semibold text-neutral-950">Estoque</h2>
+          <p className="mt-1 text-sm leading-6 text-neutral-500">
+            Posições mostram produto e local com saldo. Movimentações e perdas usam somente registros confirmados; quantidades com unidades de medida diferentes não são somadas em um total artificial.
           </p>
         </div>
-        {loading && <span className="text-xs text-neutral-500">Atualizando estoque...</span>}
+        {loading && <span className="text-xs text-neutral-500" role="status">Atualizando estoque...</span>}
       </div>
 
       {error && (
-        <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-900">
-          <strong>Resumo de atividade indisponível.</strong> {error}
-        </div>
+        <FeedbackMessage tone="danger" role="alert">
+          <strong>Resumo de estoque indisponível.</strong> {error}
+        </FeedbackMessage>
       )}
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {cards.map((card) => (
-          <Link key={card.label} href={card.href} className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm hover:border-neutral-300">
+          <Link
+            key={card.label}
+            href={card.href}
+            className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm transition hover:border-neutral-300 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2"
+          >
             <p className="text-sm text-neutral-500">{card.label}</p>
-            <p className="mt-2 text-2xl font-semibold">{card.value}</p>
+            <p className="mt-2 text-2xl font-semibold text-neutral-950">{card.value}</p>
             {card.note && <p className="mt-2 text-xs leading-5 text-neutral-500">{card.note}</p>}
           </Link>
         ))}
