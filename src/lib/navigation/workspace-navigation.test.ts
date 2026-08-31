@@ -21,7 +21,6 @@ describe("workspaceNavigation", () => {
 
   it("groups the complete stock journey below Estoque", () => {
     const stock = workspaceNavigation.find((area) => area.id === "stock");
-
     expect(stock?.href).toBe("/workspace/estoque");
     expect(stock?.items).toEqual([
       { href: "/workspace/estoque/entradas", label: "Entradas" },
@@ -37,7 +36,6 @@ describe("workspaceNavigation", () => {
 
   it("groups the purchase journey below Compras", () => {
     const purchases = workspaceNavigation.find((area) => area.id === "purchases");
-
     expect(purchases?.href).toBe("/workspace/compras");
     expect(purchases?.items).toEqual([
       { href: "/workspace/compras/pedidos", label: "Pedidos" },
@@ -48,12 +46,20 @@ describe("workspaceNavigation", () => {
 
   it("groups the finance journey below Financeiro", () => {
     const finance = workspaceNavigation.find((area) => area.id === "finance");
-
     expect(finance?.href).toBe("/workspace/financeiro");
     expect(finance?.items).toEqual([
       { href: "/workspace/financeiro/contas", label: "Contas a pagar" },
       { href: "/workspace/financeiro/vencimentos", label: "Vencimentos" },
       { href: "/workspace/financeiro/pagamentos", label: "Pagamentos" },
+    ]);
+  });
+
+  it("groups the cash journey below Caixa", () => {
+    const cash = workspaceNavigation.find((area) => area.id === "cash");
+    expect(cash?.href).toBe("/workspace/caixa");
+    expect(cash?.items).toEqual([
+      { href: "/workspace/caixa/sessoes", label: "Sessões" },
+      { href: "/workspace/caixa/configuracao", label: "Configuração" },
     ]);
   });
 
@@ -78,6 +84,8 @@ describe("workspaceNavigation", () => {
       "/workspace/financeiro/vencimentos",
       "/workspace/financeiro/pagamentos",
       "/workspace/caixa",
+      "/workspace/caixa/sessoes",
+      "/workspace/caixa/configuracao",
       "/workspace/produtos",
       "/workspace/fornecedores",
       "/workspace/funcionarios",
@@ -107,6 +115,7 @@ describe("workspace navigation active state", () => {
     const stock = workspaceNavigation.find((area) => area.id === "stock");
     const purchases = workspaceNavigation.find((area) => area.id === "purchases");
     const finance = workspaceNavigation.find((area) => area.id === "finance");
+    const cash = workspaceNavigation.find((area) => area.id === "cash");
     const catalogs = workspaceNavigation.find((area) => area.id === "catalogs");
     const administration = workspaceNavigation.find((area) => area.id === "administration");
 
@@ -114,6 +123,7 @@ describe("workspace navigation active state", () => {
     expect(stock && isWorkspaceAreaActive("/workspace/estoque/entradas", stock)).toBe(true);
     expect(purchases && isWorkspaceAreaActive("/workspace/compras/pedidos/abc", purchases)).toBe(true);
     expect(finance && isWorkspaceAreaActive("/workspace/financeiro/contas/abc", finance)).toBe(true);
+    expect(cash && isWorkspaceAreaActive("/workspace/caixa/sessoes/abc", cash)).toBe(true);
     expect(catalogs && isWorkspaceAreaActive("/workspace/fornecedores", catalogs)).toBe(true);
     expect(administration && isWorkspaceAreaActive("/workspace/administracao/acessos", administration)).toBe(true);
   });
