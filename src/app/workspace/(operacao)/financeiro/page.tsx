@@ -53,7 +53,7 @@ export default function RuntimeFinancePage() {
       <PageHeader
         eyebrow="Financeiro"
         title="Visão financeira"
-        description="Acompanhe vencimentos, saldos e pagamentos sem misturar consulta com registro de documentos. Status e saldos continuam derivados dos eventos financeiros persistidos."
+        description="Acompanhe vencimentos, saldos e pagamentos sem misturar consulta com registro de documentos. Situação das parcelas e saldos são calculados a partir dos pagamentos e vencimentos registrados."
         actions={workspace.permissions.manageFinance ? <PayablesCsvExportButton organizationId={workspace.organizationId} /> : undefined}
       />
 
@@ -73,11 +73,11 @@ export default function RuntimeFinancePage() {
         </Link>
         <Link href="/workspace/financeiro/vencimentos" className={shortcutClass}>
           <h2 className="font-semibold">Vencimentos</h2>
-          <p className="mt-2 text-sm leading-6 text-neutral-600">Veja parcelas vencidas, vencendo hoje, a vencer e já pagas conforme o status derivado.</p>
+          <p className="mt-2 text-sm leading-6 text-neutral-600">Veja parcelas vencidas, vencendo hoje, a vencer e já pagas conforme a situação registrada.</p>
         </Link>
         <Link href="/workspace/financeiro/pagamentos" className={shortcutClass}>
           <h2 className="font-semibold">Pagamentos</h2>
-          <p className="mt-2 text-sm leading-6 text-neutral-600">Consulte pagamentos e estornos preservados como eventos auditáveis.</p>
+          <p className="mt-2 text-sm leading-6 text-neutral-600">Consulte pagamentos e estornos mantendo o histórico de cada operação.</p>
         </Link>
       </section>
 
@@ -85,7 +85,7 @@ export default function RuntimeFinancePage() {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold">Precisa de atenção</h2>
-            <p className="mt-1 text-sm text-neutral-500">Parcelas vencidas ou com vencimento hoje no seu escopo atual.</p>
+            <p className="mt-1 text-sm text-neutral-500">Parcelas vencidas ou com vencimento hoje no seu acesso atual.</p>
           </div>
           <Link href="/workspace/financeiro/vencimentos" className="text-sm font-semibold text-neutral-700 underline-offset-4 hover:underline">Ver vencimentos</Link>
         </div>
