@@ -4,12 +4,12 @@
 
 **Fase 51 / Issue #142 continua ativa.**
 
-As slices de consolidação até o PR #171 estão integradas. A frente atual é a homologação UX real em desktop/tablet/mobile.
+As slices de consolidação até o PR #172 estão integradas. A frente atual continua sendo a homologação UX real em desktop/tablet/mobile.
 
-Baseline corrente:
+Baseline real:
 
-- `main=64e1c0d242c3abfb7ee374ebc43850156d75089b` — merge do PR #171;
-- CI pós-merge #586 / run `33426777989`: **success**;
+- `main=01da4646d8e2ae6c533bc81d66afb2fb9d60ec5c` — merge do PR #172;
+- CI pós-merge #588 / run `33427974722`: **success**;
 - Issue #142 aberta;
 - nenhum PR aberto no início desta execução;
 - #75/#121 **TOTALMENTE ON HOLD**;
@@ -17,53 +17,65 @@ Baseline corrente:
 
 ## Não refazer
 
-Já consolidados: #145, #147, #149, #151, #153, #155, #157, #159, #161, #163, #165, #167, #168, #169, #170 e #171.
+Já consolidados: #145, #147, #149, #151, #153, #155, #157, #159, #161, #163, #165, #167, #168, #169, #170, #171 e #172.
 
 Não reabrir por preferência estética; corrigir somente bug/gap comprovado.
 
-## Deployment corrente confirmado
+## Deployment/runtime atual
 
-A integração Git da Vercel já publicou automaticamente a versão exata da `main`:
+O último deployment automático de aplicação é `dpl_J6qwwqUihCKqfTMhmbjSxcLSA3gr`, `READY`, production, source Git, runtime SHA `64e1c0d242c3abfb7ee374ebc43850156d75089b` (#171), alias `sistema-lojasaph.vercel.app`.
 
-- deployment `dpl_J6qwwqUihCKqfTMhmbjSxcLSA3gr`;
-- `READY`;
-- target `production`;
-- source `git`;
-- `githubCommitSha=64e1c0d242c3abfb7ee374ebc43850156d75089b`;
-- alias canônico `sistema-lojasaph.vercel.app` sem erro.
+O `main` está em `01da4646...` porque o PR #172 foi documental. Não existe deployment automático posterior para esse commit, e **não deve ser disparado deployment manual**: o código de aplicação hospedado é o mesmo runtime já revalidado.
 
-Não houve deploy manual.
+A inspeção HTTP/HTML pública registrada no PR #172 continua válida e não deve ser repetida mecanicamente.
 
-## Evidência pública reconciliada nesta execução
+## Capacidade de browser descoberta nesta execução
 
-No deployment corrente, via resposta HTTP/HTML real:
+O runtime local possui:
 
-- `/` sem sessão resolve para Login;
-- `/workspace` sem sessão resolve para Login com `next=/workspace` e alerta de sessão expirada;
-- UX-51-001 foi revalidado: `Voltar ao login` em `/recuperar-senha` possui `min-h-11`;
-- UX-51-002 foi revalidado: erro em `/recuperar-senha` usa `role="alert"`;
-- UX-51-003 foi revalidado: `/sem-acesso` usa ações com `min-h-11` e erro com `role="alert"`;
-- `/auth/atualizar-senha` sem sessão válida retorna ao Login com alerta de link expirado;
-- `/auth/invite` expõe no estado inicial hospedado `aria-busy`, `role="status"` e `aria-live`;
-- `/bootstrap` reflete o estado real atual de configuração inicial desabilitada e mantém CTA coerente;
-- `/workspace/selecionar-organizacao` sem sessão preserva `next=/workspace/selecionar-organizacao`.
+- Chromium `144.0.7559.96`;
+- Python Playwright `1.57.0`;
+- lançamento headless do Chromium funcionando.
 
-A matriz oficial foi atualizada em `docs/qa/fase51-ux-homologation.md`.
+Limitação objetiva: o container não possui saída de rede/DNS para `github.com` ou Vercel. Portanto Playwright **não consegue abrir o deployment live**. Também não há outro conector de browser interativo exposto.
+
+Foi possível, contudo, produzir uma evidência gráfica limitada e nova usando SSR HTML + CSS reais obtidos do deployment pela integração Vercel e renderizados localmente em Chromium.
+
+## Snapshot gráfico público executado
+
+Viewports:
+
+- desktop `1440x900`;
+- tablet/touch `768x1024`;
+- mobile/touch `390x844`.
+
+Superfícies:
+
+- Login;
+- Recuperar senha com estado de erro;
+- Acesso indisponível com estado de erro.
+
+Nas nove combinações:
+
+- nenhum overflow horizontal;
+- cards/conteúdo permaneceram visualmente contidos;
+- em tablet/mobile todos os controles/CTAs medidos ficaram com altura mínima de 44 px;
+- alertas esperados estavam presentes;
+- Tab percorreu os controles em ordem DOM no harness.
+
+Esse método **não é browser live**. Não certifica hidratação, JavaScript, Next navigation, server actions, sessão, redirects client-side, mutações, drawer ou jornadas autenticadas. Não usar o harness estático para declarar foco completo aprovado; foco deve ser revalidado no browser live.
+
+A matriz oficial está em `docs/qa/fase51-ux-homologation.md`.
 
 ## Evidência que continua ausente
 
-A homologação **não está encerrada**.
+Permanecem bloqueados por falta de browser live + sessão/credencial/token legítimos:
 
-Nesta sessão não existe browser gráfico operável exposto para controlar viewport, foco, teclado, drawer, overflow ou screenshots. A capacidade de browser automatizado foi investigada, mas o executável correspondente não está disponível no runtime e não existe outro conector de browser nesta sessão.
-
-Também não há sessão/credencial legítima aprovada nem token legítimo para convite/recuperação.
-
-Portanto permanecem bloqueados:
-
-- certificação desktop/tablet/mobile;
-- foco/teclado/drawer/overflow em browser;
-- login autenticado real;
-- seleção/troca de organização e logout autenticado;
+- login real e logout;
+- seleção/troca de organização;
+- convite válido → sessão → nova senha;
+- estados legítimos adicionais de bootstrap;
+- sidebar desktop e drawer mobile;
 - Visão geral;
 - Administração;
 - Cadastros;
@@ -71,32 +83,27 @@ Portanto permanecem bloqueados:
 - Compras;
 - Financeiro;
 - Caixa;
-- convite válido → sessão → nova senha;
-- estados de bootstrap que não existam naturalmente no ambiente.
+- fluxos mutáveis e seus feedbacks reais;
+- foco/teclado no runtime hidratado.
 
 Não criar usuário, convite, fixture ou dado artificial em Production para produzir prova.
 
 ## NEXT_ACTION imediata
 
-### Concluir homologação UX desktop/tablet/mobile quando houver evidência adequada
-
-Usar `docs/qa/fase51-ux-homologation.md` como matriz executável.
+### Concluir homologação UX live desktop/tablet/mobile quando houver pré-condições reais
 
 No próximo chat:
 
 1. reler governança e confirmar `main`, Issue #142, PRs/branches/CI;
-2. confirmar que o deployment automático ainda corresponde à `main`; não disparar deploy manual;
-3. **não repetir mecanicamente a revalidação HTTP/HTML já concluída** se o deployment não mudou;
-4. verificar se existe browser gráfico operável;
-5. verificar se existe sessão/credencial legítima aprovada e, quando necessário, token legítimo;
-6. com browser, registrar dimensões e executar desktop/tablet/mobile por jornada;
-7. com sessão legítima, cobrir Entrada/contexto, Visão geral, Administração, Cadastros, Estoque, Compras, Financeiro e Caixa;
-8. validar foco/teclado, drawer, touch targets, overflow, loading/empty/error/success, tabelas/formulários densos e `lista → detalhe → ação → retorno`;
-9. executar convite/nova senha/bootstrap/troca de organização somente em estados legítimos;
-10. corrigir apenas achados concretos e revalidar no mesmo tipo de evidência;
-11. promover reconciliação funcional final somente quando a matriz tiver evidência representativa suficiente ou quando bloqueios externos forem explicitamente aceitos pelo operador.
-
-CI/CSS/HTML estático ou hospedado não substituem homologação de browser.
+2. observar somente deployment automático; não fazer deploy manual;
+3. se runtime/deployment não mudou, não repetir HTTP/HTML nem o snapshot estático público já documentados;
+4. verificar se existe browser live operável contra o deployment;
+5. verificar se existe sessão/credencial legítima aprovada e token legítimo quando necessário;
+6. com essas pré-condições, registrar dimensões e percorrer Entrada/contexto, Visão geral, Administração, Cadastros, Estoque, Compras, Financeiro e Caixa;
+7. validar foco/teclado, drawer, touch targets, overflow, loading/empty/error/success, tabelas/formulários densos e `lista → detalhe → ação → retorno`;
+8. executar mutações somente em ambiente/estado seguro e legítimo;
+9. corrigir apenas achados concretos e revalidar no mesmo tipo de evidência;
+10. promover reconciliação funcional final somente quando a matriz tiver evidência representativa suficiente ou quando bloqueios externos forem explicitamente aceitos pelo operador.
 
 ## Depois da homologação UX
 
@@ -104,51 +111,6 @@ Executar reconciliação funcional final com o gate:
 
 > Uma pessoa autorizada consegue executar corretamente a necessidade operacional pela aplicação sem conhecimento de implementação, IDs técnicos ou procedimento externo não documentado?
 
-Revisar MUST e SHOULD aplicáveis.
-
-## PENDINGs sem decisão por inferência
-
-- `REQ-ITEM-004` — produto de venda/POS;
-- `REQ-ITEM-005` — ficha técnica/receita/BOM;
-- `REQ-STK-007` — empréstimo;
-- `REQ-STK-010` — custeio;
-- `REQ-EXP-004` — FEFO;
-- `REQ-FIN-004` — pagamento parcial/múltiplo;
-- `REQ-CASH-007` — consumo de funcionários;
-- `REQ-CASH-008` — integração com vendas/POS.
-
-Q-022 permanece aberta: mapear perfis reais antes do go-live, sem equiparar automaticamente papéis técnicos a cargos.
-
-## Fechamento operacional posterior
-
-1. dados representativos em ambiente seguro;
-2. homologação operacional;
-3. estrutura/usuários/perfis/configurações reais;
-4. congelamento de fontes;
-5. dry-run/importação rastreável;
-6. tratamento de inconsistências;
-7. importação final;
-8. reconciliação de saldos/totais/amostras;
-9. cutover;
-10. transição/encerramento das planilhas.
-
-## Production-readiness final
-
-Somente depois retomar #75/#121 e fechar backup PostgreSQL, Storage/binários, destino off-site, integridade/retenção, restore/drill, observabilidade/gates e `REQ-PLAT-005`.
-
-#75/#121 permanecem **TOTALMENTE ON HOLD** até essa etapa ou decisão explícita.
-
-## Ordem final oficial
-
-1. ~~runtime legado `/cadastros/*`~~ — PR #170;
-2. ~~telas auxiliares de autenticação/contexto~~ — PR #171;
-3. **homologação UX desktop/tablet/mobile**;
-4. **reconciliação funcional final**;
-5. **PENDINGs necessários + Q-022**;
-6. **dados representativos/homologação operacional**;
-7. **migração/cutover**;
-8. **#75/#121 / production-readiness**.
-
 ## Guardrails permanentes
 
-GitHub é fonte de verdade; backend/RLS são boundaries; nenhum secret no Git/docs/browser; Production não recebe fixture para prova; nenhum deploy Vercel manual/rotineiro; PENDINGs não são resolvidos por inferência; #75/#121 continuam on hold até o final.
+GitHub é fonte de verdade; backend/RLS são boundaries; nenhum secret no Git/docs/browser; Production não recebe fixture para prova; nenhum deploy Vercel manual/rotineiro; PENDINGs e Q-022 não são resolvidos por inferência; #75/#121 continuam **TOTALMENTE ON HOLD** até o final ou nova decisão explícita.
