@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { EmptyState, FeedbackMessage, Panel } from "@/components/ui";
 import { EntityId } from "@/domain/common/entity-id";
 import { Money } from "@/domain/common/money";
 import { createBrowserSupabaseClient } from "@/lib/supabase/browser";
@@ -90,41 +91,41 @@ export function PurchaseOverviewSection(props: PurchaseOverviewSectionProps) {
 
   return (
     <section className="space-y-4">
-      <div className="flex items-end justify-between gap-4">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-xl font-semibold">Compras e fornecedores</h2>
-          <p className="mt-1 text-sm text-neutral-500">
-            Histórico factual de pedidos emitidos, recebimentos e preços observados. Não há score, ranking ou SLA inferido para fornecedores.
+          <h2 className="text-xl font-semibold text-neutral-950">Compras e fornecedores</h2>
+          <p className="mt-1 text-sm leading-6 text-neutral-500">
+            Histórico factual de pedidos emitidos, recebimentos e preços observados. O painel não cria score, ranking ou prazo de desempenho para fornecedores.
           </p>
         </div>
-        {loading && <span className="text-xs text-neutral-500">Atualizando compras...</span>}
+        {loading && <span className="text-xs text-neutral-500" role="status">Atualizando compras...</span>}
       </div>
 
       {error && (
-        <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-900">
+        <FeedbackMessage tone="danger" role="alert">
           <strong>Histórico de compras indisponível.</strong> {error}
-        </div>
+        </FeedbackMessage>
       )}
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Link href="/workspace/compras" className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm hover:border-neutral-300">
+        <Link href="/workspace/compras/pedidos" className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm transition hover:border-neutral-300 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2">
           <p className="text-sm text-neutral-500">{hasPeriod ? "Pedidos emitidos no período" : "Pedidos emitidos"}</p>
-          <p className="mt-2 text-2xl font-semibold">{overview ? overview.issuedOrderCount : "—"}</p>
-          <p className="mt-2 text-xs leading-5 text-neutral-500">Por `ordered_at`; rascunhos sem emissão não entram.</p>
+          <p className="mt-2 text-2xl font-semibold text-neutral-950">{overview ? overview.issuedOrderCount : "—"}</p>
+          <p className="mt-2 text-xs leading-5 text-neutral-500">Pela data de emissão; rascunhos ainda não emitidos não entram.</p>
         </Link>
-        <Link href="/workspace/compras" className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm hover:border-neutral-300">
+        <Link href="/workspace/compras/recebimentos" className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm transition hover:border-neutral-300 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2">
           <p className="text-sm text-neutral-500">{hasPeriod ? "Recebimentos no período" : "Recebimentos"}</p>
-          <p className="mt-2 text-2xl font-semibold">{overview ? overview.receiptCount : "—"}</p>
-          <p className="mt-2 text-xs leading-5 text-neutral-500">Por `received_at`, independente da data em que o pedido foi emitido.</p>
+          <p className="mt-2 text-2xl font-semibold text-neutral-950">{overview ? overview.receiptCount : "—"}</p>
+          <p className="mt-2 text-xs leading-5 text-neutral-500">Pela data do recebimento, independentemente da data de emissão do pedido.</p>
         </Link>
-        <Link href="/workspace/fornecedores" className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm hover:border-neutral-300">
+        <Link href="/workspace/fornecedores" className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm transition hover:border-neutral-300 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2">
           <p className="text-sm text-neutral-500">Fornecedores com pedidos</p>
-          <p className="mt-2 text-2xl font-semibold">{overview ? overview.suppliersWithOrdersCount : "—"}</p>
-          <p className="mt-2 text-xs leading-5 text-neutral-500">Contagem distinta no mesmo recorte de pedidos emitidos.</p>
+          <p className="mt-2 text-2xl font-semibold text-neutral-950">{overview ? overview.suppliersWithOrdersCount : "—"}</p>
+          <p className="mt-2 text-xs leading-5 text-neutral-500">Fornecedores distintos no mesmo recorte de pedidos emitidos.</p>
         </Link>
-        <Link href="/workspace/fornecedores" className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm hover:border-neutral-300">
+        <Link href="/workspace/fornecedores" className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm transition hover:border-neutral-300 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2">
           <p className="text-sm text-neutral-500">Itens com preço alterado</p>
-          <p className="mt-2 text-2xl font-semibold">{priceVariationValue}</p>
+          <p className="mt-2 text-2xl font-semibold text-neutral-950">{priceVariationValue}</p>
           <p className="mt-2 text-xs leading-5 text-neutral-500">
             {overview && overview.comparablePriceItemCount > 0
               ? `${overview.comparablePriceItemCount} item(ns) com histórico comparável.`
@@ -134,23 +135,25 @@ export function PurchaseOverviewSection(props: PurchaseOverviewSectionProps) {
       </div>
 
       <div className="grid gap-4 xl:grid-cols-2">
-        <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+        <Panel as="article" className="space-y-4">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h3 className="font-semibold">Histórico por fornecedor</h3>
+              <h3 className="font-semibold text-neutral-950">Histórico por fornecedor</h3>
               <p className="mt-1 text-xs leading-5 text-neutral-500">
-                Pedidos e recebimentos usam somente o `stock_location_id` explícito do pedido para Unit/Setor.
+                Pedidos e recebimentos seguem o local registrado no pedido para aplicar Unidade e Setor quando esses vínculos existem.
               </p>
             </div>
-            <Link href="/workspace/compras" className="text-xs font-semibold text-emerald-700 hover:text-emerald-800">Abrir Compras</Link>
+            <Link href="/workspace/compras/pedidos" className="shrink-0 text-xs font-semibold text-emerald-700 hover:text-emerald-800">Abrir pedidos</Link>
           </div>
 
           {!overview || overview.supplierHistory.length === 0 ? (
-            <div className="mt-4 rounded-xl bg-neutral-50 p-4 text-sm text-neutral-600">
-              Nenhuma atividade de compra emitida ou recebida está disponível para este recorte.
-            </div>
+            <EmptyState
+              title="Sem atividade de compras no recorte"
+              description="Não há pedidos emitidos ou recebimentos disponíveis para os filtros atuais."
+              className="py-6"
+            />
           ) : (
-            <div className="mt-4 divide-y divide-neutral-100">
+            <div className="divide-y divide-neutral-100">
               {overview.supplierHistory.map((supplier) => (
                 <div key={supplier.supplierId} className="grid gap-2 py-3 sm:grid-cols-[1fr_auto] sm:items-center">
                   <div>
@@ -165,34 +168,46 @@ export function PurchaseOverviewSection(props: PurchaseOverviewSectionProps) {
               ))}
             </div>
           )}
-        </div>
+        </Panel>
 
-        <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+        <Panel as="article" className="space-y-4">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h3 className="font-semibold">Histórico de preços</h3>
+              <h3 className="font-semibold text-neutral-950">Histórico de preços</h3>
               <p className="mt-1 text-xs leading-5 text-neutral-500">
                 {overview ? `${overview.priceObservationCount} observação(ões) de preço no recorte. ` : ""}
-                A comparação usa somente `unit_price` do mesmo vínculo fornecedor + item.
+                A comparação usa somente o preço unitário registrado para o mesmo fornecedor e item.
               </p>
             </div>
-            <Link href="/workspace/fornecedores" className="text-xs font-semibold text-emerald-700 hover:text-emerald-800">Abrir Fornecedores</Link>
+            <Link href="/workspace/fornecedores" className="shrink-0 text-xs font-semibold text-emerald-700 hover:text-emerald-800">Abrir fornecedores</Link>
           </div>
 
           {hasLocalScope && (
-            <div className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-950">
-              Preços permanecem no escopo da Organization: `supplier_prices` não possui vínculo explícito com Unit, Setor ou local de estoque.
-            </div>
+            <FeedbackMessage tone="attention">
+              O histórico de preços permanece no escopo da organização inteira porque não existe vínculo comprovado de cada observação com uma Unidade ou Setor específico.
+            </FeedbackMessage>
           )}
 
           {!overview || overview.priceObservationCount === 0 ? (
-            <div className="mt-4 rounded-xl bg-neutral-50 p-4 text-sm text-neutral-600">Nenhuma observação de preço está disponível para este recorte.</div>
+            <EmptyState
+              title="Sem observações de preço no recorte"
+              description="Não há preços registrados para comparação com os filtros atuais."
+              className="py-6"
+            />
           ) : overview.comparablePriceItemCount === 0 ? (
-            <div className="mt-4 rounded-xl bg-neutral-50 p-4 text-sm text-neutral-600">Há observações de preço, mas ainda não existem duas observações do mesmo item de fornecedor para calcular variação.</div>
+            <EmptyState
+              title="Ainda não há comparação disponível"
+              description="Existem preços registrados, mas faltam duas observações do mesmo item e fornecedor para calcular a variação."
+              className="py-6"
+            />
           ) : overview.recentPriceChanges.length === 0 ? (
-            <div className="mt-4 rounded-xl bg-neutral-50 p-4 text-sm text-neutral-600">Há histórico comparável, mas as últimas comparações não registram alteração de preço.</div>
+            <EmptyState
+              title="Nenhuma alteração recente"
+              description="Há histórico comparável, mas as últimas comparações não registram mudança de preço."
+              className="py-6"
+            />
           ) : (
-            <div className="mt-4 divide-y divide-neutral-100">
+            <div className="divide-y divide-neutral-100">
               {overview.recentPriceChanges.map((change) => (
                 <div key={change.supplierItemId} className="py-3">
                   <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -207,7 +222,7 @@ export function PurchaseOverviewSection(props: PurchaseOverviewSectionProps) {
               ))}
             </div>
           )}
-        </div>
+        </Panel>
       </div>
     </section>
   );
