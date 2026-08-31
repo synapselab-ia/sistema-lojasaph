@@ -1,6 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
+import { FeedbackMessage, Panel } from "@/components/ui";
+import { buttonClasses } from "@/components/ui/styles";
 import { parseImplicitInviteFragment } from "@/lib/auth/implicit-invite";
 import { safeInternalPath } from "@/lib/auth/redirect";
 
@@ -60,20 +63,25 @@ export default function InviteAuthPage() {
   }, []);
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-md items-center px-5 py-10">
-      <section className="w-full rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm sm:p-8">
+    <main className="mx-auto flex min-h-screen max-w-md items-center px-4 py-8 sm:px-5 sm:py-10">
+      <Panel className="w-full sm:p-8" aria-busy={!error || undefined}>
         <p className="text-sm font-semibold uppercase tracking-[0.16em] text-neutral-500">Segurança</p>
         <h1 className="mt-2 text-3xl font-semibold tracking-tight">Validando convite</h1>
         {error ? (
-          <p className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-            {error}
-          </p>
+          <>
+            <FeedbackMessage tone="danger" className="mt-5" role="alert">
+              {error}
+            </FeedbackMessage>
+            <Link href="/" className={buttonClasses({ variant: "secondary", block: true, className: "mt-5" })}>
+              Voltar ao início
+            </Link>
+          </>
         ) : (
-          <p className="mt-3 text-sm leading-6 text-neutral-600">
+          <FeedbackMessage tone="info" className="mt-5" role="status" aria-live="polite">
             A identidade está sendo validada. Nenhuma senha é definida nesta etapa.
-          </p>
+          </FeedbackMessage>
         )}
-      </section>
+      </Panel>
     </main>
   );
 }
