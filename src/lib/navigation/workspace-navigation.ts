@@ -55,6 +55,10 @@ export const workspaceNavigation: readonly WorkspaceNavigationArea[] = [
     id: "cash",
     label: "Caixa",
     href: "/workspace/caixa",
+    items: [
+      { href: "/workspace/caixa/sessoes", label: "Sessões" },
+      { href: "/workspace/caixa/configuracao", label: "Configuração" },
+    ],
   },
   {
     id: "catalogs",
