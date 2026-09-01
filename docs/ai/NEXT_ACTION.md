@@ -4,17 +4,21 @@
 
 **Fase 51 / Issue #142 continua ativa.**
 
-A consolidação estrutural/UX e o incidente de drift de migrations Production estão tratados. Em 2026-09-01 houve smoke live autenticado com sessão legítima em desktop e confirmação de abertura/navegação normal também em celular real.
+A consolidação estrutural/UX e o incidente de drift de migrations Production estão tratados. Em 2026-09-01 houve smoke live autenticado no desktop com sessão legítima fornecida pelo operador e, depois, confirmação de abertura/navegação normal também em celular real.
 
 > Regra: consultar GitHub para HEAD/PRs/Issues/branches/CI no início. SHAs abaixo são âncoras de evidência, não HEAD permanente.
 
 Evidência operacional recente:
 
 - PR #175 — drift de migrations Production — integrado em `e7ff15366fec29728308dde8506397f4d68d2c39`;
+- CI do PR #593 / run `33436348276`: **success**;
+- `Production Migration Reconcile` #1 / run `33436481787`: **success**;
+- CI pós-merge #594 / run `33436481833`: **success**;
 - Production alinhado através de `20260828132500`;
-- `/workspace/administracao/acessos` revalidada em browser live autenticado no desktop, sem `ADMINISTRATION_QUERY_ERROR`;
-- Visão geral, Administração, Produtos/Cadastros, Estoque, Compras, Financeiro e Caixa abriram normalmente no smoke live desktop;
-- operador confirmou abertura/navegação normal também em celular real no smoke live mobile;
+- workflow one-shot removido após o uso;
+- `/workspace/administracao/acessos` revalidada em browser live autenticado no desktop em 2026-09-01, sem `ADMINISTRATION_QUERY_ERROR`;
+- operador confirmou Visão geral, Administração, Produtos/Cadastros, Estoque, Compras, Financeiro e Caixa abrindo normalmente no mesmo smoke live desktop;
+- operador confirmou também abertura/navegação normal das superfícies percorridas em celular real no smoke live mobile;
 - #75/#121 **TOTALMENTE ON HOLD**.
 
 Runtime de aplicação observado:
@@ -27,7 +31,7 @@ Nenhum deploy Vercel manual é necessário.
 
 ## NEXT_ACTION objetiva
 
-### **Concluir a homologação UX live residual, priorizando tablet e profundidade das jornadas**
+### **Concluir a homologação UX live restante, priorizando tablet e jornadas profundas**
 
 Não repetir os smokes desktop/mobile já comprovados por inércia e não promover para reconciliação funcional final apenas porque as páginas abriram.
 
@@ -41,13 +45,24 @@ No início:
 4. comparar **read-only** a linhagem `supabase/migrations/*` com o histórico Production;
 5. se não houver drift novo, não repetir a reconciliação #175;
 6. observar somente deployment automático quando útil;
-7. se o runtime não mudou, não repetir HTTP/HTML, snapshot estático ou smokes live já registrados.
+7. se o runtime de aplicação não mudou, não repetir HTTP/HTML, snapshot estático ou smokes live já registrados por inércia.
 
 ## 2. Evidência já válida e que não precisa ser repetida
 
 ### Público
 
-HTTP/HTML cobre os estados públicos/sem sessão de `/`, `/workspace`, `/recuperar-senha`, `/sem-acesso`, `/auth/atualizar-senha`, `/auth/invite`, `/bootstrap` e `/workspace/selecionar-organizacao`. Snapshot gráfico estático cobre Login, Recuperação com erro e Acesso indisponível em desktop/tablet/mobile.
+HTTP/HTML já cobre:
+
+- `/` sem sessão;
+- `/workspace` sem sessão;
+- `/recuperar-senha` — UX-51-001/002;
+- `/sem-acesso` — UX-51-003;
+- `/auth/atualizar-senha` sem sessão válida;
+- estado inicial de `/auth/invite`;
+- estado real de `/bootstrap`;
+- `/workspace/selecionar-organizacao` sem sessão.
+
+Snapshot gráfico estático já cobre Login, Recuperação com erro e Acesso indisponível em `1440x900`, `768x1024` touch e `390x844` touch/mobile.
 
 ### Live autenticado desktop
 
@@ -59,13 +74,13 @@ Em 2026-09-01, com sessão legítima:
 
 ### Live autenticado mobile
 
-No mesmo dia, o operador confirmou que o sistema estava abrindo/navegando normalmente em celular real durante o smoke executado até aquele ponto.
+Em 2026-09-01, o operador abriu o sistema em celular real com sessão legítima e confirmou que as superfícies percorridas também estavam abrindo normalmente no mobile.
 
-Limite: o smoke mobile comprova carregamento/navegação básicos no aparelho real; não certifica isoladamente todos os drawers, touch targets, overflows, formulários/tabelas densos, estados ou mutações.
+Limite: esse smoke mobile comprova carregamento/navegação básicos no aparelho real; não certifica isoladamente todos os estados do drawer, todos os touch targets, ausência de overflow em tabelas/formulários densos, mutações, estados pós-ação ou fluxos completos.
 
 ## 3. Matriz live ainda necessária
 
-Priorizar **tablet** com sessão legítima e aprofundar as jornadas autenticadas já abertas em desktop/mobile.
+Priorizar **tablet** com sessão legítima e, onde seguro, aprofundar jornadas autenticadas já abertas em desktop/mobile.
 
 Validar:
 
@@ -86,7 +101,7 @@ Validar:
 
 **Visão geral:** filtros, cards/alertas, links e estados.
 
-**Administração:** tablet e profundidade; `/workspace/administracao/acessos` não precisa ser repetida no desktop sem regressão.
+**Administração:** validar tablet e profundidade; `/workspace/administracao/acessos` não precisa ser repetida no desktop sem regressão concreta.
 
 **Cadastros:** Produtos; Fornecedores; Funcionários.
 
