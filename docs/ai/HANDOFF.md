@@ -8,9 +8,9 @@
 
 **Fase 51 / Issue #142 continua ativa.**
 
-A consolidação estrutural/UX e o incidente de drift de migrations Production estão tratados. A frente atual volta a ser a homologação UX **live** em desktop/tablet/mobile.
+A consolidação estrutural/UX e o incidente de drift de migrations Production estão tratados. Em 2026-09-01 surgiu a primeira evidência live autenticada fornecida diretamente pelo operador no browser real.
 
-Não refazer por inércia: #145, #147, #149, #151, #153, #155, #157, #159, #161, #163, #165, #167, #168, #169, #170, #171, #172, #173, #174 e #175.
+Não refazer por inércia: #145, #147, #149, #151, #153, #155, #157, #159, #161, #163, #165, #167, #168, #169, #170, #171, #172, #173, #174, #175 e #176.
 
 #75/#121 permanecem **TOTALMENTE ON HOLD**.
 
@@ -27,9 +27,9 @@ PRs documentais/operacionais posteriores não exigem deploy Vercel manual. Nenhu
 
 ## Evidência UX já concluída
 
-HTTP/HTML público e snapshot gráfico estático já estão registrados em `docs/qa/fase51-ux-homologation.md`.
+HTTP/HTML público e snapshot gráfico estático continuam registrados em `docs/qa/fase51-ux-homologation.md`.
 
-Resumo:
+Resumo anterior:
 
 - UX-51-001/002/003 tratados;
 - Login, Recuperação com erro e Acesso indisponível renderizados em `1440x900`, `768x1024` touch e `390x844` touch/mobile;
@@ -38,9 +38,33 @@ Resumo:
 
 Não repetir se o runtime de aplicação não mudou.
 
-Limite: snapshot estático não certifica JS/hidratação, sessão, navegação Next, server actions, mutações, drawer autenticado ou foco completo live.
+## Nova evidência live autenticada — desktop — 2026-09-01
 
-## Incidente Production — drift de migrations — FECHADO
+O operador abriu o deployment real com sessão legítima e mostrou `/workspace/administracao/acessos` carregada em browser live. A tela **Usuários e permissões** exibiu o formulário e os acessos cadastrados sem `ADMINISTRATION_QUERY_ERROR`.
+
+O operador também confirmou, na mesma navegação real, que abriram normalmente:
+
+- Visão geral;
+- Administração;
+- Produtos/Cadastros;
+- Estoque;
+- Compras;
+- Financeiro;
+- Caixa.
+
+Registrar isso como **smoke live autenticado desktop**, não como homologação funcional integral das jornadas. Não anexar ao GitHub o screenshot recebido no chat porque ele contém dado identificável de conta; a evidência documental deve permanecer sanitizada.
+
+Ainda não está comprovado por essa rodada:
+
+- tablet/mobile autenticados;
+- drawer/menu mobile;
+- foco e ordem completa por teclado;
+- todas as ações mutáveis e feedback pós-ação;
+- fluxos completos `lista → detalhe → ação → retorno`;
+- convite/recuperação/nova senha com token legítimo;
+- todos os estados loading/empty/error/success.
+
+## Incidente Production — drift de migrations — FECHADO E REVALIDADO
 
 Durante a busca por evidência real da Fase 51, a telemetria Production mostrou `/workspace/administracao/acessos` falhando com `ADMINISTRATION_QUERY_ERROR` porque o PostgREST não encontrava `public.admin_list_organization_access(...)`.
 
@@ -64,7 +88,7 @@ Correção:
 
 Production agora registra as duas versions e possui os quatro RPCs administrativos esperados. Grants/trigger foram verificados read-only e o acesso direto de `authenticated` a INSERT/UPDATE de `organization_memberships` continua negado.
 
-**Não declarar a rota Administração homologada live:** o backend foi corrigido, mas não houve browser live/sessão legítima nesta sessão para percorrer a UI.
+Em 2026-09-01 `/workspace/administracao/acessos` foi finalmente reaberta com sessão legítima no browser real e carregou normalmente. **UX-51-004 está revalidado no nível de smoke live desktop.** Não mexer novamente em schema/RPC dessa rota sem nova regressão concreta.
 
 ## Regra de prevenção de recorrência
 
@@ -80,33 +104,20 @@ Ver `docs/qa/database-migrations.md`.
 
 ## Bloqueio restante da NEXT_ACTION
 
-Ainda faltam:
+A dependência externa reduziu: já existe sessão legítima e evidência live desktop provida pelo operador. Ainda faltam principalmente:
 
-- browser live conectado ao deployment;
-- sessão/credencial legítima aprovada;
-- token legítimo quando necessário;
-- ambiente/estado seguro para mutações.
-
-Sem isso, não declarar homologados:
-
-- login/logout real;
-- seleção/troca de organização;
-- convite → sessão → nova senha;
-- sidebar/drawer;
-- Visão geral;
-- Administração, incluindo `/workspace/administracao/acessos`;
-- Cadastros;
-- Estoque;
-- Compras;
-- Financeiro;
-- Caixa;
-- foco/teclado e feedback pós-ação no runtime hidratado.
+- tablet/mobile live autenticados;
+- drawer/menu mobile, touch e overflow nas áreas autenticadas;
+- foco/teclado no runtime hidratado;
+- jornadas profundas e estados pós-ação;
+- mutações apenas em estado seguro;
+- tokens legítimos para fluxos auxiliares quando necessários ao aceite.
 
 Não fabricar usuário, convite, fixture ou dado em Production.
 
 ## NEXT_ACTION imediata
 
-### Concluir homologação UX live desktop/tablet/mobile quando as pré-condições existirem
+### Concluir a homologação UX live restante sem repetir o smoke desktop já comprovado
 
 Na próxima execução:
 
@@ -114,15 +125,14 @@ Na próxima execução:
 2. consultar `main`, Issue #142, PRs, branches e CI reais;
 3. fazer checagem **read-only** de paridade de migrations Production ↔ Git; não reaplicar #175 sem drift novo;
 4. observar somente deployment automático;
-5. se o runtime não mudou, não repetir HTTP/HTML ou snapshot público;
-6. verificar se surgiu browser live operável;
-7. usar somente credencial/sessão/token legítimos;
-8. percorrer Entrada/contexto, Visão geral, Administração, Cadastros, Estoque, Compras, Financeiro e Caixa;
-9. em Administração, revalidar explicitamente `/workspace/administracao/acessos` após a correção backend;
-10. validar foco/teclado, drawer, touch targets, overflow, loading/empty/error/success, tabelas/formulários densos e `lista → detalhe → ação → retorno`;
-11. mutar somente em estado seguro;
-12. corrigir apenas achados concretos e revalidar no mesmo tipo de evidência;
-13. promover reconciliação funcional apenas após evidência live representativa ou aceitação explícita do bloqueio externo.
+5. não repetir HTTP/HTML, snapshot público ou smoke desktop por inércia;
+6. colher evidência representativa tablet/mobile com sessão legítima;
+7. validar drawer, touch, overflow, foco/teclado e tabelas/formulários densos;
+8. percorrer fluxos representativos `lista → detalhe → ação → retorno` quando seguro;
+9. validar loading/empty/error/success e feedback pós-ação;
+10. mutar somente em estado seguro;
+11. corrigir apenas achados concretos e revalidar no mesmo tipo de evidência;
+12. promover reconciliação funcional apenas após evidência live suficiente ou aceitação explícita do limite residual pelo operador.
 
 ## Guardrails
 
