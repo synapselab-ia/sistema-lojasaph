@@ -6,6 +6,8 @@
 
 A consolidação estrutural/UX e o incidente de drift de migrations Production estão tratados. Em 2026-09-01 houve smoke live autenticado no desktop com sessão legítima fornecida pelo operador e, depois, confirmação de abertura/navegação normal também em celular real.
 
+Na sequência, o operador informou explicitamente que **nem ele nem Asaph possuem tablet e que não é necessário testar tablet por enquanto**. Essa decisão deve ser tratada como aceitação explícita da limitação externa residual de tablet para esta etapa — não como evidência de homologação tablet.
+
 > Regra: consultar GitHub para HEAD/PRs/Issues/branches/CI no início. SHAs abaixo são âncoras de evidência, não HEAD permanente.
 
 Evidência operacional recente:
@@ -19,6 +21,7 @@ Evidência operacional recente:
 - `/workspace/administracao/acessos` revalidada em browser live autenticado no desktop em 2026-09-01, sem `ADMINISTRATION_QUERY_ERROR`;
 - operador confirmou Visão geral, Administração, Produtos/Cadastros, Estoque, Compras, Financeiro e Caixa abrindo normalmente no mesmo smoke live desktop;
 - operador confirmou também abertura/navegação normal das superfícies percorridas em celular real no smoke live mobile;
+- operador aceitou explicitamente a ausência de homologação tablet nesta etapa;
 - #75/#121 **TOTALMENTE ON HOLD**.
 
 Runtime de aplicação observado:
@@ -31,9 +34,9 @@ Nenhum deploy Vercel manual é necessário.
 
 ## NEXT_ACTION objetiva
 
-### **Concluir a homologação UX live restante, priorizando tablet e jornadas profundas**
+### **Concluir a profundidade residual da homologação UX em desktop/mobile, sem exigir tablet nesta etapa**
 
-Não repetir os smokes desktop/mobile já comprovados por inércia e não promover para reconciliação funcional final apenas porque as páginas abriram.
+Não repetir os smokes desktop/mobile já comprovados por inércia. Não pedir tablet novamente enquanto a decisão operacional acima permanecer válida. Também não promover para reconciliação funcional final apenas porque as páginas abriram: ainda é necessário cobrir profundidade representativa ou obter aceite explícito dos demais limites residuais.
 
 ## 1. Reconciliar estado real
 
@@ -78,11 +81,17 @@ Em 2026-09-01, o operador abriu o sistema em celular real com sessão legítima 
 
 Limite: esse smoke mobile comprova carregamento/navegação básicos no aparelho real; não certifica isoladamente todos os estados do drawer, todos os touch targets, ausência de overflow em tabelas/formulários densos, mutações, estados pós-ação ou fluxos completos.
 
-## 3. Matriz live ainda necessária
+### Tablet
 
-Priorizar **tablet** com sessão legítima e, onde seguro, aprofundar jornadas autenticadas já abertas em desktop/mobile.
+**Deferido por decisão explícita do operador em 2026-09-01.** Nem o operador nem Asaph dispõem de tablet e o operador decidiu que não é necessário testar esse viewport por enquanto.
 
-Validar:
+Não registrar como “homologado”. Se o uso real de tablet se tornar relevante antes do go-live/production-readiness, reabrir a evidência correspondente.
+
+## 3. Matriz live residual
+
+Aprofundar somente **desktop/mobile** com sessão legítima e estado seguro.
+
+Validar, quando aplicável:
 
 - navegação/hierarquia;
 - drawer/menu mobile em estados representativos;
@@ -93,7 +102,7 @@ Validar:
 - loading/empty/error/success;
 - feedback pós-ação;
 - linguagem operacional;
-- `lista → detalhe → ação → retorno` quando aplicável.
+- `lista → detalhe → ação → retorno`.
 
 ## 4. Jornadas mínimas restantes
 
@@ -101,7 +110,7 @@ Validar:
 
 **Visão geral:** filtros, cards/alertas, links e estados.
 
-**Administração:** validar tablet e profundidade; `/workspace/administracao/acessos` não precisa ser repetida no desktop sem regressão concreta.
+**Administração:** profundidade representativa; `/workspace/administracao/acessos` não precisa ser repetida no desktop sem regressão concreta.
 
 **Cadastros:** Produtos; Fornecedores; Funcionários.
 
@@ -112,6 +121,8 @@ Validar:
 **Financeiro:** lista; novo documento; detalhe; vencimentos; pagamento; estorno/cancelamento quando seguro; anexos; histórico.
 
 **Caixa:** visão; sessões; abertura; detalhe; movimentos; contagem/fechamento; cancelamento quando seguro; configuração conforme permissão.
+
+Não é necessário executar toda mutação apenas para preencher checklist. Priorizar jornadas representativas e usar operações mutáveis somente quando houver intenção operacional real e estado seguro.
 
 ## 5. Mutação e segurança
 
@@ -136,21 +147,24 @@ Para cada problema real:
 
 ## 7. Aceite
 
-A homologação termina somente quando:
+A Fase 51 pode sair do gate de homologação UX quando:
 
-- há evidência live representativa desktop/tablet/mobile;
-- jornadas autenticadas necessárias foram percorridas legitimamente, ou limitação externa residual foi explicitamente aceita pelo operador;
+- desktop e mobile possuem evidência live representativa;
+- tablet permanece explicitamente deferido/aceito pelo operador nesta etapa;
+- jornadas autenticadas profundas necessárias foram percorridas legitimamente **ou** os limites residuais restantes foram explicitamente aceitos pelo operador;
 - `/workspace/administracao/acessos` permanece revalidada após a correção de drift;
 - achados concretos foram tratados/revalidados;
 - não existe gap P0/P1 conhecido sem tratamento;
 - CI está verde;
-- documentação/handoff descreve corretamente runtime, migrations, evidência e bloqueios.
+- documentação/handoff descreve corretamente runtime, migrations, evidência e limitações aceitas.
 
 ## 8. Depois
 
 Promover **reconciliação funcional final requisito por requisito** usando:
 
 > Uma pessoa autorizada consegue executar corretamente a necessidade operacional pela aplicação sem conhecimento de implementação, IDs técnicos ou procedimento externo não documentado?
+
+Classificar requisito por requisito como utilizável/homologado, gap de produto, dependente de PENDING, migração/cutover ou formalmente adiado.
 
 ## 9. Guardrails
 
