@@ -2,172 +2,94 @@
 
 ## Estado
 
-**Fase 51 / Issue #142 continua ativa.**
+A Fase 51 / #142 concluiu o gate de consolidação/UX dentro das limitações explicitamente aceitas pelo operador.
 
-A consolidação estrutural/UX e o incidente de drift de migrations Production estão tratados. Em 2026-09-01 houve smoke live autenticado no desktop com sessão legítima fornecida pelo operador e, depois, confirmação de abertura/navegação normal também em celular real.
+A Fase 52 / #180 executou a reconciliação funcional final requisito por requisito. Artefato: `docs/qa/final-functional-reconciliation.md`.
 
-Na sequência, o operador informou explicitamente que **nem ele nem Asaph possuem tablet e que não é necessário testar tablet por enquanto**. Essa decisão deve ser tratada como aceitação explícita da limitação externa residual de tablet para esta etapa — não como evidência de homologação tablet.
+Resultado da reconciliação:
 
-> Regra: consultar GitHub para HEAD/PRs/Issues/branches/CI no início. SHAs abaixo são âncoras de evidência, não HEAD permanente.
+- nenhum gap funcional P0/P1 novo e inequívoco no núcleo;
+- desktop/mobile possuem evidência live representativa;
+- tablet live está deferido por decisão explícita do operador, não homologado;
+- `/workspace/administracao/acessos` permanece revalidada após a correção do drift de migrations;
+- migração/cutover e production-readiness permanecem marcos separados;
+- nenhum requisito PENDING foi resolvido por inferência.
 
-Evidência operacional recente:
-
-- PR #175 — drift de migrations Production — integrado em `e7ff15366fec29728308dde8506397f4d68d2c39`;
-- CI do PR #593 / run `33436348276`: **success**;
-- `Production Migration Reconcile` #1 / run `33436481787`: **success**;
-- CI pós-merge #594 / run `33436481833`: **success**;
-- Production alinhado através de `20260828132500`;
-- workflow one-shot removido após o uso;
-- `/workspace/administracao/acessos` revalidada em browser live autenticado no desktop em 2026-09-01, sem `ADMINISTRATION_QUERY_ERROR`;
-- operador confirmou Visão geral, Administração, Produtos/Cadastros, Estoque, Compras, Financeiro e Caixa abrindo normalmente no mesmo smoke live desktop;
-- operador confirmou também abertura/navegação normal das superfícies percorridas em celular real no smoke live mobile;
-- operador aceitou explicitamente a ausência de homologação tablet nesta etapa;
-- #75/#121 **TOTALMENTE ON HOLD**.
-
-Runtime de aplicação observado:
-
-- deployment automático `dpl_J6qwwqUihCKqfTMhmbjSxcLSA3gr`;
-- `READY`, production, source Git;
-- runtime SHA `64e1c0d242c3abfb7ee374ebc43850156d75089b` (#171).
-
-Nenhum deploy Vercel manual é necessário.
+> Regra: consultar GitHub para HEAD/Issues/PRs/branches/CI no início. Não tratar SHAs documentais como HEAD permanente.
 
 ## NEXT_ACTION objetiva
 
-### **Concluir a profundidade residual da homologação UX em desktop/mobile, sem exigir tablet nesta etapa**
+### **Executar Fase 53 / Issue #181 — decisões de negócio e perfis reais para conclusão**
 
-Não repetir os smokes desktop/mobile já comprovados por inércia. Não pedir tablet novamente enquanto a decisão operacional acima permanecer válida. Também não promover para reconciliação funcional final apenas porque as páginas abriram: ainda é necessário cobrir profundidade representativa ou obter aceite explícito dos demais limites residuais.
+A próxima etapa é de **conclusão de negócio**, não de expansão técnica automática.
 
-## 1. Reconciliar estado real
+## 1. PENDINGs
 
-No início:
+Revisar somente quanto à necessidade para a operação/cutover escolhidos:
 
-1. ler `AGENTS.md`, `docs/00-START-HERE.md`, `CURRENT_STATE.md`, `HANDOFF.md` e este arquivo;
-2. ler roadmap/auditoria de produto e `docs/qa/fase51-ux-homologation.md`;
-3. consultar GitHub para `main`, Issue #142, PRs, branches e CI;
-4. comparar **read-only** a linhagem `supabase/migrations/*` com o histórico Production;
-5. se não houver drift novo, não repetir a reconciliação #175;
-6. observar somente deployment automático quando útil;
-7. se o runtime de aplicação não mudou, não repetir HTTP/HTML, snapshot estático ou smokes live já registrados por inércia.
+- `REQ-ITEM-004` — produto de venda/POS;
+- `REQ-ITEM-005` — ficha técnica/receita;
+- `REQ-STK-007` — empréstimo;
+- `REQ-STK-010` — método final de custeio;
+- `REQ-EXP-004` — FEFO como regra de produto aprovada;
+- `REQ-FIN-004` — pagamento parcial/múltiplo;
+- `REQ-CASH-007` — consumo de funcionários;
+- `REQ-CASH-008` — integração com vendas/POS.
 
-## 2. Evidência já válida e que não precisa ser repetida
+Para cada item, uma das saídas válidas é:
 
-### Público
+1. decisão explícita suficiente para implementação;
+2. formalmente adiado para depois do go-live;
+3. formalmente descartado para a operação escolhida;
+4. permanece pendente porque ainda não é necessário decidir.
 
-HTTP/HTML já cobre:
+**Não inferir a resposta a partir do código existente.** Infraestrutura técnica compatível não equivale a decisão de negócio.
 
-- `/` sem sessão;
-- `/workspace` sem sessão;
-- `/recuperar-senha` — UX-51-001/002;
-- `/sem-acesso` — UX-51-003;
-- `/auth/atualizar-senha` sem sessão válida;
-- estado inicial de `/auth/invite`;
-- estado real de `/bootstrap`;
-- `/workspace/selecionar-organizacao` sem sessão.
+## 2. Q-022 — pessoas e perfis reais
 
-Snapshot gráfico estático já cobre Login, Recuperação com erro e Acesso indisponível em `1440x900`, `768x1024` touch e `390x844` touch/mobile.
+Mapear quem precisa operar o sistema e quais capacidades são necessárias.
 
-### Live autenticado desktop
+Os papéis técnicos atuais — `owner`, `admin`, `manager`, `finance`, `purchases`, `inventory`, `cashier`, `viewer` — são boundaries já implementados, mas não devem ser tratados automaticamente como cargos reais.
 
-Em 2026-09-01, com sessão legítima:
+O objetivo é chegar a um mapeamento operacional suficiente para preparar usuários/escopos do go-live sem enfraquecer RLS ou criar role nova por conveniência.
 
-- `/workspace/administracao/acessos` carregou normalmente após a correção de migrations;
-- UX-51-004 está revalidado no nível de smoke live desktop;
-- Visão geral, Administração, Produtos/Cadastros, Estoque, Compras, Financeiro e Caixa abriram normalmente.
+## 3. Triagem de `open-questions.md`
 
-### Live autenticado mobile
+Para cada pergunta:
 
-Em 2026-09-01, o operador abriu o sistema em celular real com sessão legítima e confirmou que as superfícies percorridas também estavam abrindo normalmente no mobile.
+- se já existe resposta comprovada em requisito/regra/ADR/código homologado, migrar/registrar a decisão na fonte apropriada e arquivar a pergunta;
+- se continua relevante, manter aberta;
+- se se tornou irrelevante para a operação escolhida, registrar adiamento/arquivamento;
+- não preencher resposta apenas para limpar a lista.
 
-Limite: esse smoke mobile comprova carregamento/navegação básicos no aparelho real; não certifica isoladamente todos os estados do drawer, todos os touch targets, ausência de overflow em tabelas/formulários densos, mutações, estados pós-ação ou fluxos completos.
+## 4. Quando uma decisão exigir código
 
-### Tablet
+Não implementar silenciosamente dentro da #181.
 
-**Deferido por decisão explícita do operador em 2026-09-01.** Nem o operador nem Asaph dispõem de tablet e o operador decidiu que não é necessário testar esse viewport por enquanto.
+1. escrever a regra aprovada;
+2. abrir a menor Issue funcional correspondente;
+3. implementar em branch própria;
+4. validar/CI/merge;
+5. retornar à #181 para atualizar a conclusão de negócio.
 
-Não registrar como “homologado”. Se o uso real de tablet se tornar relevante antes do go-live/production-readiness, reabrir a evidência correspondente.
+## 5. O que não fazer agora
 
-## 3. Matriz live residual
+- não reabrir a Fase 51 ou repetir smokes sem regressão concreta;
+- não pedir tablet enquanto a decisão de deferimento permanecer válida;
+- não fabricar usuário/dado/invite Production para validar hipótese;
+- não iniciar migração real antes de decisões necessárias e ambiente/dados representativos;
+- não retomar #75/#121;
+- não executar deploy Vercel manual rotineiro.
 
-Aprofundar somente **desktop/mobile** com sessão legítima e estado seguro.
+## 6. Depois da conclusão de negócio
 
-Validar, quando aplicável:
+Promover, nesta ordem:
 
-- navegação/hierarquia;
-- drawer/menu mobile em estados representativos;
-- touch targets;
-- overflow;
-- foco visível e ordem por teclado;
-- tabelas/formulários densos;
-- loading/empty/error/success;
-- feedback pós-ação;
-- linguagem operacional;
-- `lista → detalhe → ação → retorno`.
+1. homologação operacional com dados representativos em ambiente seguro;
+2. preparação das fontes finais e dry-run de migração;
+3. importação/cutover e reconciliação;
+4. somente então production-readiness, incluindo #75/#121 e `REQ-PLAT-005`.
 
-## 4. Jornadas mínimas restantes
+## Guardrails permanentes
 
-**Entrada/contexto:** logout real; seleção/troca de organização quando aplicável; convite/recuperação/nova senha somente com token legítimo; sessão expirada/acesso negado.
-
-**Visão geral:** filtros, cards/alertas, links e estados.
-
-**Administração:** profundidade representativa; `/workspace/administracao/acessos` não precisa ser repetida no desktop sem regressão concreta.
-
-**Cadastros:** Produtos; Fornecedores; Funcionários.
-
-**Estoque:** posição/filtros; entradas; retiradas/baixas/perdas; devoluções; transferências; inventários; lotes/validades; estoque mínimo.
-
-**Compras:** lista; novo pedido; detalhe; emissão/cancelamento quando seguro; recebimento parcial/total; histórico.
-
-**Financeiro:** lista; novo documento; detalhe; vencimentos; pagamento; estorno/cancelamento quando seguro; anexos; histórico.
-
-**Caixa:** visão; sessões; abertura; detalhe; movimentos; contagem/fechamento; cancelamento quando seguro; configuração conforme permissão.
-
-Não é necessário executar toda mutação apenas para preencher checklist. Priorizar jornadas representativas e usar operações mutáveis somente quando houver intenção operacional real e estado seguro.
-
-## 5. Mutação e segurança
-
-- usar somente sessão/credencial/token legítimos;
-- mutar somente em estado seguro e com intenção operacional real;
-- não criar usuário, convite, fixture ou dado artificial em Production para fabricar evidência;
-- não contornar auth/RLS;
-- não anexar screenshot com identificadores pessoais ao GitHub; registrar evidência sanitizada.
-
-## 6. Achados
-
-Para cada problema real:
-
-1. registrar rota, viewport, estado e passos;
-2. classificar impacto;
-3. aplicar a menor correção consistente;
-4. não alterar auth/RLS/regra de negócio por estética;
-5. quando o erro for `undefined function/table` em Production, checar paridade de migrations antes de mudar código;
-6. adicionar regressão quando útil;
-7. manter CI verde;
-8. revalidar no mesmo tipo de evidência.
-
-## 7. Aceite
-
-A Fase 51 pode sair do gate de homologação UX quando:
-
-- desktop e mobile possuem evidência live representativa;
-- tablet permanece explicitamente deferido/aceito pelo operador nesta etapa;
-- jornadas autenticadas profundas necessárias foram percorridas legitimamente **ou** os limites residuais restantes foram explicitamente aceitos pelo operador;
-- `/workspace/administracao/acessos` permanece revalidada após a correção de drift;
-- achados concretos foram tratados/revalidados;
-- não existe gap P0/P1 conhecido sem tratamento;
-- CI está verde;
-- documentação/handoff descreve corretamente runtime, migrations, evidência e limitações aceitas.
-
-## 8. Depois
-
-Promover **reconciliação funcional final requisito por requisito** usando:
-
-> Uma pessoa autorizada consegue executar corretamente a necessidade operacional pela aplicação sem conhecimento de implementação, IDs técnicos ou procedimento externo não documentado?
-
-Classificar requisito por requisito como utilizável/homologado, gap de produto, dependente de PENDING, migração/cutover ou formalmente adiado.
-
-## 9. Guardrails
-
-Não inferir `REQ-ITEM-004`, `REQ-ITEM-005`, `REQ-STK-007`, `REQ-STK-010`, `REQ-EXP-004`, `REQ-FIN-004`, `REQ-CASH-007`, `REQ-CASH-008` ou Q-022.
-
-#75/#121 permanecem **TOTALMENTE ON HOLD**. Não investigar scheduling, Storage/R2/S3, restore drills ou Production fixtures nesta slice.
+GitHub é fonte de verdade. Backend/RLS são boundaries. Nenhum secret no Git/docs/chat. Nenhuma regra de negócio por inferência. Nenhuma prova Production artificial.
