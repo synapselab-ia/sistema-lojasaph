@@ -12,7 +12,7 @@
 
 O núcleo operacional está consolidado, mas o produto ainda não deve ser declarado 100% concluído. `docs/product/final-product-gap-audit.md` continua como inventário da fila final.
 
-Slices/fechamentos já integrados: #145, #147, #149, #151, #153, #155, #157, #159, #161, #163, #165, #167, #168, #169, #170, #171, #172, #173, #174, #175, #176 e #177.
+Slices/fechamentos já integrados: #145, #147, #149, #151, #153, #155, #157, #159, #161, #163, #165, #167, #168, #169, #170, #171, #172, #173, #174, #175, #176, #177 e #178.
 
 Não refazer essas etapas sem bug/gap concreto.
 
@@ -72,7 +72,7 @@ Na mesma rodada, o operador confirmou que as superfícies autenticadas principai
 - Financeiro;
 - Caixa.
 
-Essa evidência valida **carregamento e navegação smoke live autenticados no desktop**. Ela não certifica, sozinha, todas as ações mutáveis, fluxos `lista → detalhe → ação → retorno`, foco/ordem de teclado, drawer mobile, tablet/mobile, convite/recuperação com token legítimo ou todos os estados loading/empty/error/success.
+Essa evidência valida **carregamento e navegação smoke live autenticados no desktop**. Ela não certifica, sozinha, todas as ações mutáveis, fluxos `lista → detalhe → ação → retorno`, foco/ordem de teclado, convite/recuperação com token legítimo ou todos os estados loading/empty/error/success.
 
 ### Smoke live autenticado mobile — 2026-09-01
 
@@ -80,26 +80,26 @@ O operador abriu o sistema em celular real com sessão legítima e confirmou que
 
 Essa evidência valida **carregamento e navegação smoke live autenticados no mobile**. O qualificativo “por enquanto” limita a afirmação ao que foi efetivamente percorrido: não certifica isoladamente todos os estados do drawer, todos os touch targets, ausência de overflow em todas as tabelas/formulários densos, ações mutáveis, feedback pós-ação ou jornadas completas.
 
-Detalhes: `docs/qa/fase51-ux-homologation.md`.
+### Limitação de tablet explicitamente aceita pelo operador — 2026-09-01
+
+O operador informou que nem ele nem Asaph dispõem de tablet e decidiu explicitamente que **não é necessário executar homologação live em tablet por enquanto**.
+
+Isso satisfaz o mecanismo de aceite previsto em `NEXT_ACTION.md` para **limitação externa residual explicitamente aceita pelo operador**. A decisão não cria evidência inexistente: tablet continua sem homologação live autenticada e deve ser registrado como **deferido por decisão operacional**, não como “testado”.
+
+A ausência de tablet deixa de bloquear a Fase 51 nesta etapa. A decisão pode ser revista antes de go-live/production-readiness se houver necessidade operacional real de uso em tablet.
+
+Detalhes de evidência: `docs/qa/fase51-ux-homologation.md`.
 
 ## Incidente Production detectado durante a homologação — corrigido
 
-Ao procurar evidência incremental real enquanto o browser live continuava indisponível, a telemetria do runtime Production mostrou falhas repetidas em:
+A telemetria Production mostrou `/workspace/administracao/acessos` falhando com `ADMINISTRATION_QUERY_ERROR` porque o PostgREST não encontrava `public.admin_list_organization_access(...)`.
 
-- `/workspace/administracao/acessos`;
-- erro de aplicação: `ADMINISTRATION_QUERY_ERROR`;
-- causa reportada pelo PostgREST: ausência de `public.admin_list_organization_access(...)` no schema cache.
-
-### Causa raiz
-
-A comparação read-only entre Git e Supabase Production mostrou drift exato de migrations:
+A comparação read-only entre Git e Supabase Production provou drift exato de duas migrations:
 
 - Production terminava em `20260827195802_stock_minimum_policy_fk_indexes`;
-- a `main` continha duas migrations posteriores já validadas em CI:
+- Git continha:
   - `20260828130500_administration_access_management.sql`;
   - `20260828132500_administration_employee_identity.sql`.
-
-O CI estava verde porque o banco efêmero aplicava toda a linhagem; Production não havia recebido as duas migrations administrativas.
 
 ### Correção operacional
 
@@ -113,51 +113,28 @@ Evidência:
 - mecanismo: `supabase db push` com dry-run e allowlist fechada para exatamente as duas migrations esperadas;
 - sem seed, reset, `migration repair`, DDL ad hoc ou fixture em Production;
 - timestamps/versions Git preservados no histórico remoto;
-- workflow one-shot removido após a execução bem-sucedida para não instituir deploy automático permanente de schema.
+- workflow one-shot removido após a execução.
 
-### Estado Production após correção
+Production agora registra `20260828130500` e `20260828132500`, possui os quatro RPCs administrativos esperados e preserva os grants/trigger de segurança versionados. `/workspace/administracao/acessos` foi posteriormente revalidada no browser real autenticado. UX-51-004 está tratado e revalidado no nível de smoke live desktop.
 
-Histórico remoto agora inclui exatamente:
+## Paridade de migrations — execução de 2026-09-01
 
-- `20260828130500 administration_access_management`;
-- `20260828132500 administration_employee_identity`.
+Nova checagem read-only após o PR #178 confirmou:
 
-Validação read-only confirmou:
+- Git continua encerrando a linhagem em `20260828132500_administration_employee_identity.sql`;
+- Supabase Production continua encerrando em `20260828132500 administration_employee_identity`;
+- **não há drift novo**.
 
-- `public.admin_list_organization_access(uuid)` existe;
-- `public.admin_create_organization_membership(...)` existe;
-- `public.admin_update_organization_membership(...)` existe;
-- `public.admin_link_employee_identity(uuid,uuid)` existe;
-- os RPCs são `SECURITY DEFINER`, `search_path=''`, executáveis por `authenticated` e não por `anon/public`, conforme contrato versionado;
-- `private.validate_stock_location_scope_hierarchy()` não é executável por `authenticated/anon/public`;
-- trigger `stock_locations_scope_hierarchy` existe em `public.stock_locations`;
-- `authenticated` continua sem INSERT/UPDATE direto em `public.organization_memberships`.
-
-Os warnings genéricos do Database Advisor para RPCs `SECURITY DEFINER` são compatíveis com a arquitetura intencional já usada pelo sistema e protegida por checks internos de papel/escopo; não foram tratados como defeito isoladamente. Os avisos de performance observados são informativos e estão fora desta correção.
-
-**Revalidação live:** em 2026-09-01 o operador abriu `/workspace/administracao/acessos` autenticado no browser real e a tela carregou normalmente, sem o erro anterior. UX-51-004 passa a estar revalidado no nível de smoke live desktop. Não repetir schema/RPC para essa rota sem nova regressão concreta.
-
-## Regra operacional adicionada — paridade de migrations
-
-Antes de diagnosticar erro Production de função/tabela ausente quando o recurso já existe em migration mergeada:
-
-1. comparar `supabase/migrations/*` com o histórico remoto;
-2. confirmar o conjunto exato de versões pendentes;
-3. aplicar somente migrations versionadas/revisadas com mecanismo que preserve suas versions, preferencialmente `supabase db push`;
-4. falhar fechado se houver drift inesperado;
-5. não usar `migration repair` ou edição direta de `supabase_migrations.schema_migrations` como atalho;
-6. não aplicar seed/reset em Production.
-
-Detalhes em `docs/qa/database-migrations.md`.
+Não repetir a reconciliação #175 sem novo desvio comprovado.
 
 ## Bloqueio restante da Fase 51
 
-Smokes autenticados desktop e mobile agora existem, mas a homologação UX completa ainda precisa de evidência representativa de:
+Tablet não é mais um gate desta etapa por aceitação explícita do operador. Os itens ainda não comprovados por evidência live suficiente são principalmente:
 
-- tablet em browser live;
-- drawer/menu mobile e touch targets nas jornadas autenticadas;
+- jornadas autenticadas profundas em desktop/mobile;
+- drawer/menu mobile, touch targets e overflow em estados representativos;
 - foco visível e ordem por teclado no runtime hidratado;
-- tabelas/formulários densos e overflow em viewports menores;
+- tabelas/formulários densos em viewports menores;
 - fluxos `lista → detalhe → ação → retorno` representativos;
 - loading/empty/error/success e feedback pós-ação;
 - ações mutáveis somente em estado seguro;
@@ -167,13 +144,11 @@ Não fabricar usuário, convite, fixture ou dado em Production para preencher a 
 
 ## NEXT_ACTION
 
-**Concluir a homologação UX live restante, priorizando tablet e jornadas autenticadas profundas, sem repetir os smokes desktop/mobile já comprovados.**
+**Concluir a profundidade residual da homologação UX em desktop/mobile, sem exigir tablet nesta etapa e sem repetir os smokes já comprovados.**
 
-`/workspace/administracao/acessos` já foi revalidada live no desktop após o incidente de migrations; voltar a essa rota apenas como parte da matriz residual ou se surgir nova regressão.
+Se a profundidade residual depender de condição externa que o operador também decidir explicitamente adiar/aceitar, registrar a decisão com precisão; não transformar ausência de prova em prova positiva.
 
-Não repetir a reconciliação de migrations sem novo drift comprovado; fazer apenas a checagem read-only de paridade no início.
-
-Depois da homologação UX, promover reconciliação funcional requisito por requisito usando:
+Depois de evidência live suficiente ou aceite explícito dos limites residuais restantes, promover a **reconciliação funcional final requisito por requisito** usando:
 
 > Uma pessoa autorizada consegue executar corretamente a necessidade operacional pela aplicação sem conhecimento de implementação, IDs técnicos ou procedimento externo não documentado?
 
