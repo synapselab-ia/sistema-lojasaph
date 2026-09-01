@@ -1,6 +1,6 @@
 # Fase 51 — Homologação UX real
 
-Status: **EM ANDAMENTO — superfícies públicas cobertas; smoke live autenticado desktop e mobile concluídos; tablet e jornadas profundas ainda pendentes**  
+Status: **EM ANDAMENTO — superfícies públicas cobertas; smoke live autenticado desktop e mobile concluídos; tablet deferido por decisão explícita do operador; jornadas profundas ainda pendentes**  
 Data: **2026-09-01**  
 Issue: **#142**
 
@@ -36,7 +36,7 @@ Não repetir enquanto o runtime de aplicação não mudar.
 
 ## Snapshot gráfico público já executado
 
-Capacidade local:
+Capacidade local registrada:
 
 - Chromium `144.0.7559.96`;
 - Python Playwright `1.57.0`;
@@ -87,7 +87,7 @@ Na captura recebida foi possível observar:
 - ausência de mensagem de erro ou fallback referente a `ADMINISTRATION_QUERY_ERROR`;
 - foco visual aparente em um controle do formulário.
 
-O screenshot não será anexado ao GitHub porque contém identificador pessoal de conta. A documentação registra somente a evidência sanitizada necessária.
+O screenshot não foi anexado ao GitHub porque contém identificador pessoal de conta. A documentação registra somente a evidência sanitizada necessária.
 
 Na mesma rodada, o operador confirmou que abriram normalmente em navegação live autenticada no desktop:
 
@@ -99,7 +99,7 @@ Na mesma rodada, o operador confirmou que abriram normalmente em navegação liv
 - Financeiro;
 - Caixa.
 
-Classificação: **smoke live autenticado desktop**. Isso comprova carregamento e navegação básicos no runtime hidratado, mas não substitui homologação de ações de negócio, teclado completo, tablet/mobile ou estados pós-ação.
+Classificação: **smoke live autenticado desktop**. Isso comprova carregamento e navegação básicos no runtime hidratado, mas não substitui homologação de ações de negócio, teclado completo ou estados pós-ação.
 
 ## Smoke live autenticado mobile — 2026-09-01
 
@@ -124,6 +124,21 @@ Não comprova isoladamente:
 - mutações e feedback pós-ação;
 - todos os estados loading/empty/error/success;
 - jornadas completas `lista → detalhe → ação → retorno`.
+
+## Decisão operacional sobre tablet — 2026-09-01
+
+O operador informou explicitamente que **nem ele nem Asaph possuem tablet e que não é necessário testar tablet por enquanto**.
+
+Classificação: **limitação externa residual aceita pelo operador**.
+
+Consequências:
+
+- tablet **não é considerado homologado live**;
+- tablet deixa de bloquear o encerramento desta etapa da Fase 51 enquanto a decisão permanecer válida;
+- não solicitar novamente prova tablet por inércia;
+- reabrir essa matriz antes de go-live/production-readiness somente se surgir necessidade operacional real de uso em tablet ou nova decisão explícita do operador.
+
+Essa aceitação vale somente para tablet. Ela não transforma gaps residuais de profundidade desktop/mobile em evidência positiva.
 
 ## Achados anteriores
 
@@ -159,7 +174,7 @@ Production estava exatamente duas migrations atrás do Git:
 - CI pós-merge #594 / run `33436481833`: **success**;
 - aplicação via `supabase db push` com allowlist exata das duas migrations;
 - nenhum seed/reset/repair/DDL ad hoc;
-- history remoto agora termina em `20260828132500`;
+- history remoto termina em `20260828132500`;
 - quatro RPCs administrativos, trigger e grants esperados confirmados read-only;
 - INSERT/UPDATE direto de `organization_memberships` continua negado a `authenticated`;
 - reconciliador one-shot removido após o uso.
@@ -170,30 +185,39 @@ Production estava exatamente duas migrations atrás do Git:
 
 Em 2026-09-01 o operador abriu `/workspace/administracao/acessos` com sessão legítima no browser real e a tela carregou normalmente. O erro anterior não reapareceu nessa evidência.
 
-Não alterar novamente schema/RPC dessa rota sem novo erro concreto. A rota só precisa reaparecer na matriz residual se houver regressão ou necessidade específica de viewport/fluxo.
+Não alterar novamente schema/RPC dessa rota sem novo erro concreto.
+
+## Paridade de migrations revalidada
+
+Após o PR #178, nova checagem read-only confirmou:
+
+- Git termina em `20260828132500_administration_employee_identity.sql`;
+- Production termina em `20260828132500 administration_employee_identity`;
+- não existe drift novo.
+
+Não repetir #175 sem nova divergência comprovada.
 
 ## Matriz da Fase 51
 
 | Área | Desktop | Tablet | Mobile | Estado |
 | --- | --- | --- | --- | --- |
 | Entrada pública: Login/Recuperação/Acesso indisponível | snapshot estático | snapshot estático | snapshot estático | geometria/overflow/touch cobertos; live JS/foco ainda parcial |
-| Convite/Nova senha/Bootstrap/Seleção de organização | parcial HTTP/HTML | parcial HTTP/HTML | parcial HTTP/HTML | exige estado/token/sessão legítimos para fluxos completos |
-| Navegação/Visão geral | smoke live autenticado | pendente | smoke live autenticado | abertura normal em desktop/mobile; falta tablet e profundidade |
-| Administração | smoke live autenticado | pendente | smoke live autenticado geral | `/administracao/acessos` revalidada especificamente no desktop após drift |
-| Cadastros | smoke live autenticado | pendente | smoke live autenticado | abertura normal confirmada; ações profundas pendentes |
-| Estoque | smoke live autenticado | pendente | smoke live autenticado | abertura normal confirmada; ações profundas pendentes |
-| Compras | smoke live autenticado | pendente | smoke live autenticado | abertura normal confirmada; jornada completa pendente |
-| Financeiro | smoke live autenticado | pendente | smoke live autenticado | abertura normal confirmada; jornada completa pendente |
-| Caixa | smoke live autenticado | pendente | smoke live autenticado | abertura normal confirmada; jornada completa pendente |
+| Convite/Nova senha/Bootstrap/Seleção de organização | parcial HTTP/HTML | deferido/sem live | parcial HTTP/HTML | exige estado/token/sessão legítimos para fluxos completos quando necessários |
+| Navegação/Visão geral | smoke live autenticado | **deferido pelo operador** | smoke live autenticado | abertura normal em desktop/mobile; profundidade residual pendente |
+| Administração | smoke live autenticado | **deferido pelo operador** | smoke live autenticado geral | `/administracao/acessos` revalidada especificamente no desktop após drift |
+| Cadastros | smoke live autenticado | **deferido pelo operador** | smoke live autenticado | abertura normal confirmada; ações profundas pendentes |
+| Estoque | smoke live autenticado | **deferido pelo operador** | smoke live autenticado | abertura normal confirmada; ações profundas pendentes |
+| Compras | smoke live autenticado | **deferido pelo operador** | smoke live autenticado | abertura normal confirmada; jornada completa pendente |
+| Financeiro | smoke live autenticado | **deferido pelo operador** | smoke live autenticado | abertura normal confirmada; jornada completa pendente |
+| Caixa | smoke live autenticado | **deferido pelo operador** | smoke live autenticado | abertura normal confirmada; jornada completa pendente |
 
-**A Fase 51 ainda não está integralmente homologada.** Os smokes desktop/mobile reduzem o bloqueio, mas ainda faltam tablet e profundidade suficiente das jornadas/estados.
+**A Fase 51 ainda não deve ser encerrada apenas com os smokes.** O gate de tablet está aceito/deferido; permanece necessária profundidade representativa desktop/mobile ou aceite explícito dos limites residuais correspondentes.
 
 ## Jornadas live ainda pendentes
 
 - logout e troca/seleção de organização quando aplicável;
-- convite válido e nova senha com token legítimo;
-- estados adicionais legítimos de bootstrap;
-- tablet autenticado para as áreas principais;
+- convite válido e nova senha com token legítimo quando necessários;
+- estados adicionais legítimos de bootstrap quando aplicáveis;
 - drawer/menu mobile em estados representativos;
 - touch/overflow em componentes autenticados densos;
 - fluxos `lista → detalhe → ação → retorno` representativos;
@@ -202,7 +226,7 @@ Não alterar novamente schema/RPC dessa rota sem novo erro concreto. A rota só 
 - foco/teclado no runtime hidratado;
 - tabelas/formulários densos em viewports menores.
 
-Não alterar Production para fabricar prova.
+Não alterar Production para fabricar prova e não executar mutações só para preencher checklist.
 
 ## Próxima evidência incremental
 
@@ -210,10 +234,10 @@ Não alterar Production para fabricar prova.
 2. conferir read-only a paridade de migrations Production ↔ Git; não repetir #175 sem drift novo;
 3. observar somente deployment automático;
 4. não repetir evidência pública nem smokes desktop/mobile se o runtime não mudou;
-5. obter evidência tablet com sessão legítima;
-6. validar drawer, touch, overflow, foco/teclado e tabelas/formulários densos;
-7. percorrer jornadas profundas representativas quando seguro;
+5. não exigir tablet enquanto a decisão operacional permanecer válida;
+6. validar profundidade representativa em desktop/mobile: drawer, touch, overflow, foco/teclado e componentes densos;
+7. percorrer jornadas `lista → detalhe → ação → retorno` quando seguro;
 8. validar loading/empty/error/success e feedback pós-ação;
-9. mutar somente em estado seguro;
+9. mutar somente em estado seguro e por intenção operacional real;
 10. corrigir/revalidar achados concretos;
-11. promover reconciliação funcional apenas após evidência live suficiente ou aceitação explícita do limite residual pelo operador.
+11. promover reconciliação funcional apenas após evidência live suficiente ou aceite explícito dos limites residuais restantes pelo operador.
