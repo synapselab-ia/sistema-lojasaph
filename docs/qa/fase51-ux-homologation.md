@@ -1,6 +1,6 @@
 # Fase 51 — Homologação UX real
 
-Status: **EM ANDAMENTO — superfícies públicas cobertas; smoke live autenticado desktop concluído; tablet/mobile e jornadas profundas ainda pendentes**  
+Status: **EM ANDAMENTO — superfícies públicas cobertas; smoke live autenticado desktop e mobile concluídos; tablet e jornadas profundas ainda pendentes**  
 Data: **2026-09-01**  
 Issue: **#142**
 
@@ -101,6 +101,30 @@ Na mesma rodada, o operador confirmou que abriram normalmente em navegação liv
 
 Classificação: **smoke live autenticado desktop**. Isso comprova carregamento e navegação básicos no runtime hidratado, mas não substitui homologação de ações de negócio, teclado completo, tablet/mobile ou estados pós-ação.
 
+## Smoke live autenticado mobile — 2026-09-01
+
+Depois do smoke desktop, o operador abriu o sistema em celular real com sessão legítima e confirmou que, até o ponto percorrido, as superfícies testadas estavam abrindo normalmente também no mobile.
+
+Classificação: **smoke live autenticado mobile de carregamento/navegação**.
+
+O qualificativo “por enquanto” é preservado semanticamente: a evidência cobre o que foi percorrido naquele momento e não autoriza afirmar que todos os fluxos, componentes ou estados mobile foram testados.
+
+Esse smoke comprova:
+
+- deployment real acessível no aparelho;
+- sessão legítima operando em contexto mobile;
+- abertura/navegação básica das superfícies percorridas sem regressão reportada.
+
+Não comprova isoladamente:
+
+- drawer/menu em todos os estados;
+- dimensões de todos os touch targets autenticados;
+- ausência de overflow em todas as tabelas/formulários densos;
+- foco/ordem de teclado;
+- mutações e feedback pós-ação;
+- todos os estados loading/empty/error/success;
+- jornadas completas `lista → detalhe → ação → retorno`.
+
 ## Achados anteriores
 
 - **UX-51-001:** retorno da recuperação com target mínimo — corrigido no #167; HTTP/HTML + snapshot touch confirmam tratamento.
@@ -146,7 +170,7 @@ Production estava exatamente duas migrations atrás do Git:
 
 Em 2026-09-01 o operador abriu `/workspace/administracao/acessos` com sessão legítima no browser real e a tela carregou normalmente. O erro anterior não reapareceu nessa evidência.
 
-Não alterar novamente schema/RPC dessa rota sem novo erro concreto. A rota só precisa reaparecer na matriz residual de tablet/mobile ou se houver regressão.
+Não alterar novamente schema/RPC dessa rota sem novo erro concreto. A rota só precisa reaparecer na matriz residual se houver regressão ou necessidade específica de viewport/fluxo.
 
 ## Matriz da Fase 51
 
@@ -154,23 +178,24 @@ Não alterar novamente schema/RPC dessa rota sem novo erro concreto. A rota só 
 | --- | --- | --- | --- | --- |
 | Entrada pública: Login/Recuperação/Acesso indisponível | snapshot estático | snapshot estático | snapshot estático | geometria/overflow/touch cobertos; live JS/foco ainda parcial |
 | Convite/Nova senha/Bootstrap/Seleção de organização | parcial HTTP/HTML | parcial HTTP/HTML | parcial HTTP/HTML | exige estado/token/sessão legítimos para fluxos completos |
-| Navegação/Visão geral | smoke live autenticado | pendente | pendente | desktop abre normalmente; falta responsividade live e profundidade |
-| Administração | smoke live autenticado | pendente | pendente | `/administracao/acessos` revalidada no desktop após drift |
-| Cadastros | smoke live autenticado | pendente | pendente | abertura normal confirmada; ações profundas pendentes |
-| Estoque | smoke live autenticado | pendente | pendente | abertura normal confirmada; ações profundas pendentes |
-| Compras | smoke live autenticado | pendente | pendente | abertura normal confirmada; jornada completa pendente |
-| Financeiro | smoke live autenticado | pendente | pendente | abertura normal confirmada; jornada completa pendente |
-| Caixa | smoke live autenticado | pendente | pendente | abertura normal confirmada; jornada completa pendente |
+| Navegação/Visão geral | smoke live autenticado | pendente | smoke live autenticado | abertura normal em desktop/mobile; falta tablet e profundidade |
+| Administração | smoke live autenticado | pendente | smoke live autenticado geral | `/administracao/acessos` revalidada especificamente no desktop após drift |
+| Cadastros | smoke live autenticado | pendente | smoke live autenticado | abertura normal confirmada; ações profundas pendentes |
+| Estoque | smoke live autenticado | pendente | smoke live autenticado | abertura normal confirmada; ações profundas pendentes |
+| Compras | smoke live autenticado | pendente | smoke live autenticado | abertura normal confirmada; jornada completa pendente |
+| Financeiro | smoke live autenticado | pendente | smoke live autenticado | abertura normal confirmada; jornada completa pendente |
+| Caixa | smoke live autenticado | pendente | smoke live autenticado | abertura normal confirmada; jornada completa pendente |
 
-**A Fase 51 ainda não está integralmente homologada.** O smoke desktop reduz o bloqueio, mas ainda faltam evidências representativas tablet/mobile e jornadas profundas.
+**A Fase 51 ainda não está integralmente homologada.** Os smokes desktop/mobile reduzem o bloqueio, mas ainda faltam tablet e profundidade suficiente das jornadas/estados.
 
 ## Jornadas live ainda pendentes
 
 - logout e troca/seleção de organização quando aplicável;
 - convite válido e nova senha com token legítimo;
 - estados adicionais legítimos de bootstrap;
-- sidebar/drawer em mobile;
-- tablet/mobile autenticados para as áreas principais;
+- tablet autenticado para as áreas principais;
+- drawer/menu mobile em estados representativos;
+- touch/overflow em componentes autenticados densos;
 - fluxos `lista → detalhe → ação → retorno` representativos;
 - mutações seguras e feedback pós-ação;
 - loading/empty/error/success;
@@ -184,8 +209,8 @@ Não alterar Production para fabricar prova.
 1. consultar GitHub para estado real;
 2. conferir read-only a paridade de migrations Production ↔ Git; não repetir #175 sem drift novo;
 3. observar somente deployment automático;
-4. não repetir evidência pública ou smoke desktop se o runtime não mudou;
-5. obter evidência tablet/mobile com sessão legítima;
+4. não repetir evidência pública nem smokes desktop/mobile se o runtime não mudou;
+5. obter evidência tablet com sessão legítima;
 6. validar drawer, touch, overflow, foco/teclado e tabelas/formulários densos;
 7. percorrer jornadas profundas representativas quando seguro;
 8. validar loading/empty/error/success e feedback pós-ação;

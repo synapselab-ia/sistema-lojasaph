@@ -4,7 +4,7 @@
 
 **Fase 51 / Issue #142 continua ativa.**
 
-A consolidação estrutural/UX e o incidente de drift de migrations Production estão tratados. Em 2026-09-01 houve smoke live autenticado no desktop com sessão legítima fornecida pelo operador.
+A consolidação estrutural/UX e o incidente de drift de migrations Production estão tratados. Em 2026-09-01 houve smoke live autenticado no desktop com sessão legítima fornecida pelo operador e, depois, confirmação de abertura/navegação normal também em celular real.
 
 > Regra: consultar GitHub para HEAD/PRs/Issues/branches/CI no início. SHAs abaixo são âncoras de evidência, não HEAD permanente.
 
@@ -18,6 +18,7 @@ Evidência operacional recente:
 - workflow one-shot removido após o uso;
 - `/workspace/administracao/acessos` revalidada em browser live autenticado no desktop em 2026-09-01, sem `ADMINISTRATION_QUERY_ERROR`;
 - operador confirmou Visão geral, Administração, Produtos/Cadastros, Estoque, Compras, Financeiro e Caixa abrindo normalmente no mesmo smoke live desktop;
+- operador confirmou também abertura/navegação normal das superfícies percorridas em celular real no smoke live mobile;
 - #75/#121 **TOTALMENTE ON HOLD**.
 
 Runtime de aplicação observado:
@@ -30,9 +31,9 @@ Nenhum deploy Vercel manual é necessário.
 
 ## NEXT_ACTION objetiva
 
-### **Concluir a homologação UX live restante, priorizando tablet/mobile e jornadas profundas**
+### **Concluir a homologação UX live restante, priorizando tablet e jornadas profundas**
 
-Não repetir o smoke desktop já comprovado por inércia e não promover para reconciliação funcional final apenas porque as páginas abriram.
+Não repetir os smokes desktop/mobile já comprovados por inércia e não promover para reconciliação funcional final apenas porque as páginas abriram.
 
 ## 1. Reconciliar estado real
 
@@ -44,7 +45,7 @@ No início:
 4. comparar **read-only** a linhagem `supabase/migrations/*` com o histórico Production;
 5. se não houver drift novo, não repetir a reconciliação #175;
 6. observar somente deployment automático quando útil;
-7. se o runtime de aplicação não mudou, não repetir HTTP/HTML, snapshot estático ou smoke desktop por inércia.
+7. se o runtime de aplicação não mudou, não repetir HTTP/HTML, snapshot estático ou smokes live já registrados por inércia.
 
 ## 2. Evidência já válida e que não precisa ser repetida
 
@@ -71,16 +72,20 @@ Em 2026-09-01, com sessão legítima:
 - UX-51-004 está revalidado no nível de smoke live desktop;
 - Visão geral, Administração, Produtos/Cadastros, Estoque, Compras, Financeiro e Caixa abriram normalmente.
 
-Limite: esse smoke prova carregamento/navegação, não todas as ações de negócio, estados, teclado ou responsividade autenticada.
+### Live autenticado mobile
+
+Em 2026-09-01, o operador abriu o sistema em celular real com sessão legítima e confirmou que as superfícies percorridas também estavam abrindo normalmente no mobile.
+
+Limite: esse smoke mobile comprova carregamento/navegação básicos no aparelho real; não certifica isoladamente todos os estados do drawer, todos os touch targets, ausência de overflow em tabelas/formulários densos, mutações, estados pós-ação ou fluxos completos.
 
 ## 3. Matriz live ainda necessária
 
-Priorizar **tablet e mobile** com sessão legítima e, onde seguro, aprofundar jornadas autenticadas.
+Priorizar **tablet** com sessão legítima e, onde seguro, aprofundar jornadas autenticadas já abertas em desktop/mobile.
 
 Validar:
 
 - navegação/hierarquia;
-- drawer/menu mobile;
+- drawer/menu mobile em estados representativos;
 - touch targets;
 - overflow;
 - foco visível e ordem por teclado;
@@ -96,7 +101,7 @@ Validar:
 
 **Visão geral:** filtros, cards/alertas, links e estados.
 
-**Administração:** validar tablet/mobile; `/workspace/administracao/acessos` não precisa ser repetida no desktop, apenas em viewport residual ou regressão concreta.
+**Administração:** validar tablet e profundidade; `/workspace/administracao/acessos` não precisa ser repetida no desktop sem regressão concreta.
 
 **Cadastros:** Produtos; Fornecedores; Funcionários.
 

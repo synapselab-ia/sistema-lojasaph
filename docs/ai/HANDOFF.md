@@ -8,9 +8,9 @@
 
 **Fase 51 / Issue #142 continua ativa.**
 
-A consolidação estrutural/UX e o incidente de drift de migrations Production estão tratados. Em 2026-09-01 surgiu a primeira evidência live autenticada fornecida diretamente pelo operador no browser real.
+A consolidação estrutural/UX e o incidente de drift de migrations Production estão tratados. Em 2026-09-01 surgiu a primeira evidência live autenticada fornecida diretamente pelo operador no browser real e, na sequência, houve confirmação de smoke equivalente em celular real.
 
-Não refazer por inércia: #145, #147, #149, #151, #153, #155, #157, #159, #161, #163, #165, #167, #168, #169, #170, #171, #172, #173, #174, #175 e #176.
+Não refazer por inércia: #145, #147, #149, #151, #153, #155, #157, #159, #161, #163, #165, #167, #168, #169, #170, #171, #172, #173, #174, #175, #176 e #177.
 
 #75/#121 permanecem **TOTALMENTE ON HOLD**.
 
@@ -54,10 +54,17 @@ O operador também confirmou, na mesma navegação real, que abriram normalmente
 
 Registrar isso como **smoke live autenticado desktop**, não como homologação funcional integral das jornadas. Não anexar ao GitHub o screenshot recebido no chat porque ele contém dado identificável de conta; a evidência documental deve permanecer sanitizada.
 
-Ainda não está comprovado por essa rodada:
+## Nova evidência live autenticada — mobile — 2026-09-01
 
-- tablet/mobile autenticados;
-- drawer/menu mobile;
+Depois do smoke desktop, o operador abriu o sistema em celular real com sessão legítima e confirmou que, até o ponto percorrido, as superfícies testadas estavam abrindo normalmente também no mobile.
+
+Registrar isso como **smoke live autenticado mobile de carregamento/navegação**. O qualificativo “por enquanto” deve ser preservado semanticamente: a confirmação cobre o que foi percorrido naquele momento e não equivale a homologação integral de todos os componentes, estados ou fluxos mobile.
+
+Ainda não está comprovado pelas duas rodadas:
+
+- tablet autenticado;
+- drawer/menu mobile em todos os estados relevantes;
+- touch targets e overflow em todos os componentes autenticados densos;
 - foco e ordem completa por teclado;
 - todas as ações mutáveis e feedback pós-ação;
 - fluxos completos `lista → detalhe → ação → retorno`;
@@ -104,11 +111,12 @@ Ver `docs/qa/database-migrations.md`.
 
 ## Bloqueio restante da NEXT_ACTION
 
-A dependência externa reduziu: já existe sessão legítima e evidência live desktop provida pelo operador. Ainda faltam principalmente:
+A dependência externa reduziu: já existem sessão legítima e evidência live provida pelo operador em desktop e mobile. Ainda faltam principalmente:
 
-- tablet/mobile live autenticados;
-- drawer/menu mobile, touch e overflow nas áreas autenticadas;
+- tablet live autenticado;
+- drawer/menu mobile, touch e overflow em estados representativos;
 - foco/teclado no runtime hidratado;
+- tabelas/formulários densos em viewports menores;
 - jornadas profundas e estados pós-ação;
 - mutações apenas em estado seguro;
 - tokens legítimos para fluxos auxiliares quando necessários ao aceite.
@@ -117,7 +125,7 @@ Não fabricar usuário, convite, fixture ou dado em Production.
 
 ## NEXT_ACTION imediata
 
-### Concluir a homologação UX live restante sem repetir o smoke desktop já comprovado
+### Concluir a homologação UX live restante sem repetir os smokes desktop/mobile já comprovados
 
 Na próxima execução:
 
@@ -125,8 +133,8 @@ Na próxima execução:
 2. consultar `main`, Issue #142, PRs, branches e CI reais;
 3. fazer checagem **read-only** de paridade de migrations Production ↔ Git; não reaplicar #175 sem drift novo;
 4. observar somente deployment automático;
-5. não repetir HTTP/HTML, snapshot público ou smoke desktop por inércia;
-6. colher evidência representativa tablet/mobile com sessão legítima;
+5. não repetir HTTP/HTML, snapshot público ou smokes desktop/mobile por inércia;
+6. colher evidência representativa tablet com sessão legítima;
 7. validar drawer, touch, overflow, foco/teclado e tabelas/formulários densos;
 8. percorrer fluxos representativos `lista → detalhe → ação → retorno` quando seguro;
 9. validar loading/empty/error/success e feedback pós-ação;

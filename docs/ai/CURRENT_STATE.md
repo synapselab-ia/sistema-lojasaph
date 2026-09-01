@@ -12,7 +12,7 @@
 
 O núcleo operacional está consolidado, mas o produto ainda não deve ser declarado 100% concluído. `docs/product/final-product-gap-audit.md` continua como inventário da fila final.
 
-Slices/fechamentos já integrados: #145, #147, #149, #151, #153, #155, #157, #159, #161, #163, #165, #167, #168, #169, #170, #171, #172, #173, #174, #175 e #176.
+Slices/fechamentos já integrados: #145, #147, #149, #151, #153, #155, #157, #159, #161, #163, #165, #167, #168, #169, #170, #171, #172, #173, #174, #175, #176 e #177.
 
 Não refazer essas etapas sem bug/gap concreto.
 
@@ -73,6 +73,12 @@ Na mesma rodada, o operador confirmou que as superfícies autenticadas principai
 - Caixa.
 
 Essa evidência valida **carregamento e navegação smoke live autenticados no desktop**. Ela não certifica, sozinha, todas as ações mutáveis, fluxos `lista → detalhe → ação → retorno`, foco/ordem de teclado, drawer mobile, tablet/mobile, convite/recuperação com token legítimo ou todos os estados loading/empty/error/success.
+
+### Smoke live autenticado mobile — 2026-09-01
+
+O operador abriu o sistema em celular real com sessão legítima e confirmou que, até o ponto percorrido, as superfícies testadas também estavam abrindo normalmente no mobile.
+
+Essa evidência valida **carregamento e navegação smoke live autenticados no mobile**. O qualificativo “por enquanto” limita a afirmação ao que foi efetivamente percorrido: não certifica isoladamente todos os estados do drawer, todos os touch targets, ausência de overflow em todas as tabelas/formulários densos, ações mutáveis, feedback pós-ação ou jornadas completas.
 
 Detalhes: `docs/qa/fase51-ux-homologation.md`.
 
@@ -146,11 +152,12 @@ Detalhes em `docs/qa/database-migrations.md`.
 
 ## Bloqueio restante da Fase 51
 
-O smoke autenticado desktop agora existe, mas a homologação UX completa ainda precisa de evidência representativa de:
+Smokes autenticados desktop e mobile agora existem, mas a homologação UX completa ainda precisa de evidência representativa de:
 
-- tablet e mobile em browser live;
+- tablet em browser live;
 - drawer/menu mobile e touch targets nas jornadas autenticadas;
 - foco visível e ordem por teclado no runtime hidratado;
+- tabelas/formulários densos e overflow em viewports menores;
 - fluxos `lista → detalhe → ação → retorno` representativos;
 - loading/empty/error/success e feedback pós-ação;
 - ações mutáveis somente em estado seguro;
@@ -160,9 +167,9 @@ Não fabricar usuário, convite, fixture ou dado em Production para preencher a 
 
 ## NEXT_ACTION
 
-**Concluir a homologação UX live restante, priorizando tablet/mobile e jornadas autenticadas profundas, sem repetir o smoke desktop já comprovado.**
+**Concluir a homologação UX live restante, priorizando tablet e jornadas autenticadas profundas, sem repetir os smokes desktop/mobile já comprovados.**
 
-`/workspace/administracao/acessos` já foi revalidada live no desktop após o incidente de migrations; voltar a essa rota apenas como parte da matriz mobile/tablet ou se surgir nova regressão.
+`/workspace/administracao/acessos` já foi revalidada live no desktop após o incidente de migrations; voltar a essa rota apenas como parte da matriz residual ou se surgir nova regressão.
 
 Não repetir a reconciliação de migrations sem novo drift comprovado; fazer apenas a checagem read-only de paridade no início.
 
