@@ -1,6 +1,6 @@
 # Current State — Sistema Lojasaph
 
-Última atualização: 2026-08-31
+Última atualização: 2026-09-01
 
 ## Regra de baseline
 
@@ -12,7 +12,7 @@
 
 O núcleo operacional está consolidado, mas o produto ainda não deve ser declarado 100% concluído. `docs/product/final-product-gap-audit.md` continua como inventário da fila final.
 
-Slices/fechamentos já integrados: #145, #147, #149, #151, #153, #155, #157, #159, #161, #163, #165, #167, #168, #169, #170, #171, #172, #173, #174 e #175.
+Slices/fechamentos já integrados: #145, #147, #149, #151, #153, #155, #157, #159, #161, #163, #165, #167, #168, #169, #170, #171, #172, #173, #174, #175 e #176.
 
 Não refazer essas etapas sem bug/gap concreto.
 
@@ -57,6 +57,22 @@ SSR HTML + CSS reais do deployment foram renderizados localmente em Chromium/Pla
 Resultado: sem overflow horizontal nas nove combinações; layout contido; controles/CTAs em contexto touch com pelo menos 44 px; alerts esperados presentes.
 
 **Limite:** isso não é browser live e não certifica hidratação/JS, navegação Next, server actions, sessão/auth, mutações, drawer autenticado nem foco completo no runtime live.
+
+### Smoke live autenticado desktop — 2026-09-01
+
+O operador abriu o deployment real em browser com sessão legítima e forneceu evidência direta de `/workspace/administracao/acessos` carregada após a correção de migrations. A tela de **Usuários e permissões** exibiu o formulário de acesso e a listagem cadastrada sem `ADMINISTRATION_QUERY_ERROR`.
+
+Na mesma rodada, o operador confirmou que as superfícies autenticadas principais abriram normalmente em navegação real no desktop:
+
+- Visão geral;
+- Administração;
+- Produtos/Cadastros;
+- Estoque;
+- Compras;
+- Financeiro;
+- Caixa.
+
+Essa evidência valida **carregamento e navegação smoke live autenticados no desktop**. Ela não certifica, sozinha, todas as ações mutáveis, fluxos `lista → detalhe → ação → retorno`, foco/ordem de teclado, drawer mobile, tablet/mobile, convite/recuperação com token legítimo ou todos os estados loading/empty/error/success.
 
 Detalhes: `docs/qa/fase51-ux-homologation.md`.
 
@@ -113,7 +129,7 @@ Validação read-only confirmou:
 
 Os warnings genéricos do Database Advisor para RPCs `SECURITY DEFINER` são compatíveis com a arquitetura intencional já usada pelo sistema e protegida por checks internos de papel/escopo; não foram tratados como defeito isoladamente. Os avisos de performance observados são informativos e estão fora desta correção.
 
-**Importante:** a dependência backend de `/workspace/administracao/acessos` foi restaurada, mas a rota ainda **não foi homologada live no browser** nesta sessão. Não converter a correção do banco em evidência gráfica/autenticada inexistente.
+**Revalidação live:** em 2026-09-01 o operador abriu `/workspace/administracao/acessos` autenticado no browser real e a tela carregou normalmente, sem o erro anterior. UX-51-004 passa a estar revalidado no nível de smoke live desktop. Não repetir schema/RPC para essa rota sem nova regressão concreta.
 
 ## Regra operacional adicionada — paridade de migrations
 
@@ -130,20 +146,23 @@ Detalhes em `docs/qa/database-migrations.md`.
 
 ## Bloqueio restante da Fase 51
 
-A homologação UX completa ainda exige:
+O smoke autenticado desktop agora existe, mas a homologação UX completa ainda precisa de evidência representativa de:
 
-- browser live capaz de abrir/interagir com o deployment e executar JavaScript;
-- sessão/credencial legítima aprovada;
-- token legítimo quando convite/recuperação/nova senha forem necessários;
-- ambiente/estado seguro para operações mutáveis.
+- tablet e mobile em browser live;
+- drawer/menu mobile e touch targets nas jornadas autenticadas;
+- foco visível e ordem por teclado no runtime hidratado;
+- fluxos `lista → detalhe → ação → retorno` representativos;
+- loading/empty/error/success e feedback pós-ação;
+- ações mutáveis somente em estado seguro;
+- convite/recuperação/nova senha com token legítimo quando esses fluxos forem necessários ao aceite.
 
-Sem isso, não declarar homologadas em desktop/tablet/mobile as jornadas autenticadas de Entrada/contexto, Visão geral, Administração, Cadastros, Estoque, Compras, Financeiro e Caixa.
+Não fabricar usuário, convite, fixture ou dado em Production para preencher a matriz.
 
 ## NEXT_ACTION
 
-**Concluir homologação UX live desktop/tablet/mobile com browser conectado e sessão legítima.**
+**Concluir a homologação UX live restante, priorizando tablet/mobile e jornadas autenticadas profundas, sem repetir o smoke desktop já comprovado.**
 
-Na próxima execução, incluir explicitamente `/workspace/administracao/acessos` na revalidação de Administração para confirmar no browser que o incidente backend corrigido não reaparece.
+`/workspace/administracao/acessos` já foi revalidada live no desktop após o incidente de migrations; voltar a essa rota apenas como parte da matriz mobile/tablet ou se surgir nova regressão.
 
 Não repetir a reconciliação de migrations sem novo drift comprovado; fazer apenas a checagem read-only de paridade no início.
 
