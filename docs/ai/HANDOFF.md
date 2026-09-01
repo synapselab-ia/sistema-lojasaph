@@ -8,9 +8,9 @@
 
 **Fase 51 / Issue #142 continua ativa.**
 
-A consolidação estrutural/UX e o incidente de drift de migrations Production estão tratados. Em 2026-09-01 surgiu a primeira evidência live autenticada fornecida diretamente pelo operador no browser real e, na sequência, houve confirmação de smoke equivalente em celular real.
+A consolidação estrutural/UX está integrada; o incidente de drift de migrations Production foi corrigido e revalidado; já existem smokes live autenticados reais em desktop e celular. Em 2026-09-01 o operador também aceitou explicitamente que a ausência de tablet **não bloqueie esta etapa**, pois nem ele nem Asaph dispõem do dispositivo.
 
-Não refazer por inércia: #145, #147, #149, #151, #153, #155, #157, #159, #161, #163, #165, #167, #168, #169, #170, #171, #172, #173, #174, #175, #176 e #177.
+Não refazer por inércia: #145, #147, #149, #151, #153, #155, #157, #159, #161, #163, #165, #167, #168, #169, #170, #171, #172, #173, #174, #175, #176, #177 e #178.
 
 #75/#121 permanecem **TOTALMENTE ON HOLD**.
 
@@ -27,18 +27,19 @@ PRs documentais/operacionais posteriores não exigem deploy Vercel manual. Nenhu
 
 ## Evidência UX já concluída
 
-HTTP/HTML público e snapshot gráfico estático continuam registrados em `docs/qa/fase51-ux-homologation.md`.
+HTTP/HTML público e snapshot gráfico estático permanecem registrados em `docs/qa/fase51-ux-homologation.md`.
 
-Resumo anterior:
+Resumo:
 
 - UX-51-001/002/003 tratados;
 - Login, Recuperação com erro e Acesso indisponível renderizados em `1440x900`, `768x1024` touch e `390x844` touch/mobile;
 - sem overflow horizontal nas combinações verificadas;
-- controles/CTAs touch medidos com pelo menos 44 px.
+- controles/CTAs touch medidos com pelo menos 44 px;
+- isso continua sendo snapshot estático, não browser live autenticado.
 
 Não repetir se o runtime de aplicação não mudou.
 
-## Nova evidência live autenticada — desktop — 2026-09-01
+## Evidência live autenticada — desktop — 2026-09-01
 
 O operador abriu o deployment real com sessão legítima e mostrou `/workspace/administracao/acessos` carregada em browser live. A tela **Usuários e permissões** exibiu o formulário e os acessos cadastrados sem `ADMINISTRATION_QUERY_ERROR`.
 
@@ -52,17 +53,22 @@ O operador também confirmou, na mesma navegação real, que abriram normalmente
 - Financeiro;
 - Caixa.
 
-Registrar isso como **smoke live autenticado desktop**, não como homologação funcional integral das jornadas. Não anexar ao GitHub o screenshot recebido no chat porque ele contém dado identificável de conta; a evidência documental deve permanecer sanitizada.
+Registrar isso como **smoke live autenticado desktop**, não como homologação funcional integral das jornadas. O screenshot recebido no chat não foi anexado ao GitHub porque continha dado identificável de conta; a evidência documental permanece sanitizada.
 
-## Nova evidência live autenticada — mobile — 2026-09-01
+## Evidência live autenticada — mobile — 2026-09-01
 
 Depois do smoke desktop, o operador abriu o sistema em celular real com sessão legítima e confirmou que, até o ponto percorrido, as superfícies testadas estavam abrindo normalmente também no mobile.
 
 Registrar isso como **smoke live autenticado mobile de carregamento/navegação**. O qualificativo “por enquanto” deve ser preservado semanticamente: a confirmação cobre o que foi percorrido naquele momento e não equivale a homologação integral de todos os componentes, estados ou fluxos mobile.
 
-Ainda não está comprovado pelas duas rodadas:
+## Decisão operacional — tablet — 2026-09-01
 
-- tablet autenticado;
+O operador declarou que nem ele nem Asaph possuem tablet e que **não é necessário testar tablet por enquanto**.
+
+Tratar essa declaração como **aceitação explícita da limitação externa residual de tablet**, conforme mecanismo já previsto no aceite da Fase 51. Não marcar tablet como “homologado”; marcar como **deferido/aceito nesta etapa**.
+
+A decisão não se estende automaticamente a outros limites residuais. Ainda não estão comprovados integralmente:
+
 - drawer/menu mobile em todos os estados relevantes;
 - touch targets e overflow em todos os componentes autenticados densos;
 - foco e ordem completa por teclado;
@@ -73,7 +79,7 @@ Ainda não está comprovado pelas duas rodadas:
 
 ## Incidente Production — drift de migrations — FECHADO E REVALIDADO
 
-Durante a busca por evidência real da Fase 51, a telemetria Production mostrou `/workspace/administracao/acessos` falhando com `ADMINISTRATION_QUERY_ERROR` porque o PostgREST não encontrava `public.admin_list_organization_access(...)`.
+Durante a homologação, a telemetria Production mostrou `/workspace/administracao/acessos` falhando com `ADMINISTRATION_QUERY_ERROR` porque o PostgREST não encontrava `public.admin_list_organization_access(...)`.
 
 Causa provada:
 
@@ -95,37 +101,21 @@ Correção:
 
 Production agora registra as duas versions e possui os quatro RPCs administrativos esperados. Grants/trigger foram verificados read-only e o acesso direto de `authenticated` a INSERT/UPDATE de `organization_memberships` continua negado.
 
-Em 2026-09-01 `/workspace/administracao/acessos` foi finalmente reaberta com sessão legítima no browser real e carregou normalmente. **UX-51-004 está revalidado no nível de smoke live desktop.** Não mexer novamente em schema/RPC dessa rota sem nova regressão concreta.
+Em 2026-09-01 `/workspace/administracao/acessos` foi reaberta com sessão legítima no browser real e carregou normalmente. **UX-51-004 está revalidado no nível de smoke live desktop.** Não mexer novamente em schema/RPC dessa rota sem nova regressão concreta.
 
-## Regra de prevenção de recorrência
+## Paridade de migrations revalidada
 
-Quando Production disser que uma função/tabela mergeada não existe:
+Na execução posterior ao PR #178, a comparação read-only confirmou novamente:
 
-1. comparar migrations Git com histórico remoto antes de alterar código;
-2. identificar exatamente as versions pendentes;
-3. usar migrations versionadas e mecanismo que preserve as versions (`supabase db push` quando aplicável);
-4. falhar fechado em drift inesperado;
-5. não usar `migration repair`, edição manual de history, seed ou reset como atalho.
+- Git termina em `20260828132500_administration_employee_identity.sql`;
+- Production termina em `20260828132500 administration_employee_identity`;
+- sem drift novo.
 
-Ver `docs/qa/database-migrations.md`.
-
-## Bloqueio restante da NEXT_ACTION
-
-A dependência externa reduziu: já existem sessão legítima e evidência live provida pelo operador em desktop e mobile. Ainda faltam principalmente:
-
-- tablet live autenticado;
-- drawer/menu mobile, touch e overflow em estados representativos;
-- foco/teclado no runtime hidratado;
-- tabelas/formulários densos em viewports menores;
-- jornadas profundas e estados pós-ação;
-- mutações apenas em estado seguro;
-- tokens legítimos para fluxos auxiliares quando necessários ao aceite.
-
-Não fabricar usuário, convite, fixture ou dado em Production.
+Não reaplicar #175 sem nova divergência comprovada.
 
 ## NEXT_ACTION imediata
 
-### Concluir a homologação UX live restante sem repetir os smokes desktop/mobile já comprovados
+### Concluir a profundidade residual da homologação UX em desktop/mobile, sem exigir tablet nesta etapa
 
 Na próxima execução:
 
@@ -134,13 +124,13 @@ Na próxima execução:
 3. fazer checagem **read-only** de paridade de migrations Production ↔ Git; não reaplicar #175 sem drift novo;
 4. observar somente deployment automático;
 5. não repetir HTTP/HTML, snapshot público ou smokes desktop/mobile por inércia;
-6. colher evidência representativa tablet com sessão legítima;
-7. validar drawer, touch, overflow, foco/teclado e tabelas/formulários densos;
+6. **não pedir tablet novamente enquanto a decisão operacional acima permanecer válida**;
+7. validar, em desktop/mobile e quando houver condição legítima, drawer/touch/overflow/foco e componentes densos;
 8. percorrer fluxos representativos `lista → detalhe → ação → retorno` quando seguro;
 9. validar loading/empty/error/success e feedback pós-ação;
 10. mutar somente em estado seguro;
 11. corrigir apenas achados concretos e revalidar no mesmo tipo de evidência;
-12. promover reconciliação funcional apenas após evidência live suficiente ou aceitação explícita do limite residual pelo operador.
+12. promover reconciliação funcional quando houver evidência live suficiente ou aceite explícito dos limites residuais ainda não cobertos.
 
 ## Guardrails
 
