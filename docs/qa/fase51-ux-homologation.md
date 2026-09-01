@@ -1,7 +1,7 @@
 # Fase 51 — Homologação UX real
 
-Status: **EM ANDAMENTO — superfícies públicas possuem evidência HTTP/HTML e snapshot gráfico estático; jornadas live autenticadas ainda bloqueadas**  
-Data: **2026-08-31**  
+Status: **EM ANDAMENTO — superfícies públicas cobertas; smoke live autenticado desktop concluído; tablet/mobile e jornadas profundas ainda pendentes**  
+Data: **2026-09-01**  
 Issue: **#142**
 
 ## Regra de baseline
@@ -42,7 +42,7 @@ Capacidade local:
 - Python Playwright `1.57.0`;
 - Chromium headless funcional;
 - container sem saída de rede/DNS para GitHub/Vercel;
-- nenhum browser live conectado disponível.
+- nenhum browser live conectado disponível ao agente.
 
 Método: SSR HTML + CSS reais obtidos pela integração Vercel foram renderizados localmente em Chromium/Playwright. Isso é **snapshot gráfico estático**, não navegação live do Next.js.
 
@@ -73,6 +73,33 @@ Superfícies:
 Em tablet/mobile, inputs/buttons/links de ação medidos ficaram em **44 px ou mais**. Em desktop, inputs ficaram em ~42 px sem `pointer: coarse`, enquanto buttons/links de ação permaneceram em 44 px, coerente com o design system.
 
 Limite: o snapshot não certifica hidratação/JS, Next navigation, server actions, sessão/auth, mutações, redirects client-side, drawer autenticado, estados pós-ação ou foco completo live.
+
+## Smoke live autenticado desktop — 2026-09-01
+
+O operador abriu o deployment real em um browser com sessão legítima e forneceu evidência direta da tela `/workspace/administracao/acessos` carregada após a correção de migrations.
+
+Na captura recebida foi possível observar:
+
+- título **Usuários e permissões**;
+- formulário **Convidar ou adicionar acesso**;
+- seletores de perfil e área de atuação;
+- seção **Acessos cadastrados** com um acesso real carregado;
+- ausência de mensagem de erro ou fallback referente a `ADMINISTRATION_QUERY_ERROR`;
+- foco visual aparente em um controle do formulário.
+
+O screenshot não será anexado ao GitHub porque contém identificador pessoal de conta. A documentação registra somente a evidência sanitizada necessária.
+
+Na mesma rodada, o operador confirmou que abriram normalmente em navegação live autenticada no desktop:
+
+- Visão geral;
+- Administração;
+- Produtos/Cadastros;
+- Estoque;
+- Compras;
+- Financeiro;
+- Caixa.
+
+Classificação: **smoke live autenticado desktop**. Isso comprova carregamento e navegação básicos no runtime hidratado, mas não substitui homologação de ações de negócio, teclado completo, tablet/mobile ou estados pós-ação.
 
 ## Achados anteriores
 
@@ -115,56 +142,53 @@ Production estava exatamente duas migrations atrás do Git:
 
 #### Estado de homologação
 
-**Backend corrigido; UI live pendente.**
+**Backend corrigido e smoke live desktop revalidado.**
 
-Não existe browser live + sessão legítima nesta execução, portanto não afirmar que `/workspace/administracao/acessos` foi visual/interativamente revalidada. Ela é item obrigatório na próxima rodada live.
+Em 2026-09-01 o operador abriu `/workspace/administracao/acessos` com sessão legítima no browser real e a tela carregou normalmente. O erro anterior não reapareceu nessa evidência.
+
+Não alterar novamente schema/RPC dessa rota sem novo erro concreto. A rota só precisa reaparecer na matriz residual de tablet/mobile ou se houver regressão.
 
 ## Matriz da Fase 51
 
 | Área | Desktop | Tablet | Mobile | Estado |
 | --- | --- | --- | --- | --- |
-| Entrada pública: Login/Recuperação/Acesso indisponível | snapshot estático | snapshot estático | snapshot estático | geometria/overflow/touch cobertos; live JS/foco pendentes |
-| Convite/Nova senha/Bootstrap/Seleção de organização | parcial HTTP/HTML | parcial HTTP/HTML | parcial HTTP/HTML | exige browser live + estado/token/sessão legítimos |
-| Navegação/Visão geral | bloqueado | bloqueado | bloqueado | sessão legítima + browser live |
-| Administração | bloqueado | bloqueado | bloqueado | backend de `/administracao/acessos` restaurado; requer sessão legítima + browser live |
-| Cadastros | bloqueado | bloqueado | bloqueado | sessão legítima + browser live |
-| Estoque | bloqueado | bloqueado | bloqueado | sessão legítima + browser live |
-| Compras | bloqueado | bloqueado | bloqueado | sessão legítima + browser live |
-| Financeiro | bloqueado | bloqueado | bloqueado | sessão legítima + browser live |
-| Caixa | bloqueado | bloqueado | bloqueado | sessão legítima + browser live |
+| Entrada pública: Login/Recuperação/Acesso indisponível | snapshot estático | snapshot estático | snapshot estático | geometria/overflow/touch cobertos; live JS/foco ainda parcial |
+| Convite/Nova senha/Bootstrap/Seleção de organização | parcial HTTP/HTML | parcial HTTP/HTML | parcial HTTP/HTML | exige estado/token/sessão legítimos para fluxos completos |
+| Navegação/Visão geral | smoke live autenticado | pendente | pendente | desktop abre normalmente; falta responsividade live e profundidade |
+| Administração | smoke live autenticado | pendente | pendente | `/administracao/acessos` revalidada no desktop após drift |
+| Cadastros | smoke live autenticado | pendente | pendente | abertura normal confirmada; ações profundas pendentes |
+| Estoque | smoke live autenticado | pendente | pendente | abertura normal confirmada; ações profundas pendentes |
+| Compras | smoke live autenticado | pendente | pendente | abertura normal confirmada; jornada completa pendente |
+| Financeiro | smoke live autenticado | pendente | pendente | abertura normal confirmada; jornada completa pendente |
+| Caixa | smoke live autenticado | pendente | pendente | abertura normal confirmada; jornada completa pendente |
 
-**A Fase 51 não está homologada.** CI, introspecção de banco e snapshot estático não substituem jornadas live.
+**A Fase 51 ainda não está integralmente homologada.** O smoke desktop reduz o bloqueio, mas ainda faltam evidências representativas tablet/mobile e jornadas profundas.
 
-## Jornadas live ainda bloqueadas
+## Jornadas live ainda pendentes
 
-- login/logout;
-- seleção/troca de organização;
-- convite válido e nova senha;
+- logout e troca/seleção de organização quando aplicável;
+- convite válido e nova senha com token legítimo;
 - estados adicionais legítimos de bootstrap;
-- sidebar/drawer;
-- Visão geral;
-- Administração, com prioridade para `/workspace/administracao/acessos` após UX-51-004;
-- Cadastros;
-- Estoque;
-- Compras;
-- Financeiro;
-- Caixa;
-- mutações e feedback pós-ação;
-- foco/teclado no runtime hidratado.
+- sidebar/drawer em mobile;
+- tablet/mobile autenticados para as áreas principais;
+- fluxos `lista → detalhe → ação → retorno` representativos;
+- mutações seguras e feedback pós-ação;
+- loading/empty/error/success;
+- foco/teclado no runtime hidratado;
+- tabelas/formulários densos em viewports menores.
 
-Motivo: ausência de browser live conectado + sessão/credencial/token legítimos aprovados. Não alterar Production para fabricar prova.
+Não alterar Production para fabricar prova.
 
 ## Próxima evidência incremental
 
 1. consultar GitHub para estado real;
 2. conferir read-only a paridade de migrations Production ↔ Git; não repetir #175 sem drift novo;
 3. observar somente deployment automático;
-4. não repetir evidência pública se o runtime não mudou;
-5. obter browser live conectado;
-6. usar sessão/credencial/token legítimos;
-7. percorrer todas as áreas críticas em desktop/tablet/mobile;
-8. revalidar prioritariamente `/workspace/administracao/acessos`;
-9. validar foco/teclado, drawer, touch, overflow, tabelas/formulários, loading/empty/error/success e `lista → detalhe → ação → retorno`;
-10. mutar somente em estado seguro;
-11. corrigir/revalidar achados concretos;
-12. promover reconciliação funcional apenas após evidência live suficiente ou aceitação explícita de bloqueio externo.
+4. não repetir evidência pública ou smoke desktop se o runtime não mudou;
+5. obter evidência tablet/mobile com sessão legítima;
+6. validar drawer, touch, overflow, foco/teclado e tabelas/formulários densos;
+7. percorrer jornadas profundas representativas quando seguro;
+8. validar loading/empty/error/success e feedback pós-ação;
+9. mutar somente em estado seguro;
+10. corrigir/revalidar achados concretos;
+11. promover reconciliação funcional apenas após evidência live suficiente ou aceitação explícita do limite residual pelo operador.
