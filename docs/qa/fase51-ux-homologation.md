@@ -1,6 +1,6 @@
 # Fase 51 — Homologação UX real
 
-Status: **EM ANDAMENTO — superfícies públicas cobertas; smoke live autenticado desktop concluído; tablet/mobile e jornadas profundas ainda pendentes**  
+Status: **EM ANDAMENTO — superfícies públicas cobertas; smoke live autenticado desktop e mobile concluídos; tablet e jornadas profundas ainda pendentes**  
 Data: **2026-09-01**  
 Issue: **#142**
 
@@ -36,58 +36,30 @@ Não repetir enquanto o runtime de aplicação não mudar.
 
 ## Snapshot gráfico público já executado
 
-Capacidade local:
+SSR HTML + CSS reais do deployment foram renderizados localmente em Chromium/Playwright para Login, Recuperação com erro e Acesso indisponível em:
 
-- Chromium `144.0.7559.96`;
-- Python Playwright `1.57.0`;
-- Chromium headless funcional;
-- container sem saída de rede/DNS para GitHub/Vercel;
-- nenhum browser live conectado disponível ao agente.
-
-Método: SSR HTML + CSS reais obtidos pela integração Vercel foram renderizados localmente em Chromium/Playwright. Isso é **snapshot gráfico estático**, não navegação live do Next.js.
-
-Viewports:
-
-- desktop `1440x900` sem touch;
+- desktop `1440x900`;
 - tablet `768x1024` touch;
 - mobile `390x844` touch/mobile.
 
-Superfícies:
+Resultado: sem overflow horizontal nas combinações verificadas; layout contido; inputs/buttons/links de ação em tablet/mobile com pelo menos 44 px.
 
-- Login;
-- Recuperação com erro;
-- Acesso indisponível com erro.
-
-| Superfície | Viewport | Overflow horizontal | Target touch/CTA < 44 px | Resultado visual |
-| --- | --- | --- | --- | --- |
-| Login | 1440x900 | não | nenhum CTA | contido |
-| Login | 768x1024 | não | nenhum | contido |
-| Login | 390x844 | não | nenhum | coluna contida |
-| Recuperação | 1440x900 | não | nenhum CTA | contido |
-| Recuperação | 768x1024 | não | nenhum | contido |
-| Recuperação | 390x844 | não | nenhum | contido |
-| Acesso indisponível | 1440x900 | não | nenhum | contido |
-| Acesso indisponível | 768x1024 | não | nenhum | contido |
-| Acesso indisponível | 390x844 | não | nenhum | ações sem overflow |
-
-Em tablet/mobile, inputs/buttons/links de ação medidos ficaram em **44 px ou mais**. Em desktop, inputs ficaram em ~42 px sem `pointer: coarse`, enquanto buttons/links de ação permaneceram em 44 px, coerente com o design system.
-
-Limite: o snapshot não certifica hidratação/JS, Next navigation, server actions, sessão/auth, mutações, redirects client-side, drawer autenticado, estados pós-ação ou foco completo live.
+Limite: snapshot estático não certifica hidratação/JS, Next navigation, server actions, sessão/auth, mutações, redirects client-side, drawer autenticado, estados pós-ação ou foco completo live.
 
 ## Smoke live autenticado desktop — 2026-09-01
 
-O operador abriu o deployment real em um browser com sessão legítima e forneceu evidência direta da tela `/workspace/administracao/acessos` carregada após a correção de migrations.
+O operador abriu o deployment real em browser com sessão legítima e forneceu evidência direta de `/workspace/administracao/acessos` após a correção de migrations.
 
 Na captura recebida foi possível observar:
 
 - título **Usuários e permissões**;
 - formulário **Convidar ou adicionar acesso**;
 - seletores de perfil e área de atuação;
-- seção **Acessos cadastrados** com um acesso real carregado;
-- ausência de mensagem de erro ou fallback referente a `ADMINISTRATION_QUERY_ERROR`;
+- seção **Acessos cadastrados** com acesso real carregado;
+- ausência de `ADMINISTRATION_QUERY_ERROR`;
 - foco visual aparente em um controle do formulário.
 
-O screenshot não será anexado ao GitHub porque contém identificador pessoal de conta. A documentação registra somente a evidência sanitizada necessária.
+O screenshot não foi anexado ao GitHub porque contém identificador pessoal de conta. A documentação registra somente a evidência sanitizada necessária.
 
 Na mesma rodada, o operador confirmou que abriram normalmente em navegação live autenticada no desktop:
 
@@ -101,76 +73,76 @@ Na mesma rodada, o operador confirmou que abriram normalmente em navegação liv
 
 Classificação: **smoke live autenticado desktop**. Isso comprova carregamento e navegação básicos no runtime hidratado, mas não substitui homologação de ações de negócio, teclado completo, tablet/mobile ou estados pós-ação.
 
+## Smoke live autenticado mobile — 2026-09-01
+
+Após o smoke desktop, o operador abriu o sistema em celular real e confirmou que **as superfícies testadas estavam abrindo normalmente também no mobile até aquele ponto**.
+
+Classificação: **smoke live autenticado mobile de carregamento/navegação**.
+
+O qualificativo “por enquanto” é preservado semanticamente: a evidência cobre o que foi percorrido naquele momento e não autoriza afirmar que todos os fluxos, componentes ou estados mobile foram testados.
+
+O smoke mobile comprova:
+
+- deployment real acessível no aparelho;
+- sessão legítima operando no contexto mobile;
+- abertura/navegação básica das superfícies percorridas sem regressão reportada pelo operador.
+
+Não comprova isoladamente:
+
+- drawer/menu em todos os estados;
+- dimensões de todos os touch targets autenticados;
+- ausência de overflow em todas as tabelas/formulários densos;
+- foco/ordem de teclado;
+- mutações e feedback pós-ação;
+- todos os estados loading/empty/error/success;
+- jornadas completas `lista → detalhe → ação → retorno`.
+
 ## Achados anteriores
 
 - **UX-51-001:** retorno da recuperação com target mínimo — corrigido no #167; HTTP/HTML + snapshot touch confirmam tratamento.
 - **UX-51-002:** erro de recuperação com feedback acessível — corrigido no #167; HTML + snapshot de erro confirmam tratamento.
 - **UX-51-003:** ações pequenas em acesso indisponível — corrigido no #167; HTML + snapshot touch confirmam tratamento.
 
-## Achado funcional descoberto por telemetria Production
+## UX-51-004 — Administração indisponível por drift de migrations
 
-### UX-51-004 — Administração indisponível por drift de migrations
+A telemetria Production revelou `/workspace/administracao/acessos` falhando com `ADMINISTRATION_QUERY_ERROR` porque Production estava exatamente duas migrations atrás do Git:
 
-- rota observada: `/workspace/administracao/acessos`;
-- fonte de evidência: telemetria/runtime errors do deployment Production;
-- sintoma: `ADMINISTRATION_QUERY_ERROR` repetido;
-- erro backend: PostgREST não encontrava `public.admin_list_organization_access(...)`;
-- impacto: a tela autenticada de Usuários/Permissões não conseguia carregar os acessos da Organization;
-- classificação: **funcional/backend dependency**, não problema visual.
+- `20260828130500_administration_access_management.sql`;
+- `20260828132500_administration_employee_identity.sql`.
 
-#### Causa
+O PR #175 aplicou exatamente essas migrations via `supabase db push` com allowlist fechada, sem seed/reset/repair/DDL ad hoc. O histórico remoto, RPCs, grants e trigger esperados foram confirmados read-only.
 
-Production estava exatamente duas migrations atrás do Git:
-
-- remoto terminava em `20260827195802`;
-- pendentes versionadas:
-  - `20260828130500_administration_access_management.sql`;
-  - `20260828132500_administration_employee_identity.sql`.
-
-#### Correção
-
-- PR #175 mergeado em `e7ff15366fec29728308dde8506397f4d68d2c39`;
-- CI PR #593 / run `33436348276`: **success**;
-- workflow one-shot `Production Migration Reconcile` #1 / run `33436481787`: **success**;
-- CI pós-merge #594 / run `33436481833`: **success**;
-- aplicação via `supabase db push` com allowlist exata das duas migrations;
-- nenhum seed/reset/repair/DDL ad hoc;
-- history remoto agora termina em `20260828132500`;
-- quatro RPCs administrativos, trigger e grants esperados confirmados read-only;
-- INSERT/UPDATE direto de `organization_memberships` continua negado a `authenticated`;
-- reconciliador one-shot removido após o uso.
-
-#### Estado de homologação
+### Estado de homologação
 
 **Backend corrigido e smoke live desktop revalidado.**
 
 Em 2026-09-01 o operador abriu `/workspace/administracao/acessos` com sessão legítima no browser real e a tela carregou normalmente. O erro anterior não reapareceu nessa evidência.
 
-Não alterar novamente schema/RPC dessa rota sem novo erro concreto. A rota só precisa reaparecer na matriz residual de tablet/mobile ou se houver regressão.
+Não alterar novamente schema/RPC dessa rota sem novo erro concreto.
 
 ## Matriz da Fase 51
 
 | Área | Desktop | Tablet | Mobile | Estado |
 | --- | --- | --- | --- | --- |
-| Entrada pública: Login/Recuperação/Acesso indisponível | snapshot estático | snapshot estático | snapshot estático | geometria/overflow/touch cobertos; live JS/foco ainda parcial |
+| Entrada pública: Login/Recuperação/Acesso indisponível | snapshot estático | snapshot estático | snapshot estático | geometria/overflow/touch públicos cobertos; live JS/foco parcial |
 | Convite/Nova senha/Bootstrap/Seleção de organização | parcial HTTP/HTML | parcial HTTP/HTML | parcial HTTP/HTML | exige estado/token/sessão legítimos para fluxos completos |
-| Navegação/Visão geral | smoke live autenticado | pendente | pendente | desktop abre normalmente; falta responsividade live e profundidade |
-| Administração | smoke live autenticado | pendente | pendente | `/administracao/acessos` revalidada no desktop após drift |
-| Cadastros | smoke live autenticado | pendente | pendente | abertura normal confirmada; ações profundas pendentes |
-| Estoque | smoke live autenticado | pendente | pendente | abertura normal confirmada; ações profundas pendentes |
-| Compras | smoke live autenticado | pendente | pendente | abertura normal confirmada; jornada completa pendente |
-| Financeiro | smoke live autenticado | pendente | pendente | abertura normal confirmada; jornada completa pendente |
-| Caixa | smoke live autenticado | pendente | pendente | abertura normal confirmada; jornada completa pendente |
+| Navegação/Visão geral | smoke live autenticado | pendente | smoke live autenticado | abertura normal em desktop/mobile; tablet e profundidade pendentes |
+| Administração | smoke live autenticado | pendente | smoke live autenticado geral | `/administracao/acessos` revalidada especificamente no desktop após drift |
+| Cadastros | smoke live autenticado | pendente | smoke live autenticado | abertura normal; ações profundas pendentes |
+| Estoque | smoke live autenticado | pendente | smoke live autenticado | abertura normal; ações profundas pendentes |
+| Compras | smoke live autenticado | pendente | smoke live autenticado | abertura normal; jornada completa pendente |
+| Financeiro | smoke live autenticado | pendente | smoke live autenticado | abertura normal; jornada completa pendente |
+| Caixa | smoke live autenticado | pendente | smoke live autenticado | abertura normal; jornada completa pendente |
 
-**A Fase 51 ainda não está integralmente homologada.** O smoke desktop reduz o bloqueio, mas ainda faltam evidências representativas tablet/mobile e jornadas profundas.
+**A Fase 51 ainda não está integralmente homologada.** Os smokes desktop/mobile reduzem o bloqueio, mas ainda faltam tablet e profundidade suficiente das jornadas/estados.
 
 ## Jornadas live ainda pendentes
 
+- tablet autenticado para as áreas principais;
+- drawer/menu mobile em estados representativos;
+- touch/overflow em componentes autenticados densos;
 - logout e troca/seleção de organização quando aplicável;
-- convite válido e nova senha com token legítimo;
-- estados adicionais legítimos de bootstrap;
-- sidebar/drawer em mobile;
-- tablet/mobile autenticados para as áreas principais;
+- convite válido e nova senha com token legítimo quando necessários;
 - fluxos `lista → detalhe → ação → retorno` representativos;
 - mutações seguras e feedback pós-ação;
 - loading/empty/error/success;
@@ -184,9 +156,9 @@ Não alterar Production para fabricar prova.
 1. consultar GitHub para estado real;
 2. conferir read-only a paridade de migrations Production ↔ Git; não repetir #175 sem drift novo;
 3. observar somente deployment automático;
-4. não repetir evidência pública ou smoke desktop se o runtime não mudou;
-5. obter evidência tablet/mobile com sessão legítima;
-6. validar drawer, touch, overflow, foco/teclado e tabelas/formulários densos;
+4. não repetir evidência pública nem smokes desktop/mobile se o runtime não mudou;
+5. obter evidência **tablet** com sessão legítima;
+6. aprofundar drawer, touch, overflow, foco/teclado e tabelas/formulários densos;
 7. percorrer jornadas profundas representativas quando seguro;
 8. validar loading/empty/error/success e feedback pós-ação;
 9. mutar somente em estado seguro;
