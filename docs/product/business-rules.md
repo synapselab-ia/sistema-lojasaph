@@ -1,13 +1,13 @@
-# Regras de Negócio — Evidências das Planilhas
+# Regras de Negócio — Evidências das Planilhas e Decisões Validadas
 
-Data da análise inicial: 2026-08-17
-
-Este documento separa o que pode ser observado diretamente nas planilhas do que ainda depende de confirmação do cliente.
+Data da análise inicial: 2026-08-17  
+Última validação de negócio: 2026-09-03
 
 ## Níveis de confiança
 
 - **Confirmada pela estrutura/fórmula**: regra implementada explicitamente na planilha atual.
 - **Evidência forte**: comportamento aparece repetidamente, mas o significado empresarial precisa ser confirmado.
+- **Decisão validada**: resposta explicitamente fornecida pelo operador/cliente.
 - **Pendente**: não existe informação suficiente para afirmar a regra.
 
 ---
@@ -36,11 +36,13 @@ Tabatinga e Capricórnio são origem/destino de movimentações. Há também ref
 
 Os lançamentos atuais utilizam texto livre e apresentam variações de grafia. No novo sistema o item operacional deve possuir identificador estável.
 
-## BR-ITEM-002 — Catálogo de venda e item de estoque podem ser conceitos distintos
+## BR-ITEM-002 — Produto de venda/POS não entra no primeiro go-live
 
-**Nível:** pendente de validação.
+**Nível:** decisão validada em 2026-09-03.
 
-O catálogo `Gabarito` e os itens das retiradas não apresentam correspondência exata de descrições na análise. Não unificar automaticamente os dois conjuntos.
+O operador decidiu adiar o conceito próprio de produto de venda/POS no Lojasaph. O PDV Legal permanece como sistema de vendas. A distinção conceitual entre produto vendido e item de estoque pode ser retomada se a importação do PDV exigir mapeamento explícito.
+
+Isso não autoriza associar automaticamente o histórico `Gabarito` a `stock_items`.
 
 ## BR-ITEM-003 — Aliases devem ser suportados na migração
 
@@ -48,80 +50,83 @@ O catálogo `Gabarito` e os itens das retiradas não apresentam correspondência
 
 Variações de grafia e abreviações precisam ser mapeadas para um item canônico sem apagar o texto histórico de origem.
 
+## BR-ITEM-004 — Ficha técnica/receita adiada
+
+**Nível:** decisão validada em 2026-09-03.
+
+Ficha técnica/BOM e consumo teórico derivado de vendas não bloqueiam o primeiro go-live. Retomar somente se surgir necessidade operacional explícita.
+
 ---
 
-# Retiradas, estoque e transferências
+# Retiradas, estoque, transferências e empréstimos
 
 ## BR-STK-001 — Custo total de uma retirada
 
 **Nível:** confirmada pela fórmula.
 
-Na planilha de retiradas por setor:
-
 `custo_total = custo_unitario × quantidade`.
 
-No sistema o custo deve preferencialmente ser derivado do estoque/lote/regra de custeio, em vez de digitado manualmente em cada retirada.
+No sistema o custo deve ser derivado da regra de custeio aprovada, e não digitado arbitrariamente em cada retirada.
 
 ## BR-STK-002 — Total mensal atual
 
 **Nível:** confirmada pela fórmula.
 
-A planilha soma o custo total das retiradas do setor no mês.
-
-No sistema isso deve ser uma consulta por período, e não um campo armazenado em aba mensal.
+A planilha soma o custo total das retiradas do setor no mês. No sistema isso deve ser consulta por período, não campo armazenado em aba mensal.
 
 ## BR-STK-003 — Transferência precisa de origem e destino
 
 **Nível:** evidência forte.
 
-Movimentos Tabatinga → Capricórnio e retornos Capricórnio → Tabatinga demonstram necessidade de origem e destino explícitos.
+Movimentos Tabatinga → Capricórnio e retornos demonstram necessidade de origem e destino explícitos.
 
 ## BR-STK-004 — Retorno deve poder ser relacionado ao movimento original
 
 **Nível:** evidência forte.
 
-Hoje retirada e devolução são independentes. O sistema deve permitir relacionar retorno/devolução a uma transferência ou empréstimo anterior para saber quantidade pendente.
+O sistema deve relacionar retorno/devolução ao movimento anterior quando aplicável.
 
 ## BR-STK-005 — Existem motivos diferentes de movimentação
 
 **Nível:** evidência forte.
 
-As observações evidenciam pelo menos:
-
-- abastecimento/retirada operacional;
-- transferência entre unidades;
-- devolução;
-- empréstimo;
-- evento;
-- proximidade de vencimento;
-- item vencido/substituído;
-- acerto já pago/comanda.
-
-Esses motivos não devem depender apenas de observação textual.
+As observações evidenciam abastecimento/retirada, transferência, devolução, empréstimo, evento, proximidade de vencimento, vencimento/substituição e acertos. Esses motivos não devem depender apenas de observação textual.
 
 ## BR-STK-006 — Consumíveis e itens reutilizáveis coexistem
 
 **Nível:** evidência forte.
 
-As movimentações incluem alimentos/bebidas e também mesas, cadeiras, guarda-sóis e outros bens reutilizáveis.
-
-O modelo deverá classificar o tipo do item ou definir tratamento específico para bens retornáveis.
+As movimentações incluem alimentos/bebidas e bens reutilizáveis como mesas, cadeiras e guarda-sóis.
 
 ## BR-STK-007 — Saldo/acerto `em haver`
 
-**Nível:** confirmada pela fórmula quanto ao cálculo; significado empresarial pendente.
+**Nível:** confirmada pela fórmula quanto ao cálculo; significado histórico ainda pendente.
 
-A planilha calcula:
-
-`em_haver = valor_retirado - valor_devolvido`.
-
-É necessário confirmar se isso representa cobrança interna, crédito entre operações, controle informal ou apenas referência gerencial.
+A planilha calcula `em_haver = valor_retirado - valor_devolvido`. A regra de empréstimo aprovada não autoriza assumir que toda ocorrência histórica de `em haver` representa exatamente o mesmo processo.
 
 ## BR-STK-008 — Checkbox sem título
 
 **Nível:** pendente.
 
 Existe coluna booleana sem cabeçalho ao lado da data em retirada e devolução. Seu significado deve ser confirmado antes da migração.
+
+## BR-STK-009 — Empréstimo é processo distinto com restituição física e/ou monetária
+
+**Nível:** decisão validada em 2026-09-03.
+
+O empréstimo deve registrar quantidade e valor do que foi emprestado e manter saldo pendente. A restituição pode ocorrer total ou parcialmente por:
+
+- retorno físico ao estoque;
+- restituição em valor;
+- combinação das duas formas.
+
+As restituições permanecem relacionadas ao empréstimo original e não apagam o histórico. O valor/custo de referência depende da regra final de custeio. Implementação: Issue #183.
+
+## BR-STK-010 — Custeio é obrigatório, método ainda não aprovado
+
+**Nível:** decisão parcialmente validada em 2026-09-03.
+
+O operador confirmou que o sistema precisa de custeio. Ainda falta escolher explicitamente o método. Não promover custo médio, última compra ou lote específico a regra empresarial apenas porque existe comportamento técnico atual.
 
 ---
 
@@ -131,49 +136,47 @@ Existe coluna booleana sem cabeçalho ao lado da data em retirada e devolução.
 
 **Nível:** evidência forte.
 
-O template registra Produto + Quantidade + Validade. Portanto um mesmo item pode necessitar múltiplos registros de validade.
+O mesmo item pode necessitar múltiplos registros de validade.
 
 ## BR-EXP-002 — Validade deve ser modelada por lote/entrada/local
 
 **Nível:** decisão de projeto derivada da necessidade.
 
-Não armazenar uma única validade diretamente no cadastro do item. Usar lote ou registro equivalente associado a quantidade e local.
+Não armazenar uma única validade diretamente no cadastro do item.
 
 ## BR-EXP-003 — Movimentação por proximidade de vencimento
 
 **Nível:** evidência forte.
 
-O controle de transferências contém registros de itens enviados a outro local por estarem próximos da validade. O sistema deve preservar motivo e rastreabilidade dessa movimentação.
+O sistema deve preservar motivo e rastreabilidade de movimentações por proximidade de vencimento.
+
+## BR-EXP-004 — FEFO aprovado
+
+**Nível:** decisão validada em 2026-09-03.
+
+Quando houver lotes comparáveis, a saída deve priorizar o lote que vence primeiro. A implementação técnica existente que usa FEFO deixa de ser apenas decisão interna e passa a refletir regra empresarial aprovada.
 
 ---
 
-# Caixa
+# Caixa e vendas
 
 ## BR-CASH-001 — Faturamento diário bruto
 
-**Nível:** confirmada pela fórmula.
+**Nível:** confirmada pela fórmula histórica.
 
-Nas abas mensais utilizadas:
-
-`faturamento_bruto = credito + debito + pix + dinheiro`.
-
-Voucher existe no MODELO, mas não nas abas mensais analisadas e precisa de confirmação.
+Nas abas mensais analisadas: `faturamento_bruto = credito + debito + pix + dinheiro`. Evoluções devem distinguir faturamento de entrada física na gaveta.
 
 ## BR-CASH-002 — Faturamento líquido de taxas
 
 **Nível:** confirmada pela fórmula atual.
 
-A planilha aplica taxas percentuais sobre crédito e débito e considera Pix e dinheiro integralmente.
-
-No sistema as taxas devem ser configuráveis e versionadas; não hardcoded em código ou lançamento.
+Taxas devem ser configuráveis/versionadas; não hardcoded.
 
 ## BR-CASH-003 — Encerramento de dinheiro
 
 **Nível:** confirmada pela fórmula atual.
 
 `encerramento = dinheiro + fundo_de_caixa + entradas - sangrias`.
-
-É necessário validar se esse valor representa caixa esperado ou caixa efetivamente contado.
 
 ## BR-CASH-004 — Fundo inicial precisa ser registrado por sessão/data
 
@@ -185,19 +188,33 @@ O fundo varia por dia e é parte do cálculo de encerramento.
 
 **Nível:** decisão de projeto derivada da estrutura atual.
 
-Em vez de apenas totais diários, o sistema deve permitir registrar movimentos de entrada/sangria com valor, motivo, horário e responsável, agregando-os no fechamento.
+Registrar movimentos de entrada/sangria com valor, motivo, horário e responsável.
 
-## BR-CASH-006 — Consumo de funcionários é separado do faturamento normal
+## BR-CASH-006 — Consumo de funcionários é venda com desconto em folha
 
-**Nível:** evidência forte; tratamento financeiro pendente.
+**Nível:** decisão validada em 2026-09-03.
 
-A planilha possui seção própria de consumo de funcionários e o utiliza em totais mensais. É necessário confirmar se consumo é cobrado, descontado, considerado venda ou apenas controle gerencial.
+Consumo de funcionário:
+
+- é venda, não cortesia;
+- deve ser atribuível ao funcionário;
+- compõe faturamento;
+- não é entrada imediata na gaveta/meio de pagamento;
+- gera valor que será descontado no processo de folha.
+
+O Lojasaph não se torna sistema de folha/RH. Deve fornecer registro e informação rastreável para o processo externo. Implementação: Issue #184.
 
 ## BR-CASH-007 — Fechamento profissional deve ter esperado x contado
 
 **Nível:** decisão de projeto.
 
-O novo sistema deve separar valor esperado do valor informado/contado para gerar divergência auditável.
+Separar valor esperado do contado para gerar divergência auditável.
+
+## BR-CASH-008 — PDV Legal permanece como sistema de vendas
+
+**Nível:** decisão validada em 2026-09-03.
+
+O primeiro go-live não exige POS próprio no Lojasaph. Deve-se estudar intercâmbio de dados com o PDV Legal. A direção inicial é importação por exportações oficiais Excel/CSV; integração direta/API só pode ser adotada se houver mecanismo oficial comprovado. Estudo: Issue #185.
 
 ---
 
@@ -207,81 +224,67 @@ O novo sistema deve separar valor esperado do valor informado/contado para gerar
 
 **Nível:** evidência forte.
 
-O campo atualmente chamado `Descrição` contém setores como Cozinha, Empório e Quiosque. No sistema deve ser relacionamento com setor/centro operacional.
+O campo histórico `Descrição` contém setores. No sistema deve ser relacionamento com setor/centro operacional.
 
 ## BR-FIN-002 — Nota/documento e parcela são entidades diferentes
 
 **Nível:** decisão de projeto derivada da estrutura atual.
 
-Uma obrigação pode possuir múltiplas parcelas. Dados do fornecedor/documento não devem ser repetidos conceitualmente como se cada parcela fosse uma nota independente.
+Uma obrigação pode possuir múltiplas parcelas.
 
 ## BR-FIN-003 — Parcela possui posição e total
 
 **Nível:** confirmada visualmente pela planilha.
 
-A coluna Parcela exibe valores como `1/3`, `2/3`, `3/3`.
-
-No sistema armazenar explicitamente número da parcela e quantidade total de parcelas.
+Armazenar explicitamente número e quantidade total de parcelas.
 
 ## BR-FIN-004 — Status financeiro é derivado
 
 **Nível:** confirmada pelas fórmulas.
 
-O estado atual é determinado principalmente por:
-
-- vencimento;
-- existência de data de pagamento;
-- situação especial `checar data`.
-
-O sistema deve calcular status consistentes, evitando edição manual do estado quando ele puder ser derivado.
+Pago, vencido e a vencer devem ser derivados quando possível.
 
 ## BR-FIN-005 — Pago
 
 **Nível:** confirmada pelas fórmulas atuais, sujeita a refinamento.
 
-A presença de data de pagamento é utilizada como principal evidência de que a parcela foi paga.
-
-No sistema, pagamento deve ser uma entidade/evento explícito. A data não deve ser o único mecanismo de prova.
+Pagamento deve ser evento explícito, não apenas uma data sobrescrita.
 
 ## BR-FIN-006 — Valor nominal e valor efetivamente pago
 
 **Nível:** confirmada pela estrutura.
 
-Existem campos distintos para Valor e Valor Pago. O sistema deve preservar os dois quando houver diferença.
+Preservar os dois quando houver diferença.
 
 ## BR-FIN-007 — Diferença financeira
 
 **Nível:** evidência forte; causa pendente.
 
-Há cálculo baseado na diferença entre valor pago e valor nominal. Essa diferença pode representar juros, multa, desconto ou ajuste. O motivo precisa ser estruturado no novo sistema após validação.
+A diferença pode representar juros, multa, desconto ou ajuste; não classificar automaticamente sem regra.
 
 ## BR-FIN-008 — Referência de pagamento
 
 **Nível:** evidência forte.
 
-O campo `Pix/Boleto` contém sequências compatíveis com referências/códigos de pagamento. O sistema deve separar método de pagamento de chave, linha digitável, código ou outra instrução.
+Separar método de pagamento de chave/linha/código/instrução.
 
 ## BR-FIN-009 — Indicadores gerenciais
 
 **Nível:** confirmada pelas fórmulas/dashboard.
 
-O sistema deve conseguir calcular, por período e setor:
-
-- total pago;
-- total pago no ano;
-- total pendente;
-- total atrasado;
-- valores a vencer em janela configurável;
-- distribuição por status;
-- pagamentos por setor;
-- pagamentos por fornecedor;
-- pagamentos por mês.
+O sistema deve calcular total pago, pendente, atrasado, a vencer e distribuições gerenciais por período/escopo quando os dados permitirem.
 
 ## BR-FIN-010 — Dashboard não é fonte de dados
 
 **Nível:** decisão de projeto.
 
-Dashboard e visualizações devem ser sempre derivados das entidades transacionais.
+Dashboard deve derivar de entidades transacionais.
+
+## BR-FIN-011 — Pagamento parcial/múltiplo não é requisito do primeiro go-live
+
+**Nível:** decisão validada em 2026-09-03.
+
+A operação inicial não exige UX/regra específica para pagamentos parciais ou múltiplos por parcela. A capacidade técnica existente pode permanecer sem ser expandida por inércia.
 
 ---
 
@@ -291,31 +294,23 @@ Dashboard e visualizações devem ser sempre derivados das entidades transaciona
 
 **Nível:** confirmada pela planilha.
 
-Há fornecedor com mais de um contato registrado. Contato/vendedor deve ser entidade filha ou coleção, não coluna única fixa.
+Contato/vendedor deve ser coleção, não coluna única fixa.
 
 ## BR-SUP-002 — Condições comerciais do fornecedor
 
 **Nível:** evidência forte.
 
-O modelo prevê:
-
-- pedido mínimo;
-- dia de pedido;
-- dia de entrega;
-- forma/condição de pagamento;
-- observações.
+O modelo prevê pedido mínimo, dias de pedido/entrega, condição de pagamento e observações.
 
 ## BR-SUP-003 — Fornecedor pode fornecer múltiplos itens
 
 **Nível:** confirmada pela estrutura do modelo.
 
-O modelo prevê lista de produtos, medidas, quantidades e preços por fornecedor.
-
 ## BR-SUP-004 — Preço de fornecedor precisa de histórico
 
 **Nível:** decisão de projeto.
 
-Evitar sobrescrever apenas o preço atual. Registrar vigência/histórico para análise de custo e comparação.
+Evitar sobrescrever apenas o preço atual; preservar vigência/histórico.
 
 ---
 
@@ -323,26 +318,16 @@ Evitar sobrescrever apenas o preço atual. Registrar vigência/histórico para a
 
 ## BR-SYS-001 — Não usar texto livre quando existe entidade canônica
 
-Aplicável a:
-
-- unidade;
-- setor;
-- item;
-- fornecedor;
-- funcionário/responsável;
-- motivo de movimentação;
-- forma de pagamento.
-
-Texto livre continua permitido em observações.
+Aplicável a unidade, setor, item, fornecedor, funcionário/responsável, motivo de movimentação e forma de pagamento. Texto livre continua permitido em observações.
 
 ## BR-SYS-002 — Preservar origem da migração
 
-Todo registro migrado deve poder ser rastreado para arquivo/aba/linha de origem através de metadados de importação, sem exigir que a planilha real permaneça versionada no GitHub.
+Todo registro migrado deve poder ser rastreado para arquivo/aba/linha de origem por metadados de importação.
 
 ## BR-SYS-003 — Registros operacionais críticos não devem ser apagados silenciosamente
 
-Movimentações de estoque, pagamentos e fechamentos devem usar cancelamento/estorno quando aplicável e manter trilha de auditoria.
+Movimentações de estoque, empréstimos, pagamentos e fechamentos devem usar cancelamento/estorno/restituição quando aplicável e manter trilha de auditoria.
 
 ## BR-SYS-004 — Regras calculáveis não devem depender da interface
 
-Cálculos de estoque, status financeiro, permissões e fechamento devem ser aplicados no domínio/backend/banco conforme a arquitetura evoluir.
+Cálculos de estoque, custeio, status financeiro, permissões e fechamento devem ser aplicados no domínio/backend/banco conforme a arquitetura.
