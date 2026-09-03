@@ -2,94 +2,68 @@
 
 ## Estado
 
-A Fase 51 / #142 concluiu o gate de consolidação/UX dentro das limitações explicitamente aceitas pelo operador.
+Fase 51 / #142 e Fase 52 / #180 concluídas. A frente ativa é **Fase 53 / #181 — decisões de negócio e perfis reais**.
 
-A Fase 52 / #180 executou a reconciliação funcional final requisito por requisito. Artefato: `docs/qa/final-functional-reconciliation.md`.
+Em 2026-09-03 o operador decidiu:
 
-Resultado da reconciliação:
+- `REQ-ITEM-004` produto de venda/POS: adiar;
+- `REQ-ITEM-005` ficha técnica: adiar;
+- `REQ-STK-007` empréstimo: necessário, com restituição física e/ou monetária — #183;
+- `REQ-STK-010` custeio: necessário, método ainda não escolhido;
+- `REQ-EXP-004` FEFO: sim;
+- `REQ-FIN-004` pagamento parcial/múltiplo: não necessário para o primeiro go-live;
+- `REQ-CASH-007` consumo de funcionários: venda com desconto em folha — #184;
+- `REQ-CASH-008`: PDV Legal continua como PDV e deve ser estudada importação/exportação — #185.
 
-- nenhum gap funcional P0/P1 novo e inequívoco no núcleo;
-- desktop/mobile possuem evidência live representativa;
-- tablet live está deferido por decisão explícita do operador, não homologado;
-- `/workspace/administracao/acessos` permanece revalidada após a correção do drift de migrations;
-- migração/cutover e production-readiness permanecem marcos separados;
-- nenhum requisito PENDING foi resolvido por inferência.
-
-> Regra: consultar GitHub para HEAD/Issues/PRs/branches/CI no início. Não tratar SHAs documentais como HEAD permanente.
+Detalhes: `docs/qa/fase53-business-decisions.md`.
 
 ## NEXT_ACTION objetiva
 
-### **Executar Fase 53 / Issue #181 — decisões de negócio e perfis reais para conclusão**
+### **Resolver Q-008 — método final de custeio**
 
-A próxima etapa é de **conclusão de negócio**, não de expansão técnica automática.
+Não implementar #183 antes desta decisão, porque o empréstimo precisa registrar valor e a fonte desse valor depende da regra de custeio.
 
-## 1. PENDINGs
+## Decisão necessária
 
-Revisar somente quanto à necessidade para a operação/cutover escolhidos:
+Apresentar ao operador opções em linguagem operacional e obter escolha explícita entre, no mínimo:
 
-- `REQ-ITEM-004` — produto de venda/POS;
-- `REQ-ITEM-005` — ficha técnica/receita;
-- `REQ-STK-007` — empréstimo;
-- `REQ-STK-010` — método final de custeio;
-- `REQ-EXP-004` — FEFO como regra de produto aprovada;
-- `REQ-FIN-004` — pagamento parcial/múltiplo;
-- `REQ-CASH-007` — consumo de funcionários;
-- `REQ-CASH-008` — integração com vendas/POS.
+1. **custo médio ponderado/móvel** — cada entrada recompõe o custo médio do saldo;
+2. **última compra** — valor de referência passa a ser o custo mais recente;
+3. **custo do lote específico** — cada saída/valuation depende do lote efetivamente movimentado;
+4. outra regra real informada pelo operador/Asaph.
 
-Para cada item, uma das saídas válidas é:
+Explicar impactos em:
 
-1. decisão explícita suficiente para implementação;
-2. formalmente adiado para depois do go-live;
-3. formalmente descartado para a operação escolhida;
-4. permanece pendente porque ainda não é necessário decidir.
+- valor do estoque;
+- retiradas/perdas;
+- empréstimos e restituições;
+- margem/relatórios;
+- complexidade operacional.
 
-**Não inferir a resposta a partir do código existente.** Infraestrutura técnica compatível não equivale a decisão de negócio.
+**Não inferir custo médio a partir do código existente.**
 
-## 2. Q-022 — pessoas e perfis reais
+## Depois da decisão de custeio
 
-Mapear quem precisa operar o sistema e quais capacidades são necessárias.
+1. atualizar `requirements.md`, `business-rules.md` e ADR se necessário;
+2. executar Issue #183 em branch funcional própria;
+3. manter CI/migrations/RLS/documentação consistentes;
+4. avançar Issue #185 obtendo amostra ou estrutura de exportação real do PDV Legal antes de criar importador;
+5. usar o resultado de #185 para definir se #184 recebe lançamentos manuais, importados ou ambos;
+6. concluir Q-022 — mapeamento de pessoas/cargos reais — antes de preparar usuários do go-live.
 
-Os papéis técnicos atuais — `owner`, `admin`, `manager`, `finance`, `purchases`, `inventory`, `cashier`, `viewer` — são boundaries já implementados, mas não devem ser tratados automaticamente como cargos reais.
+## PDV Legal — estado do estudo
 
-O objetivo é chegar a um mapeamento operacional suficiente para preparar usuários/escopos do go-live sem enfraquecer RLS ou criar role nova por conveniência.
+Documentação oficial pública consultada em 2026-09-03 comprova exportação Excel de vendas e listagens/cadastros e integrações oficiais com alguns ERPs. Não há evidência suficiente para declarar API aberta customizada.
 
-## 3. Triagem de `open-questions.md`
+Direção: começar por **Excel/CSV + staging/dry-run/idempotência**; integração direta apenas se mecanismo oficial for confirmado.
 
-Para cada pergunta:
+## Guardrails
 
-- se já existe resposta comprovada em requisito/regra/ADR/código homologado, migrar/registrar a decisão na fonte apropriada e arquivar a pergunta;
-- se continua relevante, manter aberta;
-- se se tornou irrelevante para a operação escolhida, registrar adiamento/arquivamento;
-- não preencher resposta apenas para limpar a lista.
-
-## 4. Quando uma decisão exigir código
-
-Não implementar silenciosamente dentro da #181.
-
-1. escrever a regra aprovada;
-2. abrir a menor Issue funcional correspondente;
-3. implementar em branch própria;
-4. validar/CI/merge;
-5. retornar à #181 para atualizar a conclusão de negócio.
-
-## 5. O que não fazer agora
-
-- não reabrir a Fase 51 ou repetir smokes sem regressão concreta;
-- não pedir tablet enquanto a decisão de deferimento permanecer válida;
-- não fabricar usuário/dado/invite Production para validar hipótese;
-- não iniciar migração real antes de decisões necessárias e ambiente/dados representativos;
+- não reabrir Fase 51/tablet sem nova necessidade ou regressão;
+- não remover capacidade técnica de múltiplos pagamentos apenas porque não é requisito inicial;
+- não criar POS/ficha técnica enquanto estiverem deferidos;
+- não transformar consumo de funcionários em módulo completo de folha/RH;
+- não usar scraping do PDV como integração de produção;
+- não fabricar dados Production;
 - não retomar #75/#121;
-- não executar deploy Vercel manual rotineiro.
-
-## 6. Depois da conclusão de negócio
-
-Promover, nesta ordem:
-
-1. homologação operacional com dados representativos em ambiente seguro;
-2. preparação das fontes finais e dry-run de migração;
-3. importação/cutover e reconciliação;
-4. somente então production-readiness, incluindo #75/#121 e `REQ-PLAT-005`.
-
-## Guardrails permanentes
-
-GitHub é fonte de verdade. Backend/RLS são boundaries. Nenhum secret no Git/docs/chat. Nenhuma regra de negócio por inferência. Nenhuma prova Production artificial.
+- não fazer deploy Vercel manual rotineiro.
