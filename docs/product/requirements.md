@@ -1,7 +1,7 @@
 # Requisitos Iniciais — Sistema Lojasaph
 
-Data: 2026-08-17
-Status: inicial, derivado das planilhas e do plano do produto. Requisitos dependentes das questões abertas permanecem marcados como condicionais.
+Data: 2026-08-17  
+Última reconciliação de negócio: 2026-09-03
 
 ## Convenções
 
@@ -9,6 +9,7 @@ Status: inicial, derivado das planilhas e do plano do produto. Requisitos depend
 - `SHOULD`: importante, pode entrar após o núcleo.
 - `COULD`: evolução futura.
 - `PENDING`: depende de validação do cliente.
+- `DEFERRED`: decisão explícita de não bloquear o primeiro go-live; pode ser retomado depois.
 
 ---
 
@@ -40,10 +41,10 @@ Status: inicial, derivado das planilhas e do plano do produto. Requisitos depend
 **SHOULD** — Permitir EAN/código de barras e atributos fiscais quando aplicáveis.
 
 ## REQ-ITEM-004 — Produto de venda separado
-**PENDING** — Criar conceito separado de produto de venda/POS se Q-006 confirmar distinção em relação a itens de estoque.
+**DEFERRED para o primeiro go-live** — O operador decidiu em 2026-09-03 não criar agora um conceito próprio de produto de venda/POS no Lojasaph. O PDV Legal permanece como sistema de vendas. Reavaliar se a importação do PDV exigir mapeamento explícito entre produto vendido e item de estoque.
 
 ## REQ-ITEM-005 — Ficha técnica/receita
-**COULD/PENDING** — Relacionar produto vendido a insumos apenas se houver necessidade de consumo teórico por vendas.
+**DEFERRED para o primeiro go-live** — Não bloquear a implantação inicial por ficha técnica/BOM ou consumo teórico derivado de vendas. Retomar somente se houver necessidade operacional explícita.
 
 ---
 
@@ -68,7 +69,7 @@ Status: inicial, derivado das planilhas e do plano do produto. Requisitos depend
 **MUST** — Permitir relacionar devolução a movimento anterior quando aplicável.
 
 ## REQ-STK-007 — Empréstimo
-**PENDING** — Controlar empréstimo e quantidade pendente de retorno se Q-005 confirmar processo distinto.
+**MUST** — Empréstimo é processo distinto de transferência. Deve registrar quantidade e valor do que foi emprestado e permitir restituição total ou parcial por retorno físico ao estoque, por valor, ou por combinação das duas formas, preservando saldo pendente e histórico auditável. A fonte do valor unitário depende de `REQ-STK-010`. Implementação: Issue #183.
 
 ## REQ-STK-008 — Perdas e vencimentos
 **MUST** — Registrar baixa por perda, quebra, vencimento e outros motivos configurados.
@@ -77,7 +78,7 @@ Status: inicial, derivado das planilhas e do plano do produto. Requisitos depend
 **MUST** — Permitir contagem física, comparação com saldo e geração auditável de ajuste.
 
 ## REQ-STK-010 — Custeio
-**PENDING** — Definir método de custeio após Q-008.
+**MUST; método ainda PENDING** — O operador confirmou que o sistema precisa de custeio. O método final ainda deve ser escolhido explicitamente entre custo médio, última compra, lote específico ou outra regra comprovada. Não inferir o método a partir da implementação atual.
 
 ## REQ-STK-011 — Estoque mínimo
 **SHOULD** — Permitir estoque mínimo e alertas de reposição.
@@ -96,7 +97,7 @@ Status: inicial, derivado das planilhas e do plano do produto. Requisitos depend
 **SHOULD** — Alertar lotes vencidos e próximos do vencimento em janelas configuráveis.
 
 ## REQ-EXP-004 — FEFO
-**PENDING** — Sugerir lote que vence primeiro se Q-019 confirmar a regra.
+**MUST** — Quando houver lotes comparáveis, a saída deve priorizar o lote que vence primeiro. Decisão aprovada pelo operador em 2026-09-03.
 
 ---
 
@@ -137,7 +138,7 @@ Status: inicial, derivado das planilhas e do plano do produto. Requisitos depend
 **MUST** — Pagamento deve ser evento explícito, com data e valor.
 
 ## REQ-FIN-004 — Pagamento parcial/múltiplo
-**PENDING** — Cardinalidade final depende de Q-014.
+**DEFERRED / não necessário para o primeiro go-live** — O operador informou em 2026-09-03 que pagamento parcial/múltiplo não é necessidade da operação inicial. A capacidade técnica existente de múltiplos eventos não precisa ser removida, mas não deve gerar expansão funcional por inércia.
 
 ## REQ-FIN-005 — Diferenças financeiras
 **MUST** — Permitir preservar diferença entre valor nominal e valor pago; classificação como juros/multa/desconto/ajuste será refinada após Q-015.
@@ -177,10 +178,10 @@ Status: inicial, derivado das planilhas e do plano do produto. Requisitos depend
 **MUST** — Registrar valor esperado, contado e divergência.
 
 ## REQ-CASH-007 — Consumo de funcionários
-**PENDING** — Estrutura e impacto financeiro dependem de Q-009.
+**MUST** — Consumo de funcionário é venda atribuída ao funcionário, cujo valor é descontado na folha. Deve compor faturamento sem ser tratado como entrada imediata na gaveta/meio de pagamento e deve fornecer informação rastreável para o processo externo de folha. O Lojasaph não se torna sistema de folha/RH por essa regra. Implementação: Issue #184.
 
 ## REQ-CASH-008 — Integração com vendas
-**PENDING** — Escopo depende de Q-007.
+**SHOULD / estudo aprovado** — O PDV Legal permanece como sistema de vendas. O Lojasaph deve estudar importação/exportação de dados, preferencialmente por arquivos oficiais (Excel/CSV) enquanto não houver integração/API oficialmente comprovada. Não criar POS próprio nem integração em tempo real por inferência. Estudo: Issue #185.
 
 ---
 
@@ -225,7 +226,7 @@ Status: inicial, derivado das planilhas e do plano do produto. Requisitos depend
 # Plataforma e confiabilidade
 
 ## REQ-PLAT-001 — Responsivo
-**MUST** — Interface deve funcionar em desktop, tablet e celular.
+**MUST** — Interface deve funcionar em desktop, tablet e celular. Tablet live permanece deferido por decisão operacional até surgir necessidade real.
 
 ## REQ-PLAT-002 — Proteção contra duplicidade
 **MUST** — Operações críticas devem tolerar retry e evitar submissão duplicada.
@@ -270,12 +271,11 @@ Status: inicial, derivado das planilhas e do plano do produto. Requisitos depend
 
 Os seguintes pontos não devem ser assumidos como aprovados sem fase específica:
 
-- Supabase como fornecedor definitivo;
-- integração com POS/PDV;
-- emissão fiscal;
-- folha/RH;
+- emissão fiscal pelo Lojasaph;
+- folha/RH completa;
 - contabilidade completa;
 - IA dentro do produto;
 - WhatsApp;
 - modo offline completo;
-- aplicativo Android/iOS nativo.
+- aplicativo Android/iOS nativo;
+- integração direta/API com PDV Legal sem mecanismo oficial comprovado.
