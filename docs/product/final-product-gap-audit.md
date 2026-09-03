@@ -1,153 +1,123 @@
 # Auditoria final de gaps — Sistema Lojasaph
 
 Data inicial: 2026-08-31  
-Última atualização: 2026-09-01  
+Última atualização: 2026-09-03  
 Status: **fonte de verdade para a fila de fechamento pós-conclusão funcional**
 
-## Objetivo
+## Estado executivo
 
-Distinguir quatro marcos diferentes:
+A Fase 51 concluiu a consolidação/UX e a Fase 52 concluiu a reconciliação funcional do núcleo sem novo gap P0/P1 inequívoco.
 
-1. conclusão funcional do produto;
-2. conclusão de negócio;
-3. go-live/cutover;
-4. production-ready.
+O sistema **ainda não é 100%, go-live nem production-ready**: restam conclusão de negócio, implementações aprovadas, homologação com dados representativos, migração/cutover e proteção final de Production.
 
-CI verde, backend implementado ou existência de página isolada nunca significam `100%`.
+Tablet live permanece deferido por decisão explícita do operador; não registrar como homologado nem reabrir por inércia.
 
-## Estado executivo atual
+## Marco 2 — conclusão de negócio / Fase 53
 
-### Marco 1 — conclusão funcional do produto: **atingido dentro das limitações declaradas**
+Issue guarda-chuva: **#181**.
 
-A Fase 51 consolidou o produto e fechou o gate UX representativo:
+Decisões de 2026-09-03:
 
-- runtime legado `/cadastros/*` neutralizado;
-- telas auxiliares de auth/contexto consolidadas;
-- arquitetura de informação, design system e áreas operacionais integrados;
-- desktop e mobile com evidência live autenticada;
-- profundidade representativa lista → detalhe → retorno confirmada normal pelo operador em Produtos, Compras, Financeiro e Caixa;
-- `/workspace/administracao/acessos` revalidada depois da correção do drift de migrations;
-- nenhum P0/P1 conhecido sem tratamento.
+### Adiados para o primeiro go-live
 
-Tablet live não foi homologado: o operador informou que nem ele nem Asaph dispõem do dispositivo e **aceitou explicitamente deferir essa evidência por enquanto**. Isso é limitação aceita, não prova positiva. Reabrir se tablet se tornar necessário antes do corte/production-readiness.
-
-A Fase 52 / #180 executou a reconciliação completa dos 70 requisitos. Resultado em `docs/qa/final-functional-reconciliation.md`:
-
-> **nenhum gap funcional P0/P1 novo e inequívoco foi encontrado no núcleo do produto.**
-
-Isso não conclui negócio, dados, cutover ou proteção final de Production.
-
-## Histórico dos antigos gaps P0/P1
-
-### Runtime legado `/cadastros/*` — **tratado**
-
-Neutralizado na Fase 51 por redirects seguros para o workspace oficial. Não reabrir sem regressão concreta.
-
-### Telas auxiliares — **tratadas no nível de produto atual**
-
-`/auth/atualizar-senha`, `/auth/invite`, `/bootstrap` e `/workspace/selecionar-organizacao` foram reconciliadas com primitives/feedback compartilhados quando aplicável. Estados reais públicos foram verificados sem fabricar token/bootstrap Production.
-
-### Homologação UX — **gate concluído com tablet deferido**
-
-Evidência detalhada: `docs/qa/fase51-ux-homologation.md`.
-
-Não exigir mutação artificial, convite falso ou dado Production apenas para preencher checklist.
-
-### Administração indisponível por migration drift — **corrigido e revalidado**
-
-UX-51-004 mostrou `/workspace/administracao/acessos` quebrada porque Production estava duas migrations atrás do Git. O PR #175 aplicou somente as versions esperadas por `supabase db push`, sem seed/reset/repair/DDL ad hoc. A rota foi depois reaberta com sessão legítima e funcionou normalmente.
-
-## Marco 2 — conclusão de negócio: **próxima frente**
-
-Issue: **#181 — Fase 53: decisões de negócio e perfis reais para conclusão**.
-
-### PENDINGs preservados
-
-Resolver, adiar formalmente ou descartar somente conforme necessidade da operação/cutover escolhido:
-
-- `REQ-ITEM-004` — produto de venda/POS;
+- `REQ-ITEM-004` — produto de venda/POS próprio;
 - `REQ-ITEM-005` — ficha técnica/receita/BOM;
-- `REQ-STK-007` — empréstimo;
-- `REQ-STK-010` — método final de custeio;
-- `REQ-EXP-004` — FEFO como regra de produto aprovada;
-- `REQ-FIN-004` — pagamento parcial/múltiplo;
-- `REQ-CASH-007` — consumo de funcionários;
-- `REQ-CASH-008` — integração com vendas/POS.
+- `REQ-FIN-004` — UX/regra específica de pagamento parcial/múltiplo.
 
-Não implementar por inferência. Infraestrutura técnica existente não equivale a decisão empresarial.
+Capacidades técnicas existentes não precisam ser removidas; apenas não devem gerar expansão por inércia.
 
-### Q-022 — perfis reais
+### FEFO aprovado
 
-Mapear pessoas/cargos reais às capacidades técnicas existentes antes de preparar acessos de go-live. `owner`, `admin`, `manager`, `finance`, `purchases`, `inventory`, `cashier` e `viewer` são papéis técnicos, não cargos automaticamente aprovados.
+`REQ-EXP-004` deixa de ser PENDING. Quando houver lotes comparáveis, a saída deve priorizar o lote que vence primeiro. O núcleo atual já usa FEFO nas saídas compatíveis; não há gap novo comprovado apenas por essa decisão.
 
-### Dívida de `open-questions.md`
+### Empréstimo obrigatório — #183
 
-Triar sem inventar respostas:
+`REQ-STK-007` passa a ser obrigatório.
 
-- resposta comprovada → migrar para regra/requisito/ADR e arquivar pergunta;
-- pergunta ainda relevante → manter aberta;
-- irrelevante para a implantação escolhida → registrar adiamento/arquivamento.
+O empréstimo é processo distinto de transferência e deve registrar quantidade e valor, permitindo restituição total/parcial por:
 
-## Marco 3 — dados representativos, migração e cutover: **pendente após conclusão de negócio**
+- retorno físico ao estoque;
+- restituição em valor;
+- combinação das duas formas.
 
-### Homologação operacional com dados representativos
+**Bloqueio atual:** escolher o método de custeio que define a fonte do valor/custo de referência.
 
-Antes da migração real:
+### Custeio obrigatório, método ainda aberto
 
-1. usar ambiente seguro;
-2. preparar estrutura, usuários/perfis, produtos, fornecedores, funcionários, caixas, meios/configurações relevantes;
-3. executar jornadas críticas com quem conhece a operação;
-4. homologar nomenclatura, fluxos, permissões e relatórios;
-5. corrigir somente gaps comprovados.
+`REQ-STK-010` é necessário, mas Q-008 ainda deve escolher explicitamente o método. Não inferir entre custo médio, última compra, lote específico ou outro método.
 
-Production não deve receber fixtures artificiais só para produzir evidência.
+Essa decisão afeta valuation, retiradas, perdas, empréstimos e relatórios.
 
-### Migração/cutover
+### Consumo de funcionários — #184
 
-A fundação de staging/dry-run já atende rastreabilidade, idempotência, preview e inconsistências. Ainda são necessários:
+`REQ-CASH-007` passa a ter regra empresarial:
 
-1. congelar fontes finais;
-2. mapear aliases/códigos/inconsistências;
-3. executar preview/dry-run real;
-4. revisar rejeições/warnings/pending mappings;
-5. corrigir dados/mapeamentos aprovados;
-6. executar importação final idempotente/rastreável;
-7. reconciliar saldos, totais e amostras;
-8. preparar usuários, escopos e configurações reais;
-9. aprovar o corte;
-10. encerrar ou formalizar a transição das planilhas.
+- é venda atribuída ao funcionário;
+- compõe faturamento;
+- não é entrada imediata na gaveta;
+- valor é descontado na folha.
 
-Não criar uma UI genérica de importação apenas porque o cutover existe; migração controlada pode permanecer procedimento operacional.
+O Lojasaph não vira sistema de folha/RH. Ainda é preciso definir origem do lançamento, granularidade e eventual confirmação de desconto, preferencialmente após o estudo do PDV para evitar duplicidade.
 
-## Marco 4 — production-readiness: **ON HOLD**
+### PDV Legal / importação — #185
 
-Somente depois de conclusão funcional, decisões necessárias e cutover:
+O PDV Legal permanece como sistema de vendas. Pesquisa pública inicial comprova exportações Excel de vendas/cadastros e integrações oficiais com alguns ERPs, mas não comprova API aberta customizada.
+
+Direção inicial: **arquivo Excel/CSV → staging/dry-run/idempotência do Lojasaph**. Integração direta só com mecanismo oficial confirmado.
+
+## Q-022 — perfis reais
+
+Permanece necessária antes do go-live. Mapear pessoas/cargos reais às capacidades técnicas existentes sem assumir equivalência automática com `owner`, `admin`, `manager`, `finance`, `purchases`, `inventory`, `cashier` e `viewer`.
+
+## Perguntas históricas/migração
+
+`docs/product/open-questions.md` foi triado em 2026-09-03.
+
+Q-005, Q-007, Q-009, Q-014 e Q-019 foram resolvidas/decididas. Q-006 foi formalmente deferida para o primeiro go-live. Q-008 permanece aberta apenas quanto ao método. Q-001/Q-004 e outras ambiguidades históricas devem ser resolvidas somente no nível necessário ao cutover.
+
+## Marco 3 — homologação com dados representativos e cutover
+
+Depois das implementações/decisões necessárias:
+
+1. preparar ambiente seguro com dados representativos;
+2. configurar estrutura, usuários/perfis e parâmetros reais;
+3. percorrer jornadas críticas com quem conhece a operação;
+4. validar nomenclatura, permissões e relatórios;
+5. corrigir somente gaps comprovados;
+6. congelar fontes finais;
+7. executar dry-run de migração;
+8. corrigir mappings/inconsistências;
+9. importar de forma idempotente/rastreável;
+10. reconciliar saldos/totais/amostras e aprovar corte.
+
+Production não deve receber fixtures artificiais apenas para produzir evidência.
+
+## Marco 4 — production-readiness
+
+Somente após conclusão de negócio e cutover:
 
 - retomar #75/#121;
 - fechar `REQ-PLAT-005`;
-- comprovar backup automático real de PostgreSQL;
-- proteger objetos/binários de Storage quando aplicável;
-- comprovar off-site, integridade e retenção;
-- executar restore/drill isolado;
-- reconciliar observabilidade/gates finais;
-- confirmar separação de ambientes/segredos;
-- aprovar go-live/production-readiness.
+- comprovar backup automático PostgreSQL e Storage quando aplicável;
+- destino off-site, integridade e retenção;
+- restore/drill isolado;
+- observabilidade/gates finais;
+- separação de ambientes/segredos;
+- aprovação de go-live/production-readiness.
 
-#75/#121 permanecem **TOTALMENTE ON HOLD** até esse marco ou nova decisão explícita do operador.
+#75/#121 continuam **TOTALMENTE ON HOLD** até esse marco ou nova decisão explícita.
 
-## Ordem final atualizada
+## Ordem atual
 
-1. ~~neutralizar runtime legado `/cadastros/*`~~ — concluído;
-2. ~~fechar telas auxiliares~~ — concluído;
-3. ~~concluir gate UX~~ — concluído com tablet explicitamente deferido;
-4. ~~reconciliação funcional final~~ — concluída na Fase 52 / #180;
-5. **resolver/adiar PENDINGs necessários + Q-022 + triagem de perguntas** — Fase 53 / #181;
-6. homologar com dados representativos;
-7. executar migração/cutover real;
-8. retomar #75/#121 e fechar production-readiness.
+1. **decidir Q-008 — método de custeio**;
+2. **implementar #183 — empréstimos**;
+3. **avançar #185 — PDV Legal** com amostra/estrutura real de exportação;
+4. **refinar/implementar #184 — consumo de funcionários** sem duplicar vendas;
+5. **concluir Q-022**;
+6. homologação com dados representativos;
+7. migração/cutover;
+8. production-readiness / #75/#121.
 
 ## Regra de encerramento
 
-O Sistema Lojasaph pode ser descrito neste momento como **funcionalmente concluído no núcleo, dentro das limitações declaradas**, mas não como `100%`, `go-live` ou `production-ready`.
-
-Os próximos marcos são empresariais e operacionais, não justificativa automática para criar novos módulos técnicos.
+O Lojasaph pode ser descrito como **núcleo funcionalmente concluído dentro das limitações declaradas**, mas não como `100%`, `go-live` ou `production-ready` até os marcos restantes serem satisfeitos ou formalmente aceitos/deferidos no nível correto.
