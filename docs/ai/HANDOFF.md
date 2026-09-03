@@ -2,117 +2,101 @@
 
 ## Como ler
 
-**Sempre consultar GitHub para HEAD real de `main`, Issues/PRs/branches e CI.** SHAs e runs abaixo são âncoras de evidência, não estado eterno.
+**Consultar GitHub para HEAD real de `main`, Issues, PRs, branches e CI.** Não usar SHAs documentais como estado permanente.
 
-## Transição atual
+## Frente ativa
 
-A Fase 51 / #142 completou a consolidação e o gate UX dentro das limitações aceitas. A Fase 52 / #180 executou a reconciliação funcional final e não encontrou gap funcional P0/P1 novo e inequívoco no núcleo.
+Fase 51 / #142 e Fase 52 / #180 estão concluídas. A frente ativa é **Fase 53 / #181 — decisões de negócio e perfis reais**.
 
-Próxima frente: **Fase 53 / Issue #181 — decisões de negócio e perfis reais para conclusão**.
+Primeiro bloco de decisões recebido em 2026-09-03 e versionado em `docs/qa/fase53-business-decisions.md`.
 
-Não declarar o sistema 100%: ainda existem decisões de negócio, homologação com dados representativos, migração/cutover e production-readiness.
+## Decisões já tomadas
+
+- produto de venda/POS próprio no Lojasaph: **adiado**;
+- ficha técnica/receita: **adiada**;
+- empréstimo: **necessário** — #183;
+- custeio: **necessário, método ainda aberto** — Q-008;
+- FEFO: **sim, obrigatório**;
+- pagamento parcial/múltiplo: **não necessário no primeiro go-live**;
+- consumo de funcionários: **é venda e desconta em folha** — #184;
+- PDV atual: **PDV Legal**; estudar importação/exportação — #185.
+
+## #183 — Empréstimos
+
+Regra aprovada:
+
+- processo distinto de transferência;
+- registra quantidade e valor do empréstimo;
+- restituição física parcial/total;
+- restituição em valor parcial/total;
+- combinação das duas formas;
+- saldo e histórico auditáveis.
+
+**Bloqueio:** escolher o método de custeio para definir a fonte do valor/custo de referência. Não assumir custo médio apenas porque a implementação atual o usa.
+
+## #184 — Consumo de funcionários
+
+Regra aprovada: consumo de funcionário é venda atribuída ao funcionário e o valor é descontado na folha.
+
+Não transformar isso em módulo de RH/folha. Ainda definir origem do lançamento (manual/importado), granularidade e eventual confirmação de desconto. O estudo #185 pode afetar essa decisão para evitar duplicidade.
+
+## #185 — PDV Legal
+
+Pesquisa pública inicial confirmou:
+
+- exportação Excel de relatórios de vendas;
+- exportação Excel de cadastros/estoque/tabelas de preço;
+- integrações oficiais com alguns ERPs;
+- canal para discutir integrações não listadas.
+
+Não há base suficiente para afirmar API aberta customizada. Primeira hipótese: importar arquivos Excel/CSV oficiais pelo staging/dry-run do Lojasaph. Não usar scraping como integração.
+
+## FEFO
+
+A regra empresarial foi aprovada e o núcleo técnico já utiliza FEFO nas saídas compatíveis. Não criar trabalho artificial sem gap concreto.
+
+## Pagamentos parciais
+
+Não são requisito do primeiro go-live. Capacidade técnica existente pode permanecer; não remover nem expandir por inércia.
+
+## Perguntas prioritárias
+
+1. **Q-008 — qual método de custeio?**
+2. **Q-022 — quem pode fazer cada ação?**
+3. detalhes necessários de #183/#184/#185;
+4. perguntas históricas de planilha somente na preparação de migração/cutover.
+
+## Estado infra/UX que não deve ser refeito
+
+- UX Fase 51 já concluída dentro da limitação tablet aceita;
+- desktop/mobile possuem evidência live representativa;
+- tablet permanece deferido, não homologado;
+- migration drift administrativo #175 já foi corrigido;
+- não repetir smokes, reconciliation de migrations ou deploy Vercel sem regressão concreta.
 
 #75/#121 permanecem **TOTALMENTE ON HOLD**.
 
-## Evidência UX que não deve ser repetida por inércia
-
-### Público
-
-HTTP/HTML e snapshots estáticos já cobrem Login, Recuperação, Acesso indisponível e estados auxiliares documentados em `docs/qa/fase51-ux-homologation.md`.
-
-### Desktop live autenticado
-
-O operador confirmou abertura normal de Visão geral, Administração, Cadastros, Estoque, Compras, Financeiro e Caixa. `/workspace/administracao/acessos` foi especificamente revalidada após o incidente de migration drift.
-
-### Mobile live autenticado
-
-O operador confirmou abertura/navegação normal das superfícies percorridas em celular real com sessão legítima.
-
-### Profundidade representativa
-
-Em 2026-09-01 o operador confirmou como normais os fluxos solicitados:
-
-- Produto: lista → detalhe → retorno;
-- Compras/Pedidos: lista → detalhe → retorno;
-- Financeiro/Contas: lista → detalhe → retorno;
-- Caixa/Sessões: lista → detalhe → retorno;
-- mobile: menu → Compras ou Financeiro → detalhe quando disponível → retorno.
-
-Não interpretar isso como execução de toda mutação/estado possível em Production. A amostra foi deliberadamente read-only para evitar dado artificial.
-
-### Tablet
-
-O operador informou que nem ele nem Asaph possuem tablet e decidiu que não é necessário testar tablet por enquanto.
-
-Registrar como **deferido por decisão explícita**, nunca como homologado live. Não pedir novamente sem nova necessidade real.
-
-## Runtime observado
-
-Último deployment automático de aplicação observado:
-
-- `dpl_J6qwwqUihCKqfTMhmbjSxcLSA3gr`;
-- READY / Production / source Git;
-- runtime SHA `64e1c0d242c3abfb7ee374ebc43850156d75089b` (#171);
-- alias `sistema-lojasaph.vercel.app`.
-
-Não fazer deploy manual apenas para alinhar documentação.
-
-## Migrations Production
-
-UX-51-004 revelou drift exato de duas migrations administrativas. O PR #175 reconciliou por `supabase db push`, preservando as versions Git. Workflow one-shot foi removido depois.
-
-Production e Git foram revalidados read-only até:
-
-- `20260828130500 administration_access_management`;
-- `20260828132500 administration_employee_identity`.
-
-Não repetir #175 sem novo drift comprovado. Se Production reportar função/tabela ausente, comparar history remoto ↔ migrations Git antes de alterar código.
-
-## Reconciliação funcional final — Fase 52
-
-Artefato: `docs/qa/final-functional-reconciliation.md`.
-
-Foram classificados os 70 requisitos de `docs/product/requirements.md` pelo gate:
-
-> Uma pessoa autorizada consegue executar corretamente a necessidade operacional pela aplicação sem conhecimento de implementação, IDs técnicos ou procedimento externo não documentado?
-
-Resultado:
-
-- nenhum novo gap funcional P0/P1 inequívoco;
-- núcleo funcionalmente concluído dentro das limitações declaradas;
-- tablet = limitação aceita, não prova positiva;
-- importação/cutover separados de conclusão funcional;
-- backup/restore separados como production-readiness;
-- nenhum PENDING promovido por inferência.
-
-## PENDINGs preservados
-
-- `REQ-ITEM-004` — produto de venda/POS;
-- `REQ-ITEM-005` — ficha técnica/receita;
-- `REQ-STK-007` — empréstimo;
-- `REQ-STK-010` — custeio final;
-- `REQ-EXP-004` — FEFO como regra aprovada;
-- `REQ-FIN-004` — pagamento parcial/múltiplo;
-- `REQ-CASH-007` — consumo de funcionários;
-- `REQ-CASH-008` — integração com vendas/POS.
-
-Q-022 continua aberta para perfis/pessoas reais. Roles técnicas atuais não equivalem automaticamente a cargos de negócio.
-
 ## NEXT_ACTION
 
-### Fase 53 / #181 — decisões de negócio e perfis reais
+### Resolver Q-008 — método final de custeio
 
-1. reler governança/handoff;
-2. consultar estado GitHub real;
-3. não reabrir UX/tablet sem regressão ou nova decisão;
-4. revisar cada PENDING somente quanto à necessidade para a operação/cutover escolhido;
-5. para cada um: decidir, formalmente adiar/descartar ou manter pendente com justificativa;
-6. mapear Q-022 para os perfis/pessoas reais necessários ao go-live;
-7. triar `docs/product/open-questions.md`: mover respostas comprovadas para regra/ADR, manter perguntas reais e arquivar dívida documental obsoleta;
-8. se uma decisão exigir código, abrir Issue funcional mínima separada — não implementar silenciosamente dentro da Issue de decisão;
-9. preservar #75/#121 ON HOLD;
-10. ao fechar a conclusão de negócio, promover homologação com dados representativos e preparação de migração/cutover.
+A próxima conversa deve apresentar as opções em linguagem de negócio e obter decisão explícita. Somente depois implementar #183.
+
+Uma decisão de custeio deve definir, no mínimo, qual valor é usado para:
+
+- saldo/valuation de estoque;
+- retirada/perda;
+- valor de empréstimo;
+- relatórios gerenciais.
+
+Depois:
+
+1. atualizar requisito/regra/ADR se necessário;
+2. implementar #183 em branch própria;
+3. avançar o spike #185 com amostra/estrutura real de exportação do PDV Legal;
+4. refinar #184 com base na origem real dos consumos;
+5. concluir Q-022 antes do go-live.
 
 ## Guardrails
 
-GitHub é fonte de verdade; RLS/backend continuam boundaries; nenhum secret em Git/docs/chat; nenhuma fixture Production para fabricar prova; nenhum deploy Vercel manual rotineiro; nenhum PENDING ou Q-022 por inferência.
+GitHub é fonte de verdade; RLS/backend continuam boundaries; nenhum secret; nenhuma fixture Production; nenhuma regra por inferência; nenhum deploy Vercel manual rotineiro; não retomar #75/#121 nesta fase.
