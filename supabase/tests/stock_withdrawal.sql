@@ -129,7 +129,7 @@ begin
   if (select cost_basis from public.stock_movement_items where movement_id = '40000000-0000-4000-8000-000000000001') <> 'layer_allocation' then
     raise exception 'FEFO withdrawal did not persist layer cost basis';
   end if;
-  if (select coalesce(sum(total_cost_snapshot),0) from public.stock_movement_batch_allocations allocation join public.stock_movement_items item on item.id=allocation.movement_item_id where item.movement_id='40000000-0000-4000-8000-000000000001') <> 31.50 then
+  if (select coalesce(sum(allocation.total_cost_snapshot),0) from public.stock_movement_batch_allocations allocation join public.stock_movement_items item on item.id=allocation.movement_item_id where item.movement_id='40000000-0000-4000-8000-000000000001') <> 31.50 then
     raise exception 'FEFO withdrawal total physical-layer cost mismatch';
   end if;
   if (select remaining_quantity from public.inventory_batches where id = '00000000-0000-4000-8000-000000000610') <> 85.000 then
@@ -195,7 +195,7 @@ begin
   if (select unit_cost_snapshot from public.stock_movement_items where movement_id = '40000000-0000-4000-8000-000000000002') <> 3.00 then
     raise exception 'preferred withdrawal did not use selected physical layer cost 3.00';
   end if;
-  if (select coalesce(sum(total_cost_snapshot),0) from public.stock_movement_batch_allocations allocation join public.stock_movement_items item on item.id=allocation.movement_item_id where item.movement_id='40000000-0000-4000-8000-000000000002') <> 15.00 then
+  if (select coalesce(sum(allocation.total_cost_snapshot),0) from public.stock_movement_batch_allocations allocation join public.stock_movement_items item on item.id=allocation.movement_item_id where item.movement_id='40000000-0000-4000-8000-000000000002') <> 15.00 then
     raise exception 'preferred withdrawal total physical-layer cost mismatch';
   end if;
   if (select remaining_quantity from public.inventory_batches where id = '00000000-0000-4000-8000-000000000610') <> 85.000 then
