@@ -153,7 +153,7 @@ begin
   if (select cost_basis from public.stock_movement_items where movement_id='96000000-0000-4000-8000-000000000701') <> 'layer_allocation' then
     raise exception 'breakage did not persist layer allocation cost basis';
   end if;
-  if (select coalesce(sum(total_cost_snapshot),0) from public.stock_movement_batch_allocations allocation join public.stock_movement_items item on item.id=allocation.movement_item_id where item.movement_id='96000000-0000-4000-8000-000000000701') <> 6.00 then
+  if (select coalesce(sum(allocation.total_cost_snapshot),0) from public.stock_movement_batch_allocations allocation join public.stock_movement_items item on item.id=allocation.movement_item_id where item.movement_id='96000000-0000-4000-8000-000000000701') <> 6.00 then
     raise exception 'breakage physical layer total cost mismatch';
   end if;
   if (select remaining_quantity from public.inventory_batches where id='96000000-0000-4000-8000-000000000610') <> 2.000 then
