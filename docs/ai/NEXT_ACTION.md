@@ -2,123 +2,174 @@
 
 ## Estado
 
-Fase 51 / #142 e Fase 52 / #180 concluídas. A frente guarda-chuva continua sendo **Fase 53 / #181 — conclusão de negócio**, mas a decisão de custeio já foi tomada e novas frentes funcionais foram abertas.
+Fase 51 / #142 e Fase 52 / #180 concluídas. A frente guarda-chuva continua sendo **Fase 53 / #181 — conclusão de negócio**.
 
-Em 2026-09-04 o operador definiu:
+A **Issue #187 / Fase 57 — custeio por lote/camada física** está concluída:
 
-- `REQ-STK-010`: custo por lote/camada física efetivamente movimentada — #187;
-- `REQ-STK-007`: empréstimos usam o custo das camadas efetivamente emprestadas — #183;
-- `REQ-ITEM-004`: Lojasaph pode ter catálogo de produto vendável sem virar PDV — #188;
-- `REQ-ITEM-005`: ficha técnica/receita volta para a fila — #189;
-- preço de compra/fornecedor, custo real do lote, preço de venda e margem devem ser conceitos separados — #188;
-- compositor modular para `owner`, com dependências e sem apagar dados — #190;
-- qualidade visual/UX faz parte do aceite das novas áreas.
+- PR #192 mergeado em `main`;
+- CI do PR e CI pós-merge verdes;
+- migrations `20260904101500` → `20260904103000` aplicadas em Production com `supabase db push` version-preserving;
+- Production `fhbvwyttikrbeaanatlr` sem migration local pendente após o rollout;
+- Q-008 / `REQ-STK-010` não deve ser reaberta.
 
-Decisões anteriores que continuam vigentes:
-
-- FEFO aprovado;
-- pagamento parcial/múltiplo não é necessário para o primeiro go-live;
-- consumo de funcionários é venda com desconto em folha — #184;
-- PDV Legal permanece como PDV; estudar importação oficial — #185;
-- tablet live permanece deferido;
-- #75/#121 permanecem TOTALMENTE ON HOLD.
-
-Detalhes: `docs/qa/fase53-business-decisions.md`.
+A dependência técnica da #183 está satisfeita.
 
 ## NEXT_ACTION objetiva
 
-### **Executar Issue #187 — custeio por lote/camada física nas saídas**
+### **Executar Issue #183 — empréstimos com restituição física e/ou financeira**
 
-Q-008 está encerrada. **Não perguntar novamente qual método de custeio usar.**
+Empréstimo é um processo necessário e **distinto de transferência**.
 
-A regra é:
+O sistema deve registrar o valor histórico do que foi emprestado e permitir restituição total/parcial por:
 
-> o valor de uma saída/perda deve acompanhar o custo da camada/lote que realmente saiu.
+- retorno físico ao estoque;
+- restituição monetária;
+- combinação das duas formas.
 
-Exemplo: mesmo item, lote A a R$ 5 e lote B a R$ 2. Se a perda foi do lote A, registrar R$ 5 por unidade; se foi do lote B, registrar R$ 2.
+## Regra de valuation já decidida
+
+Usar **o custo das camadas/lotes efetivamente emprestados**.
+
+Exemplo: se 3 unidades saírem de camada a R$ 5 e 2 unidades de camada a R$ 2, o valor físico histórico é:
+
+`3 × 5 + 2 × 2 = R$ 19`
+
+Não substituir por custo médio, última compra nem custo atual futuro.
+
+## Contrato mínimo aprovado
+
+- empréstimo possui origem, contraparte/destino, item, quantidade e valor de referência;
+- quantidade emprestada mantém rastreabilidade das camadas consumidas;
+- existe saldo físico pendente de retorno;
+- existe saldo monetário pendente quando aplicável;
+- retorno físico pode ser parcial ou total;
+- restituição monetária pode ser parcial ou total;
+- ambos podem coexistir;
+- toda restituição é ligada ao empréstimo original;
+- empréstimo original não é apagado nem reescrito para simular restituição;
+- restituição monetária não reprecifica a saída física original;
+- ledger de estoque representa somente eventos físicos reais;
+- over-return/over-settlement deve ser bloqueado;
+- concorrência deve ser segura;
+- commands devem ser transacionais e idempotentes;
+- RLS/roles/escopo devem ser coerentes com Estoque;
+- audit trail obrigatório.
+
+## Boundary financeiro obrigatório
+
+**Não inferir automaticamente lançamento em Caixa/Financeiro.**
+
+O primeiro requisito é registrar a liquidação monetária do empréstimo de forma exata e auditável. Qualquer efeito adicional em Caixa/Financeiro exige regra explícita posterior e deve evitar dupla contabilização.
+
+## UX mínima de produto
+
+Implementar jornada:
+
+`lista de empréstimos → detalhe → restituir`
+
+A UI precisa:
+
+- mostrar contraparte, item, quantidade/valor original e saldos pendentes;
+- explicar saldo físico e monetário em linguagem de negócio;
+- permitir restituição física, monetária ou combinação;
+- mostrar histórico de restituições;
+- sinalizar estados como aberto, parcialmente restituído e liquidado;
+- manter progressive disclosure e padrão visual da Fase 51;
+- não expor detalhes técnicos de ledger/cost basis ao operador comum;
+- não terminar em CRUD bruto.
 
 ## Procedimento do próximo chat
 
-1. ler, nesta ordem:
+1. Ler, nesta ordem:
    - `AGENTS.md`;
    - `docs/00-START-HERE.md`;
    - `docs/ai/CURRENT_STATE.md`;
    - `docs/ai/HANDOFF.md`;
    - este `NEXT_ACTION.md`;
    - `docs/ai/WORKFLOW.md`;
-   - `docs/decisions/ADR-003-inventory-costing.md`;
-   - `docs/product/requirements.md`;
+   - Issue #183 e comentário vigente;
+   - `docs/product/requirements.md` (`REQ-STK-007`, `REQ-STK-010`);
    - `docs/product/business-rules.md`;
-   - Issue #187;
-2. consultar GitHub real para `main`, Issues, PRs, branches e CI;
-3. revalidar apenas se houver evidência de drift; não repetir incidentes/smokes por inércia;
-4. auditar código/migrations existentes para localizar onde custo médio ainda alimenta:
-   - retirada;
-   - perda/vencimento;
-   - transferência;
-   - devolução;
-   - inventário/ajustes;
-   - consultas/relatórios de valuation;
-5. preservar a estrutura existente que já guarda `unit_cost` por lote e snapshots; não reescrever história sem necessidade;
-6. desenhar fallback explícito para casos realmente sem camada/custo rastreável, sem média silenciosa;
-7. implementar a menor mudança segura em branch própria;
-8. migrations somente se necessárias e versionadas;
-9. testes obrigatórios com **o mesmo item em pelo menos duas camadas/lotes de custos diferentes**, provando que a saída/perda usa o custo do lote consumido;
-10. validar FEFO versus seleção explícita de lote;
-11. validar transferências/devoluções sem ganho/perda artificial;
-12. CI verde → PR → merge → CI pós-merge;
-13. atualizar `CURRENT_STATE`, `HANDOFF` e `NEXT_ACTION` para promover #183.
+   - `docs/decisions/ADR-003-inventory-costing.md`;
+   - documentação do módulo Estoque;
+2. Consultar GitHub real para `main`, Issues, PRs, branches e CI;
+3. Confirmar que não existe outra branch/PR já executando #183;
+4. Auditar primitives existentes de estoque, transferências, devoluções, audit e permissions;
+5. Reaproveitar primitives somente onde preservarem semântica; **não modelar empréstimo como transferência definitiva**;
+6. Definir modelo persistente e migration versionada antes de DDL compartilhado;
+7. Modelar alocações de camada/custo do empréstimo e histórico de restituições;
+8. Implementar commands transacionais/idempotentes;
+9. Garantir lock/concorrência e bloqueio de over-return/over-settlement;
+10. Garantir Organization isolation, grants, RLS/escopo e audit;
+11. Implementar UI `lista → detalhe → restituir`;
+12. Validar aplicação e PostgreSQL;
+13. CI verde → PR → merge → CI pós-merge;
+14. Se houver migration mergeada para Production, seguir `docs/qa/database-migrations.md`: dry-run, allowlist fail-closed, push version-preserving, dry-run final, verificação read-only e advisors;
+15. Atualizar `CURRENT_STATE`, `HANDOFF` e `NEXT_ACTION`.
 
-## Aceite de #187
+## Testes obrigatórios de #183
 
-- `REQ-STK-010`, `BR-STK-010` e ADR-003 refletem o runtime;
-- saída física conhecida usa custo da camada consumida;
-- FEFO escolhe lote quando não houver seleção explícita;
-- lote explicitamente selecionado em perda/quebra usa seu próprio custo;
-- transferência preserva custo de origem;
-- devolução relacionada preserva rastreabilidade/custo;
-- histórico não é recalculado por compras futuras;
-- fallback sem custo é explícito/auditável;
-- relatórios conseguem explicar quantidade, lote/camada, custo unitário e custo total;
-- testes e CI verdes;
-- nenhuma mutação artificial em Production.
+Cobrir no mínimo:
 
-## Depois de #187
+1. mesmo item com duas ou mais camadas de custos diferentes;
+2. empréstimo consumindo múltiplas camadas com valor histórico exato;
+3. FEFO quando não houver lote explícito;
+4. lote explícito quando aplicável;
+5. retorno físico parcial;
+6. retorno físico total;
+7. restituição monetária parcial;
+8. restituição monetária total;
+9. combinação físico + monetário;
+10. bloqueio de retorno físico acima do saldo;
+11. bloqueio de liquidação monetária acima do saldo;
+12. retry idempotente;
+13. conflito idempotente com payload diferente;
+14. concorrência sobre o mesmo empréstimo;
+15. usuário sem permissão;
+16. usuário fora do escopo/Organization;
+17. audit trail;
+18. nenhum recálculo histórico após entrada futura com custo diferente.
 
-Ordem atual de promoção:
+## Aceite
 
-1. **#183 — empréstimos** com restituição física e/ou monetária;
-2. **#185 — PDV Legal** quando houver estrutura/amostra oficial de exportação;
-3. **#188 — catálogo comercial, preços e margem**;
-4. **#189 — fichas técnicas/receitas**;
-5. **#184 — consumo de funcionários**, evitando duplicar vendas do PDV;
-6. **#190 — compositor modular**, começando por capability registry + 1–2 módulos de baixo risco;
-7. **Q-022 — perfis/pessoas reais** antes do go-live;
-8. homologação com dados representativos;
-9. migração/cutover;
-10. production-readiness / #75/#121.
+- modelo persistente + migrations versionadas;
+- valor histórico formado pelas camadas efetivamente emprestadas;
+- saldos físico/monetário exatos e explicáveis;
+- restituições ligadas ao empréstimo original;
+- histórico preservado;
+- sem dupla baixa ou movimento físico fictício;
+- sem regra contábil/fiscal inventada;
+- RLS/permissions/Organization corretos;
+- UI operacional e visualmente consistente;
+- PostgreSQL + aplicação + CI verdes;
+- Production só alterada por rollout versionado e verificável.
 
-A ordem 2–6 pode ser refinada por dependência real comprovada, mas não deve haver retorno ao estado documental antigo de “custeio indefinido”, “ficha técnica definitivamente adiada” ou “produto vendável proibido”.
+## Depois de #183
 
-## Regras para #188/#189/#190
+Ordem atual:
 
-Quando essas Issues forem executadas:
+1. **#185 — PDV Legal** quando houver estrutura/amostra oficial;
+2. **#188 — catálogo comercial, preços e margem**;
+3. **#189 — fichas técnicas/receitas**;
+4. **#184 — consumo de funcionários**;
+5. **#190 — compositor modular**;
+6. **Q-022 — perfis/pessoas reais**;
+7. homologação com dados representativos;
+8. migração/cutover;
+9. production-readiness / #75/#121.
 
-- não transformar Lojasaph em POS por inferência;
-- preço de compra, custo de estoque e preço de venda permanecem conceitos separados;
-- margem bruta não é lucro líquido;
-- ficha técnica não baixa estoque automaticamente sem regra explícita;
-- módulo desabilitado não apaga dados;
-- backend deve respeitar gating, não apenas a navegação;
-- UX/qualidade visual é parte do aceite, não melhoria opcional posterior.
+A ordem pode ser refinada por dependência real comprovada, mas não retornar ao estado antigo de custeio indefinido.
 
 ## Guardrails
 
 - GitHub é fonte de verdade;
-- Supabase/schema/RLS/grants continuam hard boundaries;
+- Supabase/schema/RLS/grants são hard boundaries;
 - nenhum secret em Git/docs/chat/log;
 - não criar fixture/dado Production para evidência;
 - não usar auth bypass;
-- não repetir deploy Vercel manual rotineiro;
-- não criar PR apenas para repetir blocker sem nova evidência;
-- não retomar #75/#121 antes de production-readiness ou decisão explícita posterior.
+- não repetir migration reconciliation sem drift;
+- não disparar deploy Vercel manual rotineiro;
+- não converter empréstimo em transferência por conveniência;
+- não recalcular histórico por custo atual;
+- não inventar regra contábil/fiscal;
+- #75/#121 continuam TOTALMENTE ON HOLD.
