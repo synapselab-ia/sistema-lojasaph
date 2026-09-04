@@ -4,132 +4,138 @@
 
 ## Regra de baseline
 
-**Sempre consultar GitHub para HEAD, Issues, PRs, branches e CI reais.** SHAs/runs documentados são apenas âncoras de evidência.
+**Sempre consultar GitHub para HEAD, Issues, PRs, branches e CI reais.** SHAs/runs abaixo são âncoras de evidência, não substituem a consulta ao estado atual.
 
 ## Estado do produto
 
-Fase 51 / #142 e Fase 52 / #180 estão concluídas. A reconciliação funcional final não encontrou gap P0/P1 novo no núcleo existente.
+Fase 51 / #142 e Fase 52 / #180 estão concluídas. A frente guarda-chuva continua sendo **Fase 53 / #181 — conclusão de negócio**.
 
-A frente ativa é **Fase 53 / Issue #181 — decisões de negócio e perfis reais para conclusão**, agora com uma segunda rodada de decisões explícitas do operador em 2026-09-04.
+A **Fase 57 / Issue #187 — custeio por lote/camada física** está concluída, integrada e alinhada em Production.
 
-Detalhes consolidados: `docs/qa/fase53-business-decisions.md`.
+Evidência de fechamento:
 
-## Decisões empresariais vigentes
+- PR #192 `feat: custear saídas por camada física` mergeado em `main` no commit `1b795bf358a417e6f3e8dbaf9e574e2b3383ad93`;
+- Issue #187 fechada como `completed`;
+- CI do PR verde em CI, Inventory Count Integration e Business Transactions Integration;
+- CI pós-merge #623 / run `33907422006`: `validate` e `database` verdes;
+- Production Migration Reconcile 187 / run `33907623545`: success;
+- Production `fhbvwyttikrbeaanatlr` alinhada até `20260904103000_negative_stock_cost_fallback`;
+- dry-run pós-aplicação: `Remote database is up to date.`
 
-### Custeio — Q-008 resolvida
+## Custeio vigente — implementação concluída
 
-`REQ-STK-010` está **decidido**: saídas físicas usam o custo da camada/lote efetivamente movimentada.
+`REQ-STK-010`, `BR-STK-010` e `ADR-003-inventory-costing.md` agora refletem o runtime:
 
-Exemplo empresarial aprovado: se a unidade perdida veio do lote que custou R$ 5, a perda vale R$ 5; se veio do lote que custou R$ 2, vale R$ 2. Não substituir silenciosamente por custo médio ou última compra.
+- saída física usa custo da camada/lote efetivamente consumida;
+- FEFO escolhe a camada quando não há seleção explícita;
+- lote explicitamente selecionado prevalece;
+- perdas/vencimentos usam a camada efetivamente baixada;
+- transferências preservam custo e não criam ganho/perda artificial;
+- devoluções relacionadas restauram custo/rastreabilidade histórica;
+- `inventory_balances.average_cost` permanece indicador/cache analítico e não reprecifica saída física conhecida;
+- item não rastreado por lote usa camada econômica oculta;
+- saldo legado sem camada física é explicitado como `legacy_estimate`;
+- excedente permitido de estoque negativo usa `negative_estimate`; operação combinada pode resultar em `mixed_estimate`;
+- fallback estimado é auditável e visível, nunca retorno silencioso ao custo médio;
+- ajuste positivo sem custo explícito permanece bloqueado.
 
-- FEFO escolhe o lote quando não houver seleção física explícita;
-- lote explicitamente informado numa perda/quebra conhecida prevalece;
-- transferências/devoluções preservam custo de origem;
-- empréstimos usam o custo das camadas efetivamente emprestadas;
-- custo médio pode existir como indicador analítico, não como reprecificação das saídas conhecidas;
-- fallback para legado/estoque negativo sem custo rastreável precisa ser explícito e auditável.
+Casos de teste de referência:
 
-Fonte: `docs/decisions/ADR-003-inventory-costing.md`. Implementação necessária: **#187**.
+- FEFO: R$ 2,10/unidade;
+- lote selecionado: R$ 3,00/unidade;
+- devolução: preserva R$ 8,00 da camada original;
+- transferência multi-camada: 5 × R$ 3,00 + 5 × R$ 2,10 = R$ 2,55/unidade.
 
-### Empréstimos — #183
+Verificação read-only em Production após rollout encontrou:
 
-Empréstimo é obrigatório e distinto de transferência. Deve registrar quantidade e valor, manter saldo e permitir restituição total/parcial por estoque, valor ou combinação.
+- `inventory_batches`: 3 camadas `traceable` com 147 unidades remanescentes;
+- `inventory_batches`: 1 camada `legacy_estimate` com 20 unidades remanescentes;
+- movimentos existentes classificados sem reescrever história;
+- helpers internos de custeio em schema `private`, `SECURITY DEFINER`, sem `EXECUTE` para `anon` ou `authenticated`.
 
-A fonte do valor físico já está decidida: custo das camadas/lotes efetivamente emprestados. **#183 deixa de depender de decisão empresarial, mas deve ser implementada depois de #187 para não perpetuar custo médio no runtime.**
+## Advisors Production
+
+Advisors foram executados depois do DDL.
+
+- não apareceu erro crítico específico da #187;
+- Security mantém warnings amplos já conhecidos para RPCs públicos `SECURITY DEFINER` executáveis por `authenticated`, além de leaked-password protection desabilitada;
+- os helpers internos novos da #187 não estão expostos a `anon`/`authenticated`;
+- Performance mantém INFOs históricos de FKs sem índice e índices ainda não utilizados, inclusive estruturas de estoque existentes.
+
+Não expandir #183 para corrigir esses itens por inércia; tratar em hardening/performance próprio quando houver prioridade/evidência.
+
+## Próxima frente principal — #183 Empréstimos
+
+A dependência técnica da #183 foi satisfeita pela #187. Empréstimo é processo distinto de transferência e deve registrar quantidade, valor histórico e restituições total/parcial por:
+
+- retorno físico;
+- restituição monetária;
+- combinação das duas formas.
+
+O valor físico do empréstimo usa **as camadas/lotes efetivamente emprestados**, preservando quantidade × custo de cada camada. Não usar custo médio nem última compra.
+
+A restituição monetária deve ser registrada de forma auditável, mas **não inferir automaticamente lançamento em Caixa/Financeiro** sem regra explícita; evitar dupla contabilização.
+
+## Outras decisões empresariais vigentes
 
 ### FEFO
 
-`REQ-EXP-004` está aprovado. O núcleo já usa FEFO em saídas compatíveis. Refinamento de 2026-09-04: FEFO é default quando não há lote físico explicitamente indicado; perda/quebra de lote conhecido usa o lote real informado.
+`REQ-EXP-004` aprovado. FEFO é default quando não houver lote físico explicitamente indicado.
 
 ### Catálogo comercial, preços e margem — #188
 
-A decisão anterior de “não criar produto de venda” foi refinada: o Lojasaph **não vira PDV**, mas deve poder representar produto vendável para mapear vendas, preço, ficha técnica e relatórios.
-
-- PDV Legal continua sendo o sistema de venda;
-- produto vendável pode mapear 1:1 para item de estoque ou representar prato/preparação;
-- preço de fornecedor, custo real do lote, preço de venda e margem são conceitos distintos;
-- preço de venda precisa de histórico/vigência;
-- relatórios devem distinguir receita, custo e margem bruta;
-- não chamar margem bruta de lucro líquido sem dados suficientes.
-
-Issue: **#188**.
+O Lojasaph não vira PDV, mas pode representar produto vendável para mapear vendas, preço, ficha técnica e relatórios. Preço de fornecedor, custo real do lote, preço de venda e margem são conceitos distintos. Margem bruta não é lucro líquido.
 
 ### Fichas técnicas/receitas — #189
 
-A decisão anterior de adiamento foi revertida como visão de produto. Ficha técnica foi **recolocada na fila** para permitir prato/receita, ingredientes, rendimento, custo teórico e análise de margem, especialmente se vendas do PDV Legal forem importadas.
-
-A existência de ficha técnica não autoriza baixa automática de estoque. Venda → consumo físico precisa de regra separada para evitar dupla baixa.
-
-Issue: **#189**.
+Recolocadas na fila. Devem suportar produto/preparação, ingredientes, rendimento e custo teórico. A existência de ficha técnica não autoriza baixa automática de estoque.
 
 ### Consumo de funcionários — #184
 
-Continua aprovado: é venda atribuída ao funcionário, compõe faturamento e o valor é descontado em folha, sem entrada imediata de caixa e sem transformar o Lojasaph em sistema de RH/folha.
-
-A origem do lançamento deve considerar #185 para evitar duplicar vendas importadas.
+Venda atribuída ao funcionário, compõe faturamento e é descontada em folha; não equivale a entrada imediata de caixa e não transforma o sistema em folha/RH.
 
 ### PDV Legal — #185
 
-PDV Legal continua como sistema de vendas. Pesquisa pública inicial confirmou exportações Excel e integrações oficiais selecionadas, mas não API aberta customizada comprovada.
+PDV Legal continua sendo o sistema de venda. Direção atual: importação oficial Excel/CSV → staging/dry-run/idempotência enquanto não houver API/integrador oficial comprovado.
 
-Direção: começar por **Excel/CSV oficial → staging/dry-run/idempotência**. O estudo deve priorizar produto/código, quantidade, preço, filial/unidade, data/hora e chaves úteis a deduplicação/mapeamento.
+### Compositor modular — #190
 
-Issue: **#185**.
-
-### Compositor modular do sistema — #190
-
-Visão de produto aprovada: área estrutural acessível inicialmente somente a `owner` Organization-wide para habilitar/desabilitar capacidades como peças de um quebra-cabeças.
-
-- desabilitar não apaga dados/histórico;
-- backend deve respeitar o estado do módulo;
-- dependências devem ser explícitas;
-- auth/RLS/Organization/auditoria/integridade permanecem core não removível;
-- navegação e dashboard refletem configuração;
-- reativação restaura acesso ao histórico;
-- mudanças são auditadas;
-- UX deve ser configurador de produto, não painel técnico de feature flags.
-
-O código já é parcialmente modular em `src/modules/*`, mas a navegação ainda é fixa; implementar somente com registry/capability graph e rollout controlado. Issue: **#190**.
+Área estrutural inicialmente para `owner` Organization-wide; desligar módulo não apaga histórico; backend e navegação devem respeitar capability gating; auth/RLS/Organization/auditoria/integridade são core.
 
 ### Qualidade visual
 
-Para as novas áreas, “funciona” não é suficiente. Catálogo comercial, ficha técnica, relatórios e compositor modular devem manter padrão de produto: linguagem operacional, hierarchy/progressive disclosure, feedback, acessibilidade e consistência com o design system da Fase 51.
+Novas áreas devem manter linguagem operacional, hierarquia clara, progressive disclosure, feedback, acessibilidade e consistência com o design system da Fase 51. CRUD bruto não é aceite de produto.
 
-## Itens ainda deferidos
+## Itens ainda deferidos / ON HOLD
 
-- `REQ-FIN-004` — UX/regra específica de pagamento parcial/múltiplo: não necessária para o primeiro go-live; capacidade técnica existente pode permanecer.
-- tablet live: deferido por decisão operacional; não reabrir sem necessidade real.
+- `REQ-FIN-004`: UX/regra específica de pagamento parcial/múltiplo não necessária para primeiro go-live;
+- tablet live: deferido por decisão operacional;
+- #75/#121 e `REQ-PLAT-005`: **TOTALMENTE ON HOLD** até production-readiness.
 
-## Pergunta de negócio ainda prioritária
+## Pergunta ainda prioritária para go-live
 
-**Q-022 — perfis reais:** mapear pessoas/cargos reais às capacidades técnicas existentes antes de preparar usuários de go-live. Não assumir que cargos reais equivalem automaticamente a `owner/admin/manager/...`.
+**Q-022 — perfis reais:** mapear pessoas/cargos reais às capacidades técnicas existentes antes de preparar usuários de go-live. Não assumir equivalência automática com `owner/admin/manager/...`.
 
-Q-008 **não está mais aberta** e não deve ser perguntada novamente.
+Q-008 está encerrada e não deve ser perguntada novamente.
 
 ## Ordem funcional ativa
 
-1. **#187 — reconciliar runtime para custeio por lote/camada**;
-2. **#183 — implementar empréstimos** com restituição física/financeira;
-3. **#185 — estudar importação PDV Legal** quando houver estrutura/amostra oficial;
-4. **#188 — catálogo comercial, preços e margem**;
-5. **#189 — fichas técnicas/receitas**;
-6. **#184 — consumo de funcionários**, refinado conforme origem real da venda;
-7. **#190 — compositor modular**, após mapear dependências reais e provar gating em poucos módulos;
-8. concluir **Q-022** antes da preparação dos usuários reais;
-9. homologação com dados representativos → migração/cutover → production-readiness.
-
-Itens 3–7 podem ter dependências/ordem refinadas por evidência concreta, mas nenhum chat deve voltar a tratar custo ou ficha técnica como “decisão ainda não tomada”.
+1. **#183 — empréstimos** com restituição física e/ou monetária;
+2. **#185 — PDV Legal** quando houver estrutura/amostra oficial;
+3. **#188 — catálogo comercial, preços e margem**;
+4. **#189 — fichas técnicas/receitas**;
+5. **#184 — consumo de funcionários**, refinado conforme origem real da venda;
+6. **#190 — compositor modular** após mapear dependências e provar gating inicial;
+7. concluir **Q-022** antes da preparação dos usuários reais;
+8. homologação com dados representativos → migração/cutover → production-readiness.
 
 ## Runtime / infraestrutura
 
-Último deployment de aplicação observado continua sendo o runtime integrado no PR #171. PRs documentais posteriores não justificam deploy manual.
-
-Production e Git foram previamente revalidados alinhados até `20260828132500`. Não repetir o incidente #175 sem drift novo comprovado.
-
-#75/#121 e `REQ-PLAT-005` continuam **TOTALMENTE ON HOLD** até production-readiness.
+- Git e Production estão alinhados até migration `20260904103000`;
+- não repetir reconciliation de migrations sem drift novo comprovado;
+- nenhum deploy Vercel manual foi disparado como parte do fechamento da #187;
+- não gastar deploy por rotina documental/smoke sem regressão concreta.
 
 ## NEXT_ACTION
 
-**Executar Issue #187 — custeio por lote/camada física**, começando por auditoria do runtime atual para localizar onde custo médio ainda alimenta snapshots/valuation e corrigindo somente o necessário com migrations/testes/UX coerentes.
-
-Não implementar #183 antes de #187 estar integrado e validado. Não pedir novamente ao operador que escolha método de custeio.
+**Executar Issue #183 — empréstimos com restituição física e/ou financeira**, agora sobre o runtime de custeio por camada já integrado e validado.

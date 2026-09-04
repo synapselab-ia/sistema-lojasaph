@@ -16,154 +16,176 @@ Leitura mínima de qualquer chat novo:
 
 ## Frente ativa
 
-Fase 51 / #142 e Fase 52 / #180 estão concluídas. A frente guarda-chuva é **Fase 53 / #181 — conclusão de negócio**, com decisões de 2026-09-03 e 2026-09-04 consolidadas em `docs/qa/fase53-business-decisions.md`.
+Fase 51 / #142 e Fase 52 / #180 estão concluídas. A frente guarda-chuva é **Fase 53 / #181 — conclusão de negócio**.
 
-## Decisões que NÃO devem ser perguntadas novamente
+A frente principal agora é **Fase 54 / Issue #183 — empréstimos com restituição física e/ou financeira**.
 
-### Custeio — Q-008 encerrada
+A dependência técnica anterior, **Issue #187 / Fase 57 — custeio por lote/camada**, foi concluída e não é mais blocker.
+
+## Fechamento da #187
+
+PR #192 foi mergeado em `main` no commit `1b795bf358a417e6f3e8dbaf9e574e2b3383ad93` e fechou #187.
+
+Validação:
+
+- CI do PR: CI + Inventory Count Integration + Business Transactions Integration verdes;
+- CI pós-merge #623 / run `33907422006`: verde;
+- Production Migration Reconcile 187 / run `33907623545`: verde;
+- Production `fhbvwyttikrbeaanatlr` alinhada pelas migrations:
+  - `20260904101500_layer_costing_runtime`;
+  - `20260904102000_layer_costing_immediate_runtime`;
+  - `20260904102500_preserve_average_cost_cache_semantics`;
+  - `20260904103000_negative_stock_cost_fallback`;
+- dry-run posterior confirmou `Remote database is up to date`.
+
+O reconciliador foi one-shot/fail-closed, sem seed, reset, repair ou edição direta de migration history. A branch operacional foi reposicionada para o mesmo commit de `main`, removendo o workflow temporário do tip.
+
+## Regra de custeio que NÃO deve ser rediscutida
 
 A regra final é **custo por lote/camada física efetivamente movimentada**.
 
-- perdeu/retirou a unidade do lote que custou R$ 5 → custo da saída R$ 5;
-- perdeu/retirou a unidade do lote que custou R$ 2 → custo da saída R$ 2;
-- FEFO escolhe lote apenas quando não há seleção física explícita;
-- perda/quebra de lote conhecido usa o lote real;
-- transferência e devolução preservam custo de origem;
-- empréstimo usa o custo das camadas efetivamente emprestadas;
-- custo médio pode ser exibido como indicador derivado, mas não reprecifica saída física conhecida;
-- caso sem custo rastreável precisa de fallback explícito/auditável.
+- camada a R$ 5 movimentada → custo R$ 5/unidade;
+- camada a R$ 2 movimentada → custo R$ 2/unidade;
+- FEFO escolhe quando não há seleção explícita;
+- lote explicitamente informado prevalece;
+- perdas/vencimentos usam o lote/camada real;
+- transferências e devoluções preservam custo de origem;
+- `average_cost` é analítico e não reprecifica saída conhecida;
+- legado sem camada = `legacy_estimate`;
+- excedente de estoque negativo permitido = `negative_estimate`;
+- combinação de custo rastreável/estimado pode ser `mixed_estimate`;
+- fallback é explícito, auditável e visível;
+- ajuste positivo sem custo explícito é bloqueado.
 
-Autoridade: `REQ-STK-010`, `BR-STK-010`, `ADR-003-inventory-costing.md`. Issue técnica: **#187**.
+Autoridade: `REQ-STK-010`, `BR-STK-010`, `ADR-003-inventory-costing.md`.
+
+## #183 — Empréstimos: contrato aprovado
+
+Empréstimo é processo **distinto de transferência**.
+
+Deve:
+
+- registrar origem, contraparte/destino, item, quantidade e valor de referência;
+- preservar as camadas/lotes efetivamente emprestados;
+- formar valor histórico por `quantidade × custo da camada`, somando múltiplas camadas quando necessário;
+- manter saldo físico pendente;
+- manter saldo monetário pendente quando aplicável;
+- aceitar retorno físico parcial/total;
+- aceitar restituição monetária parcial/total;
+- aceitar combinação das duas formas;
+- ligar cada restituição ao empréstimo original;
+- preservar o empréstimo original e seu histórico;
+- bloquear over-return/over-settlement;
+- ser concorrência-safe, transacional e idempotente;
+- manter RLS/roles/escopo coerentes com Estoque;
+- usar ledger de estoque somente para movimentos físicos reais;
+- manter audit trail.
+
+### Boundary financeiro
+
+Não inventar integração automática com Caixa/Financeiro. O primeiro boundary obrigatório é registrar a liquidação monetária do empréstimo de forma auditável. Reflexos adicionais exigem regra explícita e devem evitar dupla contabilização.
+
+### UX obrigatória
+
+Jornada `lista → detalhe → restituir`, com saldos físico/monetário claros, histórico compreensível e ações para restituição física, financeira ou ambas. Não entregar tabela CRUD bruta como produto final.
+
+### Testes mínimos
+
+- mesmo item em múltiplas camadas de custos diferentes;
+- empréstimo consumindo mais de uma camada e preservando valor histórico exato;
+- retorno físico parcial e total;
+- liquidação monetária parcial e total;
+- combinação de retorno físico + monetário;
+- idempotência;
+- over-return/over-settlement;
+- concorrência;
+- Organization isolation / escopo / grants;
+- audit trail;
+- PostgreSQL + aplicação + CI.
+
+## Advisors Production após #187
+
+- nenhum erro crítico novo específico da #187;
+- warnings de Security continuam apontando RPCs públicos `SECURITY DEFINER` executáveis por `authenticated` e leaked-password protection desabilitada;
+- helpers internos da #187 ficam em `private` e não são executáveis por `anon`/`authenticated`;
+- Performance mantém INFOs de FKs sem índice e índices não usados.
+
+Não ampliar #183 para esses temas sem vínculo real. Abrir/usar frente própria de hardening/performance se priorizado.
+
+## Outras decisões que NÃO devem ser perguntadas novamente
 
 ### FEFO
 
-Aprovado. Prioriza vencimento mais próximo quando a operação não indicar lote físico específico.
+Aprovado: prioriza vencimento mais próximo quando não houver lote físico específico.
 
 ### Pagamento parcial/múltiplo
 
-Não é requisito do primeiro go-live. Não remover a capacidade técnica existente e não expandi-la por inércia.
+Não é requisito do primeiro go-live. Não remover capacidade técnica existente nem expandir por inércia.
 
-### Consumo de funcionários
+### Consumo de funcionários — #184
 
-É **venda atribuída ao funcionário**, compõe faturamento e o valor é descontado na folha. Não é recebimento imediato na gaveta e não transforma o Lojasaph em folha/RH. Issue **#184**.
+É venda atribuída ao funcionário, compõe faturamento e é descontada em folha. Não é recebimento imediato em caixa e não transforma Lojasaph em folha/RH.
 
-### PDV
+### PDV Legal — #185
 
-O sistema utilizado é **PDV Legal** e continua sendo o PDV. Não criar frente de caixa própria por inferência.
+PDV Legal permanece o PDV. Estudar importação oficial, preferencialmente Excel/CSV com staging/dry-run/idempotência enquanto não houver API/integrador oficial comprovado.
 
-Estudar importação por mecanismo oficial, preferencialmente Excel/CSV com staging/dry-run/idempotência enquanto não houver API/integrador oficial comprovado. Issue **#185**.
+### Produto vendável / catálogo — #188
 
-## Decisões revisadas em 2026-09-04
+Lojasaph não vira POS, mas deve poder representar produto vendido para mapear PDV, preço/histórico, estoque, ficha técnica e margem. Preço de fornecedor, custo real do lote e preço de venda são conceitos distintos.
 
-### Produto vendável / catálogo comercial — #188
+### Ficha técnica — #189
 
-A antiga decisão de “adiar produto de venda” não deve ser lida como proibição de catálogo comercial.
-
-O Lojasaph **não vende no caixa**, mas deve poder representar o produto vendido para:
-
-- mapear dados do PDV Legal;
-- guardar preço de venda/histórico;
-- relacionar item vendido diretamente ao estoque;
-- relacionar prato a ficha técnica;
-- calcular receita/custo/margem.
-
-Preço de fornecedor, custo real do lote e preço de venda são conceitos separados. Margem bruta não deve ser chamada de lucro líquido sem dados suficientes. Issue **#188**.
-
-### Ficha técnica/receita — #189
-
-A decisão anterior de adiamento foi revertida como roadmap: ficha técnica foi **recolocada na fila**.
-
-Deve suportar prato/produto preparado, versão, rendimento, ingredientes, quantidades/unidades e custo teórico. Não baixar estoque automaticamente apenas por existir receita; venda → consumo físico precisa de regra explícita para evitar dupla baixa. Issue **#189**.
+Está de volta ao roadmap. Deve suportar preparação, versão, rendimento e ingredientes. Ficha técnica por si só não baixa estoque automaticamente.
 
 ### Compositor modular — #190
 
-Visão aprovada: área estrutural inicialmente só para `owner` Organization-wide, permitindo montar/desmontar capacidades como peças.
-
-- desligar não apaga histórico/dados;
-- backend deve bloquear operações desabilitadas quando necessário;
-- dependências precisam ser explícitas;
-- auth/RLS/Organization/auditoria/integridade são core não removível;
-- navegação/dashboard refletem configuração;
-- alterações são auditadas;
-- UI deve ser configurador de produto bonito/compreensível, não feature flags técnicas.
-
-Issue **#190**.
-
-## #183 — Empréstimos
-
-Regra aprovada:
-
-- processo distinto de transferência;
-- registra quantidade e valor;
-- restituição física parcial/total;
-- restituição em valor parcial/total;
-- combinação das duas formas;
-- saldo e histórico auditáveis;
-- valuation físico usa custo das camadas/lotes emprestados.
-
-A decisão empresarial de custeio já existe. O bloqueio agora é **técnico**: integrar #187 primeiro para garantir que o runtime use a mesma regra antes de construir empréstimos.
+Área inicialmente para `owner` Organization-wide; desligar módulo não apaga dados; backend deve aplicar gating; dependências explícitas; core de auth/RLS/Organization/auditoria não removível.
 
 ## Qualidade visual
 
-O operador explicitou que “funciona” não basta. Para #188/#189/#190 e relatórios derivados, o aceite inclui:
+“Funciona” não basta. Novas áreas exigem linguagem operacional, hierarquia visual, progressive disclosure, feedback, acessibilidade e consistência com design system da Fase 51.
 
-- linguagem operacional;
-- hierarquia visual clara;
-- progressive disclosure em vez de formulário gigante;
-- feedback/estados consistentes;
-- responsividade e acessibilidade;
-- consistência com design system/IA da Fase 51.
+## Ordem vigente
 
-Não entregar tabela CRUD bruta e declarar produto concluído.
+1. **#183 — empréstimos**;
+2. **#185 — PDV Legal** quando houver estrutura/amostra oficial;
+3. **#188 — catálogo comercial, preços e margem**;
+4. **#189 — fichas técnicas/receitas**;
+5. **#184 — consumo de funcionários**;
+6. **#190 — compositor modular**;
+7. **Q-022 — perfis/pessoas reais** antes do go-live;
+8. homologação → migração/cutover → production-readiness.
 
-## Ordem de execução vigente
-
-1. **#187 — custeio por lote/camada física**;
-2. **#183 — empréstimos**;
-3. **#185 — estudo/importação PDV Legal** quando houver estrutura/amostra oficial;
-4. **#188 — catálogo comercial, preços e margem**;
-5. **#189 — fichas técnicas/receitas**;
-6. **#184 — consumo de funcionários**, refinado pela origem real das vendas;
-7. **#190 — compositor modular**, depois de mapear dependências e fazer rollout inicial de baixo risco;
-8. **Q-022 — perfis/pessoas reais** antes de preparar usuários de go-live;
-9. homologação com dados representativos → migração/cutover → production-readiness.
-
-A ordem pode ser refinada quando dependências reais forem comprovadas, mas não voltar a tratar Q-008 ou ficha técnica como perguntas não respondidas.
-
-## Perguntas ainda abertas
-
-- **Q-022** continua prioritária para go-live: quem pode fazer cada ação.
-- Q-001/Q-002/Q-003/Q-004 e outras perguntas históricas devem ser respondidas apenas no nível necessário à migração/cutover.
-- detalhes específicos de #184/#185/#188/#189 podem surgir durante desenho, mas não invalidam as decisões acima.
+#75/#121 permanecem **TOTALMENTE ON HOLD** até production-readiness.
 
 ## Estado infra/UX que não deve ser refeito
 
 - Fase 51 UX concluída dentro da limitação tablet aceita;
-- desktop/mobile possuem evidência live representativa;
-- tablet permanece deferido, não homologado;
-- migration drift administrativo #175 já foi corrigido;
-- Git/Production foram previamente alinhados até `20260828132500`;
-- não repetir smokes, reconciliation de migrations ou deploy Vercel sem regressão concreta.
-
-#75/#121 permanecem **TOTALMENTE ON HOLD** até production-readiness.
+- desktop/mobile possuem evidência representativa;
+- tablet permanece deferido;
+- Git/Production alinhados até `20260904103000`;
+- não repetir migration reconciliation sem drift;
+- não disparar deploy Vercel manual por rotina.
 
 ## NEXT_ACTION
 
-### Executar #187 — reconciliar o runtime com custeio por lote/camada
+### Executar #183 — empréstimos com restituição física e/ou financeira
 
 O próximo chat deve:
 
 1. ler governança e estado real GitHub;
-2. abrir Issue #187 e `ADR-003`;
-3. auditar onde o runtime atual ainda usa custo médio para snapshots/valuation de saída;
-4. desenhar a menor alteração segura que preserve camada/lote, FEFO, transferências, devoluções e legado;
-5. implementar em branch funcional com migrations somente se necessárias;
-6. cobrir com testes PostgreSQL/aplicação, incluindo mesmo item com lotes de custos diferentes;
-7. CI verde → PR → merge → CI pós-merge;
-8. atualizar handoff sem fazer deploy Vercel manual por rotina.
-
-Depois promover #183.
+2. abrir Issue #183, `REQ-STK-007`, `REQ-STK-010` e ADR-003;
+3. auditar modelos/movimentos existentes para reaproveitar somente primitives adequadas, sem converter empréstimo em transferência;
+4. desenhar modelo persistente de empréstimo + alocações de camada + restituições;
+5. preservar custo histórico das camadas consumidas;
+6. implementar commands transacionais/idempotentes e RLS/escopo;
+7. implementar UX `lista → detalhe → restituir`;
+8. cobrir os cenários de restituição física/monetária/combinação e múltiplos custos;
+9. CI verde → PR → merge → CI pós-merge;
+10. verificar paridade Production somente se houver migration mergeada para rollout e seguir o procedimento version-preserving;
+11. atualizar `CURRENT_STATE`, `HANDOFF` e `NEXT_ACTION`.
 
 ## Guardrails
 
-GitHub é fonte de verdade; RLS/backend continuam boundaries; nenhum secret; nenhuma fixture Production; nenhuma regra por inferência; nenhum deploy Vercel manual rotineiro; não retomar #75/#121 nesta fase.
+GitHub é fonte de verdade; RLS/backend são boundaries; nenhum secret; nenhuma fixture Production; nenhuma regra contábil/fiscal por inferência; nenhum deploy Vercel manual rotineiro; não retomar #75/#121 nesta fase.
