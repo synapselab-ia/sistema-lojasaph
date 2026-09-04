@@ -21,6 +21,20 @@ export default function StockWithdrawalsPage() {
   const [feedback, setFeedback] = useState<{ tone: "success" | "danger"; text: string } | null>(null);
 
   const selectedItem = workspace.stockItems.find((item) => item.id === withdrawal.stockItemId);
+  const selectedLocation = workspace.stockLocations.find((location) => location.id === withdrawal.stockLocationId);
+  const selectedBalance = workspace.balances.find(
+    (balance) => balance.stockItemId === withdrawal.stockItemId && balance.stockLocationId === withdrawal.stockLocationId,
+  );
+  const requestedQuantity = Number(withdrawal.quantity.replace(",", "."));
+  const availableQuantity = selectedBalance ? Number(selectedBalance.quantity.toDecimal()) : 0;
+  const estimatedNegativeCost = Boolean(
+    selectedItem
+      && !selectedItem.trackBatch
+      && !selectedItem.trackExpiration
+      && selectedLocation?.allowNegativeStock
+      && Number.isFinite(requestedQuantity)
+      && requestedQuantity > availableQuantity,
+  );
   const candidateBatches = useMemo(
     () => workspace.batches.filter((batch) => batch.stockItemId === withdrawal.stockItemId && batch.stockLocationId === withdrawal.stockLocationId),
     [withdrawal.stockItemId, withdrawal.stockLocationId, workspace.batches],
@@ -103,6 +117,14 @@ export default function StockWithdrawalsPage() {
                 {(props) => <Input {...props} required inputMode="decimal" value={withdrawal.quantity} onChange={(event) => setWithdrawal({ ...withdrawal, quantity: event.target.value })} />}
               </FormField>
             </div>
+
+            {estimatedNegativeCost && (
+              <Panel tone="attention" padding="sm">
+                <p className="text-sm leading-6">
+                  A quantidade informada ultrapassa o saldo físico disponível. Como este local permite estoque negativo, o excedente será registrado com custo estimado e identificado na auditoria até existir uma camada física correspondente.
+                </p>
+              </Panel>
+            )}
 
             {(selectedItem?.trackBatch || selectedItem?.trackExpiration) && (
               <FormField id="withdrawal-batch" label="Lote preferido" hint="Opcional. Se não escolher, o sistema fará a seleção automática disponível para a retirada.">
