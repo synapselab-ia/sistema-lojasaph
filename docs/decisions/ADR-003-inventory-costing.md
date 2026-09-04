@@ -1,59 +1,116 @@
 # ADR-003 — Custeio de estoque
 
-Data: 2026-08-17
-Status: aceito como default revisável
+Data original: 2026-08-17  
+Última revisão: 2026-09-04  
+Status: **aceito — revisado por decisão explícita do operador**
 
 ## Contexto
 
-As planilhas registram custo unitário em alguns lançamentos, mas há lacunas e não existe método de custeio formal consistente. O sistema precisa valorar estoque, retiradas e perdas sem depender de digitação manual em cada saída.
+As planilhas registram custo unitário em parte dos lançamentos, mas não possuíam método formal consistente. O sistema já preserva `unit_cost` por lote/recebimento e snapshots monetários em movimentos relevantes.
+
+O default inicial deste ADR adotava custo médio ponderado móvel como valorização gerencial. Em 2026-09-04 o operador definiu uma regra empresarial mais específica:
+
+> quando uma quantidade física sai, é perdida, vence, é transferida ou emprestada, o valor econômico deve acompanhar o custo real da camada/lote físico efetivamente movimentado.
+
+Exemplo aprovado: se uma unidade perdida pertence a um lote adquirido por R$ 5, a perda vale R$ 5; se pertence a um lote adquirido por R$ 2, vale R$ 2. Custo médio ou última compra não devem substituir silenciosamente o custo real conhecido daquele lote.
+
+Essa decisão substitui o default anterior de custo médio para saídas físicas identificáveis.
 
 ## Decisão
 
-### 1. Método gerencial padrão
+### 1. Camada de custo por lote/recebimento
 
-Adotar custo médio ponderado móvel por `StockItem + StockLocation` como default de valorização gerencial.
+Cada entrada/recebimento deve preservar seu custo unitário de origem em uma camada rastreável de estoque.
 
-Em cada entrada com custo conhecido:
+Quando houver lote operacional explícito, ele é a camada natural. Quando o item não exigir código de lote/validade visível, a implementação ainda deve preservar uma camada de aquisição/recebimento suficiente para explicar o custo da quantidade física. Não é aceitável perder a origem econômica apenas porque o usuário não precisa visualizar um código de lote.
+
+### 2. Saídas físicas usam o custo da camada consumida
+
+Toda saída com origem física conhecida deve preservar:
+
+- quantidade;
+- lote/camada de origem;
+- `unit_cost_snapshot` correspondente à camada;
+- `total_cost_snapshot = quantidade × custo_unitário_da_camada`.
+
+Aplica-se, conforme o processo:
+
+- retiradas;
+- perdas/quebras;
+- vencimentos;
+- transferências;
+- devoluções relacionadas;
+- empréstimos;
+- demais baixas físicas rastreáveis.
+
+Movimentos históricos não devem mudar de valor quando compras futuras ocorrerem.
+
+### 3. FEFO e seleção explícita de lote
+
+FEFO decide **qual quantidade física deve sair** quando houver múltiplas camadas elegíveis e o usuário não estiver registrando um lote específico já conhecido.
+
+Se o usuário informar explicitamente um lote/camada válida — por exemplo, ao registrar a perda de um lote determinado — essa seleção representa a realidade física e seu custo prevalece.
+
+FEFO não deve reatribuir uma perda conhecida a outro lote apenas por vencer antes.
+
+### 4. Transferências
+
+Transferência entre locais preserva a identidade econômica da quantidade transferida. O destino recebe a quantidade com o mesmo custo da camada de origem; trocar de local não cria ganho ou perda artificial.
+
+Política futura de preço de transferência entre pessoas jurídicas, se necessária, é uma camada financeira separada e não altera retroativamente o custo físico de aquisição.
+
+### 5. Devoluções e restituições físicas
+
+Quando uma devolução/restituição estiver relacionada a uma saída anterior, o custo deve manter vínculo com a origem correspondente, preservando rastreabilidade e evitando criar custo novo por conveniência.
+
+### 6. Empréstimos
+
+O valor físico de referência de um empréstimo é formado pelos custos das camadas/lotes efetivamente emprestados.
+
+Uma restituição em mercadoria preserva a trilha física correspondente. Uma restituição em valor quita obrigação monetária do empréstimo conforme a regra específica da Issue #183; ela não reescreve o custo histórico da saída original.
+
+### 7. Valor do estoque
+
+A valorização gerencial do estoque disponível deve ser explicável pela soma das quantidades remanescentes de suas camadas de custo:
 
 ```text
-novo_custo_medio =
-  ((saldo_anterior × custo_medio_anterior) + (quantidade_entrada × custo_entrada))
-  / (saldo_anterior + quantidade_entrada)
+valor_estoque = Σ (quantidade_remanescente_da_camada × custo_unitário_da_camada)
 ```
 
-Regras de borda serão formalizadas na implementação para saldo zero, ajustes e migração.
+Relatórios podem apresentar custo médio **derivado para análise** (`valor total / quantidade total`), mas esse indicador não substitui a origem econômica dos lotes nem deve ser usado para reprecificar saídas físicas conhecidas.
 
-### 2. Preservar custo de origem
+### 8. Casos sem custo rastreável
 
-Cada lote/recebimento preserva seu custo unitário original.
+Dados legados, estoque negativo ou ajustes podem produzir situações em que nenhuma camada de custo confiável exista.
 
-Cada movimento relevante preserva `unit_cost_snapshot` e `total_cost_snapshot` para que relatórios históricos não mudem quando o custo médio futuro mudar.
+Nesses casos:
 
-### 3. Transferências
+- não inventar custo silenciosamente;
+- não cair automaticamente para custo médio ou última compra sem regra explícita;
+- registrar o caso como custo desconhecido/fallback auditável conforme desenho da implementação;
+- tornar a limitação visível em relatórios e validações quando material;
+- definir estratégia de correção/migração sem destruir histórico.
 
-Transferência entre locais do mesmo grupo preserva o custo econômico do item no momento da saída. O recebimento não deve criar ganho/perda artificial apenas por trocar de local.
+A Issue #187 deve fechar os fallbacks concretos necessários ao runtime.
 
-Se futuramente houver política de preço de transferência entre empresas jurídicas, ela será uma camada financeira separada.
+### 9. Preço de fornecedor e preço de venda são conceitos distintos
 
-### 4. Perdas e retiradas
+`SupplierPrice`/histórico de compras representa preço observado ou contratado do fornecedor e não substitui o custo da camada física recebida.
 
-O valor gerencial da saída usa o custo médio vigente no momento da operação, preservado no snapshot do movimento.
+Preço de venda pertence ao catálogo comercial e deve possuir histórico/vigência próprios. Margem bruta é derivada de receita menos custo aplicável; não confundir com lucro líquido.
 
-### 5. Custo físico de lote versus valorização
-
-FEFO/FIFO e seleção de lote tratam qual quantidade física sai. O custo médio ponderado trata valorização gerencial. São decisões independentes.
-
-### 6. Histórico de fornecedor
-
-`SupplierPrice` guarda preço observado/contratado de fornecedor e não é substituto do custo do estoque.
+Refs: #187, #188 e #189.
 
 ## Consequências
 
-- retiradas e perdas terão valor consistente mesmo sem digitação manual;
-- relatórios históricos permanecem estáveis por snapshots;
-- custo de compra/lote continua disponível para análise;
-- o sistema poderá comparar custo médio, custo de lote e preço de fornecedor sem misturar conceitos.
+- perdas e retiradas passam a refletir o custo da mercadoria realmente afetada;
+- itens iguais comprados por valores diferentes continuam economicamente explicáveis;
+- transferências, devoluções e empréstimos preservam custo de origem;
+- relatórios históricos permanecem estáveis;
+- custo médio pode continuar como métrica analítica, não como mecanismo de reprecificação de saídas;
+- implementação pode exigir ajustes no runtime atual onde ainda houver custo médio como fonte de snapshot;
+- migração de dados sem custo conhecido precisa de tratamento explícito.
 
-## Revisão futura
+## Não decidido por este ADR
 
-Se o cliente exigir método fiscal/contábil específico, o modelo físico poderá adicionar outra camada de valorização. O ledger de quantidades e os snapshots preservados permitem essa evolução sem reescrever movimentos históricos.
+Este ADR trata custeio gerencial/operacional por camada física. Ele não declara método fiscal/contábil oficial para demonstrações financeiras externas. Se houver obrigação fiscal/contábil específica, criar decisão própria sem reescrever o ledger físico ou seus snapshots históricos.

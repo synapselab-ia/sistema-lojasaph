@@ -1,12 +1,12 @@
 # Requisitos Iniciais — Sistema Lojasaph
 
 Data: 2026-08-17  
-Última reconciliação de negócio: 2026-09-03
+Última reconciliação de negócio: 2026-09-04
 
 ## Convenções
 
 - `MUST`: obrigatório para a solução alvo/MVP conforme fase definida.
-- `SHOULD`: importante, pode entrar após o núcleo.
+- `SHOULD`: importante e aprovado para evolução do produto, sem necessariamente bloquear o primeiro corte operacional.
 - `COULD`: evolução futura.
 - `PENDING`: depende de validação do cliente.
 - `DEFERRED`: decisão explícita de não bloquear o primeiro go-live; pode ser retomado depois.
@@ -29,7 +29,7 @@ Data: 2026-08-17
 
 ---
 
-# Itens
+# Itens e catálogo comercial
 
 ## REQ-ITEM-001 — Cadastro canônico de item de estoque
 **MUST** — Itens de estoque devem possuir identificador estável, nome, categoria, unidade de medida e status.
@@ -40,11 +40,27 @@ Data: 2026-08-17
 ## REQ-ITEM-003 — Código de barras e dados fiscais
 **SHOULD** — Permitir EAN/código de barras e atributos fiscais quando aplicáveis.
 
-## REQ-ITEM-004 — Produto de venda separado
-**DEFERRED para o primeiro go-live** — O operador decidiu em 2026-09-03 não criar agora um conceito próprio de produto de venda/POS no Lojasaph. O PDV Legal permanece como sistema de vendas. Reavaliar se a importação do PDV exigir mapeamento explícito entre produto vendido e item de estoque.
+## REQ-ITEM-004 — Produto de venda separado do item de estoque
+**MUST para a solução comercial alvo; sem transformar o Lojasaph em POS** — O sistema deve suportar um conceito de produto vendável separado do item de estoque quando necessário. Um produto vendido pode mapear 1:1 para um item de estoque (ex.: água) ou representar um prato/preparação composto por vários insumos.
+
+O **PDV Legal permanece como sistema de venda/PDV**. O Lojasaph deve usar esse catálogo para mapeamento, análise, ficha técnica, preço/margem e importação de vendas, não para assumir emissão de venda no caixa sem requisito separado. Implementação/desenho: Issues #188 e #185.
 
 ## REQ-ITEM-005 — Ficha técnica/receita
-**DEFERRED para o primeiro go-live** — Não bloquear a implantação inicial por ficha técnica/BOM ou consumo teórico derivado de vendas. Retomar somente se houver necessidade operacional explícita.
+**SHOULD — aprovada e recolocada na fila em 2026-09-04** — Permitir cadastrar ficha técnica de pratos/produtos preparados, com versão/vigência, rendimento, ingredientes, quantidades/unidades, custo teórico derivado e histórico.
+
+A existência de uma ficha técnica não autoriza baixa automática de estoque por venda sem regra explícita de sincronização. Implementação: Issue #189.
+
+## REQ-ITEM-006 — Preços comerciais e margem
+**MUST para relatórios comerciais úteis** — O sistema deve distinguir e preservar historicamente:
+
+- preço/custo observado na compra;
+- custo real da camada/lote recebido;
+- preço de venda vigente e histórico;
+- receita de venda;
+- custo aplicável dos itens/insumos;
+- margem bruta em valor e percentual.
+
+Não chamar margem bruta de lucro líquido sem despesas, taxas, impostos e demais componentes suficientes. Implementação/desenho: Issue #188.
 
 ---
 
@@ -69,7 +85,9 @@ Data: 2026-08-17
 **MUST** — Permitir relacionar devolução a movimento anterior quando aplicável.
 
 ## REQ-STK-007 — Empréstimo
-**MUST** — Empréstimo é processo distinto de transferência. Deve registrar quantidade e valor do que foi emprestado e permitir restituição total ou parcial por retorno físico ao estoque, por valor, ou por combinação das duas formas, preservando saldo pendente e histórico auditável. A fonte do valor unitário depende de `REQ-STK-010`. Implementação: Issue #183.
+**MUST** — Empréstimo é processo distinto de transferência. Deve registrar quantidade e valor do que foi emprestado e permitir restituição total ou parcial por retorno físico ao estoque, por valor, ou por combinação das duas formas, preservando saldo pendente e histórico auditável.
+
+O valor físico de referência deve usar o custo das camadas/lotes efetivamente emprestados conforme `REQ-STK-010`. Implementação: Issue #183.
 
 ## REQ-STK-008 — Perdas e vencimentos
 **MUST** — Registrar baixa por perda, quebra, vencimento e outros motivos configurados.
@@ -77,8 +95,23 @@ Data: 2026-08-17
 ## REQ-STK-009 — Inventário físico
 **MUST** — Permitir contagem física, comparação com saldo e geração auditável de ajuste.
 
-## REQ-STK-010 — Custeio
-**MUST; método ainda PENDING** — O operador confirmou que o sistema precisa de custeio. O método final ainda deve ser escolhido explicitamente entre custo médio, última compra, lote específico ou outra regra comprovada. Não inferir o método a partir da implementação atual.
+## REQ-STK-010 — Custeio por lote/camada física
+**MUST — decisão aprovada em 2026-09-04** — O custo econômico de uma saída física deve acompanhar a camada/lote efetivamente movimentado.
+
+Se uma unidade perdida pertence a um lote adquirido por R$ 5, a perda deve registrar R$ 5; se pertence a um lote adquirido por R$ 2, deve registrar R$ 2. Não substituir silenciosamente o custo real conhecido por custo médio ou última compra.
+
+Regras mínimas:
+
+- entradas preservam custo unitário de origem por lote/camada de recebimento;
+- saídas preservam snapshots de custo da camada consumida;
+- FEFO escolhe a camada quando não houver seleção física explícita;
+- seleção explícita de lote válido prevalece quando representa a realidade da operação;
+- transferências preservam custo da origem;
+- devoluções relacionadas preservam vínculo econômico;
+- valor de estoque deve ser explicável pelas camadas remanescentes;
+- casos legados/negativos sem custo rastreável exigem fallback explícito e auditável, nunca média silenciosa.
+
+Arquitetura: `ADR-003-inventory-costing.md`. Implementação: Issue #187.
 
 ## REQ-STK-011 — Estoque mínimo
 **SHOULD** — Permitir estoque mínimo e alertas de reposição.
@@ -97,7 +130,7 @@ Data: 2026-08-17
 **SHOULD** — Alertar lotes vencidos e próximos do vencimento em janelas configuráveis.
 
 ## REQ-EXP-004 — FEFO
-**MUST** — Quando houver lotes comparáveis, a saída deve priorizar o lote que vence primeiro. Decisão aprovada pelo operador em 2026-09-03.
+**MUST** — Quando houver lotes comparáveis e nenhuma seleção física explícita da operação, a saída deve priorizar o lote que vence primeiro. Se a operação identificar um lote específico — por exemplo, uma perda conhecida — o lote real informado prevalece e seu custo deve ser usado.
 
 ---
 
@@ -116,7 +149,7 @@ Data: 2026-08-17
 **SHOULD** — Relacionar fornecedor e item com unidade/embalagem de compra.
 
 ## REQ-SUP-005 — Histórico de preços
-**SHOULD** — Preservar histórico de preços/custos por fornecedor.
+**SHOULD** — Preservar histórico de preços/custos por fornecedor e período sem sobrescrever o passado.
 
 ## REQ-PUR-001 — Pedido de compra
 **SHOULD** — Permitir pedido de compra, itens, fornecedor, status e recebimento.
@@ -181,7 +214,9 @@ Data: 2026-08-17
 **MUST** — Consumo de funcionário é venda atribuída ao funcionário, cujo valor é descontado na folha. Deve compor faturamento sem ser tratado como entrada imediata na gaveta/meio de pagamento e deve fornecer informação rastreável para o processo externo de folha. O Lojasaph não se torna sistema de folha/RH por essa regra. Implementação: Issue #184.
 
 ## REQ-CASH-008 — Integração com vendas
-**SHOULD / estudo aprovado** — O PDV Legal permanece como sistema de vendas. O Lojasaph deve estudar importação/exportação de dados, preferencialmente por arquivos oficiais (Excel/CSV) enquanto não houver integração/API oficialmente comprovada. Não criar POS próprio nem integração em tempo real por inferência. Estudo: Issue #185.
+**SHOULD / estudo aprovado** — O PDV Legal permanece como sistema de vendas. O Lojasaph deve estudar importação/exportação de dados, preferencialmente por arquivos oficiais (Excel/CSV) enquanto não houver integração/API oficialmente comprovada.
+
+O estudo deve priorizar campos que permitam mapear produto vendido, quantidade, preço, filial/unidade, data/hora e demais chaves necessárias a relatórios, consumo de funcionários e eventual ficha técnica. Estudo: Issue #185.
 
 ---
 
@@ -197,10 +232,13 @@ Data: 2026-08-17
 **MUST** — Exibir total pago, pendente, atrasado e a vencer.
 
 ## REQ-DASH-004 — Estoque
-**SHOULD** — Exibir saldos, movimentações, perdas, inventários e validades.
+**SHOULD** — Exibir saldos, movimentações, perdas, inventários, validades e valor de estoque explicável por camada de custo.
 
 ## REQ-DASH-005 — Fornecedores/compras
 **SHOULD** — Exibir compras, variação de preço e desempenho/histórico por fornecedor quando houver dados.
+
+## REQ-DASH-006 — Vendas, custo e margem
+**SHOULD — aprovado para evolução** — Quando houver fonte confiável de vendas e mapeamento comercial, exibir receita, custo, margem bruta, variação de custo, itens/pratos relevantes e demais indicadores derivados sem duplicar vendas nem prometer lucro líquido sem componentes suficientes.
 
 ---
 
@@ -246,36 +284,31 @@ Data: 2026-08-17
 ## REQ-PLAT-007 — Ambientes separados
 **MUST** — Development/preview e produção não devem compartilhar inadvertidamente dados/segredos.
 
+## REQ-PLAT-008 — Composição modular por Organization
+**SHOULD — visão aprovada para evolução** — O sistema deve evoluir para permitir que um `owner` Organization-wide habilite/desabilite capacidades de negócio como peças modulares, sem apagar histórico nem romper dependências.
+
+A composição deve:
+
+- operar por capability/module registry versionado;
+- respeitar dependências entre módulos;
+- preservar módulos core de autenticação, autorização, organização, auditoria e integridade;
+- bloquear ações no backend quando uma capacidade estiver desabilitada, não apenas esconder menu;
+- adaptar navegação e dashboard;
+- preservar dados e permitir reativação;
+- auditar alterações;
+- oferecer UX de produto compreensível, não painel de feature flags técnicas.
+
+Implementação/desenho: Issue #190.
+
 ---
 
 # Importação e exportação
 
 ## REQ-IMP-001 — Importação rastreável
-**MUST para migração** — Importações devem registrar batch, origem e resultado.
+**MUST para migração e integrações por arquivo** — Importações devem registrar batch, origem e resultado.
 
 ## REQ-IMP-002 — Idempotência
 **MUST** — Reprocessar o mesmo batch não deve duplicar registros.
 
 ## REQ-IMP-003 — Preview/dry run
-**MUST** — Permitir validar transformações antes da migração definitiva.
-
-## REQ-IMP-004 — Relatório de inconsistências
-**MUST** — Informar linhas rejeitadas, warnings e mapeamentos pendentes.
-
-## REQ-EXPOR-001 — Exportação
-**SHOULD** — Dados tabulares relevantes devem poder ser exportados em CSV/Excel; PDF quando fizer sentido para relatório/documento.
-
----
-
-# Fora da decisão atual
-
-Os seguintes pontos não devem ser assumidos como aprovados sem fase específica:
-
-- emissão fiscal pelo Lojasaph;
-- folha/RH completa;
-- contabilidade completa;
-- IA dentro do produto;
-- WhatsApp;
-- modo offline completo;
-- aplicativo Android/iOS nativo;
-- integração direta/API com PDV Legal sem mecanismo oficial comprovado.
+**MUST** — Permitir validar transformações antes da migração/importação definitiva.

@@ -1,7 +1,7 @@
 # Questões Abertas para Validação
 
 Data inicial: 2026-08-17  
-Última triagem: 2026-09-03
+Última triagem: 2026-09-04
 
 Não preencher respostas por suposição. Perguntas resolvidas permanecem abaixo apenas como histórico e apontam para requisitos/regras consolidados.
 
@@ -19,11 +19,25 @@ Fonte consolidada: `REQ-STK-007`, `BR-STK-009`. Implementação: Issue #183.
 
 ## Q-007 — O sistema deverá controlar vendas ou apenas receber dados do sistema de vendas?
 
-**Resolvida para o primeiro go-live em 2026-09-03.**
+**Resolvida para a arquitetura atual em 2026-09-03 e refinada em 2026-09-04.**
 
-O sistema de vendas utilizado é o **PDV Legal**. O Lojasaph não precisa virar POS próprio agora. Foi aprovado estudar intercâmbio/importação de dados do PDV Legal, começando por mecanismos oficiais/exportações disponíveis e sem assumir API direta.
+O sistema de vendas utilizado é o **PDV Legal** e ele permanece como PDV. O Lojasaph não deve virar frente de caixa por inferência.
 
-Fonte consolidada: `REQ-CASH-008`, `BR-CASH-008`. Estudo: Issue #185.
+O Lojasaph, porém, poderá possuir catálogo comercial próprio para mapear produtos vendidos, preços, fichas técnicas e relatórios, além de importar dados do PDV Legal por mecanismo oficial quando viável.
+
+Fonte consolidada: `REQ-ITEM-004`, `REQ-CASH-008`, `BR-ITEM-002`, `BR-CASH-008`. Issues #185, #188 e #189.
+
+## Q-008 — Como o estoque deve ser custeado?
+
+**Resolvida em 2026-09-04: por lote/camada física efetivamente movimentada.**
+
+Se a quantidade perdida/saiu de uma camada adquirida por R$ 5, seu custo de saída é R$ 5; se saiu de uma camada adquirida por R$ 2, é R$ 2. Não substituir o custo real conhecido por custo médio ou última compra.
+
+FEFO escolhe a camada quando não houver seleção física explícita. Quando a operação identifica um lote específico real, esse lote prevalece.
+
+Casos legados/negativos sem camada de custo confiável ainda exigem fallback técnico explícito e auditável na Issue #187, mas **a regra empresarial de custeio não está mais aberta**.
+
+Fonte consolidada: `REQ-STK-010`, `BR-STK-010`, `ADR-003-inventory-costing.md`. Implementação: Issue #187.
 
 ## Q-009 — O que é `Consumo Funcionários` no caixa?
 
@@ -43,23 +57,23 @@ Fonte consolidada: `REQ-FIN-004`, `BR-FIN-011`.
 
 ## Q-019 — Saída deve priorizar o lote que vence primeiro (FEFO)?
 
-**Resolvida em 2026-09-03: sim.**
+**Resolvida em 2026-09-03: sim; refinada em 2026-09-04.**
 
-FEFO passa a ser regra empresarial aprovada.
+FEFO é regra empresarial aprovada quando não houver um lote físico específico identificado pela operação. Para perdas/quebras de lote conhecido, o lote real informado prevalece.
 
 Fonte consolidada: `REQ-EXP-004`, `BR-EXP-004`.
 
 ---
 
-# Decididas como adiadas para o primeiro go-live
+# Questões históricas/de migração que não bloqueiam o desenho atual
 
 ## Q-006 — O `Gabarito` é o catálogo do sistema de vendas/POS?
 
-A semântica histórica exata do `Gabarito` continua não comprovada, mas **não bloqueia o primeiro go-live**: produto de venda/POS separado e ficha técnica foram explicitamente adiados em 2026-09-03.
+A semântica histórica exata do `Gabarito` continua não comprovada.
 
-Não associar automaticamente `Gabarito` a `stock_items`. Retomar somente se o estudo/importação do PDV Legal exigir esse mapeamento.
+Isso **não bloqueia** o desenho atual de catálogo comercial/ficha técnica. Não associar automaticamente `Gabarito` a `stock_items` nem a produtos vendáveis. Resolver somente se a migração ou o estudo do PDV Legal demonstrar que essa fonte precisa ser mapeada.
 
-Refs: `REQ-ITEM-004`, `REQ-ITEM-005`, `BR-ITEM-002`, `BR-ITEM-004`, Issue #185.
+Refs: `REQ-ITEM-004`, `REQ-ITEM-005`, Issues #185/#188/#189.
 
 ---
 
@@ -84,14 +98,6 @@ Necessário para migração do campo, não para inventar regra no produto.
 ### Q-004 — O que significa `Valor total em haver`?
 
 A fórmula histórica é valor retirado menos valor devolvido. A aprovação do novo processo de empréstimo não prova que todas as linhas históricas de `em haver` tenham exatamente essa semântica.
-
-### Q-008 — Como o estoque deve ser custeado?
-
-**Obrigatoriedade resolvida; método continua aberto.**
-
-Em 2026-09-03 o operador confirmou que custeio é necessário. Ainda deve escolher explicitamente entre custo médio, última compra, lote específico ou outro método operacional comprovado.
-
-**Impacto:** estoque, perdas, retiradas, empréstimos, margem e relatórios.
 
 ---
 
@@ -147,6 +153,8 @@ Confirmar política real por operação/local antes de configurar dados finais.
 
 Mapear pessoas/cargos reais às capacidades técnicas existentes sem assumir equivalência automática entre cargo e role (`owner`, `admin`, `manager`, `finance`, `purchases`, `inventory`, `cashier`, `viewer`).
 
+A capacidade de **compor módulos do sistema** prevista na Issue #190 deve ficar inicialmente restrita a `owner` Organization-wide; não hardcode e-mail/ID pessoal.
+
 ### Q-023 — Fornecedor pode ter vários vendedores/contatos por categoria ou região?
 
 O produto suporta múltiplos contatos; confirmar semântica adicional apenas se necessária à operação.
@@ -163,8 +171,12 @@ O produto já suporta condição comercial corrente; confirmar regra real para c
 
 # Próxima ordem de validação
 
-1. escolher Q-008 — método de custeio;
-2. mapear Q-022 — perfis/pessoas reais;
-3. responder Q-001/Q-002/Q-003/Q-004 somente no nível necessário à migração das fontes;
-4. resolver detalhes de #183/#184/#185 antes das respectivas implementações;
-5. demais perguntas podem ser respondidas durante homologação com dados representativos e preparação de cutover.
+Q-008 está encerrada. Não perguntar novamente qual método de custeio usar.
+
+1. implementar/reconciliar #187 — custeio por lote/camada no runtime;
+2. implementar #183 — empréstimos usando o custo das camadas efetivamente emprestadas;
+3. avançar #185 quando houver estrutura/amostra oficial de exportação do PDV Legal;
+4. desenhar/implementar #188 e #189 sem duplicar POS nem baixa de estoque;
+5. refinar #184 conforme a origem real das vendas/consumos;
+6. mapear Q-022 antes de preparar usuários reais de go-live;
+7. responder Q-001/Q-002/Q-003/Q-004 e demais questões históricas apenas no nível necessário à migração/cutover.

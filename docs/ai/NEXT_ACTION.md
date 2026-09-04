@@ -2,68 +2,123 @@
 
 ## Estado
 
-Fase 51 / #142 e Fase 52 / #180 concluídas. A frente ativa é **Fase 53 / #181 — decisões de negócio e perfis reais**.
+Fase 51 / #142 e Fase 52 / #180 concluídas. A frente guarda-chuva continua sendo **Fase 53 / #181 — conclusão de negócio**, mas a decisão de custeio já foi tomada e novas frentes funcionais foram abertas.
 
-Em 2026-09-03 o operador decidiu:
+Em 2026-09-04 o operador definiu:
 
-- `REQ-ITEM-004` produto de venda/POS: adiar;
-- `REQ-ITEM-005` ficha técnica: adiar;
-- `REQ-STK-007` empréstimo: necessário, com restituição física e/ou monetária — #183;
-- `REQ-STK-010` custeio: necessário, método ainda não escolhido;
-- `REQ-EXP-004` FEFO: sim;
-- `REQ-FIN-004` pagamento parcial/múltiplo: não necessário para o primeiro go-live;
-- `REQ-CASH-007` consumo de funcionários: venda com desconto em folha — #184;
-- `REQ-CASH-008`: PDV Legal continua como PDV e deve ser estudada importação/exportação — #185.
+- `REQ-STK-010`: custo por lote/camada física efetivamente movimentada — #187;
+- `REQ-STK-007`: empréstimos usam o custo das camadas efetivamente emprestadas — #183;
+- `REQ-ITEM-004`: Lojasaph pode ter catálogo de produto vendável sem virar PDV — #188;
+- `REQ-ITEM-005`: ficha técnica/receita volta para a fila — #189;
+- preço de compra/fornecedor, custo real do lote, preço de venda e margem devem ser conceitos separados — #188;
+- compositor modular para `owner`, com dependências e sem apagar dados — #190;
+- qualidade visual/UX faz parte do aceite das novas áreas.
+
+Decisões anteriores que continuam vigentes:
+
+- FEFO aprovado;
+- pagamento parcial/múltiplo não é necessário para o primeiro go-live;
+- consumo de funcionários é venda com desconto em folha — #184;
+- PDV Legal permanece como PDV; estudar importação oficial — #185;
+- tablet live permanece deferido;
+- #75/#121 permanecem TOTALMENTE ON HOLD.
 
 Detalhes: `docs/qa/fase53-business-decisions.md`.
 
 ## NEXT_ACTION objetiva
 
-### **Resolver Q-008 — método final de custeio**
+### **Executar Issue #187 — custeio por lote/camada física nas saídas**
 
-Não implementar #183 antes desta decisão, porque o empréstimo precisa registrar valor e a fonte desse valor depende da regra de custeio.
+Q-008 está encerrada. **Não perguntar novamente qual método de custeio usar.**
 
-## Decisão necessária
+A regra é:
 
-Apresentar ao operador opções em linguagem operacional e obter escolha explícita entre, no mínimo:
+> o valor de uma saída/perda deve acompanhar o custo da camada/lote que realmente saiu.
 
-1. **custo médio ponderado/móvel** — cada entrada recompõe o custo médio do saldo;
-2. **última compra** — valor de referência passa a ser o custo mais recente;
-3. **custo do lote específico** — cada saída/valuation depende do lote efetivamente movimentado;
-4. outra regra real informada pelo operador/Asaph.
+Exemplo: mesmo item, lote A a R$ 5 e lote B a R$ 2. Se a perda foi do lote A, registrar R$ 5 por unidade; se foi do lote B, registrar R$ 2.
 
-Explicar impactos em:
+## Procedimento do próximo chat
 
-- valor do estoque;
-- retiradas/perdas;
-- empréstimos e restituições;
-- margem/relatórios;
-- complexidade operacional.
+1. ler, nesta ordem:
+   - `AGENTS.md`;
+   - `docs/00-START-HERE.md`;
+   - `docs/ai/CURRENT_STATE.md`;
+   - `docs/ai/HANDOFF.md`;
+   - este `NEXT_ACTION.md`;
+   - `docs/ai/WORKFLOW.md`;
+   - `docs/decisions/ADR-003-inventory-costing.md`;
+   - `docs/product/requirements.md`;
+   - `docs/product/business-rules.md`;
+   - Issue #187;
+2. consultar GitHub real para `main`, Issues, PRs, branches e CI;
+3. revalidar apenas se houver evidência de drift; não repetir incidentes/smokes por inércia;
+4. auditar código/migrations existentes para localizar onde custo médio ainda alimenta:
+   - retirada;
+   - perda/vencimento;
+   - transferência;
+   - devolução;
+   - inventário/ajustes;
+   - consultas/relatórios de valuation;
+5. preservar a estrutura existente que já guarda `unit_cost` por lote e snapshots; não reescrever história sem necessidade;
+6. desenhar fallback explícito para casos realmente sem camada/custo rastreável, sem média silenciosa;
+7. implementar a menor mudança segura em branch própria;
+8. migrations somente se necessárias e versionadas;
+9. testes obrigatórios com **o mesmo item em pelo menos duas camadas/lotes de custos diferentes**, provando que a saída/perda usa o custo do lote consumido;
+10. validar FEFO versus seleção explícita de lote;
+11. validar transferências/devoluções sem ganho/perda artificial;
+12. CI verde → PR → merge → CI pós-merge;
+13. atualizar `CURRENT_STATE`, `HANDOFF` e `NEXT_ACTION` para promover #183.
 
-**Não inferir custo médio a partir do código existente.**
+## Aceite de #187
 
-## Depois da decisão de custeio
+- `REQ-STK-010`, `BR-STK-010` e ADR-003 refletem o runtime;
+- saída física conhecida usa custo da camada consumida;
+- FEFO escolhe lote quando não houver seleção explícita;
+- lote explicitamente selecionado em perda/quebra usa seu próprio custo;
+- transferência preserva custo de origem;
+- devolução relacionada preserva rastreabilidade/custo;
+- histórico não é recalculado por compras futuras;
+- fallback sem custo é explícito/auditável;
+- relatórios conseguem explicar quantidade, lote/camada, custo unitário e custo total;
+- testes e CI verdes;
+- nenhuma mutação artificial em Production.
 
-1. atualizar `requirements.md`, `business-rules.md` e ADR se necessário;
-2. executar Issue #183 em branch funcional própria;
-3. manter CI/migrations/RLS/documentação consistentes;
-4. avançar Issue #185 obtendo amostra ou estrutura de exportação real do PDV Legal antes de criar importador;
-5. usar o resultado de #185 para definir se #184 recebe lançamentos manuais, importados ou ambos;
-6. concluir Q-022 — mapeamento de pessoas/cargos reais — antes de preparar usuários do go-live.
+## Depois de #187
 
-## PDV Legal — estado do estudo
+Ordem atual de promoção:
 
-Documentação oficial pública consultada em 2026-09-03 comprova exportação Excel de vendas e listagens/cadastros e integrações oficiais com alguns ERPs. Não há evidência suficiente para declarar API aberta customizada.
+1. **#183 — empréstimos** com restituição física e/ou monetária;
+2. **#185 — PDV Legal** quando houver estrutura/amostra oficial de exportação;
+3. **#188 — catálogo comercial, preços e margem**;
+4. **#189 — fichas técnicas/receitas**;
+5. **#184 — consumo de funcionários**, evitando duplicar vendas do PDV;
+6. **#190 — compositor modular**, começando por capability registry + 1–2 módulos de baixo risco;
+7. **Q-022 — perfis/pessoas reais** antes do go-live;
+8. homologação com dados representativos;
+9. migração/cutover;
+10. production-readiness / #75/#121.
 
-Direção: começar por **Excel/CSV + staging/dry-run/idempotência**; integração direta apenas se mecanismo oficial for confirmado.
+A ordem 2–6 pode ser refinada por dependência real comprovada, mas não deve haver retorno ao estado documental antigo de “custeio indefinido”, “ficha técnica definitivamente adiada” ou “produto vendável proibido”.
+
+## Regras para #188/#189/#190
+
+Quando essas Issues forem executadas:
+
+- não transformar Lojasaph em POS por inferência;
+- preço de compra, custo de estoque e preço de venda permanecem conceitos separados;
+- margem bruta não é lucro líquido;
+- ficha técnica não baixa estoque automaticamente sem regra explícita;
+- módulo desabilitado não apaga dados;
+- backend deve respeitar gating, não apenas a navegação;
+- UX/qualidade visual é parte do aceite, não melhoria opcional posterior.
 
 ## Guardrails
 
-- não reabrir Fase 51/tablet sem nova necessidade ou regressão;
-- não remover capacidade técnica de múltiplos pagamentos apenas porque não é requisito inicial;
-- não criar POS/ficha técnica enquanto estiverem deferidos;
-- não transformar consumo de funcionários em módulo completo de folha/RH;
-- não usar scraping do PDV como integração de produção;
-- não fabricar dados Production;
-- não retomar #75/#121;
-- não fazer deploy Vercel manual rotineiro.
+- GitHub é fonte de verdade;
+- Supabase/schema/RLS/grants continuam hard boundaries;
+- nenhum secret em Git/docs/chat/log;
+- não criar fixture/dado Production para evidência;
+- não usar auth bypass;
+- não repetir deploy Vercel manual rotineiro;
+- não criar PR apenas para repetir blocker sem nova evidência;
+- não retomar #75/#121 antes de production-readiness ou decisão explícita posterior.

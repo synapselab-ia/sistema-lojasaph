@@ -1,7 +1,7 @@
 # Regras de Negócio — Evidências das Planilhas e Decisões Validadas
 
 Data da análise inicial: 2026-08-17  
-Última validação de negócio: 2026-09-03
+Última validação de negócio: 2026-09-04
 
 ## Níveis de confiança
 
@@ -28,7 +28,7 @@ Tabatinga e Capricórnio são origem/destino de movimentações. Há também ref
 
 ---
 
-# Itens e catálogo
+# Itens e catálogo comercial
 
 ## BR-ITEM-001 — Itens de retirada exigem cadastro canônico
 
@@ -36,13 +36,25 @@ Tabatinga e Capricórnio são origem/destino de movimentações. Há também ref
 
 Os lançamentos atuais utilizam texto livre e apresentam variações de grafia. No novo sistema o item operacional deve possuir identificador estável.
 
-## BR-ITEM-002 — Produto de venda/POS não entra no primeiro go-live
+## BR-ITEM-002 — PDV Legal permanece como PDV, mas o Lojasaph pode possuir catálogo comercial
 
-**Nível:** decisão validada em 2026-09-03.
+**Nível:** decisão validada em 2026-09-04.
 
-O operador decidiu adiar o conceito próprio de produto de venda/POS no Lojasaph. O PDV Legal permanece como sistema de vendas. A distinção conceitual entre produto vendido e item de estoque pode ser retomada se a importação do PDV exigir mapeamento explícito.
+O operador não quer transformar o Lojasaph em sistema de frente de caixa. O **PDV Legal permanece como sistema de vendas**.
 
-Isso não autoriza associar automaticamente o histórico `Gabarito` a `stock_items`.
+Porém o Lojasaph deve poder representar o produto vendido quando isso for necessário para:
+
+- mapear dados importados do PDV;
+- registrar preço de venda e histórico;
+- relacionar item vendido diretamente ao estoque;
+- relacionar pratos/produtos preparados a fichas técnicas;
+- calcular custo e margem gerencial.
+
+Produto vendável e item de estoque não são obrigatoriamente a mesma entidade. Uma água pode ser relação 1:1; um prato pode consumir vários insumos.
+
+Isso não autoriza associar automaticamente o histórico `Gabarito` a `stock_items` nem criar funções de POS sem requisito explícito.
+
+Refs: #188, #189 e #185.
 
 ## BR-ITEM-003 — Aliases devem ser suportados na migração
 
@@ -50,11 +62,38 @@ Isso não autoriza associar automaticamente o histórico `Gabarito` a `stock_ite
 
 Variações de grafia e abreviações precisam ser mapeadas para um item canônico sem apagar o texto histórico de origem.
 
-## BR-ITEM-004 — Ficha técnica/receita adiada
+## BR-ITEM-004 — Ficha técnica/receita está aprovada para evolução
 
-**Nível:** decisão validada em 2026-09-03.
+**Nível:** decisão validada em 2026-09-04.
 
-Ficha técnica/BOM e consumo teórico derivado de vendas não bloqueiam o primeiro go-live. Retomar somente se surgir necessidade operacional explícita.
+O operador recolocou ficha técnica/receita na fila porque ela pode enriquecer a análise quando vendas do PDV Legal forem importadas.
+
+A ficha deve poder representar prato/produto preparado, versão/vigência, rendimento, ingredientes, quantidades/unidades e custo teórico.
+
+A existência de uma receita **não baixa estoque automaticamente**. Qualquer consumo teórico ou baixa derivada de venda precisa de regra explícita para evitar dupla baixa.
+
+Implementação: Issue #189.
+
+## BR-ITEM-005 — Compra, custo, venda e margem são conceitos diferentes
+
+**Nível:** decisão validada em 2026-09-04.
+
+O produto não deve usar um único campo de “preço” para representar conceitos diferentes.
+
+Separar:
+
+- preço observado/contratado de fornecedor;
+- custo real do lote/camada recebida;
+- preço de venda vigente e histórico;
+- receita realizada/importada;
+- custo dos itens/insumos correspondentes;
+- margem bruta em valor e percentual.
+
+Margem bruta **não é lucro líquido**. Só usar “lucro líquido” quando houver componentes suficientes, como despesas, taxas e impostos aplicáveis.
+
+A UI deve organizar esses dados em seções/abas progressivas e úteis, evitando formulários gigantes apenas porque muitos campos existem.
+
+Implementação/desenho: Issue #188.
 
 ---
 
@@ -62,11 +101,11 @@ Ficha técnica/BOM e consumo teórico derivado de vendas não bloqueiam o primei
 
 ## BR-STK-001 — Custo total de uma retirada
 
-**Nível:** confirmada pela fórmula.
+**Nível:** confirmada pela fórmula + regra revisada em 2026-09-04.
 
-`custo_total = custo_unitario × quantidade`.
+`custo_total = custo_unitario_da_camada × quantidade`.
 
-No sistema o custo deve ser derivado da regra de custeio aprovada, e não digitado arbitrariamente em cada retirada.
+O custo unitário deve vir do lote/camada física efetivamente movimentada e não ser digitado arbitrariamente em cada retirada.
 
 ## BR-STK-002 — Total mensal atual
 
@@ -112,7 +151,7 @@ Existe coluna booleana sem cabeçalho ao lado da data em retirada e devolução.
 
 ## BR-STK-009 — Empréstimo é processo distinto com restituição física e/ou monetária
 
-**Nível:** decisão validada em 2026-09-03.
+**Nível:** decisão validada em 2026-09-03, refinada em 2026-09-04.
 
 O empréstimo deve registrar quantidade e valor do que foi emprestado e manter saldo pendente. A restituição pode ocorrer total ou parcialmente por:
 
@@ -120,13 +159,31 @@ O empréstimo deve registrar quantidade e valor do que foi emprestado e manter s
 - restituição em valor;
 - combinação das duas formas.
 
-As restituições permanecem relacionadas ao empréstimo original e não apagam o histórico. O valor/custo de referência depende da regra final de custeio. Implementação: Issue #183.
+As restituições permanecem relacionadas ao empréstimo original e não apagam o histórico.
 
-## BR-STK-010 — Custeio é obrigatório, método ainda não aprovado
+O valor físico do empréstimo deve ser formado pelo custo das camadas/lotes efetivamente emprestados. Implementação: Issues #183 e #187.
 
-**Nível:** decisão parcialmente validada em 2026-09-03.
+## BR-STK-010 — Custeio acompanha o lote/camada física efetivamente movimentada
 
-O operador confirmou que o sistema precisa de custeio. Ainda falta escolher explicitamente o método. Não promover custo médio, última compra ou lote específico a regra empresarial apenas porque existe comportamento técnico atual.
+**Nível:** decisão validada em 2026-09-04.
+
+O custo médio deixou de ser a regra empresarial para saídas físicas identificáveis.
+
+Se uma água perdida pertence ao lote que custou R$ 5, a perda deve valer R$ 5 por unidade; se pertence ao lote que custou R$ 2, deve valer R$ 2.
+
+Regras:
+
+- cada recebimento preserva custo unitário de origem em camada rastreável;
+- retirada/perda/vencimento usa a camada efetivamente consumida;
+- FEFO escolhe lote quando não houver seleção física explícita;
+- seleção explícita de lote válido prevalece quando representa a realidade observada;
+- transferência preserva custo de origem;
+- devolução relacionada preserva vínculo econômico;
+- empréstimo usa os custos das camadas emprestadas;
+- custo médio pode existir como indicador analítico, não para reprecificar saídas conhecidas;
+- ausência de custo rastreável exige fallback explícito e auditável, nunca média silenciosa.
+
+Fonte arquitetural: `docs/decisions/ADR-003-inventory-costing.md`. Implementação: Issue #187.
 
 ---
 
@@ -150,11 +207,13 @@ Não armazenar uma única validade diretamente no cadastro do item.
 
 O sistema deve preservar motivo e rastreabilidade de movimentações por proximidade de vencimento.
 
-## BR-EXP-004 — FEFO aprovado
+## BR-EXP-004 — FEFO aprovado com exceção para lote físico conhecido
 
-**Nível:** decisão validada em 2026-09-03.
+**Nível:** decisão validada em 2026-09-03 e refinada em 2026-09-04.
 
-Quando houver lotes comparáveis, a saída deve priorizar o lote que vence primeiro. A implementação técnica existente que usa FEFO deixa de ser apenas decisão interna e passa a refletir regra empresarial aprovada.
+Quando houver lotes comparáveis e a operação não indicar um lote específico, a saída deve priorizar o lote que vence primeiro.
+
+Quando a operação estiver registrando uma realidade física conhecida — por exemplo, perda/quebra de um lote identificado — o lote real informado prevalece. FEFO não deve mover a perda para outro lote apenas por vencer antes.
 
 ---
 
@@ -210,11 +269,25 @@ O Lojasaph não se torna sistema de folha/RH. Deve fornecer registro e informaç
 
 Separar valor esperado do contado para gerar divergência auditável.
 
-## BR-CASH-008 — PDV Legal permanece como sistema de vendas
+## BR-CASH-008 — PDV Legal permanece como sistema de vendas e fonte potencial de dados
 
-**Nível:** decisão validada em 2026-09-03.
+**Nível:** decisão validada em 2026-09-03, expandida em 2026-09-04.
 
-O primeiro go-live não exige POS próprio no Lojasaph. Deve-se estudar intercâmbio de dados com o PDV Legal. A direção inicial é importação por exportações oficiais Excel/CSV; integração direta/API só pode ser adotada se houver mecanismo oficial comprovado. Estudo: Issue #185.
+O Lojasaph não deve substituir o PDV Legal por inferência. Deve estudar intercâmbio de dados usando mecanismos oficiais.
+
+A direção inicial é importação por Excel/CSV, reutilizando staging/dry-run/idempotência. O estudo deve verificar se é possível obter de forma estável, entre outros:
+
+- produto/código/EAN;
+- quantidade;
+- preço/valor de venda;
+- filial/unidade;
+- data/hora;
+- meio de pagamento quando disponível;
+- demais chaves úteis a deduplicação/mapeamento.
+
+Esses dados podem alimentar catálogo comercial, margem, ficha técnica e consumo de funcionários desde que não haja duplicidade de venda ou baixa de estoque.
+
+Integração direta/API só pode ser adotada com mecanismo oficial comprovado. Estudo: Issue #185.
 
 ---
 
@@ -310,11 +383,11 @@ O modelo prevê pedido mínimo, dias de pedido/entrega, condição de pagamento 
 
 **Nível:** decisão de projeto.
 
-Evitar sobrescrever apenas o preço atual; preservar vigência/histórico.
+Evitar sobrescrever apenas o preço atual; preservar vigência/histórico. O preço observado do fornecedor não substitui o custo real do lote recebido.
 
 ---
 
-# Regras transversais de qualidade e auditoria
+# Regras transversais de qualidade, composição e auditoria
 
 ## BR-SYS-001 — Não usar texto livre quando existe entidade canônica
 
@@ -331,3 +404,30 @@ Movimentações de estoque, empréstimos, pagamentos e fechamentos devem usar ca
 ## BR-SYS-004 — Regras calculáveis não devem depender da interface
 
 Cálculos de estoque, custeio, status financeiro, permissões e fechamento devem ser aplicados no domínio/backend/banco conforme a arquitetura.
+
+## BR-SYS-005 — Desabilitar módulo não apaga dados nem enfraquece segurança
+
+**Nível:** decisão validada em 2026-09-04.
+
+O operador quer uma área de composição estrutural do Lojasaph, como um quebra-cabeças, acessível inicialmente somente a `owner` Organization-wide.
+
+Uma capacidade desabilitada deve:
+
+- deixar de aparecer nas superfícies operacionais relevantes;
+- impedir novas ações no backend quando aplicável;
+- preservar tabelas, histórico, ledger e dados existentes;
+- permitir reativação posterior;
+- respeitar dependências entre capacidades;
+- manter autenticação, autorização/RLS, organização, auditoria e integridade como núcleo não removível;
+- adaptar navegação e dashboard sem links/cards incoerentes;
+- registrar quem alterou a composição e quando.
+
+A UI deve ser uma experiência de configuração de produto compreensível, não uma grade de feature flags técnicas. Implementação/desenho: Issue #190.
+
+## BR-SYS-006 — Qualidade visual faz parte do aceite das novas áreas
+
+**Nível:** decisão validada em 2026-09-04.
+
+Nas novas áreas aprovadas — especialmente catálogo comercial, ficha técnica, relatórios e compositor modular — “funciona” não é suficiente.
+
+A experiência deve usar linguagem operacional, hierarquia visual, progressive disclosure, feedback claro, acessibilidade e padrões consistentes do design system já consolidado. Evitar expor detalhes técnicos ou transformar cada necessidade em formulário/tabela bruta.
