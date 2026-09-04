@@ -22,12 +22,10 @@ begin
 end;
 $$;
 
--- Reuse the inventory member and demo stock created by the earlier smoke test.
 set role authenticated;
 select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000001', false);
 select set_config('request.jwt.claim.role', 'authenticated', false);
 
--- Missing sector is rejected by the authenticated command surface.
 do $$
 begin
   begin
@@ -42,13 +40,11 @@ begin
       'missing sector denied'
     );
     raise exception 'withdrawal without sector unexpectedly succeeded';
-  exception
-    when invalid_parameter_value then null;
+  exception when invalid_parameter_value then null;
   end;
 end;
 $$;
 
--- FEFO: the original August batch expires before the CI entry batch from September.
 select * from public.record_stock_withdrawal(
   '40000000-0000-4000-8000-000000000001',
   '00000000-0000-4000-8000-000000000001',
@@ -60,7 +56,6 @@ select * from public.record_stock_withdrawal(
   'CI FEFO withdrawal'
 );
 
--- Same command/payload/sector is idempotent.
 select * from public.record_stock_withdrawal(
   '40000000-0000-4000-8000-000000000001',
   '00000000-0000-4000-8000-000000000001',
@@ -72,7 +67,6 @@ select * from public.record_stock_withdrawal(
   'CI FEFO withdrawal'
 );
 
--- Reusing the key with a different semantic payload must fail.
 do $$
 begin
   begin
@@ -87,8 +81,7 @@ begin
       'CI FEFO withdrawal'
     );
     raise exception 'idempotency conflict unexpectedly succeeded';
-  exception
-    when unique_violation then null;
+  exception when unique_violation then null;
   end;
 
   begin
@@ -103,8 +96,7 @@ begin
       'CI FEFO withdrawal'
     );
     raise exception 'sector idempotency conflict unexpectedly succeeded';
-  exception
-    when unique_violation then null;
+  exception when unique_violation then null;
   end;
 end;
 $$;
@@ -131,6 +123,15 @@ begin
   if (select average_cost from public.inventory_balances where organization_id = '00000000-0000-4000-8000-000000000001' and stock_item_id = '00000000-0000-4000-8000-000000000400' and stock_location_id = '00000000-0000-4000-8000-000000000120') <> 2.18 then
     raise exception 'withdrawal changed average cost unexpectedly';
   end if;
+  if (select unit_cost_snapshot from public.stock_movement_items where movement_id = '40000000-0000-4000-8000-000000000001') <> 2.10 then
+    raise exception 'FEFO withdrawal did not use earliest physical layer cost 2.10';
+  end if;
+  if (select cost_basis from public.stock_movement_items where movement_id = '40000000-0000-4000-8000-000000000001') <> 'layer_allocation' then
+    raise exception 'FEFO withdrawal did not persist layer cost basis';
+  end if;
+  if (select coalesce(sum(allocation.total_cost_snapshot),0) from public.stock_movement_batch_allocations allocation join public.stock_movement_items item on item.id=allocation.movement_item_id where item.movement_id='40000000-0000-4000-8000-000000000001') <> 31.50 then
+    raise exception 'FEFO withdrawal total physical-layer cost mismatch';
+  end if;
   if (select remaining_quantity from public.inventory_batches where id = '00000000-0000-4000-8000-000000000610') <> 85.000 then
     raise exception 'FEFO did not consume the earliest batch first';
   end if;
@@ -140,7 +141,6 @@ begin
 end;
 $$;
 
--- Preferred batch overrides FEFO for the requested quantity.
 set role authenticated;
 select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000001', false);
 select set_config('request.jwt.claim.role', 'authenticated', false);
@@ -166,7 +166,6 @@ begin
 end;
 $$;
 
--- Insufficient tracked stock must fail atomically.
 do $$
 begin
   begin
@@ -181,8 +180,7 @@ begin
       'must fail'
     );
     raise exception 'insufficient tracked stock unexpectedly succeeded';
-  exception
-    when invalid_parameter_value then null;
+  exception when invalid_parameter_value then null;
   end;
 end;
 $$;
@@ -193,6 +191,12 @@ do $$
 begin
   if (select quantity_on_hand from public.inventory_balances where organization_id = '00000000-0000-4000-8000-000000000001' and stock_item_id = '00000000-0000-4000-8000-000000000400' and stock_location_id = '00000000-0000-4000-8000-000000000120') <> 90.000 then
     raise exception 'preferred withdrawal or failed command produced wrong balance';
+  end if;
+  if (select unit_cost_snapshot from public.stock_movement_items where movement_id = '40000000-0000-4000-8000-000000000002') <> 3.00 then
+    raise exception 'preferred withdrawal did not use selected physical layer cost 3.00';
+  end if;
+  if (select coalesce(sum(allocation.total_cost_snapshot),0) from public.stock_movement_batch_allocations allocation join public.stock_movement_items item on item.id=allocation.movement_item_id where item.movement_id='40000000-0000-4000-8000-000000000002') <> 15.00 then
+    raise exception 'preferred withdrawal total physical-layer cost mismatch';
   end if;
   if (select remaining_quantity from public.inventory_batches where id = '00000000-0000-4000-8000-000000000610') <> 85.000 then
     raise exception 'preferred batch unexpectedly consumed FEFO batch';
@@ -209,7 +213,6 @@ begin
 end;
 $$;
 
--- Cross-Organization sector is rejected without residue.
 begin;
 insert into public.organizations(id,name) values ('49000000-0000-4000-8000-000000000001','Withdrawal cross-org CI');
 insert into public.businesses(id,organization_id,name,code) values ('49000000-0000-4000-8000-000000000010','49000000-0000-4000-8000-000000000001','Withdrawal business CI','WD-X');
@@ -232,15 +235,13 @@ begin
       'cross-org sector denied'
     );
     raise exception 'cross-Organization sector unexpectedly succeeded';
-  exception
-    when foreign_key_violation then null;
+  exception when foreign_key_violation then null;
   end;
 end;
 $$;
 reset role;
 rollback;
 
--- Viewer cannot invoke the withdrawal command.
 set role authenticated;
 select set_config('request.jwt.claim.sub', '30000000-0000-4000-8000-000000000001', false);
 select set_config('request.jwt.claim.role', 'authenticated', false);
@@ -259,14 +260,12 @@ begin
       'viewer denied'
     );
     raise exception 'viewer withdrawal unexpectedly succeeded';
-  exception
-    when insufficient_privilege then null;
+  exception when insufficient_privilege then null;
   end;
 end;
 $$;
 reset role;
 
--- A manager from another Organization cannot operate on the seeded Organization.
 set role authenticated;
 select set_config('request.jwt.claim.sub', '30000000-0000-4000-8000-000000000003', false);
 select set_config('request.jwt.claim.role', 'authenticated', false);
@@ -285,14 +284,12 @@ begin
       'cross-org denied'
     );
     raise exception 'cross-Organization withdrawal unexpectedly succeeded';
-  exception
-    when insufficient_privilege then null;
+  exception when insufficient_privilege then null;
   end;
 end;
 $$;
 reset role;
 
--- Negative stock stays forbidden by default for the untracked coal item.
 set role authenticated;
 select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000001', false);
 select set_config('request.jwt.claim.role', 'authenticated', false);
@@ -311,14 +308,12 @@ begin
       'negative denied by default'
     );
     raise exception 'negative stock unexpectedly succeeded without configuration';
-  exception
-    when invalid_parameter_value then null;
+  exception when invalid_parameter_value then null;
   end;
 end;
 $$;
 reset role;
 
--- Explicit location configuration allows negative stock for untracked items.
 update public.stock_locations
 set allow_negative_stock = true
 where id = '00000000-0000-4000-8000-000000000120'
@@ -345,6 +340,15 @@ begin
   if (select quantity_on_hand from public.inventory_balances where organization_id = '00000000-0000-4000-8000-000000000001' and stock_item_id = '00000000-0000-4000-8000-000000000402' and stock_location_id = '00000000-0000-4000-8000-000000000120') <> -5.000 then
     raise exception 'configured negative stock produced wrong balance';
   end if;
+  if (select cost_basis from public.stock_movement_items where movement_id='40000000-0000-4000-8000-000000000007') <> 'mixed_estimate' then
+    raise exception 'negative withdrawal did not expose mixed estimated cost basis';
+  end if;
+  if (select after_data->>'cost_warning' from public.audit_logs where entity_id='40000000-0000-4000-8000-000000000007' and action='stock_withdrawal.recorded') <> 'negative_stock_estimate' then
+    raise exception 'negative withdrawal did not audit estimated cost warning';
+  end if;
+  if (select (after_data->>'negative_estimated_quantity')::numeric from public.audit_logs where entity_id='40000000-0000-4000-8000-000000000007' and action='stock_withdrawal.recorded') <> 5.000 then
+    raise exception 'negative withdrawal estimated quantity mismatch';
+  end if;
 
   begin
     update public.stock_locations
@@ -352,13 +356,11 @@ begin
     where id = '00000000-0000-4000-8000-000000000120'
       and organization_id = '00000000-0000-4000-8000-000000000001';
     raise exception 'negative-stock policy was disabled with negative balance present';
-  exception
-    when check_violation then null;
+  exception when check_violation then null;
   end;
 end;
 $$;
 
--- Anonymous callers still cannot execute the privileged command.
 set role anon;
 do $$
 begin
@@ -374,8 +376,7 @@ begin
       'anon denied'
     );
     raise exception 'anonymous withdrawal unexpectedly succeeded';
-  exception
-    when insufficient_privilege then null;
+  exception when insufficient_privilege then null;
   end;
 end;
 $$;

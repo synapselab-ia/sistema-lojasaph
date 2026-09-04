@@ -60,12 +60,28 @@ begin
     raise exception 'preferred batch allocation should consume its full 5 units';
   end if;
 
+  if (select unit_cost_snapshot from public.stock_transfer_batch_allocations where transfer_item_id = transfer_item and allocation_order = 1) <> 3.00 then
+    raise exception 'preferred batch allocation lost physical cost 3.00';
+  end if;
+
   if (select source_batch_id from public.stock_transfer_batch_allocations where transfer_item_id = transfer_item and allocation_order = 2) <> '00000000-0000-4000-8000-000000000610'::uuid then
     raise exception 'FEFO remainder was not allocation order 2';
   end if;
 
   if (select quantity from public.stock_transfer_batch_allocations where transfer_item_id = transfer_item and allocation_order = 2) <> 5.000 then
     raise exception 'FEFO remainder allocation should be 5 units';
+  end if;
+
+  if (select unit_cost_snapshot from public.stock_transfer_batch_allocations where transfer_item_id = transfer_item and allocation_order = 2) <> 2.10 then
+    raise exception 'FEFO remainder allocation lost physical cost 2.10';
+  end if;
+
+  if (select unit_cost_snapshot from public.stock_transfer_items where id = transfer_item) <> 2.55 then
+    raise exception 'transfer line did not use weighted physical-layer cost 2.55';
+  end if;
+
+  if (select cost_basis from public.stock_transfer_items where id = transfer_item) <> 'layer_allocation' then
+    raise exception 'transfer line did not identify layer allocation cost basis';
   end if;
 end;
 $$;
@@ -134,8 +150,8 @@ begin
     raise exception 'multi-batch partial receipt destination balance mismatch';
   end if;
 
-  if (select average_cost from public.inventory_balances where organization_id = '00000000-0000-4000-8000-000000000001' and stock_item_id = '00000000-0000-4000-8000-000000000400' and stock_location_id = '00000000-0000-4000-8000-000000000122') <> 2.18 then
-    raise exception 'destination balance should use transfer line average cost snapshot';
+  if (select average_cost from public.inventory_balances where organization_id = '00000000-0000-4000-8000-000000000001' and stock_item_id = '00000000-0000-4000-8000-000000000400' and stock_location_id = '00000000-0000-4000-8000-000000000122') <> 2.55 then
+    raise exception 'destination analytical average should use transfer physical-layer cost';
   end if;
 end;
 $$;
@@ -183,6 +199,10 @@ begin
 
   if (select quantity_on_hand from public.inventory_balances where organization_id = '00000000-0000-4000-8000-000000000001' and stock_item_id = '00000000-0000-4000-8000-000000000400' and stock_location_id = '00000000-0000-4000-8000-000000000122') <> 10.000 then
     raise exception 'completed multi-batch transfer destination balance mismatch';
+  end if;
+
+  if (select average_cost from public.inventory_balances where organization_id = '00000000-0000-4000-8000-000000000001' and stock_item_id = '00000000-0000-4000-8000-000000000400' and stock_location_id = '00000000-0000-4000-8000-000000000122') <> 2.55 then
+    raise exception 'completed destination average lost physical-layer transfer cost';
   end if;
 end;
 $$;

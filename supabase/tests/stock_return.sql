@@ -179,6 +179,12 @@ begin
   if (select status from public.stock_movements where id='97000000-0000-4000-8000-000000000701') <> 'confirmed' then
     raise exception 'original withdrawal status was mutated';
   end if;
+  if (select unit_cost_snapshot from public.stock_movement_items where movement_id='97000000-0000-4000-8000-000000000701') <> 8.00 then
+    raise exception 'withdrawal did not use physical layer cost';
+  end if;
+  if (select cost_basis from public.stock_movement_items where movement_id='97000000-0000-4000-8000-000000000701') <> 'layer_allocation' then
+    raise exception 'withdrawal did not identify layer allocation cost basis';
+  end if;
   if (select movement_type from public.stock_movements where id='97000000-0000-4000-8000-000000000703') <> 'return_in' then
     raise exception 'partial return did not create return_in';
   end if;
@@ -193,8 +199,14 @@ begin
   if (select reason_code from public.stock_movements where id='97000000-0000-4000-8000-000000000703') <> 'withdrawal_return' then
     raise exception 'return reason code missing';
   end if;
-  if (select unit_cost_snapshot from public.stock_movement_items where movement_id='97000000-0000-4000-8000-000000000703') <> 10.00 then
-    raise exception 'return did not preserve withdrawal cost snapshot';
+  if (select unit_cost_snapshot from public.stock_movement_items where movement_id='97000000-0000-4000-8000-000000000703') <> 8.00 then
+    raise exception 'return did not preserve physical layer cost snapshot';
+  end if;
+  if (select cost_basis from public.stock_movement_items where movement_id='97000000-0000-4000-8000-000000000703') <> 'layer_allocation' then
+    raise exception 'return did not preserve layer cost basis';
+  end if;
+  if (select coalesce(sum(allocation.total_cost_snapshot),0) from public.stock_movement_batch_allocations allocation join public.stock_movement_items item on item.id=allocation.movement_item_id where item.movement_id='97000000-0000-4000-8000-000000000703') <> 16.00 then
+    raise exception 'return layer allocation total cost mismatch';
   end if;
   if (select quantity_on_hand from public.inventory_balances
       where organization_id='97000000-0000-4000-8000-000000000001'
@@ -205,8 +217,8 @@ begin
   if (select average_cost from public.inventory_balances
       where organization_id='97000000-0000-4000-8000-000000000001'
         and stock_item_id='97000000-0000-4000-8000-000000000400'
-        and stock_location_id='97000000-0000-4000-8000-000000000120') <> 14.00 then
-    raise exception 'partial return did not blend historical cost into moving average';
+        and stock_location_id='97000000-0000-4000-8000-000000000120') <> 13.60 then
+    raise exception 'partial return did not blend physical historical cost into analytical average';
   end if;
   if (select remaining_quantity from public.inventory_batches where id='97000000-0000-4000-8000-000000000610') <> 6.000 then
     raise exception 'partial return did not restore original physical batch';

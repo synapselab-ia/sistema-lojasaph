@@ -17,7 +17,20 @@ export default function StockLossesPage() {
   const activeReasons = workspace.stockLossReasons.filter((reason) => reason.active);
   const selectedReason = activeReasons.find((reason) => reason.code === form.reasonCode);
   const selectedItem = workspace.stockItems.find((item) => item.id === form.stockItemId);
+  const selectedLocation = workspace.stockLocations.find((location) => location.id === form.stockLocationId);
+  const selectedBalance = workspace.balances.find(
+    (balance) => balance.stockItemId === form.stockItemId && balance.stockLocationId === form.stockLocationId,
+  );
+  const requestedQuantity = Number(form.quantity.replace(",", "."));
+  const availableQuantity = selectedBalance ? Number(selectedBalance.quantity.toDecimal()) : 0;
   const trackedItem = Boolean(selectedItem?.trackBatch || selectedItem?.trackExpiration);
+  const estimatedNegativeCost = Boolean(
+    selectedItem
+      && !trackedItem
+      && selectedLocation?.allowNegativeStock
+      && Number.isFinite(requestedQuantity)
+      && requestedQuantity > availableQuantity,
+  );
   const candidateBatches = workspace.batches.filter((batch) => batch.stockItemId === form.stockItemId && batch.stockLocationId === form.stockLocationId);
   const today = new Date().toISOString().slice(0, 10);
   const batchOptions = selectedReason?.movementType === "expiration"
@@ -72,6 +85,14 @@ export default function StockLossesPage() {
             <FormField id="loss-quantity" label="Quantidade" required>
               {(props) => <Input {...props} required inputMode="decimal" value={form.quantity} onChange={(event) => setForm({ ...form, quantity: event.target.value })} />}
             </FormField>
+
+            {estimatedNegativeCost && (
+              <Panel tone="attention" padding="sm" className="lg:col-span-2">
+                <p className="text-sm leading-6">
+                  A baixa ultrapassa o saldo físico disponível. Como este local permite estoque negativo, o excedente ficará com custo estimado e será identificado na auditoria até existir uma camada física correspondente.
+                </p>
+              </Panel>
+            )}
 
             {trackedItem && (
               <FormField

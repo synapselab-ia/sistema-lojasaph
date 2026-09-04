@@ -50,7 +50,6 @@ insert into public.organization_memberships(organization_id,user_id,role,unit_id
  ('96000000-0000-4000-8000-000000000001','96000000-0000-4000-8000-000000000203','viewer','96000000-0000-4000-8000-000000000100',true),
  ('96000000-0000-4000-8000-000000000002','96000000-0000-4000-8000-000000000204','inventory','96000000-0000-4000-8000-000000000102',true);
 
--- Every Organization receives the conservative default catalog.
 do $$
 begin
   if (select count(*) from public.stock_loss_reasons where organization_id='96000000-0000-4000-8000-000000000001') <> 4 then
@@ -70,7 +69,6 @@ begin
   end if;
 end $$;
 
--- Organization-wide inventory can configure an additional structured reason.
 set role authenticated;
 select set_config('request.jwt.claim.sub','96000000-0000-4000-8000-000000000201',false);
 select set_config('request.jwt.claim.role','authenticated',false);
@@ -78,7 +76,6 @@ insert into public.stock_loss_reasons(organization_id,code,label,movement_type)
 values('96000000-0000-4000-8000-000000000001','damage','Dano operacional','loss');
 reset role;
 
--- Scoped inventory can read reasons but cannot mutate the Organization-wide catalog.
 set role authenticated;
 select set_config('request.jwt.claim.sub','96000000-0000-4000-8000-000000000202',false);
 select set_config('request.jwt.claim.role','authenticated',false);
@@ -95,7 +92,6 @@ begin
   end;
 end $$;
 
--- Breakage is a loss movement, preserves average cost and uses FEFO.
 select * from public.record_stock_loss(
  '96000000-0000-4000-8000-000000000701',
  '96000000-0000-4000-8000-000000000001',
@@ -107,7 +103,6 @@ select * from public.record_stock_loss(
  'CI breakage'
 );
 
--- Same semantic payload is retry-safe.
 select * from public.record_stock_loss(
  '96000000-0000-4000-8000-000000000701',
  '96000000-0000-4000-8000-000000000001',
@@ -119,7 +114,6 @@ select * from public.record_stock_loss(
  'CI breakage'
 );
 
--- Reusing the key with another reason is a semantic conflict.
 do $$
 begin
   begin
@@ -153,8 +147,14 @@ begin
   if (select average_cost from public.inventory_balances where organization_id='96000000-0000-4000-8000-000000000001' and stock_item_id='96000000-0000-4000-8000-000000000400' and stock_location_id='96000000-0000-4000-8000-000000000120') <> 5.00 then
     raise exception 'breakage changed moving average cost';
   end if;
-  if (select unit_cost_snapshot from public.stock_movement_items where movement_id='96000000-0000-4000-8000-000000000701') <> 5.00 then
-    raise exception 'breakage did not preserve cost snapshot';
+  if (select unit_cost_snapshot from public.stock_movement_items where movement_id='96000000-0000-4000-8000-000000000701') <> 3.00 then
+    raise exception 'breakage did not use FEFO physical layer cost';
+  end if;
+  if (select cost_basis from public.stock_movement_items where movement_id='96000000-0000-4000-8000-000000000701') <> 'layer_allocation' then
+    raise exception 'breakage did not persist layer allocation cost basis';
+  end if;
+  if (select coalesce(sum(allocation.total_cost_snapshot),0) from public.stock_movement_batch_allocations allocation join public.stock_movement_items item on item.id=allocation.movement_item_id where item.movement_id='96000000-0000-4000-8000-000000000701') <> 6.00 then
+    raise exception 'breakage physical layer total cost mismatch';
   end if;
   if (select remaining_quantity from public.inventory_batches where id='96000000-0000-4000-8000-000000000610') <> 2.000 then
     raise exception 'breakage did not consume FEFO batch';
@@ -164,7 +164,6 @@ begin
   end if;
 end $$;
 
--- Expiration of a tracked item requires an explicit already-expired batch and cannot spill.
 set role authenticated;
 select set_config('request.jwt.claim.sub','96000000-0000-4000-8000-000000000202',false);
 select set_config('request.jwt.claim.role','authenticated',false);
@@ -211,7 +210,6 @@ begin
   exception when invalid_parameter_value then null;
   end;
 
-  -- Unit A inventory cannot touch Unit B.
   begin
     perform public.record_stock_loss(
       '96000000-0000-4000-8000-000000000705',
@@ -234,6 +232,9 @@ begin
   if (select movement_type from public.stock_movements where id='96000000-0000-4000-8000-000000000702') <> 'expiration' then
     raise exception 'expiration did not create expiration movement';
   end if;
+  if (select unit_cost_snapshot from public.stock_movement_items where movement_id='96000000-0000-4000-8000-000000000702') <> 3.00 then
+    raise exception 'expiration did not preserve selected layer cost';
+  end if;
   if (select remaining_quantity from public.inventory_batches where id='96000000-0000-4000-8000-000000000610') <> 1.000 then
     raise exception 'expiration did not consume selected expired batch';
   end if;
@@ -245,7 +246,6 @@ begin
   end if;
 end $$;
 
--- Viewer and another Organization are denied by role boundary.
 set role authenticated;
 select set_config('request.jwt.claim.sub','96000000-0000-4000-8000-000000000203',false);
 select set_config('request.jwt.claim.role','authenticated',false);
@@ -276,7 +276,6 @@ begin
 end $$;
 reset role;
 
--- Existing negative-stock policy remains authoritative for untracked losses.
 set role authenticated;
 select set_config('request.jwt.claim.sub','96000000-0000-4000-8000-000000000202',false);
 select set_config('request.jwt.claim.role','authenticated',false);
@@ -312,9 +311,14 @@ begin
   if (select reason_code from public.stock_movements where id='96000000-0000-4000-8000-000000000709') <> 'damage' then
     raise exception 'custom configured reason was not used';
   end if;
+  if (select cost_basis from public.stock_movement_items where movement_id='96000000-0000-4000-8000-000000000709') <> 'mixed_estimate' then
+    raise exception 'configured negative loss did not expose mixed estimated cost basis';
+  end if;
+  if (select after_data->>'cost_warning' from public.audit_logs where entity_id='96000000-0000-4000-8000-000000000709' and action='stock_loss.recorded') <> 'negative_stock_estimate' then
+    raise exception 'configured negative loss did not audit estimated cost warning';
+  end if;
 end $$;
 
--- Anonymous callers cannot execute the command.
 set role anon;
 do $$
 begin

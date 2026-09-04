@@ -6,7 +6,6 @@ set role authenticated;
 select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000001', false);
 select set_config('request.jwt.claim.role', 'authenticated', false);
 
--- Dispatch 20 units from Tabatinga to Capricórnio. Destination must not be credited yet.
 select * from public.dispatch_stock_transfer(
   '50000000-0000-4000-8000-000000000001',
   '00000000-0000-4000-8000-000000000001',
@@ -18,7 +17,6 @@ select * from public.dispatch_stock_transfer(
   'CI transfer dispatch'
 );
 
--- Identical dispatch retry is idempotent.
 select * from public.dispatch_stock_transfer(
   '50000000-0000-4000-8000-000000000001',
   '00000000-0000-4000-8000-000000000001',
@@ -30,7 +28,6 @@ select * from public.dispatch_stock_transfer(
   'CI transfer dispatch'
 );
 
--- Same command ID with a different payload must fail.
 do $$
 begin
   begin
@@ -45,8 +42,7 @@ begin
       'CI transfer dispatch'
     );
     raise exception 'dispatch idempotency conflict unexpectedly succeeded';
-  exception
-    when unique_violation then null;
+  exception when unique_violation then null;
   end;
 end;
 $$;
@@ -102,10 +98,17 @@ begin
   if (select unit_cost_snapshot from public.stock_transfer_batch_allocations where transfer_item_id = transfer_item) <> 2.10 then
     raise exception 'dispatch lost physical batch cost snapshot';
   end if;
+
+  if (select unit_cost_snapshot from public.stock_transfer_items where id = transfer_item) <> 2.10 then
+    raise exception 'transfer line did not use physical batch cost snapshot';
+  end if;
+
+  if (select cost_basis from public.stock_transfer_items where id = transfer_item) <> 'layer_allocation' then
+    raise exception 'transfer line did not identify layer allocation cost basis';
+  end if;
 end;
 $$;
 
--- Invalid dispatches must be atomic.
 set role authenticated;
 select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000001', false);
 select set_config('request.jwt.claim.role', 'authenticated', false);
@@ -124,8 +127,7 @@ begin
       'same location must fail'
     );
     raise exception 'same-location dispatch unexpectedly succeeded';
-  exception
-    when invalid_parameter_value then null;
+  exception when invalid_parameter_value then null;
   end;
 
   begin
@@ -140,13 +142,11 @@ begin
       'insufficient dispatch must fail'
     );
     raise exception 'insufficient dispatch unexpectedly succeeded';
-  exception
-    when invalid_parameter_value then null;
+  exception when invalid_parameter_value then null;
   end;
 end;
 $$;
 
--- Receive 8 units: destination becomes 8 and transfer stays partial.
 select * from public.receive_stock_transfer(
   '50000000-0000-4000-8000-000000000010',
   '00000000-0000-4000-8000-000000000001',
@@ -154,7 +154,6 @@ select * from public.receive_stock_transfer(
   8.000
 );
 
--- Retry same receipt command: no duplicate credit.
 select * from public.receive_stock_transfer(
   '50000000-0000-4000-8000-000000000010',
   '00000000-0000-4000-8000-000000000001',
@@ -162,7 +161,6 @@ select * from public.receive_stock_transfer(
   8.000
 );
 
--- Same receipt command with different requested quantity conflicts.
 do $$
 begin
   begin
@@ -173,8 +171,7 @@ begin
       7.000
     );
     raise exception 'receive idempotency conflict unexpectedly succeeded';
-  exception
-    when unique_violation then null;
+  exception when unique_violation then null;
   end;
 end;
 $$;
@@ -189,8 +186,8 @@ begin
     raise exception 'partial receipt produced wrong destination balance';
   end if;
 
-  if (select average_cost from public.inventory_balances where organization_id = '00000000-0000-4000-8000-000000000001' and stock_item_id = '00000000-0000-4000-8000-000000000400' and stock_location_id = '00000000-0000-4000-8000-000000000121') <> 2.18 then
-    raise exception 'partial receipt produced wrong destination average cost';
+  if (select average_cost from public.inventory_balances where organization_id = '00000000-0000-4000-8000-000000000001' and stock_item_id = '00000000-0000-4000-8000-000000000400' and stock_location_id = '00000000-0000-4000-8000-000000000121') <> 2.10 then
+    raise exception 'partial receipt did not use physical transfer-layer cost';
   end if;
 
   if (select status from public.stock_transfers where id = '50000000-0000-4000-8000-000000000001') <> 'partially_received' then
@@ -230,7 +227,6 @@ begin
 end;
 $$;
 
--- Over-receive while 12 are pending must fail without side effects.
 set role authenticated;
 select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000001', false);
 select set_config('request.jwt.claim.role', 'authenticated', false);
@@ -245,13 +241,11 @@ begin
       13.000
     );
     raise exception 'over-receive unexpectedly succeeded';
-  exception
-    when invalid_parameter_value then null;
+  exception when invalid_parameter_value then null;
   end;
 end;
 $$;
 
--- Omitted quantity receives all remaining 12 units.
 select * from public.receive_stock_transfer(
   '50000000-0000-4000-8000-000000000012',
   '00000000-0000-4000-8000-000000000001',
@@ -259,7 +253,6 @@ select * from public.receive_stock_transfer(
   null
 );
 
--- Retry the receive-all command remains idempotent even after completion.
 select * from public.receive_stock_transfer(
   '50000000-0000-4000-8000-000000000012',
   '00000000-0000-4000-8000-000000000001',
@@ -277,8 +270,8 @@ begin
     raise exception 'completed receipt produced wrong destination balance';
   end if;
 
-  if (select average_cost from public.inventory_balances where organization_id = '00000000-0000-4000-8000-000000000001' and stock_item_id = '00000000-0000-4000-8000-000000000400' and stock_location_id = '00000000-0000-4000-8000-000000000121') <> 2.18 then
-    raise exception 'completed receipt changed destination average cost unexpectedly';
+  if (select average_cost from public.inventory_balances where organization_id = '00000000-0000-4000-8000-000000000001' and stock_item_id = '00000000-0000-4000-8000-000000000400' and stock_location_id = '00000000-0000-4000-8000-000000000121') <> 2.10 then
+    raise exception 'completed receipt lost physical transfer-layer cost';
   end if;
 
   if (select status from public.stock_transfers where id = '50000000-0000-4000-8000-000000000001') <> 'received' then
@@ -307,7 +300,6 @@ begin
 end;
 $$;
 
--- A completed transfer rejects a brand-new receive command.
 set role authenticated;
 select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000001', false);
 select set_config('request.jwt.claim.role', 'authenticated', false);
@@ -322,14 +314,12 @@ begin
       1.000
     );
     raise exception 'completed transfer unexpectedly received more stock';
-  exception
-    when invalid_parameter_value then null;
+  exception when invalid_parameter_value then null;
   end;
 end;
 $$;
 reset role;
 
--- Viewer cannot dispatch or receive.
 set role authenticated;
 select set_config('request.jwt.claim.sub', '30000000-0000-4000-8000-000000000001', false);
 select set_config('request.jwt.claim.role', 'authenticated', false);
@@ -348,8 +338,7 @@ begin
       'viewer denied'
     );
     raise exception 'viewer dispatch unexpectedly succeeded';
-  exception
-    when insufficient_privilege then null;
+  exception when insufficient_privilege then null;
   end;
 
   begin
@@ -360,14 +349,12 @@ begin
       1.000
     );
     raise exception 'viewer receive unexpectedly succeeded';
-  exception
-    when insufficient_privilege then null;
+  exception when insufficient_privilege then null;
   end;
 end;
 $$;
 reset role;
 
--- Manager from another Organization cannot dispatch against seeded Organization.
 set role authenticated;
 select set_config('request.jwt.claim.sub', '30000000-0000-4000-8000-000000000003', false);
 select set_config('request.jwt.claim.role', 'authenticated', false);
@@ -386,15 +373,12 @@ begin
       'cross-org denied'
     );
     raise exception 'cross-Organization dispatch unexpectedly succeeded';
-  exception
-    when insufficient_privilege then null;
+  exception when insufficient_privilege then null;
   end;
 end;
 $$;
 reset role;
 
--- Regression: replenishment after an allowed negative balance must not divide by zero.
--- Withdrawal suite leaves demo coal at -5 in location 120 with allow_negative_stock=true.
 set role authenticated;
 select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000001', false);
 select set_config('request.jwt.claim.role', 'authenticated', false);
@@ -437,7 +421,6 @@ begin
 end;
 $$;
 
--- Anonymous callers cannot execute transfer commands.
 set role anon;
 do $$
 begin
@@ -453,8 +436,7 @@ begin
       'anon denied'
     );
     raise exception 'anonymous dispatch unexpectedly succeeded';
-  exception
-    when insufficient_privilege then null;
+  exception when insufficient_privilege then null;
   end;
 end;
 $$;

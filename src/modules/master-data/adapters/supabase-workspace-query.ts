@@ -33,6 +33,7 @@ export interface RuntimeStockLocation {
   readonly id: EntityId;
   readonly name: string;
   readonly unitName: string;
+  readonly allowNegativeStock?: boolean;
 }
 
 export interface RuntimeStockTransfer {
@@ -65,7 +66,7 @@ interface CategoryRow { id: string; name: string }
 interface UnitOfMeasureRow { id: string; code: string; name: string }
 interface UnitRow { id: string; name: string }
 interface SectorRow { id: string; name: string; unit_id: string }
-interface LocationRow { id: string; name: string; unit_id: string }
+interface LocationRow { id: string; name: string; unit_id: string; allow_negative_stock: boolean }
 interface BalanceRow {
   stock_item_id: string;
   stock_location_id: string;
@@ -116,7 +117,7 @@ export async function loadWorkspaceReferenceData(
     client.from("units_of_measure").select("id, code, name").eq("organization_id", organizationId).eq("active", true).order("code"),
     client.from("units").select("id, name").eq("organization_id", organizationId).eq("status", "active").order("name"),
     client.from("sectors").select("id, name, unit_id").eq("organization_id", organizationId).eq("status", "active").order("name"),
-    client.from("stock_locations").select("id, name, unit_id").eq("organization_id", organizationId).eq("status", "active").order("name"),
+    client.from("stock_locations").select("id, name, unit_id, allow_negative_stock").eq("organization_id", organizationId).eq("status", "active").order("name"),
     client.from("inventory_balances").select("stock_item_id, stock_location_id, quantity_on_hand, average_cost").eq("organization_id", organizationId),
     client
       .from("inventory_batches")
@@ -213,6 +214,7 @@ export async function loadWorkspaceReferenceData(
       id: location.id as EntityId,
       name: location.name,
       unitName: unitNames.get(location.unit_id) ?? "Unidade indisponível",
+      allowNegativeStock: location.allow_negative_stock,
     })),
     balances: ((balancesResult.data ?? []) as BalanceRow[]).map((balance) => ({
       stockItemId: balance.stock_item_id as EntityId,
