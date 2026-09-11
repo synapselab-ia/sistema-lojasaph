@@ -14,6 +14,7 @@ import {
   StatusBadge,
   Textarea,
 } from "@/components/ui";
+import { EntityId } from "@/domain/common/entity-id";
 import { createBrowserSupabaseClient } from "@/lib/supabase/browser";
 import { SupabaseStockLoanGateway } from "@/modules/inventory/adapters/supabase-stock-loan-gateway";
 import { StockLoanService } from "@/modules/inventory/application/stock-loan-service";
@@ -24,6 +25,8 @@ const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "
 
 export default function StockLoansPage() {
   const workspace = useRuntimeWorkspace();
+  const organizationId = workspace.organizationId;
+  const errorMessage = workspace.errorMessage;
   const client = useMemo(() => createBrowserSupabaseClient(), []);
   const service = useMemo(() => new StockLoanService(new SupabaseStockLoanGateway(client)), [client]);
   const [loans, setLoans] = useState<readonly RuntimeStockLoan[]>([]);
@@ -58,17 +61,17 @@ export default function StockLoansPage() {
   );
 
   async function reloadLoans() {
-    setLoans(await service.listByOrganization(workspace.organizationId));
+    setLoans(await service.listByOrganization(organizationId));
   }
 
   useEffect(() => {
     let cancelled = false;
-    service.listByOrganization(workspace.organizationId)
+    service.listByOrganization(organizationId)
       .then((next) => { if (!cancelled) setLoans(next); })
-      .catch((error) => { if (!cancelled) setFeedback({ tone: "danger", text: workspace.errorMessage(error) }); })
+      .catch((error) => { if (!cancelled) setFeedback({ tone: "danger", text: errorMessage(error) }); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [service, workspace]);
+  }, [errorMessage, organizationId, service]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -78,12 +81,12 @@ export default function StockLoansPage() {
     setFeedback(null);
     try {
       const result = await service.create({
-        organizationId: workspace.organizationId,
-        stockItemId: stockItemId as never,
-        sourceLocationId: sourceLocationId as never,
+        organizationId,
+        stockItemId: stockItemId as EntityId,
+        sourceLocationId: sourceLocationId as EntityId,
         counterparty,
         quantity,
-        preferredBatchId: preferredBatchId ? preferredBatchId as never : undefined,
+        preferredBatchId: preferredBatchId ? preferredBatchId as EntityId : undefined,
         notes: notes || undefined,
       });
       await reloadLoans();
@@ -96,7 +99,7 @@ export default function StockLoansPage() {
         text: `Empréstimo registrado por ${formatMoney(result.loan.originalValue)}. O valor permanece vinculado ao custo histórico das camadas emprestadas.`,
       });
     } catch (error) {
-      setFeedback({ tone: "danger", text: workspace.errorMessage(error) });
+      setFeedback({ tone: "danger", text: errorMessage(error) });
     } finally {
       setSaving(false);
     }
