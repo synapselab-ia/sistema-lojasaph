@@ -1,0 +1,94 @@
+name: Stock Loans Integration
+
+on:
+  pull_request:
+    paths:
+      - "supabase/**"
+      - "src/modules/inventory/**"
+      - "src/app/workspace/**"
+      - "src/lib/navigation/**"
+      - "docs/modules/inventory.md"
+      - ".github/workflows/stock-loans-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "supabase/**"
+      - "src/modules/inventory/**"
+      - "src/app/workspace/**"
+      - "src/lib/navigation/**"
+      - "docs/modules/inventory.md"
+      - ".github/workflows/stock-loans-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  application:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Unit tests
+        run: npm run test
+      - name: Production build
+        run: npm run build
+
+  database:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: lojasaph
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d lojasaph"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: lojasaph
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Bootstrap Supabase auth stubs
+        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/bootstrap.sql
+      - name: Apply all migrations
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r migration; do
+            echo "Applying ${migration}"
+            psql -v ON_ERROR_STOP=1 -f "${migration}"
+          done < <(find supabase/migrations -maxdepth 1 -type f -name '*.sql' | sort)
+      - name: Apply anonymized seed
+        run: psql -v ON_ERROR_STOP=1 -f supabase/seed.sql
+      - name: Replay stock regressions
+        run: |
+          psql -v ON_ERROR_STOP=1 -f supabase/tests/schema_smoke.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/tests/stock_withdrawal.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/tests/stock_return.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/tests/stock_loss.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/tests/stock_transfer_multibatch.sql
+      - name: Run stock loan suite
+        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/stock_loans.sql

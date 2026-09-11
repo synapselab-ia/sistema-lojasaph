@@ -27,6 +27,7 @@ describe("workspaceNavigation", () => {
       { href: "/workspace/estoque/retiradas", label: "Retiradas" },
       { href: "/workspace/baixas", label: "Baixas e perdas" },
       { href: "/workspace/devolucoes", label: "Devoluções" },
+      { href: "/workspace/emprestimos", label: "Empréstimos" },
       { href: "/workspace/transferencias", label: "Transferências" },
       { href: "/workspace/inventarios", label: "Inventários" },
       { href: "/workspace/estoque/lotes", label: "Lotes e validades" },
@@ -71,6 +72,7 @@ describe("workspaceNavigation", () => {
       "/workspace/estoque/retiradas",
       "/workspace/baixas",
       "/workspace/devolucoes",
+      "/workspace/emprestimos",
       "/workspace/transferencias",
       "/workspace/inventarios",
       "/workspace/estoque/lotes",
@@ -120,6 +122,7 @@ describe("workspace navigation active state", () => {
     const administration = workspaceNavigation.find((area) => area.id === "administration");
 
     expect(stock && isWorkspaceAreaActive("/workspace/transferencias", stock)).toBe(true);
+    expect(stock && isWorkspaceAreaActive("/workspace/emprestimos/abc", stock)).toBe(true);
     expect(stock && isWorkspaceAreaActive("/workspace/estoque/entradas", stock)).toBe(true);
     expect(purchases && isWorkspaceAreaActive("/workspace/compras/pedidos/abc", purchases)).toBe(true);
     expect(finance && isWorkspaceAreaActive("/workspace/financeiro/contas/abc", finance)).toBe(true);
