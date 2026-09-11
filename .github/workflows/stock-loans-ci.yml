@@ -85,6 +85,7 @@ jobs:
         run: psql -v ON_ERROR_STOP=1 -f supabase/seed.sql
       - name: Replay stock regressions
         run: |
+          psql -v ON_ERROR_STOP=1 -f supabase/tests/schema_smoke.sql
           psql -v ON_ERROR_STOP=1 -f supabase/tests/stock_withdrawal.sql
           psql -v ON_ERROR_STOP=1 -f supabase/tests/stock_return.sql
           psql -v ON_ERROR_STOP=1 -f supabase/tests/stock_loss.sql
