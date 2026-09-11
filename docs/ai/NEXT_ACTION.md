@@ -4,81 +4,100 @@
 
 Fase 51 / #142 e Fase 52 / #180 concluídas. A frente guarda-chuva continua sendo **Fase 53 / #181 — conclusão de negócio**.
 
-A **Issue #187 / Fase 57 — custeio por lote/camada física** está concluída:
+As duas bases de Estoque que condicionavam a sequência estão concluídas:
 
-- PR #192 mergeado em `main`;
-- CI do PR e CI pós-merge verdes;
-- migrations `20260904101500` → `20260904103000` aplicadas em Production com `supabase db push` version-preserving;
-- Production `fhbvwyttikrbeaanatlr` sem migration local pendente após o rollout;
-- Q-008 / `REQ-STK-010` não deve ser reaberta.
+- #187 — custeio por lote/camada física;
+- #183 — empréstimos com restituição física e/ou financeira.
 
-A dependência técnica da #183 está satisfeita.
+A #183 foi mergeada pelo PR #194 e promovida a Production pelas migrations `20260911102000_stock_loans` e `20260911102500_stock_loan_allocation_order`. CI, workflow dedicado, rollout version-preserving, verificação read-only e advisors foram executados com sucesso. Production `fhbvwyttikrbeaanatlr` está alinhada até `20260911102500`.
+
+## Frentes bloqueadas neste momento
+
+### #185 — PDV Legal — ON HOLD
+
+A Issue exige **amostra real anonimizada ou estrutura oficial de colunas** dos arquivos escolhidos. Essa evidência ainda não existe no repositório.
+
+Gatilho: receber amostra/estrutura oficial ou documentação/contrato oficial suficiente para definir o formato. Não fabricar fixture, não fazer scraping e não usar dado Production como substituto.
+
+### #188 — catálogo comercial, preços e margem — ON HOLD por #185
+
+A modelagem precisa considerar a estrutura real de produto/venda/preço/identificadores que chegará do PDV Legal. #187 está resolvida, mas #185 ainda não.
+
+### #189 — fichas técnicas/receitas — ON HOLD por #185/#188
+
+Tem dependências explícitas dessas frentes. Não antecipar implementação.
+
+### #184 — consumo de funcionários — ON HOLD por definição de origem
+
+A semântica de negócio está decidida, mas ainda faltam origem do lançamento, granularidade e regra de estorno. A fonte real de venda/consumo está vinculada ao estudo #185. Não inventar comportamento.
 
 ## NEXT_ACTION objetiva
 
-### **Executar Issue #183 — empréstimos com restituição física e/ou financeira**
+### **Executar Issue #190 — compositor modular do sistema para owner**
 
-Empréstimo é um processo necessário e **distinto de transferência**.
+A #190 é a próxima frente independente e viável. A direção arquitetural já está aceita em `ADR-010-modular-product-composition.md`.
 
-O sistema deve registrar o valor histórico do que foi emprestado e permitir restituição total/parcial por:
+## Contrato arquitetural já decidido
 
-- retorno físico ao estoque;
-- restituição monetária;
-- combinação das duas formas.
+### Registry e configuração
 
-## Regra de valuation já decidida
+- criar `Module/Capability Registry` estático e versionado no código;
+- cada capability pode declarar id estável, nome/descrição, categoria, core/configurável, dependências, dependentes, rotas/nav, cards derivados, gates e permissões;
+- persistir por Organization **somente a configuração** habilitada/desabilitada/opções aprovadas;
+- não copiar a definição estrutural inteira para o banco.
 
-Usar **o custo das camadas/lotes efetivamente emprestados**.
+### Desabilitar não é apagar
 
-Exemplo: se 3 unidades saírem de camada a R$ 5 e 2 unidades de camada a R$ 2, o valor físico histórico é:
+- impedir novas operações quando aplicável;
+- remover/ocultar superfícies de forma coerente;
+- preservar tabelas, migrations, ledger, audit e histórico;
+- reativação deve recuperar acesso ao histórico intacto;
+- nenhum toggle executa `DROP TABLE` ou limpeza destrutiva.
 
-`3 × 5 + 2 × 2 = R$ 19`
+### Backend também é boundary
 
-Não substituir por custo médio, última compra nem custo atual futuro.
+Esconder menu não basta. Rotas, server actions, gateways/RPCs e outros boundaries autoritativos precisam respeitar module gating quando a capacidade for configurável. RLS/autorização continuam sendo boundary de dados e não são substituídas pelo compositor.
 
-## Contrato mínimo aprovado
+### Core não removível
 
-- empréstimo possui origem, contraparte/destino, item, quantidade e valor de referência;
-- quantidade emprestada mantém rastreabilidade das camadas consumidas;
-- existe saldo físico pendente de retorno;
-- existe saldo monetário pendente quando aplicável;
-- retorno físico pode ser parcial ou total;
-- restituição monetária pode ser parcial ou total;
-- ambos podem coexistir;
-- toda restituição é ligada ao empréstimo original;
-- empréstimo original não é apagado nem reescrito para simular restituição;
-- restituição monetária não reprecifica a saída física original;
-- ledger de estoque representa somente eventos físicos reais;
-- over-return/over-settlement deve ser bloqueado;
-- concorrência deve ser segura;
-- commands devem ser transacionais e idempotentes;
-- RLS/roles/escopo devem ser coerentes com Estoque;
-- audit trail obrigatório.
+Não permitir desligar:
 
-## Boundary financeiro obrigatório
+- Organization/contexto;
+- autenticação;
+- autorização/RLS;
+- auditoria;
+- integridade transacional/idempotência;
+- configuração necessária ao compositor.
 
-**Não inferir automaticamente lançamento em Caixa/Financeiro.**
+### Dependências explícitas
 
-O primeiro requisito é registrar a liquidação monetária do empréstimo de forma exata e auditável. Qualquer efeito adicional em Caixa/Financeiro exige regra explícita posterior e deve evitar dupla contabilização.
+O registry deve impedir combinações inválidas e explicar impacto em linguagem de produto. Exemplos já aprovados:
 
-## UX mínima de produto
+- Empréstimos → Estoque;
+- FEFO/Validades → Estoque + camadas/lotes;
+- Fichas técnicas → Catálogo + itens/insumos;
+- Consumo de funcionários → Funcionários + fonte de venda/consumo;
+- relatórios de venda → fonte de venda/importação.
 
-Implementar jornada:
+### Autorização e audit
 
-`lista de empréstimos → detalhe → restituir`
+- primeiro rollout somente para `owner` Organization-wide;
+- não hardcodar pessoa, e-mail ou UUID;
+- toda mudança de composição deve registrar Organization, ator, timestamp, antes/depois e contexto quando necessário.
 
-A UI precisa:
+### UX
 
-- mostrar contraparte, item, quantidade/valor original e saldos pendentes;
-- explicar saldo físico e monetário em linguagem de negócio;
-- permitir restituição física, monetária ou combinação;
-- mostrar histórico de restituições;
-- sinalizar estados como aberto, parcialmente restituído e liquidado;
-- manter progressive disclosure e padrão visual da Fase 51;
-- não expor detalhes técnicos de ledger/cost basis ao operador comum;
-- não terminar em CRUD bruto.
+A área deve parecer configuração de produto, não painel de feature flags:
 
-## Procedimento do próximo chat
+- `Administração → Módulos` ou equivalente;
+- cards com nome, descrição e estados `Ativo`, `Desativado`, `Obrigatório`, `Requer ...`;
+- dependências e impacto explicados antes da alteração;
+- preview da navegação resultante quando útil;
+- confirmação para mudança relevante;
+- teclado/mobile funcionais;
+- nenhum UUID, flag interna ou nome de tabela exposto.
+
+## Procedimento da #190
 
 1. Ler, nesta ordem:
    - `AGENTS.md`;
@@ -87,89 +106,53 @@ A UI precisa:
    - `docs/ai/HANDOFF.md`;
    - este `NEXT_ACTION.md`;
    - `docs/ai/WORKFLOW.md`;
-   - Issue #183 e comentário vigente;
-   - `docs/product/requirements.md` (`REQ-STK-007`, `REQ-STK-010`);
-   - `docs/product/business-rules.md`;
-   - `docs/decisions/ADR-003-inventory-costing.md`;
-   - documentação do módulo Estoque;
+   - Issue #190 e comentário vigente;
+   - `docs/decisions/ADR-010-modular-product-composition.md`;
+   - requisitos/regras referenciados pelo ADR;
 2. Consultar GitHub real para `main`, Issues, PRs, branches e CI;
-3. Confirmar que não existe outra branch/PR já executando #183;
-4. Auditar primitives existentes de estoque, transferências, devoluções, audit e permissions;
-5. Reaproveitar primitives somente onde preservarem semântica; **não modelar empréstimo como transferência definitiva**;
-6. Definir modelo persistente e migration versionada antes de DDL compartilhado;
-7. Modelar alocações de camada/custo do empréstimo e histórico de restituições;
-8. Implementar commands transacionais/idempotentes;
-9. Garantir lock/concorrência e bloqueio de over-return/over-settlement;
-10. Garantir Organization isolation, grants, RLS/escopo e audit;
-11. Implementar UI `lista → detalhe → restituir`;
-12. Validar aplicação e PostgreSQL;
-13. CI verde → PR → merge → CI pós-merge;
-14. Se houver migration mergeada para Production, seguir `docs/qa/database-migrations.md`: dry-run, allowlist fail-closed, push version-preserving, dry-run final, verificação read-only e advisors;
-15. Atualizar `CURRENT_STATE`, `HANDOFF` e `NEXT_ACTION`.
+3. Confirmar que não existe outra branch/PR já executando #190;
+4. Auditar `src/modules/*`, `src/lib/navigation/workspace-navigation.ts`, rotas, server actions, gateways/RPCs, permissions/capabilities e dashboards atuais;
+5. Produzir mapa explícito de módulos/capabilities, dependências e core não removível antes de implementar toggles;
+6. Selecionar **1–2 capabilities de baixo risco** para prova incremental;
+7. Definir registry/resolver estático e, se necessário, migration versionada para configuração por Organization;
+8. Implementar gating de navegação e backend sem enfraquecer RLS/autorização;
+9. Garantir preservação de histórico ao desabilitar e reativar;
+10. Implementar audit trail da composição;
+11. Implementar UX orientada ao owner, com dependências/impactos compreensíveis;
+12. Cobrir combinações válidas/inválidas, autorização, isolamento por Organization, desativação/reativação e backend gating;
+13. Validar aplicação + PostgreSQL + CI;
+14. CI verde → PR → review → merge → CI pós-merge;
+15. Se houver migration mergeada, seguir rollout Production version-preserving de `docs/qa/database-migrations.md`;
+16. Atualizar `CURRENT_STATE`, `HANDOFF` e `NEXT_ACTION`.
 
-## Testes obrigatórios de #183
+## Aceite da primeira entrega incremental
 
-Cobrir no mínimo:
+- registry/capability graph explícito e testável;
+- core locked corretamente;
+- configuração por Organization sem duplicar definição estrutural;
+- 1–2 capabilities opcionais provando enabled/disabled;
+- dependência inválida bloqueada com mensagem compreensível;
+- navegação sem links mortos;
+- backend impede nova operação quando capability estiver desabilitada;
+- histórico permanece íntegro e volta a ser acessível após reativação;
+- owner-only para mudança de composição;
+- audit trail;
+- UX coerente com Fase 51;
+- PostgreSQL + aplicação + CI verdes.
 
-1. mesmo item com duas ou mais camadas de custos diferentes;
-2. empréstimo consumindo múltiplas camadas com valor histórico exato;
-3. FEFO quando não houver lote explícito;
-4. lote explícito quando aplicável;
-5. retorno físico parcial;
-6. retorno físico total;
-7. restituição monetária parcial;
-8. restituição monetária total;
-9. combinação físico + monetário;
-10. bloqueio de retorno físico acima do saldo;
-11. bloqueio de liquidação monetária acima do saldo;
-12. retry idempotente;
-13. conflito idempotente com payload diferente;
-14. concorrência sobre o mesmo empréstimo;
-15. usuário sem permissão;
-16. usuário fora do escopo/Organization;
-17. audit trail;
-18. nenhum recálculo histórico após entrada futura com custo diferente.
+## Depois da primeira entrega de #190
 
-## Aceite
-
-- modelo persistente + migrations versionadas;
-- valor histórico formado pelas camadas efetivamente emprestadas;
-- saldos físico/monetário exatos e explicáveis;
-- restituições ligadas ao empréstimo original;
-- histórico preservado;
-- sem dupla baixa ou movimento físico fictício;
-- sem regra contábil/fiscal inventada;
-- RLS/permissions/Organization corretos;
-- UI operacional e visualmente consistente;
-- PostgreSQL + aplicação + CI verdes;
-- Production só alterada por rollout versionado e verificável.
-
-## Depois de #183
-
-Ordem atual:
-
-1. **#185 — PDV Legal** quando houver estrutura/amostra oficial;
-2. **#188 — catálogo comercial, preços e margem**;
-3. **#189 — fichas técnicas/receitas**;
-4. **#184 — consumo de funcionários**;
-5. **#190 — compositor modular**;
-6. **Q-022 — perfis/pessoas reais**;
-7. homologação com dados representativos;
-8. migração/cutover;
-9. production-readiness / #75/#121.
-
-A ordem pode ser refinada por dependência real comprovada, mas não retornar ao estado antigo de custeio indefinido.
+Expandir capabilities apenas depois de provar registry/gating. As frentes #185/#188/#189/#184 permanecem condicionadas aos gatilhos acima e devem ser retomadas assim que a evidência/dependência real existir. Q-022 continua obrigatório antes de preparar pessoas reais para go-live.
 
 ## Guardrails
 
 - GitHub é fonte de verdade;
 - Supabase/schema/RLS/grants são hard boundaries;
 - nenhum secret em Git/docs/chat/log;
-- não criar fixture/dado Production para evidência;
-- não usar auth bypass;
+- nenhuma fixture/dado Production para fabricar evidência;
+- module gating não substitui autorização;
+- desabilitar módulo nunca apaga histórico;
+- não criar dezenas de toggles antes da prova incremental;
 - não repetir migration reconciliation sem drift;
 - não disparar deploy Vercel manual rotineiro;
-- não converter empréstimo em transferência por conveniência;
-- não recalcular histórico por custo atual;
-- não inventar regra contábil/fiscal;
 - #75/#121 continuam TOTALMENTE ON HOLD.
