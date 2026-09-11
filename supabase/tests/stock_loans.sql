@@ -587,7 +587,7 @@ create or replace function public.__test_stock_loan_settle_with_delay(
 )
 returns text
 language plpgsql
-security invoker
+security definer
 set search_path = ''
 as $$
 begin
