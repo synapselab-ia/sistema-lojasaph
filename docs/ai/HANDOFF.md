@@ -2,7 +2,7 @@
 
 ## Como ler
 
-**Consultar GitHub para HEAD real de `main`, Issues, PRs, branches e CI.** Não usar SHAs documentais como estado permanente.
+**Consultar GitHub para HEAD real de `main`, Issues, PRs, branches e CI antes de executar qualquer etapa.** Depois conferir o estado do Supabase quando a ação envolver migrations/schema.
 
 Leitura mínima de qualquer chat novo:
 
@@ -12,154 +12,85 @@ Leitura mínima de qualquer chat novo:
 4. este `HANDOFF.md`;
 5. `docs/ai/NEXT_ACTION.md`;
 6. `docs/ai/WORKFLOW.md`;
-7. documentos/ADRs da área afetada.
+7. ADRs/documentos da área afetada.
 
 ## Frente ativa
 
-Fase 51 / #142 e Fase 52 / #180 estão concluídas. A frente guarda-chuva é **Fase 53 / #181 — conclusão de negócio**.
+A frente ativa é **Fase 60 / Issue #190 — compositor modular do sistema para owner**, dentro da Fase 53 / #181.
 
-A próxima frente principal é **Fase 60 / Issue #190 — compositor modular do sistema para owner**.
+#187 (custeio por camada/lote) e #183 (empréstimos) já estão concluídas. Production `fhbvwyttikrbeaanatlr` estava alinhada até migration `20260911102500_stock_loan_allocation_order` antes da primeira fatia da #190.
 
-A #183 não está mais ativa: empréstimos foram implementados, mergeados, validados e promovidos a Production.
+## Primeira fatia da #190
 
-## Fechamento da #183
+Veículo de entrega: **PR #197 — `feat: iniciar compositor modular por Organization`**, branch `feat/190-modular-composition-foundation`.
 
-### Feature
+Consultar o GitHub para saber se o PR ainda está aberto ou já foi mergeado. Não recriar essa implementação em outra branch.
 
-- Issue #183: `completed`;
-- PR #194 `feat: implementar empréstimos de estoque`;
-- merge em `main`: `15bac74c2b43b0f428e394caadcc72efb17fb68a`;
-- CI do PR: CI #634, Inventory Count Integration #294, Business Transactions Integration #281 e Stock Loans Integration #9 verdes;
-- pós-merge: CI #635 / `34610618614` e Stock Loans Integration #10 / `34610618603` verdes.
+### Arquitetura implementada
 
-### Contrato integrado
+- `src/modules/composition/domain/capability.ts`: registry estático/versionado;
+- `src/modules/composition/application/capability-resolver.ts`: resolução de defaults, overrides e dependências;
+- `organization_capability_settings`: guarda somente override por Organization;
+- `set_organization_capability(...)`: mutation RPC owner-only, auditável;
+- `stock-loans -> inventory`: primeira dependência operacional explícita;
+- `inventory` permanece ativo/não configurável nesta etapa;
+- `stock-loans` é configurável e default-enabled para não quebrar organizações existentes;
+- `record_stock_loan(...)` é o gate autoritativo para impedir novos empréstimos quando off;
+- restituição de empréstimos existentes continua permitida deliberadamente;
+- shell/navegação consomem estado resolvido e removem Empréstimos quando off;
+- `Administração -> Montar sistema` aparece apenas para owner Organization-wide;
+- histórico/tabelas/audit permanecem intactos durante desativação.
 
-- empréstimo não é transferência;
-- valuation histórico vem das camadas realmente emprestadas;
-- FEFO quando não há lote explícito; lote explícito prevalece;
-- ordem de consumo é persistida para restituição física parcial correta;
-- saldo físico e econômico são separados;
-- retorno físico restaura camadas e gera `loan_return`;
-- restituição monetária não fabrica movimento de estoque nem lançamento automático em Caixa/Financeiro;
-- físico e monetário podem coexistir;
-- over-return / over-settlement são bloqueados;
-- idempotência, lock/concorrência, RLS, Organization scope e audit trail cobertos;
-- UX: `/workspace/emprestimos` → detalhe → restituir.
+### Limite conhecido
 
-### Rollout Production
+A rota histórica `/workspace/emprestimos` ainda pode ser digitada diretamente quando a capability está desativada. Isso **não** libera nova operação: o backend recusa criação. A próxima expansão deve decidir e implementar uma experiência server-side coerente para rota direta, sem confundir gating de produto com autorização/RLS.
 
-- PR #195 `ops: reconciliar migrations da issue 183 em Production`;
-- merge: `17c6cabd9e532096155757e7b050cfe75ea5088c`;
-- CI PR #636 / run `34611784238`: verde;
-- CI pós-merge #637 / run `34611952509`: verde;
-- Production Migration Reconcile 183 #1 / run `34611952669`: verde;
-- mecanismo: `supabase db push` version-preserving, dry-run + allowlist fail-closed + dry-run final;
-- migrations aplicadas:
-  - `20260911102000_stock_loans`;
-  - `20260911102500_stock_loan_allocation_order`;
-- Production `fhbvwyttikrbeaanatlr` agora contém ambas as versions;
-- sem seed, reset, `migration repair`, DDL ad hoc ou edição direta de migration history;
-- reconciliador one-shot removido depois do sucesso.
+## CI da implementação
 
-### Verificação read-only Production
+No primeiro head `f758189...`:
 
-Confirmado:
+- CI geral, Inventory Count Integration e Business Transactions Integration passaram;
+- lint, typecheck, unit tests e production build do workflow de empréstimos passaram;
+- somente a nova suíte SQL falhou inicialmente;
+- causa confirmada nos logs: policy de leitura usou `private.has_org_role(organization_id, NULL)`, mas esse helper exige `role = ANY(allowed_roles)` e não serve para `NULL`;
+- correção preparada: policy usa `private.is_org_member(organization_id)`, helper já existente e apropriado para leitura por qualquer membro ativo.
 
-- tabelas `stock_loans` e `stock_loan_restitutions` existem e possuem RLS;
-- `stock_movement_batch_allocations.allocation_order` existe;
-- RPCs de criar empréstimo e registrar restituição existem;
-- `authenticated` pode executar somente os commands previstos;
-- `anon` não executa os commands;
-- `authenticated` não recebeu INSERT/UPDATE direto nas tabelas de empréstimo.
+**Obrigatório:** verificar o CI do head atual do PR #197; só mergear com checks verdes.
 
-Advisors pós-DDL não apontaram erro crítico específico da #183. Permanecem warnings/INFOs já conhecidos de RPCs públicos `SECURITY DEFINER`, leaked-password protection, FKs sem índice e índices ainda não usados. Não transformar isso em extensão silenciosa da #183.
+## Production / migrations
 
-## Regra de custeio que NÃO deve ser rediscutida
+A primeira fatia adiciona migration `20260911153000_modular_product_composition.sql`.
 
-Autoridade: `REQ-STK-010`, `BR-STK-010`, `ADR-003-inventory-costing.md`.
+Depois do merge:
 
-- custo por lote/camada efetivamente movimentada;
-- `average_cost` é analítico/cache e não reprecifica histórico;
-- FEFO é default quando não há seleção explícita;
-- lote explícito prevalece;
-- devoluções, transferências, perdas, vencimentos e empréstimos preservam origem econômica;
-- legado sem camada = `legacy_estimate`;
-- excedente permitido de estoque negativo = `negative_estimate`;
-- ajuste positivo sem custo explícito permanece bloqueado.
+1. comparar migration history local/remota;
+2. se Production estiver atrás, usar o procedimento version-preserving de `docs/qa/database-migrations.md`;
+3. não usar seed/reset/repair nem DDL ad hoc;
+4. verificar read-only tabela, RLS, grants, RPCs e default efetivo;
+5. executar advisors após DDL;
+6. remover qualquer reconciliador one-shot criado para o rollout.
 
-## Frentes abertas que estão ON HOLD
+Não aplicar a migration por um caminho que gere versão remota diferente da versão do repositório.
 
-### #185 — PDV Legal
+## Próxima fatia da #190 depois do rollout
 
-A própria Issue exige amostra real anonimizada ou estrutura oficial das colunas exportadas. Isso ainda não existe no repositório.
+Não abrir dezenas de toggles. Primeiro consolidar o padrão já provado:
 
-**Retomar somente quando:** houver amostra/estrutura oficial ou documentação/contrato oficial suficiente. Não criar fixture falsa, scraping ou dado Production para desbloquear.
+- adicionar comportamento server-side coerente para rota direta de capability desativada;
+- mapear uma segunda capability de baixo risco antes de torná-la configurável;
+- candidato preferencial para estudo: **Estoque mínimo**, por ser uma capability operacional mais isolada que Compras/Financeiro/Caixa; confirmar boundaries reais antes de implementar;
+- manter registry, resolver, backend gate, navegação, auditoria e preservação de histórico como contrato único;
+- atualizar testes de combinações/dependências e UX do compositor à medida que capabilities forem liberadas.
 
-### #188 — catálogo comercial, preços e margem
+## Frentes ON HOLD
 
-Tem dependência explícita de #185 para a forma real de vendas/preços/identificadores. #187 já está satisfeita; #185 ainda não.
-
-### #189 — fichas técnicas/receitas
-
-Depende explicitamente de #188 e #185, além do custeio já resolvido.
-
-### #184 — consumo de funcionários
-
-Semântica está aprovada, porém origem do lançamento, granularidade e estorno ainda precisam ser definidos. A origem real de venda está ligada a #185. Não inventar.
-
-## Próxima frente viável — #190
-
-A arquitetura foi formalizada em `docs/decisions/ADR-010-modular-product-composition.md` e a Issue #190 permanece aberta.
-
-Princípios obrigatórios:
-
-- definição estrutural em `Module/Capability Registry` versionado no código;
-- banco persiste só configuração por Organization;
-- desabilitar não apaga dados/histórico;
-- module gating complementa autorização/RLS e também deve alcançar backend;
-- capacidades core de Organization/auth/RLS/audit/integridade não são desligáveis;
-- dependency graph impede combinações inválidas;
-- área de composição inicialmente apenas para `owner` Organization-wide;
-- alterações auditáveis;
-- UX de produto, não painel técnico de flags;
-- rollout incremental: mapear dependências → registry/resolver → 1–2 capabilities de baixo risco → validar → expandir.
-
-Não implementar #190 como simples hide/show do menu.
-
-## Q-022 e autorização
-
-Q-022 continua necessário antes do go-live para mapear pessoas/cargos reais às capacidades existentes. Isso **não bloqueia a arquitetura da #190**: implementar contra role/capability `owner`, nunca contra pessoa, e-mail ou UUID específicos.
-
-## #75/#121
-
-Continuam **TOTALMENTE ON HOLD** até production-readiness. Não retomar nesta fase.
-
-## Estado infra que não deve ser refeito
-
-- Git/Production alinhados até `20260911102500`;
-- não repetir migration reconciliation sem drift real;
-- reconciliador #183 era one-shot e foi removido;
-- não disparar deploy Vercel manual por rotina;
-- não criar dados Production para evidência.
-
-## NEXT_ACTION
-
-### Executar #190 — compositor modular do sistema para owner
-
-O próximo chat deve:
-
-1. ler governança/estado real e Issue #190 + ADR-010;
-2. auditar `src/modules/*`, `workspace-navigation.ts`, rotas/actions/RPCs e capabilities atuais;
-3. mapear dependências reais antes de criar toggles;
-4. definir registry/resolver estático e modelo persistente mínimo por Organization;
-5. selecionar 1–2 capabilities de baixo risco para prova de gating;
-6. garantir navegação **e backend** coerentes com enabled/disabled;
-7. preservar histórico na desativação/reativação;
-8. registrar mudanças de composição em audit trail;
-9. entregar UX compreensível para `owner`, sem flags técnicas;
-10. validar PostgreSQL + aplicação + CI → PR → merge → rollout versionado se houver migration;
-11. atualizar `CURRENT_STATE`, `HANDOFF` e `NEXT_ACTION`.
+- #185 PDV Legal: aguarda amostra/estrutura oficial/documentação suficiente;
+- #188: depende de #185;
+- #189: depende de #185/#188;
+- #184: aguarda definição real de origem/granularidade/estorno;
+- #75/#121: TOTALMENTE ON HOLD até production-readiness;
+- Q-022 segue necessário antes de usuários reais de go-live.
 
 ## Guardrails
 
-GitHub é fonte de verdade; Supabase/schema/RLS/grants são hard boundaries; nenhum secret; nenhuma fixture Production; nenhuma regra contábil/fiscal por inferência; nenhum deploy Vercel manual rotineiro; não retomar #75/#121.
+GitHub é fonte de verdade; Supabase/schema/RLS/grants são hard boundaries; module gating não substitui autorização; nenhum secret; nenhuma fixture Production; nenhuma regra contábil/fiscal por inferência; nenhuma identidade pessoal hardcoded; nenhum deploy Vercel manual rotineiro; não repetir reconciliation sem drift comprovado.

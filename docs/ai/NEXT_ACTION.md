@@ -2,157 +2,81 @@
 
 ## Estado
 
-Fase 51 / #142 e Fase 52 / #180 concluídas. A frente guarda-chuva continua sendo **Fase 53 / #181 — conclusão de negócio**.
+A frente ativa é **Issue #190 / Fase 60 — compositor modular do sistema para owner**.
 
-As duas bases de Estoque que condicionavam a sequência estão concluídas:
+#187 e #183 estão concluídas. As frentes #185/#188/#189/#184 continuam condicionadas aos gatilhos documentados e não devem ser usadas para desviar a execução atual.
 
-- #187 — custeio por lote/camada física;
-- #183 — empréstimos com restituição física e/ou financeira.
-
-A #183 foi mergeada pelo PR #194 e promovida a Production pelas migrations `20260911102000_stock_loans` e `20260911102500_stock_loan_allocation_order`. CI, workflow dedicado, rollout version-preserving, verificação read-only e advisors foram executados com sucesso. Production `fhbvwyttikrbeaanatlr` está alinhada até `20260911102500`.
-
-## Frentes bloqueadas neste momento
-
-### #185 — PDV Legal — ON HOLD
-
-A Issue exige **amostra real anonimizada ou estrutura oficial de colunas** dos arquivos escolhidos. Essa evidência ainda não existe no repositório.
-
-Gatilho: receber amostra/estrutura oficial ou documentação/contrato oficial suficiente para definir o formato. Não fabricar fixture, não fazer scraping e não usar dado Production como substituto.
-
-### #188 — catálogo comercial, preços e margem — ON HOLD por #185
-
-A modelagem precisa considerar a estrutura real de produto/venda/preço/identificadores que chegará do PDV Legal. #187 está resolvida, mas #185 ainda não.
-
-### #189 — fichas técnicas/receitas — ON HOLD por #185/#188
-
-Tem dependências explícitas dessas frentes. Não antecipar implementação.
-
-### #184 — consumo de funcionários — ON HOLD por definição de origem
-
-A semântica de negócio está decidida, mas ainda faltam origem do lançamento, granularidade e regra de estorno. A fonte real de venda/consumo está vinculada ao estudo #185. Não inventar comportamento.
+A primeira entrega incremental da #190 está no **PR #197**, branch `feat/190-modular-composition-foundation`. Ela prova registry/resolver, configuração por Organization, owner-only mutation, audit trail, navegação resolvida e backend gating usando `stock-loans` como primeira capability configurável.
 
 ## NEXT_ACTION objetiva
 
-### **Executar Issue #190 — compositor modular do sistema para owner**
+Executar **a primeira condição pendente** abaixo, com base no estado real do GitHub/Supabase. Não repetir condições já concluídas.
 
-A #190 é a próxima frente independente e viável. A direção arquitetural já está aceita em `ADR-010-modular-product-composition.md`.
+### 1. Se o PR #197 ainda estiver aberto
 
-## Contrato arquitetural já decidido
+- conferir head/mergeability/checks reais;
+- corrigir somente regressões do PR;
+- exigir lint, typecheck, testes, build e suíte PostgreSQL verdes;
+- mergear o PR quando os checks estiverem verdes;
+- não fechar a Issue #190, porque esse PR é somente a primeira fatia incremental.
 
-### Registry e configuração
+Contexto do primeiro CI: a única falha encontrada foi a policy de leitura de `organization_capability_settings`; `private.has_org_role(..., NULL)` não autoriza qualquer role. O helper correto é `private.is_org_member(...)`. Verificar o head atual para confirmar que a correção foi validada.
 
-- criar `Module/Capability Registry` estático e versionado no código;
-- cada capability pode declarar id estável, nome/descrição, categoria, core/configurável, dependências, dependentes, rotas/nav, cards derivados, gates e permissões;
-- persistir por Organization **somente a configuração** habilitada/desabilitada/opções aprovadas;
-- não copiar a definição estrutural inteira para o banco.
+### 2. Se o PR #197 já estiver mergeado e Production ainda não tiver `20260911153000_modular_product_composition`
 
-### Desabilitar não é apagar
+Fazer rollout **version-preserving** conforme `docs/qa/database-migrations.md`:
 
-- impedir novas operações quando aplicável;
-- remover/ocultar superfícies de forma coerente;
-- preservar tabelas, migrations, ledger, audit e histórico;
-- reativação deve recuperar acesso ao histórico intacto;
-- nenhum toggle executa `DROP TABLE` ou limpeza destrutiva.
+1. verificar drift/migration list antes de escrever;
+2. aplicar somente a migration mergeada, mantendo a versão `20260911153000`;
+3. não usar seed, reset, `migration repair` ou DDL ad hoc;
+4. executar dry-run/verificação final;
+5. confirmar read-only:
+   - `organization_capability_settings` existe com RLS;
+   - `authenticated` pode SELECT conforme membership, mas não DML direto;
+   - `set_organization_capability(...)` existe e é executável somente pelo papel de banco aprovado, com autorização owner Organization-wide dentro do RPC;
+   - `record_stock_loan(...)` contém o gate de capability;
+   - ausência de override mantém `stock-loans` ativo;
+6. executar advisors de security/performance e tratar apenas regressões do rollout;
+7. remover eventual workflow/reconciliador one-shot depois do sucesso;
+8. confirmar CI pós-merge/ops verde.
 
-### Backend também é boundary
+### 3. Se PR #197 e rollout Production já estiverem concluídos
 
-Esconder menu não basta. Rotas, server actions, gateways/RPCs e outros boundaries autoritativos precisam respeitar module gating quando a capacidade for configurável. RLS/autorização continuam sendo boundary de dados e não são substituídas pelo compositor.
+Continuar a **segunda fatia incremental da #190**, sem criar uma matriz grande de toggles.
 
-### Core não removível
+Objetivo:
 
-Não permitir desligar:
+- tornar a experiência de rota direta coerente quando uma capability estiver desativada, usando resolução server-side e sem confundir module gating com autorização/RLS;
+- auditar os boundaries reais de uma segunda capability de baixo risco;
+- estudar **Estoque mínimo** como candidato preferencial, mas só torná-lo configurável se o mapeamento confirmar isolamento/dependências simples;
+- se o candidato não for seguro, documentar o bloqueio e escolher outro com base no mapa real, não por conveniência;
+- reutilizar o mesmo registry/resolver, configuração Organization-scoped, owner-only mutation, audit trail e backend gate;
+- preservar histórico e default compatível;
+- cobrir enabled/disabled, dependências, autorização, isolamento por Organization, navegação/rota/backend e reativação;
+- CI verde → PR → merge → rollout versionado se houver nova migration;
+- atualizar `CURRENT_STATE`, `HANDOFF` e este arquivo.
 
-- Organization/contexto;
-- autenticação;
-- autorização/RLS;
-- auditoria;
-- integridade transacional/idempotência;
-- configuração necessária ao compositor.
+## Contrato arquitetural que permanece obrigatório
 
-### Dependências explícitas
+- registry estrutural versionado no código; banco guarda apenas configuração;
+- core de contexto/auth/autorização/audit/integridade/compositor não é desligável;
+- dependências são explícitas e combinações inválidas são bloqueadas;
+- frontend não é boundary de segurança;
+- RLS/autorização continuam obrigatórios e independentes do compositor;
+- desabilitar não apaga dados, ledger, audit ou histórico;
+- reativar recupera o comportamento sobre o histórico intacto;
+- primeiro rollout de configuração continua restrito a `owner` Organization-wide;
+- UX deve falar em módulos/capabilities de produto, nunca flags/UUIDs/tabelas.
 
-O registry deve impedir combinações inválidas e explicar impacto em linguagem de produto. Exemplos já aprovados:
+## Frentes bloqueadas
 
-- Empréstimos → Estoque;
-- FEFO/Validades → Estoque + camadas/lotes;
-- Fichas técnicas → Catálogo + itens/insumos;
-- Consumo de funcionários → Funcionários + fonte de venda/consumo;
-- relatórios de venda → fonte de venda/importação.
-
-### Autorização e audit
-
-- primeiro rollout somente para `owner` Organization-wide;
-- não hardcodar pessoa, e-mail ou UUID;
-- toda mudança de composição deve registrar Organization, ator, timestamp, antes/depois e contexto quando necessário.
-
-### UX
-
-A área deve parecer configuração de produto, não painel de feature flags:
-
-- `Administração → Módulos` ou equivalente;
-- cards com nome, descrição e estados `Ativo`, `Desativado`, `Obrigatório`, `Requer ...`;
-- dependências e impacto explicados antes da alteração;
-- preview da navegação resultante quando útil;
-- confirmação para mudança relevante;
-- teclado/mobile funcionais;
-- nenhum UUID, flag interna ou nome de tabela exposto.
-
-## Procedimento da #190
-
-1. Ler, nesta ordem:
-   - `AGENTS.md`;
-   - `docs/00-START-HERE.md`;
-   - `docs/ai/CURRENT_STATE.md`;
-   - `docs/ai/HANDOFF.md`;
-   - este `NEXT_ACTION.md`;
-   - `docs/ai/WORKFLOW.md`;
-   - Issue #190 e comentário vigente;
-   - `docs/decisions/ADR-010-modular-product-composition.md`;
-   - requisitos/regras referenciados pelo ADR;
-2. Consultar GitHub real para `main`, Issues, PRs, branches e CI;
-3. Confirmar que não existe outra branch/PR já executando #190;
-4. Auditar `src/modules/*`, `src/lib/navigation/workspace-navigation.ts`, rotas, server actions, gateways/RPCs, permissions/capabilities e dashboards atuais;
-5. Produzir mapa explícito de módulos/capabilities, dependências e core não removível antes de implementar toggles;
-6. Selecionar **1–2 capabilities de baixo risco** para prova incremental;
-7. Definir registry/resolver estático e, se necessário, migration versionada para configuração por Organization;
-8. Implementar gating de navegação e backend sem enfraquecer RLS/autorização;
-9. Garantir preservação de histórico ao desabilitar e reativar;
-10. Implementar audit trail da composição;
-11. Implementar UX orientada ao owner, com dependências/impactos compreensíveis;
-12. Cobrir combinações válidas/inválidas, autorização, isolamento por Organization, desativação/reativação e backend gating;
-13. Validar aplicação + PostgreSQL + CI;
-14. CI verde → PR → review → merge → CI pós-merge;
-15. Se houver migration mergeada, seguir rollout Production version-preserving de `docs/qa/database-migrations.md`;
-16. Atualizar `CURRENT_STATE`, `HANDOFF` e `NEXT_ACTION`.
-
-## Aceite da primeira entrega incremental
-
-- registry/capability graph explícito e testável;
-- core locked corretamente;
-- configuração por Organization sem duplicar definição estrutural;
-- 1–2 capabilities opcionais provando enabled/disabled;
-- dependência inválida bloqueada com mensagem compreensível;
-- navegação sem links mortos;
-- backend impede nova operação quando capability estiver desabilitada;
-- histórico permanece íntegro e volta a ser acessível após reativação;
-- owner-only para mudança de composição;
-- audit trail;
-- UX coerente com Fase 51;
-- PostgreSQL + aplicação + CI verdes.
-
-## Depois da primeira entrega de #190
-
-Expandir capabilities apenas depois de provar registry/gating. As frentes #185/#188/#189/#184 permanecem condicionadas aos gatilhos acima e devem ser retomadas assim que a evidência/dependência real existir. Q-022 continua obrigatório antes de preparar pessoas reais para go-live.
+- #185 PDV Legal: ON HOLD até amostra/estrutura oficial/documentação suficiente;
+- #188: ON HOLD por #185;
+- #189: ON HOLD por #185/#188;
+- #184: ON HOLD até definir origem/granularidade/estorno;
+- #75/#121: TOTALMENTE ON HOLD até production-readiness;
+- Q-022 continua obrigatório antes de usuários reais de go-live.
 
 ## Guardrails
 
-- GitHub é fonte de verdade;
-- Supabase/schema/RLS/grants são hard boundaries;
-- nenhum secret em Git/docs/chat/log;
-- nenhuma fixture/dado Production para fabricar evidência;
-- module gating não substitui autorização;
-- desabilitar módulo nunca apaga histórico;
-- não criar dezenas de toggles antes da prova incremental;
-- não repetir migration reconciliation sem drift;
-- não disparar deploy Vercel manual rotineiro;
-- #75/#121 continuam TOTALMENTE ON HOLD.
+GitHub é fonte de verdade; consultar estado real antes de agir. Supabase/schema/RLS/grants são hard boundaries. Não hardcodar identidade real. Não usar fixture Production. Não aplicar DDL ad hoc. Não disparar deploy Vercel manual rotineiro. Não repetir etapa concluída.

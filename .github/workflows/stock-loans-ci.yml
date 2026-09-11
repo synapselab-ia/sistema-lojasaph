@@ -5,7 +5,9 @@ on:
     paths:
       - "supabase/**"
       - "src/modules/inventory/**"
+      - "src/modules/composition/**"
       - "src/app/workspace/**"
+      - "src/lib/composition/**"
       - "src/lib/navigation/**"
       - "docs/modules/inventory.md"
       - ".github/workflows/stock-loans-ci.yml"
@@ -14,7 +16,9 @@ on:
     paths:
       - "supabase/**"
       - "src/modules/inventory/**"
+      - "src/modules/composition/**"
       - "src/app/workspace/**"
+      - "src/lib/composition/**"
       - "src/lib/navigation/**"
       - "docs/modules/inventory.md"
       - ".github/workflows/stock-loans-ci.yml"
@@ -92,3 +96,5 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f supabase/tests/stock_transfer_multibatch.sql
       - name: Run stock loan suite
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/stock_loans.sql
+      - name: Run modular composition suite
+        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/modular_product_composition.sql

@@ -2,18 +2,28 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ReactNode, useState } from "react";
+import { ReactNode, useMemo, useState } from "react";
 import { Button, Drawer } from "@/components/ui";
 import {
   isWorkspaceAreaActive,
   isWorkspaceRouteActive,
-  workspaceNavigation,
+  resolveWorkspaceNavigation,
+  type WorkspaceNavigationArea,
 } from "@/lib/navigation/workspace-navigation";
+import type { CapabilityId } from "@/modules/composition/domain/capability";
 
-function WorkspaceNavigation({ pathname, onNavigate }: { pathname: string; onNavigate?: () => void }) {
+function WorkspaceNavigation({
+  pathname,
+  navigation,
+  onNavigate,
+}: {
+  pathname: string;
+  navigation: readonly WorkspaceNavigationArea[];
+  onNavigate?: () => void;
+}) {
   return (
     <nav className="space-y-1" aria-label="Navegação principal">
-      {workspaceNavigation.map((area) => {
+      {navigation.map((area) => {
         const areaActive = isWorkspaceAreaActive(pathname, area);
         const areaRouteActive = area.href
           ? area.items?.length
@@ -82,12 +92,14 @@ function ShellSidebarContent({
   roles,
   canSwitchOrganization,
   pathname,
+  navigation,
   onNavigate,
 }: {
   organizationName: string;
   roles: readonly string[];
   canSwitchOrganization: boolean;
   pathname: string;
+  navigation: readonly WorkspaceNavigationArea[];
   onNavigate?: () => void;
 }) {
   return (
@@ -108,7 +120,7 @@ function ShellSidebarContent({
       </div>
 
       <div className="mt-5">
-        <WorkspaceNavigation pathname={pathname} onNavigate={onNavigate} />
+        <WorkspaceNavigation pathname={pathname} navigation={navigation} onNavigate={onNavigate} />
       </div>
 
       <div className="mt-5 flex flex-col gap-2">
@@ -134,14 +146,22 @@ export function RuntimeShell({
   organizationName,
   roles,
   canSwitchOrganization,
+  enabledCapabilities,
+  isOrganizationOwner,
 }: {
   children: ReactNode;
   organizationName: string;
   roles: readonly string[];
   canSwitchOrganization: boolean;
+  enabledCapabilities: readonly CapabilityId[];
+  isOrganizationOwner: boolean;
 }) {
   const pathname = usePathname();
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
+  const navigation = useMemo(
+    () => resolveWorkspaceNavigation({ enabledCapabilities, isOrganizationOwner }),
+    [enabledCapabilities, isOrganizationOwner],
+  );
 
   return (
     <div className="min-h-screen bg-neutral-100 lg:grid lg:grid-cols-[270px_1fr]">
@@ -171,6 +191,7 @@ export function RuntimeShell({
             roles={roles}
             canSwitchOrganization={canSwitchOrganization}
             pathname={pathname}
+            navigation={navigation}
             onNavigate={() => setMobileNavigationOpen(false)}
           />
         </Drawer>
@@ -182,6 +203,7 @@ export function RuntimeShell({
           roles={roles}
           canSwitchOrganization={canSwitchOrganization}
           pathname={pathname}
+          navigation={navigation}
         />
       </aside>
 
