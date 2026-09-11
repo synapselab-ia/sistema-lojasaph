@@ -149,7 +149,7 @@ export default function StockLoansPage() {
                   onChange={(event) => { setSourceLocationId(event.target.value); setPreferredBatchId(""); }}
                 >
                   <option value="">Selecione</option>
-                  {workspace.stockLocations.filter((location) => location.status === "active").map((location) => (
+                  {workspace.stockLocations.map((location) => (
                     <option key={location.id} value={location.id}>{location.unitName} — {location.name}</option>
                   ))}
                 </Select>
