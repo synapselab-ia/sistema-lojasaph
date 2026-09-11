@@ -23,7 +23,7 @@ grant select on public.organization_capability_settings to authenticated, servic
 
 create policy organization_capability_settings_member_select
 on public.organization_capability_settings for select to authenticated
-using (private.has_org_role(organization_id, null::text[]));
+using (private.is_org_member(organization_id));
 
 create or replace function private.is_capability_enabled(
   p_organization_id uuid,
