@@ -177,7 +177,8 @@ export class SupabaseStockLoanGateway implements StockLoanGateway {
       .limit(100);
 
     if (error) throw persistenceError("Falha ao carregar empréstimos", error.message);
-    return Object.freeze(((data ?? []) as StockLoanRow[]).map(toLoan));
+    const rows = (data ?? []) as unknown as StockLoanRow[];
+    return Object.freeze(rows.map(toLoan));
   }
 
   async findById(organizationId: EntityId, loanId: EntityId): Promise<RuntimeStockLoan | null> {
@@ -189,7 +190,7 @@ export class SupabaseStockLoanGateway implements StockLoanGateway {
       .maybeSingle();
 
     if (error) throw persistenceError("Falha ao carregar empréstimo", error.message);
-    return data ? toLoan(data as StockLoanRow) : null;
+    return data ? toLoan(data as unknown as StockLoanRow) : null;
   }
 
   async listRestitutions(organizationId: EntityId, loanId: EntityId): Promise<readonly RuntimeStockLoanRestitution[]> {
@@ -202,7 +203,8 @@ export class SupabaseStockLoanGateway implements StockLoanGateway {
       .limit(100);
 
     if (error) throw persistenceError("Falha ao carregar restituições do empréstimo", error.message);
-    return Object.freeze(((data ?? []) as StockLoanRestitutionRow[]).map(toRestitution));
+    const rows = (data ?? []) as unknown as StockLoanRestitutionRow[];
+    return Object.freeze(rows.map(toRestitution));
   }
 
   async create(input: CreateStockLoanInput): Promise<CreateStockLoanResult> {
@@ -304,7 +306,7 @@ export class SupabaseStockLoanGateway implements StockLoanGateway {
       if (!loan) throw persistenceError("O empréstimo não pôde ser recarregado após a restituição");
 
       return {
-        restitution: toRestitution(restitutionData as StockLoanRestitutionRow),
+        restitution: toRestitution(restitutionData as unknown as StockLoanRestitutionRow),
         loanStatus: row.status,
         balance: Object.freeze({
           stockItemId: loan.stockItemId,
