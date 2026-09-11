@@ -1,6 +1,6 @@
 # Módulo — Estoque transacional
 
-Status: ledger persistente com entrada, retirada para Setor, devolução relacionada, transferências, inventário físico e baixas por perda/quebra/vencimento.
+Status: ledger persistente com entrada, retirada para Setor, devolução relacionada, empréstimos, transferências, inventário físico e baixas por perda/quebra/vencimento.
 
 ## Princípios
 
@@ -9,11 +9,12 @@ Status: ledger persistente com entrada, retirada para Setor, devolução relacio
 - commands críticos são transacionais/idempotentes;
 - quantidade usa `numeric(18,3)` e dinheiro/custo `numeric(18,2)`;
 - RLS + membership são a fronteira de autorização;
-- lote/validade desconhecidos nunca são fabricados.
+- lote/validade desconhecidos nunca são fabricados;
+- custeio de saída física segue lote/camada real conforme ADR-003; custo médio permanece indicador derivado.
 
 ## Entrada
 
-`record_stock_entry` valida role, command ID, quantidade/custo, bloqueia saldo, recalcula custo médio e cria lote quando aplicável. Reposição sobre saldo anterior `<= 0` usa o custo recebido como novo custo-base.
+`record_stock_entry` valida role, command ID, quantidade/custo, bloqueia saldo e cria a camada econômica correspondente ao recebimento. A projeção de custo médio é derivada das camadas disponíveis quando a rastreabilidade está completa.
 
 ## Retirada para Setor
 
@@ -28,7 +29,7 @@ A Fase 23 fecha `REQ-STK-004` na command surface persistente. Toda nova retirada
 5. inclui `sector_id` no audit `stock_withdrawal.recorded` e na comparação semântica do command ID;
 6. retry com o mesmo payload e Setor continua idempotente; reutilizar a chave com Setor diferente gera `IDEMPOTENCY_KEY_CONFLICT`;
 7. a assinatura pública legada sem Setor é removida, portanto não existe caminho autenticado alternativo para registrar retirada sem destino operacional;
-8. continua delegando o núcleo de saída a `private.record_stock_outflow`, preservando lock, saldo projetado, custo médio vigente, lote preferido, FEFO, política de estoque negativo e rollback atômico.
+8. continua delegando o núcleo de saída a `private.record_stock_outflow`, preservando lock, saldo projetado, lote preferido, FEFO, política de estoque negativo e rollback atômico; os triggers de custeio tornam as alocações de camada a fonte do snapshot econômico.
 
 `stock_movements.sector_id` permanece nullable no ledger global porque entradas, transferências e outros tipos de movimento não representam necessariamente consumo por Setor. A Fase 23 não faz backfill nem altera retiradas históricas.
 
@@ -44,14 +45,82 @@ A Fase 21 fecha `REQ-STK-006` para o caso comprovado pelo domínio atual: devolv
 2. cria um novo `stock_movements.movement_type='return_in'` e mantém a retirada original imutável;
 3. usa `reversal_of_movement_id` para relacionar explicitamente o retorno ao movimento original; a relação não é única e suporta múltiplos retornos parciais;
 4. bloqueia a retirada original antes de calcular o total já retornado, serializando retornos concorrentes e impedindo over-return;
-5. deriva o custo de `stock_movement_items.unit_cost_snapshot` da retirada histórica e o incorpora à projeção pelo custo médio móvel;
+5. preserva a linhagem econômica da retirada histórica e restaura as camadas correspondentes, sem reprecificar pelo custo atual;
 6. para item rastreado, restaura somente os mesmos `inventory_batches` comprovados pelas alocações históricas da retirada, sem fabricar código, validade ou custo;
 7. registra movimento, item, alocações, saldo e `audit_logs` atomicamente;
 8. é idempotente por command ID e rejeita reuso com payload semântico diferente;
 9. exige os mesmos papéis e o mesmo escopo do local usados pelas operações de estoque já homologadas;
-10. não implementa empréstimo, prazo ou componente financeiro; Q-003, Q-004 e Q-005 permanecem separadas.
+10. continua sendo retorno de retirada e não é usado para representar empréstimo.
 
 O índice parcial `stock_movements_reversal_org_idx` dá suporte à apuração cumulativa dos retornos relacionados. A função pública tem EXECUTE explícito somente para `authenticated`; `anon`/`PUBLIC` permanecem sem acesso.
+
+## Empréstimos
+
+A Fase 54 fecha `REQ-STK-007` sobre o custeio por camada aprovado em `REQ-STK-010`/ADR-003. Empréstimo é entidade própria e não reutiliza transferência como atalho semântico.
+
+### Modelo persistente
+
+`stock_loans` registra:
+
+- estoque de origem, item e contraparte;
+- quantidade originalmente emprestada;
+- valor histórico original formado por `Σ(quantidade da camada × custo da camada)`;
+- quantidade devolvida fisicamente e seu valor histórico;
+- valor restituído monetariamente;
+- saldo físico ainda fora do estoque;
+- saldo econômico ainda pendente;
+- situação `open`, `partial` ou `settled`;
+- vínculo com o `loan_out` original, responsável, datas e observação.
+
+`stock_loan_restitutions` preserva cada acerto individual. O empréstimo original nunca é apagado ou reescrito para fingir que uma restituição não ocorreu.
+
+Os dois saldos têm significados diferentes:
+
+```text
+saldo_fisico = quantidade_original - quantidade_devolvida_fisicamente
+saldo_valor = valor_historico_original - valor_historico_devolvido_fisicamente - valor_restituido_em_dinheiro
+```
+
+Uma quitação em dinheiro pode zerar `saldo_valor` enquanto `saldo_fisico` continua positivo. Isso significa que a obrigação econômica foi liquidada, mas a mercadoria não voltou ao estoque; a UI mantém essa diferença visível.
+
+### Criação do empréstimo
+
+`record_stock_loan`:
+
+1. valida autenticação, role `owner/admin/manager/inventory` e escopo do estoque de origem;
+2. exige contraparte, item, quantidade e origem; lote/camada preferida é opcional;
+3. usa `loan_out` como movimento físico real e reutiliza o núcleo transacional de saída;
+4. aplica FEFO quando o lote físico não é informado e respeita lote válido explicitamente selecionado;
+5. exige alocação completa das camadas da saída e calcula `original_value` exclusivamente por seus snapshots históricos;
+6. persiste `reference_type='stock_loan'`/`reference_id` no movimento físico;
+7. é idempotente por command ID, com conflito se a mesma chave for reutilizada com outro payload;
+8. registra audit `stock_loan.created`.
+
+Compras futuras, mudanças de custo médio ou outras movimentações não recalculam o valor original do empréstimo.
+
+### Restituição física, monetária ou combinada
+
+`record_stock_loan_restitution` aceita, na mesma operação, quantidade física, valor monetário ou ambos.
+
+Na parcela física:
+
+- cria `stock_movements.movement_type='loan_return'` somente quando mercadoria realmente retorna;
+- restaura as mesmas camadas/lotes comprovadas no `loan_out` original;
+- preserva o custo histórico de cada camada, inclusive em múltiplas devoluções parciais;
+- credita a projeção de estoque apenas pela quantidade efetivamente retornada.
+
+Na parcela monetária:
+
+- registra o valor com precisão `numeric(18,2)` no histórico do empréstimo;
+- reduz apenas a obrigação econômica;
+- não cria movimento fictício de estoque;
+- não cria lançamento automático em Caixa ou Financeiro. Qualquer reflexo contábil/financeiro futuro exige regra explícita e deve evitar dupla contabilização.
+
+O comando bloqueia a linha do empréstimo antes de recalcular os saldos, serializando restituições concorrentes. Quantidade física acima do saldo gera `STOCK_LOAN_PHYSICAL_OVER_RETURN`; combinação de valor físico + dinheiro acima do saldo econômico gera `STOCK_LOAN_SETTLEMENT_EXCEEDS_BALANCE`. Retry idêntico é seguro e reuso divergente do command ID gera `IDEMPOTENCY_KEY_CONFLICT`.
+
+### Segurança e leitura
+
+`stock_loans` e `stock_loan_restitutions` têm RLS habilitado e somente `SELECT` direto para `authenticated`. Escritas são exclusivas dos RPCs transacionais. A leitura segue `private.can_read_stock_location`; os RPCs exigem `private.has_stock_location_role` com os mesmos papéis operacionais do Estoque. `anon` não lê tabelas nem executa os commands.
 
 ## Baixas por perda, quebra e vencimento
 
@@ -74,9 +143,9 @@ O catálogo é Organization-wide. Usuários autorizados no estoque podem ler os 
 
 1. valida autenticação, role e escopo do local;
 2. resolve `movement_type` no banco a partir do motivo ativo — a UI não escolhe o tipo livremente;
-3. reutiliza o mesmo núcleo transacional de saída da retirada para lock do saldo, custo, política de negativo, lote preferido e FEFO;
+3. reutiliza o mesmo núcleo transacional de saída da retirada para lock do saldo, lote preferido e FEFO;
 4. registra `stock_movements` com `reason_code`, `stock_movement_items`, alocações de lote e `audit_logs` atomicamente;
-5. preserva o custo médio vigente como snapshot e não recalcula custo em uma saída;
+5. o snapshot econômico é sincronizado a partir das camadas efetivamente consumidas;
 6. é idempotente por command ID e rejeita reuso com payload semântico diferente;
 7. para vencimento de item rastreado exige lote explícito, com validade conhecida já atingida e quantidade suficiente no próprio lote — a operação não pode derramar para lote futuro;
 8. falhas fazem rollback integral, sem movimento/audit/saldo parcial.
@@ -85,7 +154,7 @@ A tabela de motivos usa RLS e grants explícitos. `anon` não acessa o catálogo
 
 ## Transferência
 
-`dispatch_stock_transfer` reduz somente a origem e grava `transfer_out`. `receive_stock_transfer` credita o destino apenas no recebimento real, aceita parcial/total e preserva `allocation_order`, código, validade e custo físico do lote. O saldo agregado do destino usa o snapshot do custo médio da linha transferida.
+`dispatch_stock_transfer` reduz somente a origem e grava `transfer_out`. `receive_stock_transfer` credita o destino apenas no recebimento real, aceita parcial/total e preserva `allocation_order`, código, validade e custo físico de cada camada de origem. Transferir de local não cria ganho/perda artificial.
 
 ## Inventário físico persistente
 
@@ -126,18 +195,22 @@ O saldo esperado pode ser negativo quando a exceção do local permitir; a conta
 
 ## Concorrência
 
-Entrada, retirada, devolução, baixas, transferência e inventário usam row locks/advisory transaction locks no PostgreSQL. Retirada e baixa compartilham o núcleo privado de saída; a retirada acrescenta a validação/persistência do Setor sem alterar a ordem de locks desse núcleo. Devoluções serializam pela retirada original e seguem a mesma ordem saldo → lote para evitar over-return e deadlocks com saídas concorrentes.
+Entrada, retirada, devolução, empréstimo, baixas, transferência e inventário usam row locks/advisory transaction locks no PostgreSQL. Retirada, baixa e `loan_out` compartilham primitives de saída física. Devoluções serializam pela retirada original. Restituições de empréstimo serializam pela linha de `stock_loans` antes de recalcular quantidade/valor pendentes, impedindo over-return e over-settlement concorrentes.
 
 ## Interfaces persistentes
 
-- `/workspace/estoque` — saldo, entrada, retirada para Setor, lotes;
+- `/workspace/estoque` — saldo e atalhos para operações;
+- `/workspace/estoque/entradas` — entradas;
+- `/workspace/estoque/retiradas` — retiradas para Setor;
 - `/workspace/baixas` — perda, quebra, vencimento, motivos e histórico recente;
 - `/workspace/devolucoes` — retiradas elegíveis, saldo retornável e histórico de `return_in`;
+- `/workspace/emprestimos` — lista e criação de empréstimos;
+- `/workspace/emprestimos/[loanId]` — saldos físico/econômico, histórico e restituição física, monetária ou combinada;
 - `/workspace/transferencias` — dispatch/receive;
 - `/workspace/inventarios` — iniciar, contar, confirmar/cancelar e histórico.
 
 ## Testes
 
-O CI cobre migrations/RLS, entrada, retirada, devolução, baixas, transferências base/multi-lote e inventário físico. A retirada cobre Setor obrigatório, persistência/auditoria, assinatura legada indisponível, cross-Organization, escopo setorial, retry com mesmo Setor e conflito com Setor divergente, além das regressões de FEFO, lote preferido, custo e estoque negativo. A suíte de devolução valida retorno parcial/total, múltiplos retornos, over-return, retry/idempotência, custo histórico, restauração de lote, papéis/escopo, cross-Organization, anon e rollback. A suíte de baixas continua cobrindo motivo estruturado, custo, FEFO, vencimento com lote explícito, política de estoque negativo e isolamento.
+O CI cobre migrations/RLS, entrada, retirada, devolução, empréstimos, baixas, transferências base/multi-lote e inventário físico. A retirada cobre Setor obrigatório, persistência/auditoria, assinatura legada indisponível, cross-Organization, escopo setorial, retry com mesmo Setor e conflito com Setor divergente, além das regressões de FEFO, lote preferido, custo e estoque negativo. A suíte de devolução valida retorno parcial/total, múltiplos retornos, over-return, retry/idempotência, custo histórico, restauração de lote, papéis/escopo, cross-Organization, anon e rollback. A suíte de baixas cobre motivo estruturado, custo por camada, FEFO, vencimento com lote explícito, política de estoque negativo e isolamento.
 
-Empréstimos continuam pendentes de Q-005; esta fase não interpreta Q-003/Q-004.
+A suíte `stock_loans.sql` cobre múltiplas camadas com custos diferentes, FEFO, seleção explícita de lote, restituição física parcial/total, monetária parcial/total e combinada, over-return, over-settlement, retry e conflito idempotente, estabilidade do valor histórico após compra futura, roles/escopo/Organization, audit trail, ausência de movimento de estoque em restituição apenas monetária e disputa concorrente sobre o mesmo saldo. A camada de aplicação testa normalização e validações antes da persistência.
