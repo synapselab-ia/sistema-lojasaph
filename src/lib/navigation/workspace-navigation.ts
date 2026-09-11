@@ -1,3 +1,5 @@
+import type { CapabilityId } from "@/modules/composition/domain/capability";
+
 export type WorkspaceNavigationItem = {
   href: string;
   label: string;
@@ -81,6 +83,39 @@ export const workspaceNavigation: readonly WorkspaceNavigationArea[] = [
   },
 ];
 
+const capabilityByHref = new Map<string, CapabilityId>([
+  ["/workspace/emprestimos", "stock-loans"],
+]);
+
+const compositionNavigationItem: WorkspaceNavigationItem = {
+  href: "/workspace/administracao/modulos",
+  label: "Montar sistema",
+};
+
+export function resolveWorkspaceNavigation(input: {
+  readonly enabledCapabilities: readonly CapabilityId[];
+  readonly isOrganizationOwner: boolean;
+}): readonly WorkspaceNavigationArea[] {
+  const enabledCapabilities = new Set(input.enabledCapabilities);
+
+  return workspaceNavigation.map((area) => {
+    const visibleItems = area.items?.filter((item) => {
+      const capability = capabilityByHref.get(item.href);
+      return !capability || enabledCapabilities.has(capability);
+    });
+
+    if (area.id !== "administration" || !input.isOrganizationOwner) {
+      return { ...area, items: visibleItems };
+    }
+
+    const items = [...(visibleItems ?? [])];
+    const backupIndex = items.findIndex((item) => item.href === "/workspace/backup");
+    if (backupIndex >= 0) items.splice(backupIndex, 0, compositionNavigationItem);
+    else items.push(compositionNavigationItem);
+    return { ...area, items };
+  });
+}
+
 export function isWorkspaceRouteActive(pathname: string, href: string): boolean {
   if (href === "/workspace") return pathname === href;
   return pathname === href || pathname.startsWith(`${href}/`);
@@ -91,8 +126,10 @@ export function isWorkspaceAreaActive(pathname: string, area: WorkspaceNavigatio
   return area.items?.some((item) => isWorkspaceRouteActive(pathname, item.href)) ?? false;
 }
 
-export function workspaceNavigationHrefs(): string[] {
-  return workspaceNavigation.flatMap((area) => [
+export function workspaceNavigationHrefs(
+  navigation: readonly WorkspaceNavigationArea[] = workspaceNavigation,
+): string[] {
+  return navigation.flatMap((area) => [
     ...(area.href ? [area.href] : []),
     ...(area.items?.map((item) => item.href) ?? []),
   ]);
