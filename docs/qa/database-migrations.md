@@ -1,6 +1,6 @@
 # Linhagem de migrations — REQ-PLAT-004
 
-Status: **verificado/corrigido em 2026-08-20 — Fase 30; paridade Production revalidada em 2026-08-31**.
+Status: **verificado/corrigido em 2026-08-20 — Fase 30; paridade Production revalidada em 2026-09-11 após a primeira fatia da #190**.
 
 ## Problema histórico identificado na Fase 30
 
@@ -96,6 +96,49 @@ Evidência:
 - CI pós-merge #594 / run `33436481833`: **success**.
 
 Após a execução, o histórico remoto passou a incluir exatamente `20260828130500` e `20260828132500`. Os RPCs administrativos, grants e trigger introduzidos por essas migrations foram verificados read-only. O workflow one-shot foi removido depois do sucesso para não criar deploy automático permanente de schema sem uma decisão arquitetural própria.
+
+## Rollout version-preserving — Issue #190 / 2026-09-11
+
+A primeira fatia do compositor modular foi integrada pelo PR #197 e adicionou:
+
+- `20260911153000_modular_product_composition.sql`.
+
+Antes do rollout, leitura do histórico remoto confirmou Production alinhada até `20260911102500_stock_loan_allocation_order`. Não havia migration intermediária inesperada.
+
+PR #198 adicionou um reconciliador one-shot fail-closed com:
+
+- projeto Production fixo `fhbvwyttikrbeaanatlr`;
+- Session pooler `:5432` obrigatório;
+- `supabase db push --dry-run` antes da mutação;
+- allowlist exata de `20260911153000_modular_product_composition.sql`;
+- aplicação via `supabase db push` preservando version/timestamp do Git;
+- dry-run pós-push exigindo `Remote database is up to date.`;
+- sem seed, reset, `migration repair`, DDL ad hoc ou edição manual de history.
+
+Evidência:
+
+- PR #198 merge `4823d58e4d6b1859da13b54daf85e5ed3dfaf379`;
+- `Production Migration Reconcile 190` run `34617253893`: **success**;
+- CI pós-merge #644 / run `34617253823`: **success**;
+- `supabase_migrations.schema_migrations` contém `20260911153000 / modular_product_composition`;
+- listagem remota termina nessa mesma version.
+
+Verificação read-only pós-DDL:
+
+- `organization_capability_settings` existe com RLS habilitada;
+- `authenticated` possui SELECT e não possui INSERT/UPDATE/DELETE direto;
+- policy de leitura é `organization_capability_settings_member_select` com `private.is_org_member(organization_id)`;
+- `set_organization_capability(uuid,text,boolean)` existe, é executável por `authenticated`, não por `anon`/`service_role`, usa `SECURITY DEFINER` + `search_path=''` e contém autorização Organization-wide `owner`;
+- `record_stock_loan(...)` mantém gate `private.is_capability_enabled(...)` e `anon` sem EXECUTE;
+- Production possui 0 overrides de capability; ausência de override resolve `stock-loans` como ativa para a Organization existente.
+
+Advisors pós-DDL:
+
+- Security Advisor continua sinalizando RPCs públicas `SECURITY DEFINER` executáveis por `authenticated`; esse padrão é intencional no projeto quando o wrapper valida identidade/escopo no corpo. O novo `set_organization_capability(...)` foi verificado com guard `owner` e sem EXECUTE para `anon`;
+- leaked-password protection permanece um finding de Auth independente desta migration;
+- Performance Advisor acrescentou INFO para a FK `organization_capability_settings_updated_by_user_id_fkey` sem índice. A tabela é esparsa e o caminho operacional usa a PK `(organization_id, capability_id)`; não existe consulta por `updated_by_user_id` no fluxo atual. O INFO foi documentado, sem criar migration apenas para silenciar linter na ausência de regressão medida.
+
+O workflow one-shot deve ser removido após o sucesso, como nos rollouts anteriores; sua presença não deve virar mecanismo permanente de deploy de schema.
 
 ## Procedimento obrigatório de paridade Production
 
