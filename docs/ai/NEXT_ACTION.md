@@ -2,61 +2,81 @@
 
 ## Estado
 
-A frente ativa é **Issue #190 / Fase 60 — compositor modular do sistema para owner**.
+A frente ativa continua sendo **Issue #190 / Fase 60 — compositor modular do sistema para owner**.
 
-#187 e #183 estão concluídas. As frentes #185/#188/#189/#184 continuam condicionadas aos gatilhos documentados e não devem ser usadas para desviar a execução atual.
+A primeira fatia está concluída:
 
-A primeira entrega incremental da #190 está no **PR #197**, branch `feat/190-modular-composition-foundation`. Ela prova registry/resolver, configuração por Organization, owner-only mutation, audit trail, navegação resolvida e backend gating usando `stock-loans` como primeira capability configurável.
+- PR #197 mergeado: registry/resolver, configuração Organization-scoped, owner-only mutation, audit trail, navegação resolvida e backend gating para `stock-loans`;
+- PR #198 mergeado: rollout version-preserving da migration `20260911153000_modular_product_composition`;
+- Production Migration Reconcile 190 run `34617253893`: success;
+- CI pós-merge #644 / run `34617253823`: success;
+- Production alinhada até `20260911153000 / modular_product_composition`;
+- verificações read-only de RLS/grants/policies/RPCs/default concluídas;
+- advisors executados sem finding de segurança acionável específico da fatia; INFO de FK sem índice em `updated_by_user_id` permanece documentado e não bloqueia esta etapa;
+- reconciliador one-shot deve estar removido após o fechamento operacional.
 
-## NEXT_ACTION objetiva
+#187 e #183 estão concluídas. As frentes #185/#188/#189/#184 continuam condicionadas aos gatilhos documentados e não devem desviar a execução atual.
 
-Executar **a primeira condição pendente** abaixo, com base no estado real do GitHub/Supabase. Não repetir condições já concluídas.
+## NEXT_ACTION objetiva — segunda fatia incremental da #190
 
-### 1. Se o PR #197 ainda estiver aberto
+Executar **somente esta fatia**, sem criar uma matriz ampla de toggles.
 
-- conferir head/mergeability/checks reais;
-- corrigir somente regressões do PR;
-- exigir lint, typecheck, testes, build e suíte PostgreSQL verdes;
-- mergear o PR quando os checks estiverem verdes;
-- não fechar a Issue #190, porque esse PR é somente a primeira fatia incremental.
+### Parte A — rota direta coerente para capability desativada
 
-Contexto do primeiro CI: a única falha encontrada foi a policy de leitura de `organization_capability_settings`; `private.has_org_role(..., NULL)` não autoriza qualquer role. O helper correto é `private.is_org_member(...)`. Verificar o head atual para confirmar que a correção foi validada.
+Hoje `stock-loans` já desaparece da navegação quando off e o backend bloqueia novos empréstimos, mas `/workspace/emprestimos` ainda pode ser digitada diretamente.
 
-### 2. Se o PR #197 já estiver mergeado e Production ainda não tiver `20260911153000_modular_product_composition`
+1. Inspecionar a rota/layout server-side de Empréstimos e o ponto em que o estado resolvido de capabilities já é carregado para o workspace.
+2. Reutilizar `CapabilityResolver`/registry existentes; não criar uma segunda fonte de verdade.
+3. Quando `stock-loans` estiver desativado, produzir UX coerente de **módulo desativado**, não confundir com `403`/falha de autorização se o usuário continua autorizado.
+4. Preservar histórico e a capacidade de liquidar/restituir empréstimos já existentes. Não criar um gate que deixe obrigação sem caminho de encerramento.
+5. Manter o backend como boundary autoritativo para novas operações; o tratamento de rota complementa, não substitui, `record_stock_loan(...)`.
+6. Adicionar regressão para navegação + rota direta + backend com capability on/off.
 
-Fazer rollout **version-preserving** conforme `docs/qa/database-migrations.md`:
+### Parte B — mapear uma segunda capability de baixo risco
 
-1. verificar drift/migration list antes de escrever;
-2. aplicar somente a migration mergeada, mantendo a versão `20260911153000`;
-3. não usar seed, reset, `migration repair` ou DDL ad hoc;
-4. executar dry-run/verificação final;
-5. confirmar read-only:
-   - `organization_capability_settings` existe com RLS;
-   - `authenticated` pode SELECT conforme membership, mas não DML direto;
-   - `set_organization_capability(...)` existe e é executável somente pelo papel de banco aprovado, com autorização owner Organization-wide dentro do RPC;
-   - `record_stock_loan(...)` contém o gate de capability;
-   - ausência de override mantém `stock-loans` ativo;
-6. executar advisors de security/performance e tratar apenas regressões do rollout;
-7. remover eventual workflow/reconciliador one-shot depois do sucesso;
-8. confirmar CI pós-merge/ops verde.
+Candidato preferencial para **auditoria antes de implementação**: **Estoque mínimo**.
 
-### 3. Se PR #197 e rollout Production já estiverem concluídos
+Ler e inspecionar, no mínimo:
 
-Continuar a **segunda fatia incremental da #190**, sem criar uma matriz grande de toggles.
+- `docs/modules/stock-minimum.md`;
+- `stock_minimum_policies` e migrations relacionadas;
+- policies/RLS/grants/audit da tabela;
+- superfície de manutenção em `/workspace/estoque`;
+- Dashboard/sinal de estoque abaixo do mínimo;
+- repositories/adapters/actions envolvidos;
+- dependências com `inventory` e demais capacidades.
 
-Objetivo:
+Produzir um mapa explícito de:
 
-- tornar a experiência de rota direta coerente quando uma capability estiver desativada, usando resolução server-side e sem confundir module gating com autorização/RLS;
-- auditar os boundaries reais de uma segunda capability de baixo risco;
-- estudar **Estoque mínimo** como candidato preferencial, mas só torná-lo configurável se o mapeamento confirmar isolamento/dependências simples;
-- se o candidato não for seguro, documentar o bloqueio e escolher outro com base no mapa real, não por conveniência;
-- reutilizar o mesmo registry/resolver, configuração Organization-scoped, owner-only mutation, audit trail e backend gate;
-- preservar histórico e default compatível;
-- cobrir enabled/disabled, dependências, autorização, isolamento por Organization, navegação/rota/backend e reativação;
-- CI verde → PR → merge → rollout versionado se houver nova migration;
-- atualizar `CURRENT_STATE`, `HANDOFF` e este arquivo.
+- capability id/nome de produto proposto;
+- dependências;
+- rotas/nav/cards afetados;
+- gates de aplicação/backend necessários;
+- comportamento de dados/histórico quando off;
+- comportamento de reativação;
+- testes necessários.
 
-## Contrato arquitetural que permanece obrigatório
+**Só tornar Estoque mínimo configurável se esse mapa confirmar isolamento e dependências simples.** Se houver acoplamento que torne o rollout inseguro, documentar o bloqueio e selecionar outro candidato de baixo risco com base no código real.
+
+### Se Estoque mínimo for aprovado pelo mapeamento
+
+Implementar como segunda capability usando o mesmo contrato já provado:
+
+- registry estrutural versionado no código;
+- banco guarda apenas override por Organization;
+- dependência explícita, provavelmente em `inventory`, somente se confirmada pelo mapa real;
+- alteração somente por owner Organization-wide;
+- audit trail de antes/depois;
+- navegação/cards/superfícies coerentes quando off;
+- backend/server actions respeitam gating onde houver mutation;
+- desativar não apaga policy/histórico;
+- reativar recupera configuração anterior;
+- default retrocompatível;
+- testes de enabled/disabled, dependências, autorização, isolamento por Organization, navegação/rota/backend e reativação.
+
+Depois: lint + typecheck + testes + build + PostgreSQL relevantes -> PR -> merge. Só fazer rollout Production se houver nova migration e somente após provar drift real.
+
+## Contrato arquitetural obrigatório
 
 - registry estrutural versionado no código; banco guarda apenas configuração;
 - core de contexto/auth/autorização/audit/integridade/compositor não é desligável;
@@ -66,7 +86,8 @@ Objetivo:
 - desabilitar não apaga dados, ledger, audit ou histórico;
 - reativar recupera o comportamento sobre o histórico intacto;
 - primeiro rollout de configuração continua restrito a `owner` Organization-wide;
-- UX deve falar em módulos/capabilities de produto, nunca flags/UUIDs/tabelas.
+- UX fala em módulos/capabilities de produto, nunca flags/UUIDs/tabelas;
+- não repetir rollout/reconcile da migration `20260911153000` já aplicada.
 
 ## Frentes bloqueadas
 
