@@ -370,6 +370,7 @@ begin
     raise exception 'monetary over-settlement unexpectedly succeeded';
   exception when invalid_parameter_value then null;
   end;
+end $$;
 
 -- Monetary-only total settlement creates no stock movement.
 select * from public.record_stock_loan_restitution(
