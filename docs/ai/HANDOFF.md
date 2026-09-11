@@ -16,71 +16,90 @@ Leitura mínima de qualquer chat novo:
 
 ## Frente ativa
 
-A frente ativa é **Fase 60 / Issue #190 — compositor modular do sistema para owner**, dentro da Fase 53 / #181.
+A frente ativa continua sendo **Fase 60 / Issue #190 — compositor modular do sistema para owner**, dentro da Fase 53 / #181.
 
-#187 (custeio por camada/lote) e #183 (empréstimos) já estão concluídas. Production `fhbvwyttikrbeaanatlr` estava alinhada até migration `20260911102500_stock_loan_allocation_order` antes da primeira fatia da #190.
+#187 (custeio por camada/lote) e #183 (empréstimos) já estão concluídas. #190 permanece aberta porque o rollout deve avançar por poucas capabilities de cada vez.
 
-## Primeira fatia da #190
+## Primeira fatia da #190 — concluída
 
-Veículo de entrega: **PR #197 — `feat: iniciar compositor modular por Organization`**, branch `feat/190-modular-composition-foundation`.
+PR **#197 — `feat: iniciar compositor modular por Organization`** foi mergeado em `main` no commit `954192c7b2cc4af7a9cad530679ef38dcdac4a2c`.
 
-Consultar o GitHub para saber se o PR ainda está aberto ou já foi mergeado. Não recriar essa implementação em outra branch.
+Contrato implementado:
 
-### Arquitetura implementada
-
-- `src/modules/composition/domain/capability.ts`: registry estático/versionado;
-- `src/modules/composition/application/capability-resolver.ts`: resolução de defaults, overrides e dependências;
-- `organization_capability_settings`: guarda somente override por Organization;
-- `set_organization_capability(...)`: mutation RPC owner-only, auditável;
-- `stock-loans -> inventory`: primeira dependência operacional explícita;
+- registry estático/versionado;
+- resolver de defaults, overrides e dependências;
+- `organization_capability_settings` guarda somente override por Organization;
+- `set_organization_capability(...)` é mutation RPC owner-only e auditável;
+- `stock-loans -> inventory` é a primeira dependência operacional explícita;
 - `inventory` permanece ativo/não configurável nesta etapa;
-- `stock-loans` é configurável e default-enabled para não quebrar organizações existentes;
+- `stock-loans` é configurável e default-enabled;
 - `record_stock_loan(...)` é o gate autoritativo para impedir novos empréstimos quando off;
 - restituição de empréstimos existentes continua permitida deliberadamente;
 - shell/navegação consomem estado resolvido e removem Empréstimos quando off;
 - `Administração -> Montar sistema` aparece apenas para owner Organization-wide;
 - histórico/tabelas/audit permanecem intactos durante desativação.
 
-### Limite conhecido
+A regressão de RLS encontrada no primeiro CI (`private.has_org_role(..., NULL)`) foi corrigida antes do merge usando `private.is_org_member(...)`.
 
-A rota histórica `/workspace/emprestimos` ainda pode ser digitada diretamente quando a capability está desativada. Isso **não** libera nova operação: o backend recusa criação. A próxima expansão deve decidir e implementar uma experiência server-side coerente para rota direta, sem confundir gating de produto com autorização/RLS.
+## Production — rollout concluído
 
-## CI da implementação
+Migration: `20260911153000_modular_product_composition.sql`.
 
-No primeiro head `f758189...`:
+PR **#198 — `ops: reconciliar compositor modular em Production`** foi mergeado em `main` no commit `4823d58e4d6b1859da13b54daf85e5ed3dfaf379`.
 
-- CI geral, Inventory Count Integration e Business Transactions Integration passaram;
-- lint, typecheck, unit tests e production build do workflow de empréstimos passaram;
-- somente a nova suíte SQL falhou inicialmente;
-- causa confirmada nos logs: policy de leitura usou `private.has_org_role(organization_id, NULL)`, mas esse helper exige `role = ANY(allowed_roles)` e não serve para `NULL`;
-- correção preparada: policy usa `private.is_org_member(organization_id)`, helper já existente e apropriado para leitura por qualquer membro ativo.
+Evidência:
 
-**Obrigatório:** verificar o CI do head atual do PR #197; só mergear com checks verdes.
+- `Production Migration Reconcile 190` run `34617253893`: **success**;
+- CI pós-merge #644 / run `34617253823`: **success**;
+- migration history remoto termina em `20260911153000 / modular_product_composition`;
+- dry-run pós-push confirmou remoto up to date;
+- nenhum seed/reset/repair/DDL ad hoc foi usado;
+- `organization_capability_settings`: RLS ativa, SELECT para `authenticated`, sem INSERT/UPDATE/DELETE direto;
+- policy de leitura: `private.is_org_member(organization_id)`;
+- `set_organization_capability(...)`: EXECUTE apenas para `authenticated` entre os papéis públicos verificados, guard Organization-wide `owner` no corpo;
+- `record_stock_loan(...)`: gate `private.is_capability_enabled(...)` presente e `anon` sem EXECUTE;
+- 0 overrides reais em Production; a Organization existente resolve `stock-loans` como ativa por default.
 
-## Production / migrations
+Advisors pós-DDL:
 
-A primeira fatia adiciona migration `20260911153000_modular_product_composition.sql`.
+- Security: warning geral esperado para RPCs públicas `SECURITY DEFINER`; o novo RPC segue o padrão intencional já auditado, com auth + autorização explícita e sem EXECUTE para `anon`;
+- Performance: INFO novo de FK sem índice em `organization_capability_settings.updated_by_user_id`; não há caminho operacional por esse campo nem cardinalidade que demonstre gargalo nesta fase, portanto não abrir migration apenas para silenciar INFO. Reavaliar com uso real.
 
-Depois do merge:
+O workflow `Production Migration Reconcile 190` é one-shot e deve estar **removido** após o PR de fechamento operacional. Se ele aparecer novamente na `main`, verificar antes de qualquer execução; não reutilizar automaticamente.
 
-1. comparar migration history local/remota;
-2. se Production estiver atrás, usar o procedimento version-preserving de `docs/qa/database-migrations.md`;
-3. não usar seed/reset/repair nem DDL ad hoc;
-4. verificar read-only tabela, RLS, grants, RPCs e default efetivo;
-5. executar advisors após DDL;
-6. remover qualquer reconciliador one-shot criado para o rollout.
+## Próxima fatia da #190
 
-Não aplicar a migration por um caminho que gere versão remota diferente da versão do repositório.
+A próxima ação é **implementação**, não outro rollout/reconcile da primeira fatia.
 
-## Próxima fatia da #190 depois do rollout
+### 1. Rota direta quando capability está off
 
-Não abrir dezenas de toggles. Primeiro consolidar o padrão já provado:
+Limite conhecido atual: `/workspace/emprestimos` pode ser digitada diretamente mesmo com `stock-loans` desativado. O backend continua seguro e recusa novos empréstimos, mas a UX fica incoerente.
 
-- adicionar comportamento server-side coerente para rota direta de capability desativada;
-- mapear uma segunda capability de baixo risco antes de torná-la configurável;
-- candidato preferencial para estudo: **Estoque mínimo**, por ser uma capability operacional mais isolada que Compras/Financeiro/Caixa; confirmar boundaries reais antes de implementar;
-- manter registry, resolver, backend gate, navegação, auditoria e preservação de histórico como contrato único;
-- atualizar testes de combinações/dependências e UX do compositor à medida que capabilities forem liberadas.
+Próximo chat deve:
+
+- inspecionar a rota/layout server-side de Empréstimos e o ponto onde o contexto de capabilities já é carregado;
+- reutilizar o resolver existente;
+- produzir estado de produto coerente para capability desativada (redirect ou superfície informativa, conforme o padrão real do workspace), sem retornar `403` como se fosse falha de autorização se o usuário continua autorizado ao módulo historicamente;
+- preservar leitura/histórico conforme ADR-010 e não bloquear restituições existentes;
+- cobrir navegação + rota direta + backend em testes.
+
+### 2. Auditar segunda capability de baixo risco
+
+Candidato preferencial: **Estoque mínimo**.
+
+Antes de criar toggle, mapear:
+
+- `docs/modules/stock-minimum.md`;
+- tabela `stock_minimum_policies`, RLS, grants e audit;
+- UI de `/workspace/estoque`;
+- sinal correspondente no Dashboard;
+- adapters/repositories/actions que criam/atualizam policies;
+- dependência real de `inventory` e qualquer outra capability;
+- comportamento de histórico/configuração ao desabilitar e reativar.
+
+Só torná-lo configurável se o mapa confirmar isolamento/dependências simples. Se não confirmar, documentar por que e escolher outro candidato com base em boundaries reais.
+
+Não abrir Compras/Financeiro/Caixa/Cadastros em massa nesta etapa.
 
 ## Frentes ON HOLD
 
