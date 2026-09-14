@@ -16,6 +16,8 @@ import {
 } from "@/components/ui";
 import { EntityId } from "@/domain/common/entity-id";
 import { createBrowserSupabaseClient } from "@/lib/supabase/browser";
+import { capabilityIds } from "@/modules/composition/domain/capability";
+import { useCapabilities } from "@/modules/composition/ui/capability-provider";
 import { SupabaseStockLoanGateway } from "@/modules/inventory/adapters/supabase-stock-loan-gateway";
 import { StockLoanService } from "@/modules/inventory/application/stock-loan-service";
 import { RuntimeStockLoan, StockLoanStatus } from "@/modules/inventory/domain/stock-loan";
@@ -25,6 +27,8 @@ const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "
 
 export default function StockLoansPage() {
   const workspace = useRuntimeWorkspace();
+  const capabilities = useCapabilities();
+  const stockLoansEnabled = capabilities.isEnabled(capabilityIds.stockLoans);
   const organizationId = workspace.organizationId;
   const errorMessage = workspace.errorMessage;
   const client = useMemo(() => createBrowserSupabaseClient(), []);
@@ -75,7 +79,7 @@ export default function StockLoansPage() {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!stockItemId || !sourceLocationId) return;
+    if (!stockLoansEnabled || !stockItemId || !sourceLocationId) return;
 
     setSaving(true);
     setFeedback(null);
@@ -115,7 +119,14 @@ export default function StockLoansPage() {
 
       {feedback && <FeedbackMessage tone={feedback.tone}>{feedback.text}</FeedbackMessage>}
 
-      {workspace.permissions.recordStockWithdrawal ? (
+      {!stockLoansEnabled ? (
+        <Panel tone="attention">
+          <h2 className="font-semibold">Empréstimos desativados para novas operações</h2>
+          <p className="mt-1 text-sm leading-6">
+            A organização desativou este módulo. Novos empréstimos não podem ser registrados, mas o histórico continua disponível e empréstimos existentes podem ser abertos para restituição e liquidação.
+          </p>
+        </Panel>
+      ) : workspace.permissions.recordStockWithdrawal ? (
         <Panel>
           <div className="mb-5">
             <h2 className="text-lg font-semibold">Registrar empréstimo</h2>
