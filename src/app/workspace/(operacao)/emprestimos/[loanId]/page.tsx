@@ -16,6 +16,8 @@ import {
 } from "@/components/ui";
 import { EntityId } from "@/domain/common/entity-id";
 import { createBrowserSupabaseClient } from "@/lib/supabase/browser";
+import { capabilityIds } from "@/modules/composition/domain/capability";
+import { useCapabilities } from "@/modules/composition/ui/capability-provider";
 import { SupabaseStockLoanGateway } from "@/modules/inventory/adapters/supabase-stock-loan-gateway";
 import { StockLoanService } from "@/modules/inventory/application/stock-loan-service";
 import {
@@ -31,6 +33,8 @@ export default function StockLoanDetailPage() {
   const params = useParams<{ loanId: string }>();
   const loanId = params.loanId as EntityId;
   const workspace = useRuntimeWorkspace();
+  const capabilities = useCapabilities();
+  const stockLoansEnabled = capabilities.isEnabled(capabilityIds.stockLoans);
   const organizationId = workspace.organizationId;
   const errorMessage = workspace.errorMessage;
   const client = useMemo(() => createBrowserSupabaseClient(), []);
@@ -133,6 +137,15 @@ export default function StockLoanDetailPage() {
       />
 
       {feedback && <FeedbackMessage tone={feedback.tone}>{feedback.text}</FeedbackMessage>}
+
+      {!stockLoansEnabled && (
+        <Panel tone="attention">
+          <h2 className="font-semibold">Módulo desativado para novos empréstimos</h2>
+          <p className="mt-1 text-sm leading-6">
+            Este registro permanece acessível porque faz parte do histórico da organização. Restituições continuam permitidas quando seu perfil possui acesso, para que nenhuma obrigação existente fique sem caminho de encerramento.
+          </p>
+        </Panel>
+      )}
 
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" aria-label="Resumo do empréstimo">
         <Panel padding="sm"><Summary label="Situação" valueNode={<LoanStatus status={loan.status} />} /></Panel>
