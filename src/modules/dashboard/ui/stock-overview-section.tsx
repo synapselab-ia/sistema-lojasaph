@@ -5,6 +5,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { FeedbackMessage } from "@/components/ui";
 import { EntityId } from "@/domain/common/entity-id";
 import { createBrowserSupabaseClient } from "@/lib/supabase/browser";
+import { capabilityIds } from "@/modules/composition/domain/capability";
+import { useCapabilities } from "@/modules/composition/ui/capability-provider";
 import {
   StockOverviewSnapshot,
   SupabaseStockOverviewQuery,
@@ -33,6 +35,8 @@ interface StockCard {
 }
 
 export function StockOverviewSection(props: StockOverviewSectionProps) {
+  const capabilities = useCapabilities();
+  const stockMinimumEnabled = capabilities.isEnabled(capabilityIds.stockMinimum);
   const query = useMemo(() => new SupabaseStockOverviewQuery(createBrowserSupabaseClient()), []);
   const requestSequence = useRef(0);
   const [overview, setOverview] = useState<StockOverviewSnapshot | null>(null);
@@ -91,12 +95,12 @@ export function StockOverviewSection(props: StockOverviewSectionProps) {
       href: "/workspace/baixas",
       note: hasPeriod ? "Baixas por perda ou vencimento registradas no período" : "Histórico visível completo",
     },
-    {
+    ...(stockMinimumEnabled ? [{
       label: "Abaixo do estoque mínimo",
       value: String(props.belowMinimumCount),
       href: "/workspace/estoque/minimos",
       note: "Estado atual",
-    },
+    }] : []),
     {
       label: "Transferências em trânsito",
       value: String(props.transfersInTransitCount),
