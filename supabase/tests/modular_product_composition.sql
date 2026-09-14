@@ -29,8 +29,25 @@ begin
   ) then
     raise exception 'authenticated cannot execute capability setter';
   end if;
+  if has_function_privilege(
+    'authenticated',
+    'private.is_capability_enabled(uuid,text)',
+    'EXECUTE'
+  ) then
+    raise exception 'internal capability resolver unexpectedly exposed to authenticated';
+  end if;
+  if not has_function_privilege(
+    'authenticated',
+    'private.can_use_capability(uuid,text)',
+    'EXECUTE'
+  ) then
+    raise exception 'RLS capability wrapper is unavailable to authenticated';
+  end if;
   if not private.is_capability_enabled('99000000-0000-4000-8000-000000000001','stock-loans') then
     raise exception 'stock-loans must default to enabled when no override exists';
+  end if;
+  if not private.is_capability_enabled('99000000-0000-4000-8000-000000000001','stock-minimum') then
+    raise exception 'stock-minimum must default to enabled when no override exists';
   end if;
 end $$;
 
@@ -146,6 +163,54 @@ begin
       and action='organization_capability.changed'
       and after_data->>'capability_id'='stock-loans'
   ) <> 2 then
-    raise exception 'capability reactivation audit missing';
+    raise exception 'stock-loans reactivation audit missing';
+  end if;
+end $$;
+
+-- The second approved capability follows the same owner-only/default/audit
+-- contract independently from stock-loans.
+set role authenticated;
+select set_config('request.jwt.claim.sub','99000000-0000-4000-8000-000000000201',false);
+select set_config('request.jwt.claim.role','authenticated',false);
+select public.set_organization_capability(
+  '99000000-0000-4000-8000-000000000001',
+  'stock-minimum',
+  false
+);
+reset role;
+
+do $$
+begin
+  if private.is_capability_enabled('99000000-0000-4000-8000-000000000001','stock-minimum') then
+    raise exception 'stock-minimum remained enabled after owner disabled it';
+  end if;
+  if not private.is_capability_enabled('99000000-0000-4000-8000-000000000001','stock-loans') then
+    raise exception 'stock-minimum override unexpectedly affected stock-loans';
+  end if;
+end $$;
+
+set role authenticated;
+select set_config('request.jwt.claim.sub','99000000-0000-4000-8000-000000000201',false);
+select set_config('request.jwt.claim.role','authenticated',false);
+select public.set_organization_capability(
+  '99000000-0000-4000-8000-000000000001',
+  'stock-minimum',
+  true
+);
+reset role;
+
+do $$
+begin
+  if not private.is_capability_enabled('99000000-0000-4000-8000-000000000001','stock-minimum') then
+    raise exception 'stock-minimum did not reactivate';
+  end if;
+  if (
+    select count(*)
+    from public.audit_logs
+    where organization_id='99000000-0000-4000-8000-000000000001'
+      and action='organization_capability.changed'
+      and after_data->>'capability_id'='stock-minimum'
+  ) <> 2 then
+    raise exception 'stock-minimum disable/reactivation audit is incomplete';
   end if;
 end $$;

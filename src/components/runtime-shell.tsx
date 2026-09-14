@@ -11,6 +11,7 @@ import {
   type WorkspaceNavigationArea,
 } from "@/lib/navigation/workspace-navigation";
 import type { CapabilityId } from "@/modules/composition/domain/capability";
+import { CapabilityProvider } from "@/modules/composition/ui/capability-provider";
 
 function WorkspaceNavigation({
   pathname,
@@ -164,50 +165,52 @@ export function RuntimeShell({
   );
 
   return (
-    <div className="min-h-screen bg-neutral-100 lg:grid lg:grid-cols-[270px_1fr]">
-      <header className="sticky top-0 z-30 flex min-h-16 items-center justify-between border-b border-neutral-200 bg-white px-4 lg:hidden">
-        <Link href="/" className="font-semibold tracking-tight">Sistema Lojasaph</Link>
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          aria-controls="workspace-mobile-navigation"
-          aria-expanded={mobileNavigationOpen}
-          onClick={() => setMobileNavigationOpen(true)}
-        >
-          Menu
-        </Button>
-      </header>
+    <CapabilityProvider enabledCapabilities={enabledCapabilities}>
+      <div className="min-h-screen bg-neutral-100 lg:grid lg:grid-cols-[270px_1fr]">
+        <header className="sticky top-0 z-30 flex min-h-16 items-center justify-between border-b border-neutral-200 bg-white px-4 lg:hidden">
+          <Link href="/" className="font-semibold tracking-tight">Sistema Lojasaph</Link>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            aria-controls="workspace-mobile-navigation"
+            aria-expanded={mobileNavigationOpen}
+            onClick={() => setMobileNavigationOpen(true)}
+          >
+            Menu
+          </Button>
+        </header>
 
-      <div className="lg:hidden">
-        <Drawer
-          id="workspace-mobile-navigation"
-          open={mobileNavigationOpen}
-          onClose={() => setMobileNavigationOpen(false)}
-          title="Navegação"
-        >
+        <div className="lg:hidden">
+          <Drawer
+            id="workspace-mobile-navigation"
+            open={mobileNavigationOpen}
+            onClose={() => setMobileNavigationOpen(false)}
+            title="Navegação"
+          >
+            <ShellSidebarContent
+              organizationName={organizationName}
+              roles={roles}
+              canSwitchOrganization={canSwitchOrganization}
+              pathname={pathname}
+              navigation={navigation}
+              onNavigate={() => setMobileNavigationOpen(false)}
+            />
+          </Drawer>
+        </div>
+
+        <aside className="hidden min-w-0 border-r border-neutral-200 bg-white p-6 lg:sticky lg:top-0 lg:block lg:h-screen lg:overflow-y-auto">
           <ShellSidebarContent
             organizationName={organizationName}
             roles={roles}
             canSwitchOrganization={canSwitchOrganization}
             pathname={pathname}
             navigation={navigation}
-            onNavigate={() => setMobileNavigationOpen(false)}
           />
-        </Drawer>
+        </aside>
+
+        <main className="min-w-0 p-4 sm:p-6 lg:p-10">{children}</main>
       </div>
-
-      <aside className="hidden min-w-0 border-r border-neutral-200 bg-white p-6 lg:sticky lg:top-0 lg:block lg:h-screen lg:overflow-y-auto">
-        <ShellSidebarContent
-          organizationName={organizationName}
-          roles={roles}
-          canSwitchOrganization={canSwitchOrganization}
-          pathname={pathname}
-          navigation={navigation}
-        />
-      </aside>
-
-      <main className="min-w-0 p-4 sm:p-6 lg:p-10">{children}</main>
-    </div>
+    </CapabilityProvider>
   );
 }

@@ -1,13 +1,18 @@
 "use client";
 
+import Link from "next/link";
 import { FormEvent, useMemo, useState } from "react";
 import { Button, EmptyState, FeedbackMessage, FormField, Input, PageHeader, Panel, Select, StatusBadge } from "@/components/ui";
 import { EntityId } from "@/domain/common/entity-id";
+import { capabilityIds } from "@/modules/composition/domain/capability";
+import { useCapabilities } from "@/modules/composition/ui/capability-provider";
 import { isBelowStockMinimum } from "@/modules/inventory/domain/stock-minimum";
 import { useRuntimeWorkspace } from "@/modules/master-data/ui/runtime-workspace-provider";
 
 export default function StockMinimumsPage() {
   const workspace = useRuntimeWorkspace();
+  const capabilities = useCapabilities();
+  const stockMinimumEnabled = capabilities.isEnabled(capabilityIds.stockMinimum);
   const [form, setForm] = useState({ stockItemId: "", stockLocationId: "", quantity: "" });
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<{ tone: "success" | "danger"; text: string } | null>(null);
@@ -31,6 +36,7 @@ export default function StockMinimumsPage() {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!stockMinimumEnabled) return;
     setSaving(true);
     setFeedback(null);
     try {
@@ -48,7 +54,7 @@ export default function StockMinimumsPage() {
   }
 
   async function deactivate() {
-    if (!selectedPolicy) return;
+    if (!stockMinimumEnabled || !selectedPolicy) return;
     setSaving(true);
     setFeedback(null);
     try {
@@ -63,6 +69,27 @@ export default function StockMinimumsPage() {
     } finally {
       setSaving(false);
     }
+  }
+
+  if (!stockMinimumEnabled) {
+    return (
+      <div className="mx-auto max-w-5xl space-y-6">
+        <PageHeader
+          eyebrow="Estoque · Estoque mínimo"
+          title="Estoque mínimo desativado"
+          description="Esta organização optou por não usar limites mínimos e alertas de reposição neste momento."
+        />
+        <Panel tone="attention">
+          <h2 className="font-semibold">Configuração preservada</h2>
+          <p className="mt-1 text-sm leading-6">
+            Nenhum limite existente é apagado quando o módulo é desativado. Se ele for reativado por um proprietário da organização, as configurações anteriores voltam a ser usadas.
+          </p>
+          <Link href="/workspace/estoque" className="mt-4 inline-flex min-h-11 items-center font-semibold underline-offset-4 hover:underline">
+            Voltar para Estoque
+          </Link>
+        </Panel>
+      </div>
+    );
   }
 
   return (

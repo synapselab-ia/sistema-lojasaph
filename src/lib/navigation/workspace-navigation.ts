@@ -85,6 +85,7 @@ export const workspaceNavigation: readonly WorkspaceNavigationArea[] = [
 
 const capabilityByHref = new Map<string, CapabilityId>([
   ["/workspace/emprestimos", "stock-loans"],
+  ["/workspace/estoque/minimos", "stock-minimum"],
 ]);
 
 const compositionNavigationItem: WorkspaceNavigationItem = {

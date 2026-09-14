@@ -5,6 +5,7 @@ export const capabilityIds = {
   composition: "composition",
   inventory: "inventory",
   stockLoans: "stock-loans",
+  stockMinimum: "stock-minimum",
 } as const;
 
 export type CapabilityId = (typeof capabilityIds)[keyof typeof capabilityIds];
@@ -89,6 +90,17 @@ export const capabilityRegistry: readonly CapabilityDefinition[] = Object.freeze
     defaultEnabled: true,
     dependencies: [capabilityIds.inventory],
     navigationHrefs: ["/workspace/emprestimos"],
+  },
+  {
+    id: capabilityIds.stockMinimum,
+    name: "Estoque mínimo",
+    description: "Configura limites mínimos por produto e local e sinaliza posições que exigem reposição.",
+    category: "operations",
+    core: false,
+    configurable: true,
+    defaultEnabled: true,
+    dependencies: [capabilityIds.inventory],
+    navigationHrefs: ["/workspace/estoque/minimos"],
   },
 ]);
 

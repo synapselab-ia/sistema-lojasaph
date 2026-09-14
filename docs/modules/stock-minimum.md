@@ -1,6 +1,6 @@
 # Módulo — Estoque mínimo e alertas de reposição
 
-Status: Fase 47 concluída (`REQ-STK-011`).
+Status: Fase 47 concluída (`REQ-STK-011`); integrado ao compositor modular na segunda fatia da Issue #190.
 
 ## Objetivo
 
@@ -40,87 +40,82 @@ Consequências:
 - policy ausente não alerta;
 - saldo ausente não é convertido em zero por inferência.
 
-## Autorização e auditoria
+## Autorização, auditoria e compositor
 
-RLS é a fronteira de segurança.
+RLS é a fronteira de segurança dos dados. A capability de produto é `stock-minimum`, depende de `inventory` e é **ativa por default** quando não existe override na Organization.
 
-Leitura:
+Leitura e mutation continuam exigindo os escopos originais, mas agora também respeitam a composição:
 
-- `private.can_read_stock_location(organization_id, stock_location_id)`.
+- quando `stock-minimum` está ativa, SELECT segue `private.can_read_stock_location(...)`;
+- INSERT/UPDATE continuam exigindo `private.has_stock_location_role(...)` para `owner`, `admin`, `manager` ou `inventory` no local autorizado;
+- quando a capability está desativada, `private.can_use_capability(...)` faz as policies negarem SELECT/INSERT/UPDATE;
+- DELETE continua sem grant;
+- create/update continuam auditados pelo trigger em `audit_logs`.
 
-INSERT/UPDATE:
+O helper interno `private.is_capability_enabled(...)` permanece sem EXECUTE para `authenticated`; a policy usa um wrapper que confirma membership antes de consultar a composição.
 
-- `private.has_stock_location_role(...)`;
-- papéis permitidos: `owner`, `admin`, `manager`, `inventory`;
-- escopo do local continua obrigatório.
-
-Grants:
-
-- `authenticated`: SELECT, INSERT, UPDATE;
-- `authenticated`: sem DELETE;
-- `anon`: sem acesso.
-
-Create/update são auditados por trigger em `audit_logs`. A função de trigger fica em schema privado e não possui EXECUTE público.
+Desativar o módulo **não altera nem apaga** linhas de `stock_minimum_policies`. Elas ficam fora da superfície operacional enquanto off e reaparecem intactas quando a capability é reativada.
 
 ## Aplicação
 
+### `/workspace/estoque/minimos`
+
+Com a capability ativa, a tela consulta policies visíveis pelo mesmo client Supabase da sessão e permite manutenção somente onde a RLS autoriza.
+
+Com a capability desativada, a rota direta exibe um estado explícito de módulo desativado, sem formulário nem lista de configuração. A navegação principal também remove a entrada.
+
 ### `/workspace/estoque`
 
-A tela consulta policies visíveis pelo mesmo client Supabase da sessão e permite manutenção somente onde a RLS autoriza.
+Quando `stock-minimum` está ativa, a posição de Estoque mostra:
 
-O adapter é browser-safe: não usa service role/admin key e não contorna RLS.
+- resumo “Abaixo do mínimo”;
+- atalho para Estoque mínimo;
+- filtro de situação mínima;
+- coluna Mínimo e status derivado por posição.
+
+Quando a capability está off, esses elementos desaparecem e a tela continua operando como posição normal de Estoque.
 
 ### Dashboard
 
-A Fase 47 adiciona estoque abaixo do mínimo à fila de atenção do Dashboard.
+A Fase 47 adicionou estoque abaixo do mínimo à fila de atenção do Dashboard. Como a leitura das policies é RLS-gated, a capability off produz zero sinais derivados; além disso, o card específico de Estoque mínimo é omitido da visão de Estoque.
 
-O sinal:
+O sinal, quando ativo:
 
 - usa `inventory_balances` como saldo atual;
 - usa `stock_minimum_policies` como configuração;
 - mantém os filtros e escopos Organization + Unit + Sector já existentes;
 - não atribui Setor por heurística;
-- navega o usuário para o fluxo de Estoque;
+- navega o usuário para o fluxo de Estoque mínimo;
 - não cria pedido de compra automaticamente.
 
 ## Migrations Production
 
 Projeto Supabase Production: `fhbvwyttikrbeaanatlr`.
 
+Base histórica:
+
 - `20260827194813_stock_minimum_policies`;
 - `20260827195802_stock_minimum_policy_fk_indexes`.
 
-A segunda migration cobre as FKs compostas de item e local apontadas pelo Performance Advisor.
+Integração ao compositor:
 
-Pós-DDL validado em 2026-08-27:
+- `20260914120000_stock_minimum_composition` — adiciona a capability ao override por Organization e aplica gating de RLS sem alterar as linhas de configuração.
 
-- RLS ativa;
-- grants/policies coerentes;
-- audit trigger presente;
-- 0 policies reais em Production;
-- índices de FK presentes;
-- nenhum `unindexed_foreign_keys` remanescente para `stock_minimum_policies`.
-
-`unused_index` é esperado no ambiente Production enquanto a tabela permanecer vazia.
+A migration do compositor só deve ser considerada em Production após merge e rollout version-preserving conforme `docs/qa/database-migrations.md`.
 
 ## Testes
 
-Cobertura inclui:
+Cobertura existente inclui mínimo zero, negativo rejeitado, abaixo/igual/acima do mínimo, policy ausente, FK cross-Organization, escopo setorial/local, viewer sem mutation efetiva, `anon` sem grants e auditoria.
 
-- mínimo zero;
-- negativo rejeitado;
-- abaixo/igual/acima do mínimo;
-- policy ausente;
-- FK cross-Organization;
-- escopo setorial/local;
-- viewer sem mutation efetiva;
-- `anon` sem grants;
-- auditoria de create/update;
-- Unit/Sector do Dashboard;
-- wiring do Workspace;
-- lint, typecheck, Vitest, production build e regressões PostgreSQL.
+A integração modular adiciona regressão para:
 
-Em RLS, UPDATE fora da policy pode afetar zero linhas em vez de lançar exception. A regressão valida explicitamente `ROW_COUNT = 0`, sem tratar isso como autorização concedida.
+- default enabled;
+- owner-only disable/enable;
+- configuração existente preservada fisicamente durante desativação;
+- SELECT oculto enquanto off;
+- INSERT bloqueado e UPDATE afetando zero linhas enquanto off;
+- reativação restaurando a mesma configuração;
+- audit trail da mudança de composição.
 
 ## Fora de escopo
 

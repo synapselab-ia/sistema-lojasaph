@@ -6,10 +6,14 @@ on:
       - "supabase/**"
       - "src/modules/inventory/**"
       - "src/modules/composition/**"
+      - "src/modules/dashboard/**"
+      - "src/components/runtime-shell.tsx"
       - "src/app/workspace/**"
       - "src/lib/composition/**"
       - "src/lib/navigation/**"
       - "docs/modules/inventory.md"
+      - "docs/modules/composition.md"
+      - "docs/modules/stock-minimum.md"
       - ".github/workflows/stock-loans-ci.yml"
   push:
     branches: [main]
@@ -17,10 +21,14 @@ on:
       - "supabase/**"
       - "src/modules/inventory/**"
       - "src/modules/composition/**"
+      - "src/modules/dashboard/**"
+      - "src/components/runtime-shell.tsx"
       - "src/app/workspace/**"
       - "src/lib/composition/**"
       - "src/lib/navigation/**"
       - "docs/modules/inventory.md"
+      - "docs/modules/composition.md"
+      - "docs/modules/stock-minimum.md"
       - ".github/workflows/stock-loans-ci.yml"
 
 permissions:
@@ -98,3 +106,5 @@ jobs:
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/stock_loans.sql
       - name: Run modular composition suite
         run: psql -v ON_ERROR_STOP=1 -f supabase/tests/modular_product_composition.sql
+      - name: Run stock minimum composition suite
+        run: psql -v ON_ERROR_STOP=1 -f supabase/tests/stock_minimum_composition.sql
