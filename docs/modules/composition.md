@@ -4,9 +4,11 @@
 
 Implementar a direção da Issue #190 e da ADR-010 sem transformar o Lojasaph em uma coleção de feature flags desconectadas. A definição estrutural de cada capability fica versionada no código; o banco persiste apenas o override aprovado por Organization.
 
-## Registry inicial
+## Registry atual
 
-A primeira entrega registra explicitamente capabilities de fundação (`organization-context`, `authorization`, `audit`, `composition`) e duas capabilities operacionais (`inventory` e `stock-loans`). As capabilities de fundação são core e nunca podem ser desativadas. `inventory` permanece bloqueada para configuração durante o rollout inicial. `stock-loans` é a primeira capability configurável e declara a dependência `stock-loans -> inventory`.
+O registry contém capabilities de fundação (`organization-context`, `authorization`, `audit`, `composition`) e as capabilities operacionais inicialmente modeladas (`inventory`, `stock-loans`, `stock-minimum`).
+
+As capabilities de fundação são core e nunca podem ser desativadas. `inventory` continua bloqueada para configuração porque é base de dependências. `stock-loans` e `stock-minimum` são configuráveis e declaram a dependência `-> inventory`.
 
 Ausência de override significa **ativo** para preservar o comportamento das organizações existentes.
 
@@ -16,22 +18,45 @@ Ausência de override significa **ativo** para preservar o comportamento das org
 
 Todos os membros ativos da Organization podem ler o estado necessário para resolver a experiência do produto; isso não concede permissão para alterar a composição.
 
-## Gating da prova inicial
+O helper interno `private.is_capability_enabled(...)` não é executável por `authenticated`. Quando uma policy RLS precisa consultar a composição, usa `private.can_use_capability(...)`, wrapper que primeiro confirma membership da Organization e só então resolve a capability. Isso evita transformar o resolver interno em uma superfície de enumeração cross-Organization.
+
+## Empréstimos
 
 Quando `stock-loans` está desativada:
 
 - o item **Empréstimos** deixa de aparecer na navegação resolvida;
-- `public.record_stock_loan(...)` recusa novos empréstimos com `CAPABILITY_DISABLED`;
-- tabelas, movimentos, auditoria e empréstimos existentes permanecem intactos;
+- a URL direta `/workspace/emprestimos` entra em modo explícito de **histórico/liquidação**;
+- o formulário de novo empréstimo não é exibido;
+- `public.record_stock_loan(...)` continua sendo o gate autoritativo e recusa novas operações com `CAPABILITY_DISABLED`;
+- lista, detalhe e histórico existentes permanecem consultáveis conforme autorização normal;
 - `public.record_stock_loan_restitution(...)` continua disponível de propósito, para permitir liquidar obrigações já abertas;
-- reativar restaura a navegação e a criação sem reconstruir histórico.
+- tabelas, movimentos e auditoria permanecem intactos;
+- reativar restaura navegação e criação sem reconstruir histórico.
 
-A rota histórica ainda pode ser alcançada por URL direta nesta primeira prova; isso não constitui boundary de autorização. O backend é o gate autoritativo para novas operações. O endurecimento de superfícies diretas e a expansão para outras capabilities ficam para as próximas fatias da Issue #190.
+Essa distinção é intencional: desabilitar uma capability não pode criar uma obrigação sem caminho de encerramento.
 
-## UX inicial
+## Estoque mínimo
 
-`Administração -> Montar sistema` aparece somente para `owner` Organization-wide. A tela explica dependências e impacto antes da alteração, diferencia base necessária de capability configurável e evita expor UUIDs, nomes de tabela ou flags técnicas ao operador.
+`stock-minimum` foi aprovado como segunda capability configurável depois do mapeamento de seus boundaries reais. Ela depende somente de `inventory` e não cria obrigação transacional pendente.
+
+Quando desativada:
+
+- `/workspace/estoque/minimos` deixa a navegação e mostra estado de produto desativado se acessada diretamente;
+- atalhos, filtro, coluna e resumo de mínimo desaparecem da posição de Estoque;
+- o card e os alertas derivados de mínimo deixam o Dashboard;
+- RLS esconde `stock_minimum_policies` da superfície Data API e bloqueia `INSERT/UPDATE` mesmo que alguém tente contornar a interface;
+- nenhuma policy física é apagada ou reescrita.
+
+Ao reativar, as mesmas policies voltam a ser visíveis e operacionais. O ciclo de regressão cobre preservação do valor anterior e bloqueio de mutation durante a desativação.
+
+## UX do compositor
+
+`Administração -> Montar sistema` aparece somente para `owner` Organization-wide. A tela mostra Estoque como base necessária e as duas capabilities configuráveis em linguagem de produto, explicando dependência, impacto de desativação e preservação de histórico/configuração antes da confirmação.
+
+O estado resolvido é carregado uma única vez no layout server-side. `RuntimeShell` usa o mesmo conjunto tanto para navegação quanto para um `CapabilityProvider` client-side consumido pelas superfícies operacionais, evitando fontes de verdade paralelas no frontend.
 
 ## Próximas expansões
 
-Antes de liberar novos toggles, mapear os boundaries e dependências reais de Compras, Financeiro, Caixa, Cadastros, FEFO/Validades, importação/PDV, fichas técnicas, consumo de funcionários e dashboards. Cada capability nova deve ter navegação coerente, gate no backend quando aplicável, auditoria e teste de reativação sem perda de dados.
+Não liberar novos toggles por quantidade. Antes de adicionar uma terceira capability, mapear os boundaries e dependências reais da candidata e exigir o mesmo contrato: registry, default compatível, navegação/superfícies coerentes, backend/RLS gate quando aplicável, auditoria, isolamento por Organization e reativação sem perda de dados.
+
+Compras, Financeiro, Caixa, Cadastros, FEFO/Validades, importação/PDV, fichas técnicas, consumo de funcionários e dashboards derivados ainda exigem análise própria de dependências antes de qualquer configuração.
