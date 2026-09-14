@@ -2,102 +2,105 @@
 
 ## Estado
 
-A frente ativa continua sendo **Issue #190 / Fase 60 — compositor modular do sistema para owner**.
+A **Issue #190 / Fase 60 — compositor modular do sistema para owner está concluída e fechada**.
 
-A primeira fatia está concluída:
+Entregas finais:
 
-- PR #197 mergeado: registry/resolver, configuração Organization-scoped, owner-only mutation, audit trail, navegação resolvida e backend gating para `stock-loans`;
-- PR #198 mergeado: rollout version-preserving da migration `20260911153000_modular_product_composition`;
-- Production Migration Reconcile 190 run `34617253893`: success;
-- CI pós-merge #644 / run `34617253823`: success;
-- Production alinhada até `20260911153000 / modular_product_composition`;
-- verificações read-only de RLS/grants/policies/RPCs/default concluídas;
-- advisors executados sem finding de segurança acionável específico da fatia; INFO de FK sem índice em `updated_by_user_id` permanece documentado e não bloqueia esta etapa;
-- reconciliador one-shot deve estar removido após o fechamento operacional.
+- PR #197: fundação do registry/resolver, overrides por Organization, owner-only mutation, audit e `stock-loans`;
+- PR #198: rollout Production de `20260911153000_modular_product_composition`;
+- PR #200: segunda capability `stock-minimum`, rota direta/histórico coerente de Empréstimos e gating em navegação/Estoque/Dashboard/RLS;
+- PR #201: rollout Production de `20260914120000_stock_minimum_composition`;
+- Production Migration Reconcile run `34841150576`: success;
+- CI pós-rollout #650 / run `34841150555`: success;
+- Production alinhada até `20260914120000 / stock_minimum_composition`;
+- verificações read-only de constraint, RLS, grants, helpers e defaults concluídas;
+- advisors pós-DDL executados sem regressão bloqueante específica da fatia;
+- workflow one-shot removido no closeout.
 
-#187 e #183 estão concluídas. As frentes #185/#188/#189/#184 continuam condicionadas aos gatilhos documentados e não devem desviar a execução atual.
+A frente guarda-chuva volta a ser **#181 / Fase 53 — decisões de negócio e perfis reais para conclusão**.
 
-## NEXT_ACTION objetiva — segunda fatia incremental da #190
+## NEXT_ACTION objetiva
 
-Executar **somente esta fatia**, sem criar uma matriz ampla de toggles.
+**Não iniciar nova implementação enquanto nenhum gatilho abaixo tiver sido desbloqueado.**
 
-### Parte A — rota direta coerente para capability desativada
+Antes de agir em um novo chat:
 
-Hoje `stock-loans` já desaparece da navegação quando off e o backend bloqueia novos empréstimos, mas `/workspace/emprestimos` ainda pode ser digitada diretamente.
+1. conferir GitHub real de Issues/PRs/branches/CI;
+2. verificar se surgiu novo insumo para algum gatilho abaixo;
+3. executar somente o primeiro gatilho realmente desbloqueado;
+4. se nenhum estiver desbloqueado, registrar que não há trabalho técnico seguro a iniciar — não fabricar fixtures, integrações, toggles ou production-readiness.
 
-1. Inspecionar a rota/layout server-side de Empréstimos e o ponto em que o estado resolvido de capabilities já é carregado para o workspace.
-2. Reutilizar `CapabilityResolver`/registry existentes; não criar uma segunda fonte de verdade.
-3. Quando `stock-loans` estiver desativado, produzir UX coerente de **módulo desativado**, não confundir com `403`/falha de autorização se o usuário continua autorizado.
-4. Preservar histórico e a capacidade de liquidar/restituir empréstimos já existentes. Não criar um gate que deixe obrigação sem caminho de encerramento.
-5. Manter o backend como boundary autoritativo para novas operações; o tratamento de rota complementa, não substitui, `record_stock_loan(...)`.
-6. Adicionar regressão para navegação + rota direta + backend com capability on/off.
+### Gatilho A — #185 / PDV Legal
 
-### Parte B — mapear uma segunda capability de baixo risco
+Desbloqueia quando existir ao menos um destes insumos confiáveis:
 
-Candidato preferencial para **auditoria antes de implementação**: **Estoque mínimo**.
+- amostra real anonimizada de exportação;
+- estrutura oficial das colunas/arquivo;
+- documentação/contrato oficial suficiente para determinar formato e identificadores.
 
-Ler e inspecionar, no mínimo:
+Quando desbloqueado, executar o estudo da #185 antes de #188/#189/#184. Não fabricar planilha sintética para fingir compatibilidade com PDV Legal e não usar dado Production como fixture.
 
-- `docs/modules/stock-minimum.md`;
-- `stock_minimum_policies` e migrations relacionadas;
-- policies/RLS/grants/audit da tabela;
-- superfície de manutenção em `/workspace/estoque`;
-- Dashboard/sinal de estoque abaixo do mínimo;
-- repositories/adapters/actions envolvidos;
-- dependências com `inventory` e demais capacidades.
+### Gatilho B — Q-022 / perfis reais
 
-Produzir um mapa explícito de:
+Desbloqueia quando o operador fornecer o mapeamento real de pessoas/cargos para responsabilidades/capacidades.
 
-- capability id/nome de produto proposto;
-- dependências;
-- rotas/nav/cards afetados;
-- gates de aplicação/backend necessários;
-- comportamento de dados/histórico quando off;
-- comportamento de reativação;
-- testes necessários.
+Quando desbloqueado:
 
-**Só tornar Estoque mínimo configurável se esse mapa confirmar isolamento e dependências simples.** Se houver acoplamento que torne o rollout inseguro, documentar o bloqueio e selecionar outro candidato de baixo risco com base no código real.
+- mapear funções reais aos roles/capabilities existentes;
+- não inferir que cargo empresarial equivale automaticamente a `owner`, `admin`, `manager`, `finance`, `purchases`, `inventory`, `cashier` ou `viewer`;
+- não hardcodar e-mail, UUID ou identidade pessoal no código;
+- usar esse resultado na preparação de usuários reais para go-live.
 
-### Se Estoque mínimo for aprovado pelo mapeamento
+### Gatilho C — #184 / consumo de funcionários
 
-Implementar como segunda capability usando o mesmo contrato já provado:
+Só desbloqueia quando estiverem definidos, com base na fonte real de vendas:
 
-- registry estrutural versionado no código;
-- banco guarda apenas override por Organization;
-- dependência explícita, provavelmente em `inventory`, somente se confirmada pelo mapa real;
-- alteração somente por owner Organization-wide;
-- audit trail de antes/depois;
-- navegação/cards/superfícies coerentes quando off;
-- backend/server actions respeitam gating onde houver mutation;
-- desativar não apaga policy/histórico;
-- reativar recupera configuração anterior;
-- default retrocompatível;
-- testes de enabled/disabled, dependências, autorização, isolamento por Organization, navegação/rota/backend e reativação.
+- origem do lançamento;
+- granularidade necessária;
+- tratamento de cancelamento/estorno;
+- relação com o processo de desconto em folha sem transformar Lojasaph em sistema de folha.
 
-Depois: lint + typecheck + testes + build + PostgreSQL relevantes -> PR -> merge. Só fazer rollout Production se houver nova migration e somente após provar drift real.
+Se a origem depender do PDV Legal, aguardar #185.
 
-## Contrato arquitetural obrigatório
+### Gatilho D — #188 e #189
+
+- #188 catálogo comercial/preços/margem depende do entendimento real de vendas/preços de #185;
+- #189 fichas técnicas/receitas depende de #185/#188.
+
+Não implementar antes das dependências concretas.
+
+### Gatilho E — #75/#121 / production-readiness
+
+Permanece **TOTALMENTE ON HOLD** até production-readiness ou nova autorização explícita do operador. Não provisionar serviço pago, provider, bucket, credencial, automação armada ou restore Production por antecipação.
+
+## Compositor depois da #190
+
+Não existe terceira fatia automática.
+
+Se surgir necessidade real de tornar outra área configurável:
+
+- abrir Issue própria;
+- mapear capability boundary e dependências reais;
+- manter registry estrutural no código e override no banco;
+- preservar RLS/autorização independentes;
+- desativar nunca apaga dados/histórico;
+- adicionar gates backend e UX coerente;
+- fazer rollout incremental.
+
+Não reabrir #190 apenas para adicionar mais toggles.
+
+## Contrato arquitetural que permanece vigente
 
 - registry estrutural versionado no código; banco guarda apenas configuração;
 - core de contexto/auth/autorização/audit/integridade/compositor não é desligável;
-- dependências são explícitas e combinações inválidas são bloqueadas;
+- dependências explícitas; combinações inválidas são bloqueadas;
 - frontend não é boundary de segurança;
-- RLS/autorização continuam obrigatórios e independentes do compositor;
-- desabilitar não apaga dados, ledger, audit ou histórico;
-- reativar recupera o comportamento sobre o histórico intacto;
-- primeiro rollout de configuração continua restrito a `owner` Organization-wide;
-- UX fala em módulos/capabilities de produto, nunca flags/UUIDs/tabelas;
-- não repetir rollout/reconcile da migration `20260911153000` já aplicada.
-
-## Frentes bloqueadas
-
-- #185 PDV Legal: ON HOLD até amostra/estrutura oficial/documentação suficiente;
-- #188: ON HOLD por #185;
-- #189: ON HOLD por #185/#188;
-- #184: ON HOLD até definir origem/granularidade/estorno;
-- #75/#121: TOTALMENTE ON HOLD até production-readiness;
-- Q-022 continua obrigatório antes de usuários reais de go-live.
+- RLS/autorização continuam obrigatórios;
+- desabilitar não apaga ledger, audit ou histórico;
+- reativar recupera comportamento sobre dados intactos;
+- configuração estrutural permanece restrita a `owner` Organization-wide até decisão posterior;
+- UI fala em linguagem de produto, não flags/UUID/tabelas.
 
 ## Guardrails
 
-GitHub é fonte de verdade; consultar estado real antes de agir. Supabase/schema/RLS/grants são hard boundaries. Não hardcodar identidade real. Não usar fixture Production. Não aplicar DDL ad hoc. Não disparar deploy Vercel manual rotineiro. Não repetir etapa concluída.
+GitHub é fonte de verdade. Supabase/schema/RLS/grants são hard boundaries. Não repetir etapa concluída. Não aplicar DDL ad hoc. Não fabricar dado externo. Não usar fixture Production. Não hardcodar identidade real. Não disparar deploy Vercel manual rotineiro.

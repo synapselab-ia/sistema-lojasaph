@@ -1,119 +1,130 @@
 # Current State — Sistema Lojasaph
 
-Última atualização: 2026-09-11
+Última atualização: 2026-09-14
 
 ## Regra de baseline
 
-**Sempre consultar GitHub para HEAD, Issues, PRs, branches e CI reais antes de agir.** O estado documental registra contexto e decisões; não substitui a verificação do repositório nem do Supabase.
+**Sempre consultar GitHub para HEAD, Issues, PRs, branches e CI reais antes de agir.** O estado documental registra contexto; não substitui GitHub nem a verificação do Supabase quando houver schema/migrations.
 
 ## Estado do produto
 
-Fase 51 / #142 e Fase 52 / #180 estão concluídas. A frente guarda-chuva continua sendo **Fase 53 / #181 — conclusão de negócio**.
+A frente guarda-chuva continua sendo **Fase 53 / #181 — decisões de negócio e perfis reais para conclusão**.
 
-As bases de Estoque que desbloqueavam a sequência estão concluídas e em Production:
+Concluídas e em Production:
 
 - **#187 / Fase 57 — custeio por lote/camada física**;
-- **#183 / Fase 54 — empréstimos com restituição física e/ou financeira**.
+- **#183 / Fase 54 — empréstimos com restituição física e/ou financeira**;
+- **#190 / Fase 60 — compositor modular do sistema para owner**.
 
-A frente ativa continua sendo **#190 / Fase 60 — compositor modular do sistema para owner**. A Issue #190 permanece aberta porque a entrega é incremental.
+A Issue **#190 foi fechada como `completed` em 2026-09-14** após duas capabilities configuráveis de baixo risco e rollout Production completo.
 
-## #190 — primeira fatia concluída e em Production
+## #190 — compositor modular concluído
 
-A arquitetura é regida por `docs/decisions/ADR-010-modular-product-composition.md`.
+Arquitetura: `docs/decisions/ADR-010-modular-product-composition.md`.
 
-### Implementação
+### Fundação
 
-PR **#197 — `feat: iniciar compositor modular por Organization`** foi mergeado em `main` no commit `954192c7b2cc4af7a9cad530679ef38dcdac4a2c`.
+PR **#197 — `feat: iniciar compositor modular por Organization`**:
 
-A primeira fatia prova:
-
-- registry estático/versionado de capabilities no código;
-- core explícito e não configurável para contexto da Organization, autorização, auditoria e compositor;
-- configuração persistida por Organization somente como override, sem duplicar o registry no banco;
-- `stock-loans` como primeira capability configurável, com dependência explícita `stock-loans -> inventory`;
-- compatibilidade retroativa: ausência de override mantém Empréstimos ativo;
+- registry estático/versionado de capabilities;
+- core locked para Organization/contexto, autorização, auditoria e compositor;
+- banco persiste somente override por Organization;
 - alteração somente por `owner` Organization-wide;
-- audit trail de antes/depois via `organization_capability.changed`;
-- navegação resolvida server-side: Empréstimos desaparece quando desativado e `Administração -> Montar sistema` aparece somente para owner;
-- gate autoritativo em `public.record_stock_loan(...)`, bloqueando **novos** empréstimos quando a capability está desativada;
-- restituições de empréstimos existentes continuam permitidas para não criar obrigação sem caminho de liquidação;
-- desativar nunca apaga tabelas, movimentos, audit ou histórico; reativar recupera o comportamento anterior;
-- testes unitários do resolver/navegação e regressão PostgreSQL de default -> desativação -> bloqueio -> reativação -> auditoria.
+- audit trail `organization_capability.changed`;
+- primeira capability configurável `stock-loans`, default-enabled, com dependência `stock-loans -> inventory`;
+- navegação resolvida a partir de registry + configuração + autorização;
+- backend de criação de empréstimos bloqueia novas operações quando off;
+- restituições/histórico permanecem disponíveis para não deixar obrigação sem liquidação.
 
-A primeira execução da nova suíte SQL encontrou uma policy incorreta baseada em `private.has_org_role(..., NULL)`. O defeito foi corrigido para `private.is_org_member(...)` antes do merge; os workflows do head final ficaram verdes.
+Migration: `20260911153000_modular_product_composition.sql`.
 
-### Rollout Production
+PR **#198** reconciliou essa migration em Production de forma version-preserving. Run `34617253893`: **success**.
 
-Migration versionada: `20260911153000_modular_product_composition.sql`.
+### Segunda capability e rota direta
 
-PR **#198 — `ops: reconciliar compositor modular em Production`** foi mergeado em `main` no commit `4823d58e4d6b1859da13b54daf85e5ed3dfaf379`.
+PR **#200 — `feat: expandir compositor com estoque mínimo`** foi mergeado no commit `54e086830df37cf09de85b2622df80f90728b86e`.
 
-Evidência operacional:
+Entrega:
 
-- antes do rollout, Production terminava em `20260911102500_stock_loan_allocation_order`;
-- reconciliador one-shot usou `supabase db push --dry-run`, allowlist exata e `supabase db push`, sem seed/reset/repair/DDL ad hoc;
-- `Production Migration Reconcile 190` run `34617253893`: **success**;
-- CI pós-merge #644 / run `34617253823`: **success**;
-- histórico remoto agora termina em `20260911153000 / modular_product_composition`;
-- `organization_capability_settings` existe com RLS ativo;
-- `authenticated` possui SELECT direto e não possui INSERT/UPDATE/DELETE direto nessa tabela;
-- única policy da tabela é `organization_capability_settings_member_select`, `TO authenticated`, com `private.is_org_member(organization_id)`;
-- `set_organization_capability(uuid,text,boolean)` é `SECURITY DEFINER`, executável por `authenticated`, não por `anon`/`service_role`, e contém guarda Organization-wide de `owner` + bloqueio de capability não configurável;
-- `record_stock_loan(...)` continua executável por `authenticated`, não por `anon`, e contém `private.is_capability_enabled(...)` + erro `CAPABILITY_DISABLED: stock-loans`;
-- Production possui 0 overrides; a Organization existente resolve `stock-loans` como ativa por default.
+- capability `stock-minimum`, default-enabled, dependente de `inventory`;
+- `CapabilityProvider` distribui o mesmo estado resolvido server-side para superfícies client-side;
+- Empréstimos off entra em modo histórico/liquidação: sem formulário de criação, com leitura, detalhe e restituição preservados;
+- Estoque mínimo off desaparece da navegação, da posição de Estoque e dos cards/alertas correspondentes do Dashboard;
+- rota direta de Estoque mínimo produz estado coerente de módulo desativado;
+- RLS de `stock_minimum_policies` bloqueia SELECT/INSERT/UPDATE quando a capability está off;
+- nenhuma policy é apagada: reativar recupera a configuração anterior;
+- resolver interno `private.is_capability_enabled(...)` continua sem EXECUTE para `authenticated`; policy usa wrapper membership-safe dedicado;
+- testes unitários e PostgreSQL cobrem default, disable, autorização, isolamento, audit, backend/RLS gate, preservação e reativação.
+
+CI do PR #200:
+
+- CI geral: success;
+- Stock Loans Integration: success;
+- Inventory Count Integration: success;
+- Business Transactions Integration: success.
+
+Migration: `20260914120000_stock_minimum_composition.sql`.
+
+PR **#201 — `ops: reconciliar estoque mínimo modular em Production`** foi mergeado no commit `8473582e65266c2272a184be44bd306a98d2dd95`.
+
+Evidência Production:
+
+- drift pré-rollout: exatamente `20260914120000_stock_minimum_composition.sql`;
+- `Production Migration Reconcile 190 Stock Minimum` run `34841150576`: **success**;
+- CI pós-rollout #650 / run `34841150555`: **success**;
+- histórico remoto confirmado até `20260914120000 / stock_minimum_composition`;
+- constraint de capability aceita `stock-loans` e `stock-minimum`;
+- policies RLS de `stock_minimum_policies` incluem `private.can_use_capability(..., 'stock-minimum')` + os escopos de estoque existentes;
+- `authenticated`: sem EXECUTE em `private.is_capability_enabled(...)`, com EXECUTE apenas no wrapper RLS necessário; `anon` sem EXECUTE no wrapper;
+- 0 overrides reais de `stock-minimum`; a Organization existente resolve a capability como ativa por default;
+- 0 policies reais de estoque mínimo em Production no momento da verificação, portanto nenhuma configuração real foi alterada pelo rollout.
 
 ### Advisors pós-DDL
 
 Security Advisor:
 
-- mantém o warning geral de RPCs públicas `SECURITY DEFINER` executáveis por `authenticated`;
-- o novo `set_organization_capability(...)` aparece nesse warning, mas o padrão é intencional e já documentado em `docs/qa/rls-preflight.md`: `auth.uid()` + autorização explícita no RPC + ausência de EXECUTE para `anon`;
-- leaked-password protection continua como finding Auth independente e não foi alterado por #190.
+- mantém warning geral para RPCs públicas `SECURITY DEFINER` executáveis por `authenticated`; o padrão é intencional apenas quando o RPC valida identidade/escopo no corpo;
+- leaked-password protection continua finding independente da #190.
 
 Performance Advisor:
 
-- mantém INFOs históricos de FKs sem índice e índices ainda não usados;
-- a nova tabela acrescenta INFO para `organization_capability_settings_updated_by_user_id_fkey` sem índice;
-- isso não foi tratado como regressão operacional nesta fatia: a tabela é esparsa por Organization/capability, o caminho operacional usa a PK `(organization_id, capability_id)` e não existe consulta por `updated_by_user_id` no fluxo; reavaliar se cardinalidade/queries reais justificarem índice.
+- mantém INFOs históricos de FKs sem índice e índices sem uso observado;
+- `organization_capability_settings.updated_by_user_id` continua INFO de FK sem índice; não há consulta operacional por esse campo que justifique migration apenas para silenciar o linter.
 
-O reconciliador one-shot da #190 deve permanecer removido após o fechamento operacional; não transformar esse mecanismo em deploy automático permanente sem decisão arquitetural própria.
+Nenhum advisor introduziu regressão bloqueante específica da segunda fatia.
 
-## Limites deliberados da primeira fatia
+## Situação após #190
 
-- apenas `stock-loans` é configurável; `inventory` fica ativo e bloqueado para configuração no rollout inicial;
-- Compras, Financeiro, Caixa, Cadastros e demais áreas ainda não recebem toggles;
-- digitar diretamente `/workspace/emprestimos` ainda pode abrir a superfície histórica; isso não concede autorização nem permite nova operação quando a capability está off, porque o gate autoritativo está no backend;
-- module gating complementa autorização/RLS e nunca substitui esses boundaries.
+O guardrail da Fase 60 exigia provar o padrão com 1–2 capabilities antes de abrir uma matriz ampla. Foram entregues exatamente duas:
 
-## Próxima fatia da #190
+- `stock-loans`;
+- `stock-minimum`.
 
-A próxima implementação deve ser incremental e começar por dois trabalhos:
-
-1. tornar a experiência de **rota direta** coerente quando uma capability estiver desativada, usando resolução server-side e sem converter module gating em autorização;
-2. auditar os boundaries reais de uma segunda capability de baixo risco antes de liberar novo toggle.
-
-Candidato preferencial para auditoria: **Estoque mínimo**, porque já possui superfície, tabela/RLS/auditoria e sinal de Dashboard relativamente isolados. Não torná-lo configurável até confirmar dependências e todos os pontos de entrada/efeito.
-
-Não abrir uma matriz ampla de toggles ainda.
+Expandir Compras, Financeiro, Caixa, Cadastros ou outras áreas deve ocorrer apenas em Issues futuras, com mapeamento real de dependências e gates equivalentes. **Não reabrir #190 por inércia para adicionar toggles.**
 
 ## Frentes abertas condicionadas
 
-- **#185 — PDV Legal:** ON HOLD até existir amostra real anonimizada, estrutura oficial de colunas ou documentação/contrato oficial suficiente. Não fabricar fixture nem usar dado Production para desbloquear.
+- **#185 — PDV Legal:** ON HOLD até existir amostra real anonimizada, estrutura oficial de colunas ou documentação/contrato oficial suficiente.
 - **#188 — catálogo comercial, preços e margem:** ON HOLD por #185.
 - **#189 — fichas técnicas/receitas:** ON HOLD por #185/#188.
 - **#184 — consumo de funcionários:** ON HOLD até definir origem do lançamento, granularidade e estorno; a fonte real se relaciona com #185.
-- **#75/#121 / REQ-PLAT-005:** TOTALMENTE ON HOLD até production-readiness.
-- **Q-022:** ainda necessário antes de preparar pessoas reais para go-live; nunca hardcodar pessoa/e-mail/UUID em autorização ou compositor.
+- **#75/#121 / REQ-PLAT-005:** TOTALMENTE ON HOLD até production-readiness ou nova decisão explícita.
+- **Q-022:** ainda pendente antes de usuários reais de go-live; requer mapeamento de pessoas/cargos reais às capacidades técnicas existentes e não deve ser inferido pelo código.
+
+## Estado executável da fila
+
+Neste momento **não há nova implementação segura desbloqueada sem insumo externo ou decisão do operador**. A próxima ação deve seguir `docs/ai/NEXT_ACTION.md` e esperar um dos gatilhos documentados, em vez de fabricar trabalho técnico.
 
 ## Regras que não devem ser rediscutidas
 
 - custeio físico segue `REQ-STK-010`, `BR-STK-010` e `ADR-003-inventory-costing.md`;
 - FEFO é default quando não há seleção explícita; lote explícito prevalece;
 - histórico econômico não é reprecificado por `average_cost`;
-- nenhum módulo desabilitado pode apagar histórico;
+- módulo desabilitado nunca apaga histórico;
 - frontend não é boundary de segurança;
+- module gating complementa RLS/autorização, nunca substitui;
 - nenhum deploy Vercel manual deve ser disparado por rotina documental/smoke.
 
 ## NEXT_ACTION
 
-Seguir `docs/ai/NEXT_ACTION.md`: iniciar a segunda fatia incremental da #190 pela rota direta de capability desativada e pelo mapeamento real de Estoque mínimo antes de qualquer novo toggle.
+Seguir `docs/ai/NEXT_ACTION.md`. Não existe terceira fatia automática da #190.
