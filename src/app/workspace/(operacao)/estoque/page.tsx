@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { EmptyState, PageHeader, Panel, StatusBadge } from "@/components/ui";
+import { capabilityIds } from "@/modules/composition/domain/capability";
+import { useCapabilities } from "@/modules/composition/ui/capability-provider";
 import { isBelowStockMinimum } from "@/modules/inventory/domain/stock-minimum";
 import { useRuntimeWorkspace } from "@/modules/master-data/ui/runtime-workspace-provider";
 
@@ -10,6 +12,8 @@ type MinimumFilter = "all" | "below" | "ok" | "unconfigured";
 
 export default function RuntimeStockPage() {
   const workspace = useRuntimeWorkspace();
+  const capabilities = useCapabilities();
+  const stockMinimumEnabled = capabilities.isEnabled(capabilityIds.stockMinimum);
   const [query, setQuery] = useState("");
   const [minimumFilter, setMinimumFilter] = useState<MinimumFilter>("all");
 
@@ -27,11 +31,13 @@ export default function RuntimeStockPage() {
   );
   const activeMinimumByKey = useMemo(
     () => new Map(
-      workspace.stockMinimumPolicies
-        .filter((policy) => policy.active)
-        .map((policy) => [`${policy.stockLocationId}:${policy.stockItemId}`, policy]),
+      stockMinimumEnabled
+        ? workspace.stockMinimumPolicies
+            .filter((policy) => policy.active)
+            .map((policy) => [`${policy.stockLocationId}:${policy.stockItemId}`, policy] as const)
+        : [],
     ),
-    [workspace.stockMinimumPolicies],
+    [stockMinimumEnabled, workspace.stockMinimumPolicies],
   );
 
   const rows = useMemo(() => {
@@ -40,19 +46,22 @@ export default function RuntimeStockPage() {
     return workspace.balances.filter((balance) => {
       const itemName = itemNames.get(balance.stockItemId) ?? "Item indisponível";
       const locationName = locationNames.get(balance.stockLocationId) ?? "Local indisponível";
+      const matchesQuery = !normalizedQuery || `${itemName} ${locationName}`.toLocaleLowerCase("pt-BR").includes(normalizedQuery);
+      if (!matchesQuery || !stockMinimumEnabled || minimumFilter === "all") return matchesQuery;
+
       const policy = activeMinimumByKey.get(`${balance.stockLocationId}:${balance.stockItemId}`);
       const belowMinimum = isBelowStockMinimum(balance.quantity, policy);
       const status: Exclude<MinimumFilter, "all"> = !policy ? "unconfigured" : belowMinimum ? "below" : "ok";
-      const matchesQuery = !normalizedQuery || `${itemName} ${locationName}`.toLocaleLowerCase("pt-BR").includes(normalizedQuery);
-      const matchesStatus = minimumFilter === "all" || minimumFilter === status;
-      return matchesQuery && matchesStatus;
+      return minimumFilter === status;
     });
-  }, [activeMinimumByKey, itemNames, locationNames, minimumFilter, query, workspace.balances]);
+  }, [activeMinimumByKey, itemNames, locationNames, minimumFilter, query, stockMinimumEnabled, workspace.balances]);
 
-  const belowMinimumCount = workspace.balances.filter((balance) => {
-    const policy = activeMinimumByKey.get(`${balance.stockLocationId}:${balance.stockItemId}`);
-    return isBelowStockMinimum(balance.quantity, policy);
-  }).length;
+  const belowMinimumCount = stockMinimumEnabled
+    ? workspace.balances.filter((balance) => {
+        const policy = activeMinimumByKey.get(`${balance.stockLocationId}:${balance.stockItemId}`);
+        return isBelowStockMinimum(balance.quantity, policy);
+      }).length
+    : 0;
   const expiredBatchCount = workspace.batches.filter((batch) => batch.expirationDate && batch.expirationDate <= new Date().toISOString().slice(0, 10)).length;
   const openTransferCount = workspace.transfers.filter((transfer) => transfer.status !== "received").length;
 
@@ -66,7 +75,7 @@ export default function RuntimeStockPage() {
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Resumo do estoque">
         <SummaryPanel label="Posições com saldo" value={String(workspace.balances.length)} />
-        <SummaryPanel label="Abaixo do mínimo" value={String(belowMinimumCount)} attention={belowMinimumCount > 0} />
+        {stockMinimumEnabled && <SummaryPanel label="Abaixo do mínimo" value={String(belowMinimumCount)} attention={belowMinimumCount > 0} />}
         <SummaryPanel label="Lotes vencidos com saldo" value={String(expiredBatchCount)} attention={expiredBatchCount > 0} />
         <SummaryPanel label="Transferências em trânsito" value={String(openTransferCount)} attention={openTransferCount > 0} />
       </section>
@@ -82,7 +91,7 @@ export default function RuntimeStockPage() {
           <StockShortcut href="/workspace/transferencias" title="Transferências" description="Expedir e receber entre locais." />
           <StockShortcut href="/workspace/inventarios" title="Inventários" description="Contar e reconciliar estoque físico." />
           <StockShortcut href="/workspace/estoque/lotes" title="Lotes e validades" description="Consultar rastreabilidade e vencimentos." />
-          <StockShortcut href="/workspace/estoque/minimos" title="Estoque mínimo" description="Consultar e manter limites por local." />
+          {stockMinimumEnabled && <StockShortcut href="/workspace/estoque/minimos" title="Estoque mínimo" description="Consultar e manter limites por local." />}
         </div>
       </section>
 
@@ -92,7 +101,7 @@ export default function RuntimeStockPage() {
             <h2 className="text-xl font-semibold">Saldos por produto e local</h2>
             <p className="text-sm text-neutral-600">A posição é somente leitura; alterações de saldo acontecem pelas operações próprias.</p>
           </div>
-          <div className="grid gap-2 sm:grid-cols-[minmax(220px,1fr)_190px]">
+          <div className={stockMinimumEnabled ? "grid gap-2 sm:grid-cols-[minmax(220px,1fr)_190px]" : "grid min-w-[min(100%,360px)] gap-2"}>
             <label className="text-sm font-medium">
               Buscar
               <input
@@ -102,19 +111,21 @@ export default function RuntimeStockPage() {
                 className="mt-1 min-h-11 w-full rounded-lg border border-neutral-300 px-3 py-2 font-normal"
               />
             </label>
-            <label className="text-sm font-medium">
-              Situação
-              <select
-                value={minimumFilter}
-                onChange={(event) => setMinimumFilter(event.target.value as MinimumFilter)}
-                className="mt-1 min-h-11 w-full rounded-lg border border-neutral-300 px-3 py-2 font-normal"
-              >
-                <option value="all">Todas</option>
-                <option value="below">Abaixo do mínimo</option>
-                <option value="ok">Dentro do mínimo</option>
-                <option value="unconfigured">Sem mínimo definido</option>
-              </select>
-            </label>
+            {stockMinimumEnabled && (
+              <label className="text-sm font-medium">
+                Situação
+                <select
+                  value={minimumFilter}
+                  onChange={(event) => setMinimumFilter(event.target.value as MinimumFilter)}
+                  className="mt-1 min-h-11 w-full rounded-lg border border-neutral-300 px-3 py-2 font-normal"
+                >
+                  <option value="all">Todas</option>
+                  <option value="below">Abaixo do mínimo</option>
+                  <option value="ok">Dentro do mínimo</option>
+                  <option value="unconfigured">Sem mínimo definido</option>
+                </select>
+              </label>
+            )}
           </div>
         </div>
 
@@ -135,8 +146,8 @@ export default function RuntimeStockPage() {
                     <th className="px-4 py-3 font-medium">Produto</th>
                     <th className="px-4 py-3 font-medium">Local</th>
                     <th className="px-4 py-3 font-medium">Saldo</th>
-                    <th className="px-4 py-3 font-medium">Mínimo</th>
-                    <th className="px-4 py-3 font-medium">Situação</th>
+                    {stockMinimumEnabled && <th className="px-4 py-3 font-medium">Mínimo</th>}
+                    {stockMinimumEnabled && <th className="px-4 py-3 font-medium">Situação</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-100">
@@ -148,8 +159,8 @@ export default function RuntimeStockPage() {
                         <td className="px-4 py-3 font-medium">{itemNames.get(balance.stockItemId) ?? "Item indisponível"}</td>
                         <td className="px-4 py-3 text-neutral-600">{locationNames.get(balance.stockLocationId) ?? "Local indisponível"}</td>
                         <td className="px-4 py-3 font-semibold">{balance.quantity.toDecimal()} {itemUnits.get(balance.stockItemId) ?? ""}</td>
-                        <td className="px-4 py-3">{policy ? `${policy.minimumQuantity.toDecimal()} ${itemUnits.get(balance.stockItemId) ?? ""}` : "—"}</td>
-                        <td className="px-4 py-3"><MinimumStatus configured={Boolean(policy)} below={belowMinimum} /></td>
+                        {stockMinimumEnabled && <td className="px-4 py-3">{policy ? `${policy.minimumQuantity.toDecimal()} ${itemUnits.get(balance.stockItemId) ?? ""}` : "—"}</td>}
+                        {stockMinimumEnabled && <td className="px-4 py-3"><MinimumStatus configured={Boolean(policy)} below={belowMinimum} /></td>}
                       </tr>
                     );
                   })}
@@ -168,11 +179,11 @@ export default function RuntimeStockPage() {
                         <h3 className="font-semibold">{itemNames.get(balance.stockItemId) ?? "Item indisponível"}</h3>
                         <p className="mt-1 text-sm text-neutral-600">{locationNames.get(balance.stockLocationId) ?? "Local indisponível"}</p>
                       </div>
-                      <MinimumStatus configured={Boolean(policy)} below={belowMinimum} />
+                      {stockMinimumEnabled && <MinimumStatus configured={Boolean(policy)} below={belowMinimum} />}
                     </div>
-                    <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                    <div className={stockMinimumEnabled ? "mt-4 grid grid-cols-2 gap-3 text-sm" : "mt-4 text-sm"}>
                       <div><p className="text-xs text-neutral-500">Saldo</p><p className="mt-1 font-semibold">{balance.quantity.toDecimal()} {itemUnits.get(balance.stockItemId) ?? ""}</p></div>
-                      <div><p className="text-xs text-neutral-500">Mínimo</p><p className="mt-1 font-semibold">{policy ? `${policy.minimumQuantity.toDecimal()} ${itemUnits.get(balance.stockItemId) ?? ""}` : "Não definido"}</p></div>
+                      {stockMinimumEnabled && <div><p className="text-xs text-neutral-500">Mínimo</p><p className="mt-1 font-semibold">{policy ? `${policy.minimumQuantity.toDecimal()} ${itemUnits.get(balance.stockItemId) ?? ""}` : "Não definido"}</p></div>}
                     </div>
                   </Panel>
                 );
